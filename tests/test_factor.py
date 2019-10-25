@@ -2,46 +2,56 @@ import unittest
 import spectre
 import pandas as pd
 import numpy as np
+from zipline.pipeline.factors import Returns
 
 
-class Test_Factor(unittest.TestCase):
-    def test_base_factor(self):
-        engine = spectre.factor.Engine()
+class TestFactorLib(unittest.TestCase):
+    def test_base_factor_assert(self):
+        engine = spectre.factors.FactorEngine()
         self.assertRaisesRegex(
-            AttributeError,
-            "Factor does not have '.name' attribute, you need to specify its unique name by engine.add(factor, name).",
-            engine.add(spectre.factor.BaseFactor())
+            ValueError,
+            'Factor does not have `.name` attribute.*',
+            engine.add, spectre.factors.BaseFactor()
+        )
+        self.assertRaisesRegex(
+            IndexError,
+            '.*IndexFactor.*',
+            engine.run
         )
 
-        class TestIndex(spectre.factor.IndexFactor):
+        class TestIndex(spectre.factors.IndexFactor):
             name = 'index'
 
-            def compute(self):
-                return range(5)
+            def compute(self, out, start):
+                out[:] = range(5)
 
-        class TestFactor(spectre.factor.BaseFactor):
-            name = 'test{win}'
-            inputs = ('index')
+        index = TestIndex()
 
-            def compute(self, out, index):
+        class TestFactor(spectre.factors.BaseFactor):
+            name = 'test{}'
+            inputs = (index,)
+
+            def compute(self, out, start, index):
                 out[:] = sum(index)
 
         engine.add(TestFactor(win=3))
+
         self.assertRaisesRegex(
-            AttributeError,
-            "Need to add an 'IndexFactor' before run.",
-            engine.run()
-        )
-        self.assertRaisesRegex(
-            AttributeError,
-            "A factor with the name 'test3' has been added, please specify a new name by engine.add(factor, new_name)",
-            engine.add(TestFactor(win=3))
+            KeyError,
+            ".*exists.*",
+            engine.add, TestFactor(win=3)
         )
 
-        engine.add(TestIndex())
-        df = engine.run()
-        self.assertEqual(df.index.values, np.array([0, 1, 2, 3, 4]))
-        self.assertEqual(df['test3'], np.array([0, 1, 3, 6, 9]))
+        engine.add(index)
+        # df = engine.run()
+        # self.assertEqual(df.index.values, np.array([0, 1, 2, 3, 4]))
+        # self.assertEqual(df['test3'], np.array([0, 1, 3, 6, 9]))
+
+    def test_factor_tree(self):
+        #测试forward
+        #测试是否已算过的重复factor不会算2遍
+        #测试结果是否正确
+        pass
 
     def test_data_factor(self):
         def test_df(df, col, vf, vl):
@@ -51,14 +61,13 @@ class Test_Factor(unittest.TestCase):
         # test data_factors
         data_factors = spectre.factor.DataFactor.form_csvdir(
             './test/data/5mins/', split_by_year=True,
-            read_csv={index_col='Date'})
+            read_csv={index_col: 'Date'})
 
         # should 0 index[Date, symbols], 1 Open, 2 High ...
         self.assertIsInstance(data_factors[0], spectre.factor.IndexFactor)
         self.assertEqual(data_factors[0].name, 'Date')
         self.assertEqual(data_factors[1].name, 'Open')
         close = data_factors[4]
-
 
         # test dataframes to bigdf
         df = spectre.factor.DataFactor.mergedf({
@@ -74,8 +83,7 @@ class Test_Factor(unittest.TestCase):
             'AAPL': pd.read_csv('./test/data/AAPL.csv', index_col='date'),
             'MSFT': pd.read_csv('./test/data/MSFT.csv', index_col='date'),
         }, OHLCV=('uOpen', 'uHigh', 'uLow', 'uClose', 'uVolume'))
-        test index
-        test
+        # test index
 
         # factor
         engine = spectre.factor.Engine()
@@ -86,9 +94,9 @@ class Test_Factor(unittest.TestCase):
 
         # test csvdir loader, only read on run
         loader = spectre.dataloader.form_csvdir('./test/data/', split_by_year=True,
-                                                {
-                                                    index_col='date',
-                                                    dtype={
+                                                read_csv={
+                                                    index_col: 'date',
+                                                    dtype: {
                                                         'changeOverTime': np.float32,
                                                     }
                                                 })
@@ -131,7 +139,7 @@ class Test_Factor(unittest.TestCase):
             inputs = (spectre.StandardColumnNames.OHLCV.volume)
 
             def compute(self, out, volume):
-                self.assertEqual(len(input), 120+3)
+                self.assertEqual(len(input), 120 + 3)
                 out[:] = input['']
 
         universe = testFactor2(win=120).top(1)
@@ -151,10 +159,11 @@ class Test_Factor(unittest.TestCase):
         engine.add(ma)  # default MA5
         engine.run()
 
-        engine.
-
     def test_factors(self):
         ma = spectre.factors.MovingAverage(win=5)
+
+    def test_cuda_factors(self):
+        pass
 
 
 if __name__ == '__main__':
