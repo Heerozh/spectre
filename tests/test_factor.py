@@ -6,54 +6,79 @@ from zipline.pipeline.factors import Returns
 
 
 class TestFactorLib(unittest.TestCase):
+    def test_1_engine_dataloader(self):
+        def test_df_first_last(tdf, col, vf, vl):
+            self.assertAlmostEqual(tdf.loc[tdf.index[0], col], vf)
+            self.assertAlmostEqual(tdf.loc[tdf.index[-1], col], vl)
+
+        loader = spectre.factors.CsvDirDataLoader(
+            './data/daily/',
+            index_col='date',
+            parse_dates=True,
+        )
+        df = loader.load('2019-01-01', '2019-01-15')
+        test_df_first_last(df.loc['AAPL', :], 'close', 160.35, 158.09)
+        test_df_first_last(df.loc['MSFT', :], 'close', 103.45, 105.36)
+        test_df_first_last(df.loc['MSFT', '2019-01-11':'2019-01-12', :], 'close', 104.5, 104.5)
+
+        loader = spectre.factors.CsvDirDataLoader(
+            './data/5mins/',
+            split_by_year=True,
+            index_col='Date',
+            parse_dates=True,
+        )
+        loader.load('2019-01-01', '2019-01-15')
+
+        start = pd.Timestamp('2018-12-31 14:50:00', tz='America/New_York')
+        end = pd.Timestamp('2019-01-02 10:00:00', tz='America/New_York')
+        df = loader.load(start, end)
+        test_df_first_last(df.loc['AAPL', :], 'Open', 157.45, 155.17)
+        test_df_first_last(df.loc['MSFT', :], 'Open', 101.44, 99.55)
+
     def test_base_factor_assert(self):
         engine = spectre.factors.FactorEngine()
-        self.assertRaisesRegex(
-            ValueError,
-            'Factor does not have `.name` attribute.*',
-            engine.add, spectre.factors.BaseFactor()
-        )
-        self.assertRaisesRegex(
-            IndexError,
-            '.*IndexFactor.*',
-            engine.run
-        )
+        self.assertRaisesRegex(IndexError, '.*IndexFactor.*',
+                               engine.run
+                               )
+
 
         class TestIndex(spectre.factors.IndexFactor):
-            name = 'index'
+            self.data = None
 
-            def compute(self, out, start):
-                out[:] = range(5)
+            def pre_compute(self, start, end):
+                self.data = range(start, end)
+
+            def compute(self, out):
+                out[:] = self.data
 
         index = TestIndex()
 
         class TestFactor(spectre.factors.BaseFactor):
-            name = 'test{}'
             inputs = (index,)
 
-            def compute(self, out, start, index):
-                out[:] = sum(index)
+            def compute(self, out, index):
+                out[:] = np.cumsum(index)
 
-        engine.add(TestFactor(win=3))
+        engine.add(TestFactor(win=3), 'test')
 
-        self.assertRaisesRegex(
-            KeyError,
-            ".*exists.*",
-            engine.add, TestFactor(win=3)
-        )
+        self.assertRaisesRegex(KeyError, ".*exists.*",
+                               engine.add, TestFactor(win=3), 'test'
+                               )
 
-        engine.add(index)
+        engine.add(index, 'index')
+        self.assertRaises(NotImplementedError, engine.run)
         # df = engine.run()
         # self.assertEqual(df.index.values, np.array([0, 1, 2, 3, 4]))
         # self.assertEqual(df['test3'], np.array([0, 1, 3, 6, 9]))
 
     def test_factor_tree(self):
-        #测试forward
-        #测试是否已算过的重复factor不会算2遍
-        #测试结果是否正确
+        # 测试forward
+        # 测试是否已算过的重复factor不会算2遍
+        # 测试结果是否正确
         pass
 
     def test_data_factor(self):
+        # 测试复用的factor是否没有重新计算
         def test_df(df, col, vf, vl):
             self.assertAlmostEqual(df.loc[df.index[0], col], vf)
             self.assertAlmostEqual(df.loc[df.index[-1], col], vl)
