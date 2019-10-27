@@ -10,5 +10,6 @@ from .engine import (
 
 from .factor import (
     BaseFactor,
+    CustomFactor,
     DataFactor,
 )
