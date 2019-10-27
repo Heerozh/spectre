@@ -21,7 +21,7 @@ class FactorEngine:
         self._loader = loader
         self._dataframe = None
         self._factors = {}
-        self._filters = {}
+        self._filter = None
 
     def get_loader_data(self):
         return self._dataframe
@@ -32,18 +32,14 @@ class FactorEngine:
             for i, fct in enumerate(factor):
                 self.add(fct, name and name[i] or None)
         else:
-            if isinstance(factor, FilterFactor):
-                if name in self._factors:
-                    raise KeyError('A filter with the name {} already exists.'
-                                   'please specify a new name by engine.add(factor, new_name)'
-                                   .format(name))
-                self._filters[name] = factor
-            else:
-                if name in self._factors:
-                    raise KeyError('A factor with the name {} already exists.'
-                                   'please specify a new name by engine.add(factor, new_name)'
-                                   .format(name))
-                self._factors[name] = factor
+            if name in self._factors:
+                raise KeyError('A factor with the name {} already exists.'
+                               'please specify a new name by engine.add(factor, new_name)'
+                               .format(name))
+            self._factors[name] = factor
+
+    def set_filter(self, factor: FilterFactor):
+        self._filter = factor
 
     def run(self, start: Optional[any], end: Optional[any]) -> pd.DataFrame:
         # make columns to data factors.
@@ -54,15 +50,14 @@ class FactorEngine:
         OHLCV.volume.inputs = (self._loader.get_ohlcv_names()[4],)
 
         # Calculate data that requires backward in tree
-        max_backward = max(max([f._get_total_backward() for f in self._factors.values()] or (0,)),
-                           max([f._get_total_backward() for f in self._filters.values()] or (0,)))
+        max_backward = max([f._get_total_backward() for f in self._factors.values()]) or 0
         # Get data
         self._dataframe = self._loader.load(start, end, max_backward)
 
         # compute
+        if self._filter:
+            self._filter._pre_compute(self, start, end)
         for f in self._factors.values():
-            f._pre_compute(self, start, end)
-        for f in self._filters.values():
             f._pre_compute(self, start, end)
 
         # todo filter
