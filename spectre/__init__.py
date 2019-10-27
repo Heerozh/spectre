@@ -1,7 +1,7 @@
 
 from .factors import (
     DataLoader,
-    CsvDirDataLoader,
+    CsvDirLoader,
     FactorEngine,
     BaseFactor,
 )

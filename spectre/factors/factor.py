@@ -1,5 +1,4 @@
-from abc import ABC
-from typing import Optional, Iterable
+from typing import Optional, Sequence
 import pandas as pd
 
 
@@ -7,96 +6,81 @@ class BaseFactor:
     win = 1
     inputs = None
 
-    _engine = None
-    _backward = 0
-    _last_output = None
+    _cache = None
 
-    def _clean(self) -> None:
-        self._backward = 0
-        self._last_output = None
+    def _get_total_backward(self) -> int:
+        backward = 0
         if self.inputs:
-            if not isinstance(self.inputs, Iterable):
-                raise TypeError('`Factor.inputs` must be iterable factors.')
-            for upstream in self.inputs:
-                if not isinstance(upstream, BaseFactor):
-                    raise TypeError('`Factor.inputs` must only contain factors.')
-                upstream._clean()
+            backward = max([up._get_total_backward() for up in self.inputs])
+        return backward + self.win - 1
 
-    def _update_backward(self, backward=0) -> None:
+    def _pre_compute(self, engine, start, end) -> None:
         """
-        Get the total win size of this tree path.
-        Use to determine the start date for root Factor.
+        Called when engine run but before compute.
         """
-        # Set the backward required by self and child, only keep max amount.
-        new_backward = self.win - 1 + backward
-        if new_backward > self._backward:
-            self._backward = new_backward
-        if self.inputs:
-            for upstream in self.inputs:  # type: BaseFactor
-                upstream._update_backward(self._backward)
+        self._cache = None
 
-    @classmethod
-    def _create_internal_output(cls):
-        """
-        Create an empty internal output data structure, for `compute`
-        """
-        return pd.Series()
-
-    def _compute(self, out):
-        if self._last_output:
+    def _compute(self) -> any:
+        if self._cache:
             # 如果是cuda的话，可以给cuda的数据结构做个遇到df自动转换功能
-            out[:] = self._last_output[:]
-            return
+            return self._cache
 
-        # 计算所有子的数据
+        # Calculate inputs
+        out = None
         if self.inputs:
             inputs = []
-            for upstream in self.inputs:  # type: BaseFactor
-                upstream_out = upstream._create_internal_output()
-                upstream._compute(upstream_out)
+            for upstream in self.inputs:
+                upstream_out = upstream._compute()
                 inputs.append(upstream_out)
-            self.compute(out, *inputs)
+            out = self.compute(*inputs)
         else:
-            self.compute(out)
-        self._last_output = out
+            out = self.compute()
+        self._cache = out
+        return out
 
     def __init__(self, win: Optional[int] = None,
-                 inputs: Optional[Iterable[object]] = None) -> None:
+                 inputs: Optional[Sequence['BaseFactor']] = None) -> None:
         """
-        Parameters
-        ----------
-        win : Optional[int]
+        :param win:  Optional[int]
             Including additional past data with 'window length' in `input`
             when passed to the `compute` function.
-            If not specified, use `self.win` instead.
-        inputs: Optional[Iterable[BaseFactor]]
+            **If not specified, use `self.win` instead.**
+        :param inputs: Optional[Iterable[OHLCV|BaseFactor]]
             Input factors, will all passed to the `compute` function.
-            If not specified, use `self.inputs` instead.
+            **If not specified, use `self.inputs` instead.**
         """
         if win:
             self.win = win
         if inputs:
             self.inputs = inputs
 
-    def pre_compute(self, start, end) -> None:
-        """
-        Called when engine run but before compute.
-        """
-        pass
+        assert (self.win > 0)
 
-    def compute(self, out, *inputs) -> None:
+    def compute(self, *inputs) -> any:
         """
         Abstractmethod, do the actual factor calculation here.
         Unlike zipline, here calculate all data at once. Does not guarantee Look-Ahead Bias.
-        Parameters
-        ----------
-        out
-            Set to your factor value, length should be same as the inputs`
-        *inputs
-            All input factors data, including all data from `start(minus win)` to `end`.
+        :param inputs: All input factors data, including all data from `start(minus win)` to `end`.
+        :return: your factor values, length should be same as the inputs`
         """
         raise NotImplementedError("abstractmethod")
 
 
-class IndexFactor(BaseFactor, ABC):
+class DataFactor(BaseFactor):
+    def _get_total_backward(self) -> int:
+        return 0
+
+    def _pre_compute(self, engine, start, end) -> None:
+        super()._pre_compute(engine, start, end)
+        df = engine.get_loader_data()
+        self._data = df[self.inputs[0]]
+
+    def _compute(self) -> any:
+        return self._data
+
+    def compute(self, *inputs) -> any:
+        pass
+
+
+class FilterFactor(BaseFactor):
     pass

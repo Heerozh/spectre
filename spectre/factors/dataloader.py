@@ -71,15 +71,21 @@ a
 
 
 class DataLoader:
-    def load(self, start, end) -> pd.DataFrame:
+    def __init__(self, ohlcv=('open', 'high', 'low', 'close', 'volume')) -> None:
+        self._ohlcv = ohlcv
+
+    def get_ohlcv_names(self):
+        return self._ohlcv
+
+    def load(self, start, end, backward: int) -> pd.DataFrame:
         """
         If for back-testing, `start` `end` parameter has no meaning,
-        because should be same as 'today'.
+        because should be same as 'now'.
         """
         raise NotImplementedError("abstractmethod")
 
 
-class CsvDirDataLoader(DataLoader):
+class CsvDirLoader(DataLoader):
     def __init__(self, path: str, split_by_year=False, dividends_path='',
                  ohlcv=('open', 'high', 'low', 'close', 'volume'),
                  **read_csv):
@@ -91,11 +97,11 @@ class CsvDirDataLoader(DataLoader):
                       TODO all those column will be adjust by Dividends/Splits(anchor at `end` time)
         :param read_csv: Parameters for pd.read_csv.
         """
+        super().__init__(ohlcv)
         self._csv_dir = path
         # dividends: self._div_dir = dividends_path #dividends_path='',
         self._split_by_year = split_by_year
         self._read_csv = read_csv
-        self._ohlcv = ohlcv
 
         self._cache = (None, None, None)
 
@@ -140,15 +146,19 @@ class CsvDirDataLoader(DataLoader):
         times = df_concat.index.get_level_values(0)
         self._cache = (times[0], times[-1], df_concat)
 
-    def _load_from_cache(self, start, end):
+    def _load_from_cache(self, start, end, backward):
         if self._cache[0] and start >= self._cache[0] and end <= self._cache[1]:
-            return self._cache[2].loc[start:end]
+            index = self._cache[2].index.get_level_values(0).unique()
+            start_slice = index.get_loc(start, 'bfill')
+            start_slice = max(start_slice - backward, 0)
+            start_slice = index[start_slice]
+            return self._cache[2].loc[start_slice:end]
         else:
             return None
 
-    def load(self, start, end):
+    def load(self, start, end, backward):
         start, end = pd.Timestamp(start, tz='UTC'), pd.Timestamp(end, tz='UTC')
-        rtn = self._load_from_cache(start, end)
+        rtn = self._load_from_cache(start, end, backward)
         if rtn is not None:
             return rtn
 
@@ -156,4 +166,4 @@ class CsvDirDataLoader(DataLoader):
             self._load_split_by_year(start, end)
         else:
             self._load(start, end)
-        return self._load_from_cache(start, end)
+        return self._load_from_cache(start, end, backward)

@@ -1,6 +1,6 @@
 from .dataloader import (
     DataLoader,
-    CsvDirDataLoader,
+    CsvDirLoader,
 )
 
 from .engine import (

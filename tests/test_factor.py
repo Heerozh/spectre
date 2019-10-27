@@ -8,66 +8,76 @@ from zipline.pipeline.factors import Returns
 class TestFactorLib(unittest.TestCase):
     def test_1_CsvDirDataLoader(self):
         # test index type check
-        loader = spectre.factors.CsvDirDataLoader('./data/daily/')
-        self.assertRaises(AssertionError, loader.load, '2019-01-01', '2019-01-15')
-        loader = spectre.factors.CsvDirDataLoader('./data/daily/', index_col='date', )
-        self.assertRaises(AssertionError, loader.load, '2019-01-01', '2019-01-15')
+        loader = spectre.factors.CsvDirLoader('./data/daily/')
+        self.assertRaises(AssertionError, loader.load, '2019-01-01', '2019-01-15', 0)
+        loader = spectre.factors.CsvDirLoader('./data/daily/', index_col='date', )
+        self.assertRaises(AssertionError, loader.load, '2019-01-01', '2019-01-15', 0)
 
         def test_df_first_last(tdf, col, vf, vl):
             self.assertAlmostEqual(tdf.loc[tdf.index[0], col], vf)
             self.assertAlmostEqual(tdf.loc[tdf.index[-1], col], vl)
 
-        loader = spectre.factors.CsvDirDataLoader(
+        loader = spectre.factors.CsvDirLoader(
             './data/daily/', index_col='date', parse_dates=True, )
         # test cache
         start, end = pd.Timestamp('2015-01-01', tz='UTC'), pd.Timestamp('2019-01-15', tz='UTC')
-        self.assertIsNone(loader._load_from_cache(start, end))
-        df = loader.load('2019-01-01', '2019-01-15')
-        self.assertIsNotNone(loader._load_from_cache(start, end))
+        self.assertIsNone(loader._load_from_cache(start, end, 0))
+        df = loader.load('2019-01-01', '2019-01-15', 0)
+        self.assertIsNotNone(loader._load_from_cache(start, end, 0))
+
+        # test backward
+        df = loader.load('2019-01-01', '2019-01-15', 11)
+        test_df_first_last(df.loc[(slice(None), 'AAPL'), :], 'close', 173.43, 158.09)
+        test_df_first_last(df.loc[(slice(None), 'MSFT'), :], 'close', 106.57, 105.36)
 
         # test value
-        df = loader.load('2019-01-01', '2019-01-15')
+        df = loader.load('2019-01-01', '2019-01-15', 0)
         test_df_first_last(df.loc[(slice(None), 'AAPL'), :], 'close', 160.35, 158.09)
         test_df_first_last(df.loc[(slice(None), 'MSFT'), :], 'close', 103.45, 105.36)
         test_df_first_last(df.loc[(slice('2019-01-11', '2019-01-12'), 'MSFT'), :],
                            'close', 104.5, 104.5)
-        df = loader.load('2019-01-11', '2019-01-12')
+        df = loader.load('2019-01-11', '2019-01-12', 0)
         test_df_first_last(df.loc[(slice(None), 'MSFT'), :], 'close', 104.5, 104.5)
 
-        loader = spectre.factors.CsvDirDataLoader(
-            './data/5mins/', split_by_year=True, index_col='Date', parse_dates=True,)
-        loader.load('2019-01-01', '2019-01-15')
+        loader = spectre.factors.CsvDirLoader(
+            './data/5mins/', split_by_year=True, index_col='Date', parse_dates=True, )
+        loader.load('2019-01-01', '2019-01-15', 0)
 
         start = pd.Timestamp('2018-12-31 14:50:00', tz='America/New_York')
         end = pd.Timestamp('2019-01-02 10:00:00', tz='America/New_York')
-        df = loader.load(start, end)
+        df = loader.load(start, end, 0)
         test_df_first_last(df.loc[(slice(None), 'AAPL'), :], 'Open', 157.45, 155.17)
         test_df_first_last(df.loc[(slice(None), 'MSFT'), :], 'Open', 101.44, 99.55)
 
     def test_2_BaseFactor(self):
         a = spectre.factors.BaseFactor(win=2)
-        b = spectre.factors.BaseFactor(win=3, inputs=(a, ))
-        c = spectre.factors.BaseFactor(win=3, inputs=(b, ))
+        b = spectre.factors.BaseFactor(win=3, inputs=(a,))
+        c = spectre.factors.BaseFactor(win=3, inputs=(b,))
         self.assertEqual(c._get_total_backward(), 5)
 
         a1 = spectre.factors.BaseFactor(win=10)
         a2 = spectre.factors.BaseFactor(win=5)
         b1 = spectre.factors.BaseFactor(win=20, inputs=(a1, a2))
-        b2 = spectre.factors.BaseFactor(win=100, inputs=(a2, ))
-        c1 = spectre.factors.BaseFactor(win=100, inputs=(b1, ))
+        b2 = spectre.factors.BaseFactor(win=100, inputs=(a2,))
+        c1 = spectre.factors.BaseFactor(win=100, inputs=(b1,))
         self.assertEqual(a1._get_total_backward(), 9)
         self.assertEqual(a2._get_total_backward(), 4)
         self.assertEqual(b1._get_total_backward(), 28)
         self.assertEqual(b2._get_total_backward(), 103)
         self.assertEqual(c1._get_total_backward(), 127)
 
-    def test_2_datafactor(self):
-        loader = spectre.factors.CsvDirDataLoader(
+    def test_3_datafactor(self):
+        loader = spectre.factors.CsvDirLoader(
             './data/daily/', ohlcv=('uOpen', 'uHigh', 'uLow', 'uClose', 'uVolume'),
             index_col='date', parse_dates=True,
         )
         engine = spectre.factors.FactorEngine(loader)
-        engine.add(spectre.factors.OHLCV.volume, 'cpy Volume')
+        engine.add(spectre.factors.OHLCV.volume, 'CpVol')
+        df = engine.run('2019-01-11', '2019-01-15')
+        np.testing.assert_array_equal(
+            df.loc[(slice(None), 'AAPL'), 'CpVol'].values, (28065422, 33834032, 29426699))
+        np.testing.assert_array_equal(
+            df.loc[(slice(None), 'MSFT'), 'CpVol'].values, (28627674, 28720936, 32882983))
 
     def test_base_factor_assert(self):
         engine = spectre.factors.FactorEngine()
