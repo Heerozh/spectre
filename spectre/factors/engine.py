@@ -45,8 +45,7 @@ class FactorEngine:
                                    .format(name))
                 self._factors[name] = factor
 
-    def run(self, start: Optional[any] = None,
-            end: Optional[any] = None) -> pd.DataFrame:
+    def run(self, start: Optional[any], end: Optional[any]) -> pd.DataFrame:
         # make columns to data factors.
         OHLCV.open.inputs = (self._loader.get_ohlcv_names()[0],)
         OHLCV.high.inputs = (self._loader.get_ohlcv_names()[1],)

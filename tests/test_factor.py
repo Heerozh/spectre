@@ -79,40 +79,48 @@ class TestFactorLib(unittest.TestCase):
         np.testing.assert_array_equal(
             df.loc[(slice(None), 'MSFT'), 'CpVol'].values, (28627674, 28720936, 32882983))
 
-    def test_base_factor_assert(self):
-        engine = spectre.factors.FactorEngine()
-        self.assertRaisesRegex(IndexError, '.*IndexFactor.*',
-                               engine.run
-                               )
-
-        class TestIndex(spectre.factors.IndexFactor):
-            self.data = None
-
-            def pre_compute(self, start, end):
-                self.data = range(start, end)
-
-            def compute(self, out):
-                out[:] = self.data
-
-        index = TestIndex()
+    def test_4_custom_factor(self):
+        loader = spectre.factors.CsvDirLoader(
+            './data/daily/', ohlcv=('uOpen', 'uHigh', 'uLow', 'uClose', 'uVolume'),
+            index_col='date', parse_dates=True,
+        )
+        engine = spectre.factors.FactorEngine(loader)
 
         class TestFactor(spectre.factors.BaseFactor):
-            inputs = (index,)
+            inputs = [spectre.factors.OHLCV.close]
 
-            def compute(self, out, index):
-                out[:] = np.cumsum(index)
+            def compute(self, close):
+                return range(len(close))
 
-        engine.add(TestFactor(win=3), 'test')
+        class TestFactor2(spectre.factors.BaseFactor):
+            inputs = [TestFactor]
 
+            def compute(self, test_input):
+                return np.cumsum(test_input)
+
+        self.assertRaisesRegex(TypeError, ".*BaseFactor.*", TestFactor2)
+
+        test_f1 = TestFactor()
+
+        class TestFactor2(spectre.factors.BaseFactor):
+            inputs = [test_f1]
+
+            def compute(self, test_input):
+                return np.cumsum(test_input)
+
+        engine.add(test_f1, 'test')
         self.assertRaisesRegex(KeyError, ".*exists.*",
-                               engine.add, TestFactor(win=3), 'test'
-                               )
+                               engine.add, TestFactor(), 'test')
 
-        engine.add(index, 'index')
-        self.assertRaises(NotImplementedError, engine.run)
-        # df = engine.run()
-        # self.assertEqual(df.index.values, np.array([0, 1, 2, 3, 4]))
-        # self.assertEqual(df['test3'], np.array([0, 1, 3, 6, 9]))
+        engine.add(TestFactor2(), 'test2')
+        df = engine.run('2019-01-11', '2019-01-15')
+        np.testing.assert_array_equal(df.values,
+                                      [[0,  0],
+                                       [1,  1],
+                                       [2,  3],
+                                       [3,  6],
+                                       [4, 10],
+                                       [5, 15]])
 
     def test_factor_tree(self):
         # 测试forward

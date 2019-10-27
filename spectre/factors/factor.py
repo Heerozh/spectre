@@ -19,6 +19,9 @@ class BaseFactor:
         Called when engine run but before compute.
         """
         self._cache = None
+        if self.inputs:
+            for upstream in self.inputs:
+                upstream._pre_compute(engine, start, end)
 
     def _compute(self) -> any:
         if self._cache:
@@ -54,6 +57,12 @@ class BaseFactor:
         if inputs:
             self.inputs = inputs
 
+        if self.inputs:
+            for up in self.inputs:
+                if not isinstance(up, BaseFactor):
+                    raise TypeError('`inputs` can only contain BaseFactors, you pass {}'
+                                    .format(type(up)))
+
         assert (self.win > 0)
 
     def compute(self, *inputs) -> any:
@@ -71,7 +80,6 @@ class DataFactor(BaseFactor):
         return 0
 
     def _pre_compute(self, engine, start, end) -> None:
-        super()._pre_compute(engine, start, end)
         df = engine.get_loader_data()
         self._data = df[self.inputs[0]]
 
