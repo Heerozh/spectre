@@ -4,5 +4,4 @@ from .factors import (
     CsvDirDataLoader,
     FactorEngine,
     BaseFactor,
-    IndexFactor,
 )
