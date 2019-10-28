@@ -46,7 +46,7 @@ class CustomFactor(BaseFactor): #todo 还要继承有top，加减等方法的ter
                     upstream._pre_compute(engine, start, end)
 
     def _compute(self) -> any:
-        if self._cache:
+        if self._cache is not None:
             self._cache_hit += 1
             return self._cache
 
@@ -87,6 +87,10 @@ class CustomFactor(BaseFactor): #todo 还要继承有top，加减等方法的ter
         """
         Abstractmethod, do the actual factor calculation here.
         Unlike zipline, here calculate all data at once. Does not guarantee Look-Ahead Bias.
+        Data structure:
+                | index    | stock1 | ... | stockN |
+                |----------|--------|-----|--------|
+                | datetime | input  | ... | input  |
         :param inputs: All input factors data, including all data from `start(minus win)` to `end`.
         :return: your factor values, length should be same as the inputs`
         """
@@ -104,7 +108,7 @@ class DataFactor(BaseFactor):
 
     def _pre_compute(self, engine, start, end) -> None:
         df = engine.get_loader_data()
-        self._data = df[self.inputs[0]]
+        self._data = df[self.inputs[0]].unstack(level=1)
 
     def _compute(self) -> any:
         return self._data

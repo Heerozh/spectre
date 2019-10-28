@@ -2,7 +2,7 @@ from typing import Union, Optional, Iterable
 from .factor import BaseFactor, DataFactor, FilterFactor
 from .dataloader import DataLoader
 import pandas as pd
-
+import numpy as np
 
 class OHLCV:
     open = DataFactor()
@@ -68,8 +68,13 @@ class FactorEngine:
         # remove false rows
 
         # Compute factors
-        rtn = pd.DataFrame(index=self._dataframe.index.copy())
+        ret = pd.DataFrame(index=self._dataframe.index.copy())
         for c, f in self._factors.items():
-            rtn[c] = f._compute()
+            factor_data = f._compute()
+            if isinstance(factor_data, pd.DataFrame):
+                factor_data = factor_data.stack()
+            else:
+                factor_data = np.hstack(factor_data)
+            ret[c] = factor_data
 
-        return rtn.loc[start:end]
+        return ret.loc[start:end]

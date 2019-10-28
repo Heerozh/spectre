@@ -1,9 +1,9 @@
 # spectre 
 
-*A spectre is haunting Market — the spectre of capitalism.*
+> *A spectre is haunting Market — the spectre of capitalism.*
 
 spectre is an quantitative trading library, 
-targets GPU support(TODO) and keep it simple. 
+targets performance, GPU support(TODO) and still keep it simple. 
 
 [Under construction]
 
@@ -40,5 +40,27 @@ df
 [Under construction]
 
 ## Chapter III. Benchmarking
+
+|  time      |      MA100       |	... |
+|------------|------------------|------|
+|zipline     | 767 ms ± 10.4 ms |	 |
+|spectre     | 650 ms ± 5.08 ms |	 |
+|spectre(GPU)| TODO |		 |
+
+Code:
+```python
+start, end = pd.Timestamp('2017-01-03', tz='UTC'), pd.Timestamp('2019-01-03', tz='UTC')
+bundle_data = zipline.data.bundles.load('quandl')
+engine = SimplePipelineEngine(...)
+ma = SimpleMovingAverage(inputs=[USEquityPricing.close], window_length=100)
+pipeline = Pipeline()
+pipeline.add( ma, 'ma')
+%timeit engine.run_pipeline(pipeline, start, end)
+
+loader = factors.QuandlLoader('../../historical_data/us/prices/quandl/WIKI_PRICES.zip')
+engine = factors.FactorEngine(loader)
+engine.add(factors.SMA(100), 'ma')
+%timeit engine.run(start, end)
+```
 
 [Under construction]

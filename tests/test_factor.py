@@ -22,26 +22,29 @@ class TestFactorLib(unittest.TestCase):
         # test cache
         start, end = pd.Timestamp('2015-01-01', tz='UTC'), pd.Timestamp('2019-01-15', tz='UTC')
         self.assertIsNone(loader._load_from_cache(start, end, 0))
-        df = loader.load('2019-01-01', '2019-01-15', 0)
+        start, end = pd.Timestamp('2019-01-01', tz='UTC'), pd.Timestamp('2019-01-15', tz='UTC')
+        df = loader.load(start, end, 0)
         self.assertIsNotNone(loader._load_from_cache(start, end, 0))
 
         # test backward
-        df = loader.load('2019-01-01', '2019-01-15', 11)
+        df = loader.load(start, end, 11)
         test_df_first_last(df.loc[(slice(None), 'AAPL'), :], 'close', 173.43, 158.09)
         test_df_first_last(df.loc[(slice(None), 'MSFT'), :], 'close', 106.57, 105.36)
 
         # test value
-        df = loader.load('2019-01-01', '2019-01-15', 0)
+        df = loader.load(start, end, 0)
         test_df_first_last(df.loc[(slice(None), 'AAPL'), :], 'close', 160.35, 158.09)
         test_df_first_last(df.loc[(slice(None), 'MSFT'), :], 'close', 103.45, 105.36)
         test_df_first_last(df.loc[(slice('2019-01-11', '2019-01-12'), 'MSFT'), :],
                            'close', 104.5, 104.5)
-        df = loader.load('2019-01-11', '2019-01-12', 0)
+        start, end = pd.Timestamp('2019-01-11', tz='UTC'), pd.Timestamp('2019-01-12', tz='UTC')
+        df = loader.load(start, end, 0)
         test_df_first_last(df.loc[(slice(None), 'MSFT'), :], 'close', 104.5, 104.5)
 
         loader = spectre.factors.CsvDirLoader(
             './data/5mins/', split_by_year=True, index_col='Date', parse_dates=True, )
-        loader.load('2019-01-01', '2019-01-15', 0)
+        start, end = pd.Timestamp('2019-01-01', tz='UTC'), pd.Timestamp('2019-01-15', tz='UTC')
+        loader.load(start, end, 0)
 
         start = pd.Timestamp('2018-12-31 14:50:00', tz='America/New_York')
         end = pd.Timestamp('2019-01-02 10:00:00', tz='America/New_York')
@@ -102,7 +105,7 @@ class TestFactorLib(unittest.TestCase):
             inputs = [spectre.factors.OHLCV.close]
 
             def compute(self, close):
-                return range(len(close))
+                return np.arange(np.prod(close.shape)).reshape(close.shape)
 
         class TestFactor2(spectre.factors.CustomFactor):
             inputs = [TestFactor]

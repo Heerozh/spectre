@@ -78,7 +78,7 @@ class DataLoader:
     def get_ohlcv_names(self):
         return self._ohlcv
 
-    def load(self, start, end, backward: int) -> pd.DataFrame:
+    def load(self, start: pd.Timestamp, end: pd.Timestamp, backward: int) -> pd.DataFrame:
         """
         If for back-testing, `start` `end` parameter has no meaning,
         because should be same as 'now'.
@@ -158,9 +158,9 @@ class CsvDirLoader(DataLoader):
             return None
 
     def load(self, start, end, backward):
-        rtn = self._load_from_cache(start, end, backward)
-        if rtn is not None:
-            return rtn
+        ret = self._load_from_cache(start, end, backward)
+        if ret is not None:
+            return ret
 
         if self._split_by_year:
             self._load_split_by_year(start, end)
