@@ -1,5 +1,6 @@
 import pandas as pd
 import os
+from zipfile import ZipFile
 
 """
 df1 = pd.DataFrame([[1,2,3],[4,5,6],[7,8,9]], columns=('a','b','c'))
@@ -90,7 +91,7 @@ class CsvDirLoader(DataLoader):
                  ohlcv=('open', 'high', 'low', 'close', 'volume'),
                  **read_csv):
         """
-        Load data from csv dir.
+        Load data from csv dir, structured as xxx.csv per stock..
         :param split_by_year: If file name like 'spy_2017.csv', set this to True
         :param ohlcv: OHLCV column names, If set, you can access those data like
                       `spectre.factors.OHLCV.open`, also
@@ -167,3 +168,35 @@ class CsvDirLoader(DataLoader):
         else:
             self._load(start, end)
         return self._load_from_cache(start, end, backward)
+
+
+class QuandlLoader(DataLoader):
+    def __init__(self, file: str, ohlcv=('open', 'high', 'low', 'close', 'volume')) -> None:
+        """
+        Usage:
+        download data first:
+        https://www.quandl.com/api/v3/datatables/WIKI/PRICES.csv?qopts.export=true&api_key=[yourapi_key]
+        then:
+        loader = factors.QuandlLoader('./quandl/WIKI_PRICES.zip')
+        """
+        super().__init__(ohlcv)
+
+        with ZipFile(file) as zip:
+            with zip.open(zip.namelist()[0]) as csv:
+                df = pd.read_csv(csv, parse_dates=['date'],
+                                 index_col=['date', 'ticker'],
+                                 usecols=['ticker', 'date', 'open', 'high', 'low', 'close',
+                                          'volume',
+                                          'ex-dividend', 'split_ratio', ],
+                                 )
+        df.tz_localize('UTC', level=0, copy=False)
+        df.sort_index(level=0, inplace=True)
+        self._cache = df
+
+    def load(self, start, end, backward: int) -> pd.DataFrame:
+        start, end = pd.Timestamp(start, tz='UTC'), pd.Timestamp(end, tz='UTC')
+        index = self._cache.index.get_level_values(0).unique()
+        start_slice = index.get_loc(start, 'bfill')
+        start_slice = max(start_slice - backward, 0)
+        start_slice = index[start_slice]
+        return self._cache.loc[start_slice:end]
