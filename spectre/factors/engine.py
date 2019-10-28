@@ -71,4 +71,4 @@ class FactorEngine:
         for c, f in self._factors.items():
             rtn[c] = f._compute()
 
-        return rtn
+        return rtn[start:end]
