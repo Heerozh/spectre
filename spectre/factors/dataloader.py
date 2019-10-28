@@ -158,7 +158,6 @@ class CsvDirLoader(DataLoader):
             return None
 
     def load(self, start, end, backward):
-        start, end = pd.Timestamp(start, tz='UTC'), pd.Timestamp(end, tz='UTC')
         rtn = self._load_from_cache(start, end, backward)
         if rtn is not None:
             return rtn
@@ -194,7 +193,6 @@ class QuandlLoader(DataLoader):
         self._cache = df
 
     def load(self, start, end, backward: int) -> pd.DataFrame:
-        start, end = pd.Timestamp(start, tz='UTC'), pd.Timestamp(end, tz='UTC')
         index = self._cache.index.get_level_values(0).unique()
         start_slice = index.get_loc(start, 'bfill')
         start_slice = max(start_slice - backward, 0)

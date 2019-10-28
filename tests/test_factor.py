@@ -150,8 +150,8 @@ class TestFactorLib(unittest.TestCase):
             engine.remove_all()
             engine.add(factor, 'test')
             result = engine.run('2019-01-01', '2019-01-15')
-            result_aapl = result.loc[(slice(None), 'AAPL'), 'test'].values[-total_rows:]
-            result_msft = result.loc[(slice(None), 'MSFT'), 'test'].values[-total_rows:]
+            result_aapl = result.loc[(slice(None), 'AAPL'), 'test'].values
+            result_msft = result.loc[(slice(None), 'MSFT'), 'test'].values
             expected_aapl = ta_func(df_aapl.values, **ta_kwargs)[-total_rows:]
             expected_msft = ta_func(df_msft.values, **ta_kwargs)[-total_rows:]
             np.testing.assert_almost_equal(result_aapl, expected_aapl)
@@ -184,6 +184,8 @@ class TestFactorLib(unittest.TestCase):
         self.assertEqual(data.index.get_level_values(1).values[0], 'AAPL')
 
     # def test_cuda_factors(self):
+    #     spectre.to_cuda()
+    #     self.test_factors()
     #     pass
 
 

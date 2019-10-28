@@ -44,7 +44,8 @@ class FactorEngine:
     def remove_all(self):
         self._factors = {}
 
-    def run(self, start: Optional[any], end: Optional[any]) -> pd.DataFrame:
+    def run(self, start: Union[str, pd.Timestamp], end: Union[str, pd.Timestamp]) -> pd.DataFrame:
+        start, end = pd.Timestamp(start, tz='UTC'), pd.Timestamp(end, tz='UTC')
         # make columns to data factors.
         OHLCV.open.inputs = (self._loader.get_ohlcv_names()[0],)
         OHLCV.high.inputs = (self._loader.get_ohlcv_names()[1],)
@@ -71,4 +72,4 @@ class FactorEngine:
         for c, f in self._factors.items():
             rtn[c] = f._compute()
 
-        return rtn[start:end]
+        return rtn.loc[start:end]
