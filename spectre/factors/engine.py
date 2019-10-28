@@ -41,6 +41,9 @@ class FactorEngine:
     def set_filter(self, factor: FilterFactor):
         self._filter = factor
 
+    def remove_all(self):
+        self._factors = {}
+
     def run(self, start: Optional[any], end: Optional[any]) -> pd.DataFrame:
         # make columns to data factors.
         OHLCV.open.inputs = (self._loader.get_ohlcv_names()[0],)

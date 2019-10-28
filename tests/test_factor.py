@@ -13,9 +13,9 @@ class TestFactorLib(unittest.TestCase):
         loader = spectre.factors.CsvDirLoader('./data/daily/', index_col='date', )
         self.assertRaises(AssertionError, loader.load, '2019-01-01', '2019-01-15', 0)
 
-        def test_df_first_last(tdf, col, vf, vl):
-            self.assertAlmostEqual(tdf.loc[tdf.index[0], col], vf)
-            self.assertAlmostEqual(tdf.loc[tdf.index[-1], col], vl)
+        def test_df_first_last(tdf, col, expected_first, expected_last):
+            self.assertAlmostEqual(tdf.loc[tdf.index[0], col], expected_first)
+            self.assertAlmostEqual(tdf.loc[tdf.index[-1], col], expected_last)
 
         loader = spectre.factors.CsvDirLoader(
             './data/daily/', index_col='date', parse_dates=True, )
@@ -58,16 +58,20 @@ class TestFactorLib(unittest.TestCase):
         engine.add(spectre.factors.OHLCV.volume, 'CpVol')
         df = engine.run('2019-01-11', '2019-01-15')
         np.testing.assert_array_equal(
-            df.loc[(slice(None), 'AAPL'), 'CpVol'].values, (28065422, 33834032, 29426699))
+            df.loc[(slice(None), 'AAPL'), 'CpVol'].values,
+            (28065422, 33834032, 29426699))
         np.testing.assert_array_equal(
-            df.loc[(slice(None), 'MSFT'), 'CpVol'].values, (28627674, 28720936, 32882983))
+            df.loc[(slice(None), 'MSFT'), 'CpVol'].values,
+            (28627674, 28720936, 32882983))
 
         engine.add(spectre.factors.DataFactor(inputs=('changePercent',)), 'Chg')
         df = engine.run('2019-01-11', '2019-01-15')
         np.testing.assert_array_equal(
-            df.loc[(slice(None), 'AAPL'), 'Chg'].values, (-0.9835, -1.5724, 2.1235))
+            df.loc[(slice(None), 'AAPL'), 'Chg'].values,
+            (-0.9835, -1.5724, 2.1235))
         np.testing.assert_array_equal(
-            df.loc[(slice(None), 'MSFT'), 'Chg'].values, (-0.8025, -0.7489, 3.0232))
+            df.loc[(slice(None), 'MSFT'), 'Chg'].values,
+            (-0.8025, -0.7489, 3.0232))
 
     def test_3_CustomFactor(self):
         # test backward tree
@@ -106,8 +110,10 @@ class TestFactorLib(unittest.TestCase):
             def compute(self, test_input):
                 return np.cumsum(test_input)
 
-        self.assertRaisesRegex(TypeError, ".*BaseFactors.*", TestFactor2)
-
+        engine.add(TestFactor2(), 'test2')
+        self.assertRaisesRegex(ValueError, "Length.*",
+                               engine.run, '2019-01-11', '2019-01-15')
+        engine.remove_all()
         test_f1 = TestFactor()
 
         class TestFactor2(spectre.factors.CustomFactor):
@@ -127,27 +133,51 @@ class TestFactorLib(unittest.TestCase):
         np.testing.assert_array_equal(df['test2'].values, [0, 1, 3, 6, 10, 15])
 
     def test_factors(self):
-        ma = spectre.factors.MovingAverage(win=5)
+        loader = spectre.factors.CsvDirLoader(
+            './data/daily/', ohlcv=('uOpen', 'uHigh', 'uLow', 'uClose', 'uVolume'),
+            index_col='date', parse_dates=True,
+        )
+        engine = spectre.factors.FactorEngine(loader)
+        engine.add(spectre.factors.OHLCV.close, 'close')
+        df = engine.run('2018-01-01', '2019-01-15')
+        df_aapl = df.loc[(slice(None), 'AAPL'), 'close']
+        df_msft = df.loc[(slice(None), 'MSFT'), 'close']
+        total_rows = 10
+
+        import talib
+
+        def test_with_ta_lib(factor, ta_func, **ta_kwargs):
+            engine.remove_all()
+            engine.add(factor, 'test')
+            result = engine.run('2019-01-01', '2019-01-15')
+            result_aapl = result.loc[(slice(None), 'AAPL'), 'test'].values[-total_rows:]
+            result_msft = result.loc[(slice(None), 'MSFT'), 'test'].values[-total_rows:]
+            expected_aapl = ta_func(df_aapl.values, **ta_kwargs)[-total_rows:]
+            expected_msft = ta_func(df_msft.values, **ta_kwargs)[-total_rows:]
+            np.testing.assert_almost_equal(result_aapl, expected_aapl)
+            np.testing.assert_almost_equal(result_msft, expected_msft)
+
+        # test MA
+        test_with_ta_lib(spectre.factors.SMA(11), talib.SMA, timeperiod=11)
+
+        # test ema
+
+
         # 测试forward
         # 测试是否已算过的重复factor不会算2遍
         # 测试结果是否正确
+        # 测试带固定参数的指标是否正确
         pass
 
     def test_filter_factor(self):
-        loader = spectre.dataloader.form_csvdir('./test/data/')
-        stdcol = spectre.StandardColumnNames.OHLCV(
-            'uOpen', 'uHigh', 'uLow', 'uClose', 'uVolume')
-        engine = spectre.factor_engine(loader, stdcol)
+        loader = spectre.factors.CsvDirLoader(
+            './data/daily/', ohlcv=('uOpen', 'uHigh', 'uLow', 'uClose', 'uVolume'),
+            index_col='date', parse_dates=True,
+        )
+        engine = spectre.factors.FactorEngine(loader)
 
-        class testFactor2(spectre.BaseFactor):
-            inputs = (spectre.StandardColumnNames.OHLCV.volume)
-
-            def compute(self, out, volume):
-                self.assertEqual(len(input), 120 + 3)
-                out[:] = input['']
-
-        universe = testFactor2(win=120).top(1)
-        engine.add(universe)
+        universe = spectre.factors.OHLCV.volume.top(1)
+        engine.set_filter(universe)
 
         data = engine.run("2017-01-01", "2019-01-05")
         self.assertEqual(len(data.index.get_level_values(1).values), 1)

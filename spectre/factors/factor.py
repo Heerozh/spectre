@@ -1,5 +1,4 @@
 from typing import Optional, Sequence
-import pandas as pd
 
 
 class BaseFactor:
@@ -13,24 +12,26 @@ class BaseFactor:
         raise NotImplementedError("abstractmethod")
 
     def __init__(self, win: Optional[int] = None,
-                 inputs: Optional[Sequence[object]] = None) -> None:
+                 inputs: Optional[Sequence[any]] = None) -> None:
         pass
 
     def compute(self, *inputs) -> any:
         raise NotImplementedError("abstractmethod")
 
 
-class CustomFactor(BaseFactor):
+class CustomFactor(BaseFactor): #todo 还要继承有top，加减等方法的term
     win = 1
     inputs = None
 
+    _min_win = None
     _cache = None
     _cache_hit = 0
 
     def _get_total_backward(self) -> int:
         backward = 0
         if self.inputs:
-            backward = max([up._get_total_backward() for up in self.inputs])
+            backward = max([up._get_total_backward()
+                            for up in self.inputs if isinstance(up, BaseFactor)] or (0,))
         return backward + self.win - 1
 
     def _pre_compute(self, engine, start, end) -> None:
@@ -41,28 +42,30 @@ class CustomFactor(BaseFactor):
         self._cache_hit = 0
         if self.inputs:
             for upstream in self.inputs:
-                upstream._pre_compute(engine, start, end)
+                if isinstance(upstream, BaseFactor):
+                    upstream._pre_compute(engine, start, end)
 
     def _compute(self) -> any:
         if self._cache:
-            # 如果是cuda的话，可以给cuda的数据结构做个遇到df自动转换功能
             self._cache_hit += 1
             return self._cache
 
         # Calculate inputs
-        out = None
         if self.inputs:
             inputs = []
             for upstream in self.inputs:
-                upstream_out = upstream._compute()
-                inputs.append(upstream_out)
+                if isinstance(upstream, BaseFactor):
+                    upstream_out = upstream._compute()
+                    inputs.append(upstream_out)
+                else:
+                    inputs.append(upstream)
             out = self.compute(*inputs)
         else:
             out = self.compute()
         self._cache = out
         return out
 
-    def __init__(self, win: Optional[int] = None, inputs: Optional[Sequence[BaseFactor]] = None) -> None:
+    def __init__(self, win: Optional[int] = None, inputs: Optional[Sequence[BaseFactor]] = None):
         """
         :param win:  Optional[int]
             Including additional past data with 'window length' in `input`
@@ -78,13 +81,7 @@ class CustomFactor(BaseFactor):
         if inputs:
             self.inputs = inputs
 
-        if self.inputs:
-            for up in self.inputs:
-                if not isinstance(up, BaseFactor):
-                    raise TypeError('`inputs` can only contain BaseFactors, you pass {}'
-                                    .format(type(up)))
-
-        assert (self.win > 0)
+        assert (self.win >= (self._min_win or 1))
 
     def compute(self, *inputs) -> any:
         """

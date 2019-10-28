@@ -1,6 +1,7 @@
 from .dataloader import (
     DataLoader,
     CsvDirLoader,
+    QuandlLoader,
 )
 
 from .engine import (
@@ -12,4 +13,8 @@ from .factor import (
     BaseFactor,
     CustomFactor,
     DataFactor,
+)
+from .basic import (
+    SMA,
+
 )
