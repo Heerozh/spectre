@@ -1,3 +1,16 @@
+
+Progress: 2/10  🔳🔳⬜⬜⬜⬜⬜⬜⬜⬜  
+~~1/10: FactorEngine architecture~~  
+~~2/10: FactorEngine~~  
+3/10: All factors  
+4/10: Factor returns and analysis  
+5/10: Back-test architecture  
+6/10: Transaction  
+7/10: Portfolio  
+8/10: Back-test  
+9/10: CUDA support  
+10/10: All CUDA factors  
+
 # spectre 
 
 > *A spectre is haunting Market — the spectre of capitalism.*
@@ -87,10 +100,10 @@ Factor system only has 3 parts:
 |                 |      SMA100      | Ratio |  BBAMDS( MACD( SMA(5) ) )  | Ratio |
 |-----------------|------------------|-------|---------------------------|-------|
 |zipline          | 2.04 s ± 15.3 ms |	 1   |                      |	 1   |
-|spectre (CPU)    | 1.34 s ± 6.97 ms    | 1.52x |                      |**1.52x**|
+|spectre (CPU)    | 1.34 s ± 6.97 ms    | 1.52x |     TODO                 |****|
 |spectre (**GPU**)| TODO |		 |**  **|
 
-Using quandl data, compute factors between '2014-01-02' to '2016-12-30'  
+Using quandl data, compute factor between '2014-01-02' to '2016-12-30'  
  
 
 [Under construction]
