@@ -14,7 +14,4 @@ from .factor import (
     CustomFactor,
     DataFactor,
 )
-from .basic import (
-    SMA,
-
-)
+from .basic import *

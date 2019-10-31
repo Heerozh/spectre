@@ -2,6 +2,7 @@ import unittest
 import spectre
 import pandas as pd
 import numpy as np
+from numpy.testing import assert_almost_equal, assert_array_equal
 from zipline.pipeline.factors import Returns
 
 
@@ -18,7 +19,7 @@ class TestFactorLib(unittest.TestCase):
             self.assertAlmostEqual(tdf.loc[tdf.index[-1], col], expected_last)
 
         loader = spectre.factors.CsvDirLoader(
-            './data/daily/', index_col='date', parse_dates=True, )
+            './data/daily/', 'AAPL', index_col='date', parse_dates=True, )
         # test cache
         start, end = pd.Timestamp('2015-01-01', tz='UTC'), pd.Timestamp('2019-01-15', tz='UTC')
         self.assertIsNone(loader._load_from_cache(start, end, 0))
@@ -60,21 +61,17 @@ class TestFactorLib(unittest.TestCase):
         engine = spectre.factors.FactorEngine(loader)
         engine.add(spectre.factors.OHLCV.volume, 'CpVol')
         df = engine.run('2019-01-11', '2019-01-15')
-        np.testing.assert_array_equal(
-            df.loc[(slice(None), 'AAPL'), 'CpVol'].values,
-            (28065422, 33834032, 29426699))
-        np.testing.assert_array_equal(
-            df.loc[(slice(None), 'MSFT'), 'CpVol'].values,
-            (28627674, 28720936, 32882983))
+        assert_array_equal(df.loc[(slice(None), 'AAPL'), 'CpVol'].values,
+                           (28065422, 33834032, 29426699))
+        assert_array_equal(df.loc[(slice(None), 'MSFT'), 'CpVol'].values,
+                           (28627674, 28720936, 32882983))
 
         engine.add(spectre.factors.DataFactor(inputs=('changePercent',)), 'Chg')
         df = engine.run('2019-01-11', '2019-01-15')
-        np.testing.assert_array_equal(
-            df.loc[(slice(None), 'AAPL'), 'Chg'].values,
-            (-0.9835, -1.5724, 2.1235))
-        np.testing.assert_array_equal(
-            df.loc[(slice(None), 'MSFT'), 'Chg'].values,
-            (-0.8025, -0.7489, 3.0232))
+        assert_array_equal(df.loc[(slice(None), 'AAPL'), 'Chg'].values,
+                           (-0.9835, -1.5724, 2.1235))
+        assert_array_equal(df.loc[(slice(None), 'MSFT'), 'Chg'].values,
+                           (-0.8025, -0.7489, 3.0232))
 
     def test_3_CustomFactor(self):
         # test backward tree
@@ -132,12 +129,13 @@ class TestFactorLib(unittest.TestCase):
         engine.add(TestFactor2(), 'test2')
         df = engine.run('2019-01-11', '2019-01-15')
         self.assertEqual(test_f1._cache_hit, 1)
-        np.testing.assert_array_equal(df['test1'].values, [0, 1, 2, 3, 4, 5])
-        np.testing.assert_array_equal(df['test2'].values, [0, 1, 3, 6, 10, 15])
+        assert_array_equal(df['test1'].values, [0, 1, 2, 3, 4, 5])
+        assert_array_equal(df['test2'].values, [0, 1, 3, 6, 10, 15])
 
     def test_factors(self):
         loader = spectre.factors.CsvDirLoader(
-            './data/daily/', ohlcv=('uOpen', 'uHigh', 'uLow', 'uClose', 'uVolume'),
+            './data/daily/', 'AAPL',
+            ohlcv=('uOpen', 'uHigh', 'uLow', 'uClose', 'uVolume'),
             index_col='date', parse_dates=True,
         )
         engine = spectre.factors.FactorEngine(loader)
@@ -147,30 +145,42 @@ class TestFactorLib(unittest.TestCase):
         df_msft = df.loc[(slice(None), 'MSFT'), 'close']
         total_rows = 10
 
-        import talib
-
-        def test_with_ta_lib(factor, ta_func, **ta_kwargs):
+        def test_expected(factor, _expected_aapl, _expected_msft, len, decimal=7):
             engine.remove_all()
             engine.add(factor, 'test')
             result = engine.run('2019-01-01', '2019-01-15')
             result_aapl = result.loc[(slice(None), 'AAPL'), 'test'].values
             result_msft = result.loc[(slice(None), 'MSFT'), 'test'].values
-            expected_aapl = ta_func(df_aapl.values, **ta_kwargs)[-total_rows:]
-            expected_msft = ta_func(df_msft.values, **ta_kwargs)[-total_rows:]
-            np.testing.assert_almost_equal(result_aapl, expected_aapl)
-            np.testing.assert_almost_equal(result_msft, expected_msft)
+            assert_almost_equal(result_aapl[-len:], _expected_aapl[-len:], decimal=decimal)
+            assert_almost_equal(result_msft[-len:], _expected_msft[-len:], decimal=decimal)
+
+        import talib
+
+        def test_with_ta_lib(factor, ta_func, decimal=7, **ta_kwargs):
+            _expected_aapl = ta_func(df_aapl.values, **ta_kwargs)
+            _expected_msft = ta_func(df_msft.values, **ta_kwargs)
+            test_expected(factor, _expected_aapl, _expected_msft, total_rows, decimal)
+
+        # test VWAP
+        engine.remove_all()
+        engine.add(spectre.factors.VWAP(3), 'test')
+        result = engine.run('2019-01-01', '2019-01-15')
+        expected_aapl = [149.0790384, 147.3288365, 149.6858806, 151.9418349,
+                         155.9166044, 157.0598718, 157.5146325, 155.9634716]
+        expected_msft = [101.6759377, 102.5480467, 103.2112277, 104.2766662,
+                         104.7779232, 104.8471192, 104.2296381, 105.3194997]
+        test_expected(spectre.factors.VWAP(3), expected_aapl, expected_msft, 8)
 
         # test MA
+        test_with_ta_lib(spectre.factors.SMA(3), talib.SMA, timeperiod=3)
         test_with_ta_lib(spectre.factors.SMA(11), talib.SMA, timeperiod=11)
 
         # test ema
+        # test_with_ta_lib(spectre.factors.EMA(11), talib.EMA, 3, timeperiod=11)
+        test_with_ta_lib(spectre.factors.EMA(50, adjust=False), talib.EMA, 3, timeperiod=50)
 
-
-        # 测试forward
         # 测试是否已算过的重复factor不会算2遍
-        # 测试结果是否正确
-        # 测试带固定参数的指标是否正确
-        pass
+
 
     def test_filter_factor(self):
         loader = spectre.factors.CsvDirLoader(

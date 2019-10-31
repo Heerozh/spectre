@@ -4,12 +4,13 @@ from .dataloader import DataLoader
 import pandas as pd
 import numpy as np
 
+
 class OHLCV:
-    open = DataFactor()
-    high = DataFactor()
-    low = DataFactor()
-    close = DataFactor()
-    volume = DataFactor()
+    open = DataFactor(inputs=('',))
+    high = DataFactor(inputs=('',))
+    low = DataFactor(inputs=('',))
+    close = DataFactor(inputs=('',))
+    volume = DataFactor(inputs=('',))
 
 
 class FactorEngine:
@@ -22,8 +23,9 @@ class FactorEngine:
         self._dataframe = None
         self._factors = {}
         self._filter = None
+        self._cuda = False
 
-    def get_loader_data(self):
+    def get_loader_data(self) -> pd.DataFrame:
         return self._dataframe
 
     def add(self, factor: Union[Iterable[BaseFactor], BaseFactor],
@@ -38,11 +40,14 @@ class FactorEngine:
                                .format(name))
             self._factors[name] = factor
 
-    def set_filter(self, factor: FilterFactor):
+    def set_filter(self, factor: FilterFactor) -> None:
         self._filter = factor
 
-    def remove_all(self):
+    def remove_all(self) -> None:
         self._factors = {}
+
+    def to_cuda(self) -> None:
+        self._cuda = True
 
     def run(self, start: Union[str, pd.Timestamp], end: Union[str, pd.Timestamp]) -> pd.DataFrame:
         start, end = pd.Timestamp(start, tz='UTC'), pd.Timestamp(end, tz='UTC')
@@ -57,6 +62,8 @@ class FactorEngine:
         max_backward = max([f._get_total_backward() for f in self._factors.values()]) or 0
         # Get data
         self._dataframe = self._loader.load(start, end, max_backward)
+        # todo 要按calender清除非交易日的数据，因为可能有一行垃圾数据导致所有其他人等于多出一行nan，导致ma之类的就出错了
+        # todo if cuda, copy _dataframe to gpu, and return object
 
         # compute
         if self._filter:

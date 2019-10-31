@@ -1,4 +1,5 @@
-from typing import Optional, Sequence
+from typing import Optional, Sequence, Union
+import pandas as pd
 
 
 class BaseFactor:
@@ -45,7 +46,7 @@ class CustomFactor(BaseFactor): #todo 还要继承有top，加减等方法的ter
                 if isinstance(upstream, BaseFactor):
                     upstream._pre_compute(engine, start, end)
 
-    def _compute(self) -> any:
+    def _compute(self) -> Union[Sequence, pd.DataFrame]:
         if self._cache is not None:
             self._cache_hit += 1
             return self._cache
@@ -83,7 +84,7 @@ class CustomFactor(BaseFactor): #todo 还要继承有top，加减等方法的ter
 
         assert (self.win >= (self._min_win or 1))
 
-    def compute(self, *inputs) -> any:
+    def compute(self, *inputs) -> Union[Sequence, pd.DataFrame]:
         """
         Abstractmethod, do the actual factor calculation here.
         Unlike zipline, here calculate all data at once. Does not guarantee Look-Ahead Bias.
@@ -105,12 +106,13 @@ class DataFactor(BaseFactor):
         super().__init__(inputs)
         if inputs:
             self.inputs = inputs
+        assert (len(self.inputs) == 1), "DataFactor's `inputs` can only contains on column"
 
     def _pre_compute(self, engine, start, end) -> None:
         df = engine.get_loader_data()
         self._data = df[self.inputs[0]].unstack(level=1)
 
-    def _compute(self) -> any:
+    def _compute(self) -> pd.DataFrame:
         return self._data
 
     def compute(self, *inputs) -> any:

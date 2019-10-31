@@ -72,8 +72,10 @@ a
 
 
 class DataLoader:
-    def __init__(self, ohlcv=('open', 'high', 'low', 'close', 'volume')) -> None:
+    def __init__(self, calender_assert=None,
+                 ohlcv=('open', 'high', 'low', 'close', 'volume')) -> None:
         self._ohlcv = ohlcv
+        self._calender = calender_assert
 
     def get_ohlcv_names(self):
         return self._ohlcv
@@ -87,7 +89,8 @@ class DataLoader:
 
 
 class CsvDirLoader(DataLoader):
-    def __init__(self, path: str, split_by_year=False, dividends_path='',
+    def __init__(self, path: str, calender_assert=None,
+                 split_by_year=False, dividends_path='',
                  ohlcv=('open', 'high', 'low', 'close', 'volume'),
                  **read_csv):
         """
@@ -98,7 +101,7 @@ class CsvDirLoader(DataLoader):
                       TODO all those column will be adjust by Dividends/Splits(anchor at `end` time)
         :param read_csv: Parameters for pd.read_csv.
         """
-        super().__init__(ohlcv)
+        super().__init__(calender_assert, ohlcv)
         self._csv_dir = path
         # dividends: self._div_dir = dividends_path #dividends_path='',
         self._split_by_year = split_by_year
@@ -129,9 +132,7 @@ class CsvDirLoader(DataLoader):
                 df = df[~df.index.duplicated(keep='last')]
                 df = df.tz_localize('UTC')
                 dfs[name] = df
-        df_concat = pd.concat(dfs).swaplevel(0, 1).sort_index(level=0)
-        times = df_concat.index.get_level_values(0)
-        self._cache = (times[0], times[-1], df_concat)
+        return dfs
 
     def _load(self, start, end):
         dfs = {}
@@ -143,9 +144,7 @@ class CsvDirLoader(DataLoader):
                     "for example index_col='date', parse_dates=True"
                 df = df.tz_localize('UTC')
                 dfs[entry.name[:-4]] = df
-        df_concat = pd.concat(dfs).swaplevel(0, 1).sort_index(level=0)
-        times = df_concat.index.get_level_values(0)
-        self._cache = (times[0], times[-1], df_concat)
+        return dfs
 
     def _load_from_cache(self, start, end, backward):
         if self._cache[0] and start >= self._cache[0] and end <= self._cache[1]:
@@ -163,14 +162,23 @@ class CsvDirLoader(DataLoader):
             return ret
 
         if self._split_by_year:
-            self._load_split_by_year(start, end)
+            dfs = self._load_split_by_year(start, end)
         else:
-            self._load(start, end)
+            dfs = self._load(start, end)
+
+        df_concat = pd.concat(dfs).swaplevel(0, 1).sort_index(level=0)
+        if self._calender:
+            calender = df_concat.loc[(slice(None), self._calender), :].index.get_level_values(0)
+            df_concat = df_concat[df_concat.index.get_level_values(0).isin(calender)]
+        times = df_concat.index.get_level_values(0)
+        self._cache = (times[0], times[-1], df_concat)
+
         return self._load_from_cache(start, end, backward)
 
 
 class QuandlLoader(DataLoader):
-    def __init__(self, file: str, ohlcv=('open', 'high', 'low', 'close', 'volume')) -> None:
+    def __init__(self, file: str, calender_assert='AAPL',
+                 ohlcv=('open', 'high', 'low', 'close', 'volume')) -> None:
         """
         Usage:
         download data first:
@@ -178,7 +186,7 @@ class QuandlLoader(DataLoader):
         then:
         loader = factors.QuandlLoader('./quandl/WIKI_PRICES.zip')
         """
-        super().__init__(ohlcv)
+        super().__init__(calender_assert, ohlcv)
 
         with ZipFile(file) as zip:
             with zip.open(zip.namelist()[0]) as csv:
@@ -189,6 +197,9 @@ class QuandlLoader(DataLoader):
                                           'ex-dividend', 'split_ratio', ],
                                  )
         df.tz_localize('UTC', level=0, copy=False)
+        if self._calender:
+            calender = df.loc[(slice(None), self._calender), :].index.get_level_values(0)
+            df = df[df.index.get_level_values(0).isin(calender)]
         df.sort_index(level=0, inplace=True)
         self._cache = df
 
