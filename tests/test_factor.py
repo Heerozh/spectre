@@ -214,7 +214,7 @@ class TestFactorLib(unittest.TestCase):
         assert_almost_equal(result_msft_normal, expected_msft_normal, decimal=3)
 
         # test rank
-        _expected_aapl = [2.,  2.,  2.,  2.,  2.,  2.,  2.,  2.,  2., 2.]
+        _expected_aapl = [2., 2., 2., 2., 2., 2., 2., 2., 2., 2.]
         _expected_msft = [1, 1, 1, 1, 1, 1, 1, 1, 1, 1, ]
         test_expected(spectre.factors.OHLCV.close.rank(),
                       _expected_aapl, _expected_msft, total_rows)
@@ -227,6 +227,7 @@ class TestFactorLib(unittest.TestCase):
         test_expected(spectre.factors.OHLCV.close.zscore(),
                       _expected_aapl, _expected_msft, total_rows)
 
+        # todo test demean groupby
         # todo 测试是否已算过的重复factor不会算2遍
         # todo 测试错位嵌套factor
 

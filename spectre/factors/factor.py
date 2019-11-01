@@ -41,10 +41,10 @@ class BaseFactor:
         return LeFactor(inputs=(other, self))
 
     def __eq__(self, other):
-        return EqFactor(inputs=(other, self))
+        return EqFactor(inputs=(self, other))
 
     def __ne__(self, other):
-        return NeFactor(inputs=(other, self))
+        return NeFactor(inputs=(self, other))
 
     # --------------- helper functions ---------------
 
@@ -192,6 +192,7 @@ class FilterFactor(CustomFactor, ABC):
 
 # --------------- helper factors ---------------
 
+
 class RankFactor(CustomFactor):
     method = 'first'
     ascending = True,
@@ -211,6 +212,7 @@ class ZScoreFactor(CustomFactor):
 
     def compute(self, data) -> Union[Sequence, pd.DataFrame]:
         return data.sub(data.mean(axis=1), axis=0).div(data.std(axis=1), axis=0)
+
 
 # --------------- op factors ---------------
 
@@ -263,5 +265,3 @@ class EqFactor(FilterFactor):
 class NeFactor(FilterFactor):
     def compute(self, left, right) -> Union[Sequence, pd.DataFrame]:
         return left.ne(right)
-
-

@@ -32,8 +32,3 @@ class MovingAverageConvergenceDivergenceSignal(EMA):
 
 BBANDS = NormalizedBollingerBands
 MACD = MovingAverageConvergenceDivergenceSignal
-
-
-
-
-

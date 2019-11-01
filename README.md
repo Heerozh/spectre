@@ -1,5 +1,5 @@
 
-Progress: 2/10  🔳🔳🔳⬜⬜⬜⬜⬜⬜⬜  
+Progress: 3/10  🔳🔳🔳⬜⬜⬜⬜⬜⬜⬜  
 ~~1/10: FactorEngine architecture~~  
 ~~2/10: FactorEngine~~  
 ~~3/10: Filters~~  
