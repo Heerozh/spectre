@@ -41,29 +41,35 @@ class ExponentialWeightedMovingAverage(CustomFactor):
         super().__init__(win, inputs)
         self.span = self.win
         self.alpha = (2.0 / (1.0 + self.span))
-        self.r_alpha = (1.0 - self.alpha)
         self.adjust = adjust
         # Length required to achieve 99.97% accuracy, np.log(1-99.97/100) / np.log(alpha)
         # simplification to 4 * (span+1). 3.45 achieve 99.90%, 2.26 99.00%
         self.win = int(4.5 * (self.span + 1))
-        # window greater than 200 produces a very small and negligible weight
+        # For GPU efficiency here, weight is not float64 type, EMA 50+ will leading to inaccurate,
+        # and so window greater than 200 produces a very small and negligible weight
         self.win = min(self.win, 200)
+        self.weight = np.full(self.win, 1 - self.alpha) ** np.arange(self.win - 1, -1, -1)
         if self.adjust:
-            self.weight = np.full(self.win, self.alpha) ** np.arange(self.win + 1, 1, -1)
             self.weight = self.weight / sum(self.weight)  # to sum one
-        else:
-            self.weight = np.full(self.win, self.r_alpha) ** np.arange(self.win - 1, -1, -1)
 
     def compute(self, data):
-        # numpy.lib.stride_tricks.as_strided won't increase any performance.
-        # for future compatibility, choose not to use df.ewm
-        # return data.ewm(span=self.span, min_periods=self.win, adjust=True).mean()
-        weighted_mean = data.rolling(self.win).apply(lambda x: (x * self.weight).sum())
-        if self.adjust:
-            return weighted_mean
+        if isinstance(data, pd.DataFrame):
+            return data.ewm(span=self.span, min_periods=self.win, adjust=self.adjust).mean()
         else:
-            return self.alpha * weighted_mean \
-                   + (data.shift(self.win - 1) * self.r_alpha ** self.win)
+            # todo for cuda
+            # dat_rows, dat_cols = data.shape
+            # stride_x, stride_y = data.strides
+            # new_shape = (dat_rows - self.win + 1, dat_cols, self.win)
+            # new_stride = (stride_x, stride_y, stride_x)
+            # for i in range(self.win):
+            #       index = (row, col, i) * new_stride
+            #       sum += data[index] * self.weight[i]
+            weighted_mean = data.rolling(self.win).apply(lambda x: (x * self.weight).sum())
+            if self.adjust:
+                return weighted_mean
+            else:
+                alpha = self.alpha
+                return alpha * weighted_mean + (data.shift(self.win - 1) * (1 - alpha) ** self.win)
 
 
 class AverageDollarVolume(CustomFactor):
@@ -77,8 +83,7 @@ class AverageDollarVolume(CustomFactor):
 
 
 class AnnualizedVolatility(CustomFactor):
-    inputs = [Returns(win=2)]
-    params = (252,)
+    inputs = [Returns(win=2), 252]
     window_length = 252
 
     def compute(self, returns, annualization_factor):

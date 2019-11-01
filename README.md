@@ -2,7 +2,7 @@
 Progress: 2/10  🔳🔳⬜⬜⬜⬜⬜⬜⬜⬜  
 ~~1/10: FactorEngine architecture~~  
 ~~2/10: FactorEngine~~  
-3/10: Filters
+3/10: Filters  
 4/10: All factors  
 5/10: Factor returns and analysis    
 6/10: Back-test architecture  
@@ -57,4 +57,12 @@ df
 
 ## Chapter III. Benchmarking
 
+|                 |      SMA100      | Ratio |  EMA15 (win=75)  | Ratio |BBAMDS( MACD( SMA(5) ) )  | Ratio |
+|-----------------|------------------|-------|------------------|-------|--------------------------|-------|
+|zipline          | 1.93 s ± 34.3 ms |	 1   | 2.23 s ± 20.4 ms |	 1  |                          |	 1   |
+|spectre (CPU)    | 1.46 s ± 6.52 ms | 1.32x | 1.55 s ± 9.8 ms  | 1.44x |  TODO                    |****|
+|spectre (**GPU**)| TODO             |**  ** |	                |**   **|	                 	 |  |
+
+Using quandl data, compute factor between '2014-01-02' to '2016-12-30'  
+ 
 [Under construction]

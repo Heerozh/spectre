@@ -162,9 +162,6 @@ class TestFactorLib(unittest.TestCase):
             test_expected(factor, _expected_aapl, _expected_msft, total_rows, decimal)
 
         # test VWAP
-        engine.remove_all()
-        engine.add(spectre.factors.VWAP(3), 'test')
-        result = engine.run('2019-01-01', '2019-01-15')
         expected_aapl = [149.0790384, 147.3288365, 149.6858806, 151.9418349,
                          155.9166044, 157.0598718, 157.5146325, 155.9634716]
         expected_msft = [101.6759377, 102.5480467, 103.2112277, 104.2766662,
@@ -176,10 +173,28 @@ class TestFactorLib(unittest.TestCase):
         test_with_ta_lib(spectre.factors.SMA(11), talib.SMA, timeperiod=11)
 
         # test ema
-        # test_with_ta_lib(spectre.factors.EMA(11), talib.EMA, 3, timeperiod=11)
-        test_with_ta_lib(spectre.factors.EMA(50, adjust=False), talib.EMA, 3, timeperiod=50)
+        test_with_ta_lib(spectre.factors.EMA(11), talib.EMA, 3, timeperiod=11)
+        test_with_ta_lib(spectre.factors.EMA(50), talib.EMA, 3, timeperiod=50)
+
+        # test AverageDollarVolume
+        expected_aapl = [9.44651864548e+09, 1.027077776041e+10, 7.946943447e+09, 7.33979891063e+09,
+                         6.43094032063e+09, 5.70460092069e+09, 5.129334268727e+09,
+                         4.747847957413e+09]
+        expected_msft = [4.25596116072e+09, 4.337221881827e+09, 3.967296370427e+09,
+                         3.551354941067e+09, 3.345411315747e+09, 3.206986059747e+09,
+                         3.04420074928e+09, 3.167715409797e+09]
+        test_expected(spectre.factors.AverageDollarVolume(3), expected_aapl, expected_msft, 8, 2)
+
+        # AnnualizedVolatility
+        expected_aapl = [0.391205031, 0.729904932, 0.93215701, 0.981105621, 0.204441551,
+                         0.229019343, 0.12005218, 0.70917034, 0.678461919, 0.557459693]
+        expected_msft = [0.2346743, 0.2658166, 0.327981, 0.1651476, 0.256495, 0.2863985,
+                         0.2460334, 0.3820993, 0.2940921, 0.6198682]
+        test_expected(spectre.factors.AnnualizedVolatility(3), expected_aapl, expected_msft, 10)
 
         # 测试是否已算过的重复factor不会算2遍
+
+        # test cuda result eq cup
 
 
     def test_filter_factor(self):
