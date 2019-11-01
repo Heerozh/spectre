@@ -57,10 +57,10 @@ df
 
 ## Chapter III. Benchmarking
 
-|                 |      SMA100      | Ratio |  EMA15 (win=75)  | Ratio |BBAMDS( MACD( SMA(5) ) )  | Ratio |
-|-----------------|------------------|-------|------------------|-------|--------------------------|-------|
-|zipline          | 1.93 s ± 34.3 ms |	 1   | 2.23 s ± 20.4 ms |	 1  |                          |	 1   |
-|spectre (CPU)    | 1.46 s ± 6.52 ms | 1.32x | 1.55 s ± 9.8 ms  | 1.44x |  TODO                    |****|
+|                 |      SMA100      | Ratio | EMA50 (win=229) | Ratio   |BBAMDS( MACD( SMA(5) ) )  | Ratio |
+|-----------------|------------------|-------|-----------------|---------|--------------------------|-------|
+|zipline          | 1.93 s ± 34.3 ms |	 1   | 5.6 s ± 68.7 ms |	1    |                          |	 1   |
+|spectre (CPU)    | 1.46 s ± 6.52 ms | 1.32x | 1.67 s ± 9.14 ms|**3.35x**|  TODO                    |****|
 |spectre (**GPU**)| TODO             |**  ** |	                |**   **|	                 	 |  |
 
 Using quandl data, compute factor between '2014-01-02' to '2016-12-30'  
