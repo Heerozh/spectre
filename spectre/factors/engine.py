@@ -50,6 +50,8 @@ class FactorEngine:
         self._cuda = True
 
     def run(self, start: Union[str, pd.Timestamp], end: Union[str, pd.Timestamp]) -> pd.DataFrame:
+        if len(self._factors) == 0:
+            raise ValueError('Please add at least one factor to engine, then run again.')
         start, end = pd.Timestamp(start, tz='UTC'), pd.Timestamp(end, tz='UTC')
         # make columns to data factors.
         OHLCV.open.inputs = (self._loader.get_ohlcv_names()[0],)
@@ -59,7 +61,7 @@ class FactorEngine:
         OHLCV.volume.inputs = (self._loader.get_ohlcv_names()[4],)
 
         # Calculate data that requires backward in tree
-        max_backward = max([f._get_total_backward() for f in self._factors.values()]) or 0
+        max_backward = max([f._get_total_backward() for f in self._factors.values()])
         # Get data
         self._dataframe = self._loader.load(start, end, max_backward)
         # todo if cuda, copy _dataframe to gpu, and return object
@@ -67,11 +69,16 @@ class FactorEngine:
         # compute
         if self._filter:
             self._filter._pre_compute(self, start, end)
+            # remove false rows
+            filter_data = self._filter._compute()
+            if isinstance(filter_data, pd.DataFrame):
+                filter_data = filter_data.stack()
+            else:
+                filter_data = np.hstack(filter_data)
+            self._dataframe = self._dataframe[filter_data]
+
         for f in self._factors.values():
             f._pre_compute(self, start, end)
-
-        # todo filter
-        # remove false rows
 
         # Compute factors
         ret = pd.DataFrame(index=self._dataframe.index.copy())

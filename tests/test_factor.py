@@ -194,16 +194,13 @@ class TestFactorLib(unittest.TestCase):
 
         # test MACD
         engine.remove_all()
-        engine.add(spectre.factors.MACD(), 'test')
+        engine.add(spectre.factors.MACD(), 'macd')
+        engine.add(spectre.factors.MACD().normalized(), 'macd hist')
         result = engine.run('2019-01-01', '2019-01-15')
-        result_aapl_signal = result.loc[(slice(None), 'AAPL'), 'test'].values
-        result_msft_signal = result.loc[(slice(None), 'MSFT'), 'test'].values
-        # # macd normal
-        engine.remove_all()
-        engine.add(spectre.factors.MACD().normalized(), 'test')
-        result = engine.run('2019-01-01', '2019-01-15')
-        result_aapl_normal = result.loc[(slice(None), 'AAPL'), 'test'].values
-        result_msft_normal = result.loc[(slice(None), 'MSFT'), 'test'].values
+        result_aapl_signal = result.loc[(slice(None), 'AAPL'), 'macd'].values
+        result_msft_signal = result.loc[(slice(None), 'MSFT'), 'macd'].values
+        result_aapl_normal = result.loc[(slice(None), 'AAPL'), 'macd hist'].values
+        result_msft_normal = result.loc[(slice(None), 'MSFT'), 'macd hist'].values
         # # ta
         expected = talib.MACD(df_aapl.values, fastperiod=12, slowperiod=26, signalperiod=9)
         expected_aapl_signal = expected[1][-total_rows:]
@@ -216,10 +213,24 @@ class TestFactorLib(unittest.TestCase):
         assert_almost_equal(result_aapl_normal, expected_aapl_normal, decimal=3)
         assert_almost_equal(result_msft_normal, expected_msft_normal, decimal=3)
 
+        # test rank
+        _expected_aapl = [2.,  2.,  2.,  2.,  2.,  2.,  2.,  2.,  2., 2.]
+        _expected_msft = [1, 1, 1, 1, 1, 1, 1, 1, 1, 1, ]
+        test_expected(spectre.factors.OHLCV.close.rank(),
+                      _expected_aapl, _expected_msft, total_rows)
+
+        # test zscore
+        _expected_aapl = [0.707106781, 0.707106781, 0.707106781, 0.707106781, 0.707106781,
+                          0.707106781, 0.707106781, 0.707106781, 0.707106781, 0.707106781]
+        _expected_msft = [-0.707106781, -0.707106781, -0.707106781, -0.707106781, -0.707106781,
+                          -0.707106781, -0.707106781, -0.707106781, -0.707106781, -0.707106781]
+        test_expected(spectre.factors.OHLCV.close.zscore(),
+                      _expected_aapl, _expected_msft, total_rows)
+
         # todo 测试是否已算过的重复factor不会算2遍
+        # todo 测试错位嵌套factor
 
         # test cuda result eq cup
-
 
     def test_filter_factor(self):
         loader = spectre.factors.CsvDirLoader(
@@ -229,11 +240,13 @@ class TestFactorLib(unittest.TestCase):
         engine = spectre.factors.FactorEngine(loader)
 
         universe = spectre.factors.OHLCV.volume.top(1)
+        engine.add(spectre.factors.OHLCV.volume, 'vol')
         engine.set_filter(universe)
 
-        data = engine.run("2017-01-01", "2019-01-05")
-        self.assertEqual(len(data.index.get_level_values(1).values), 1)
-        self.assertEqual(data.index.get_level_values(1).values[0], 'AAPL')
+        data = engine.run("2019-01-01", "2019-01-15")
+        assert_array_equal(data.index.get_level_values(1).values,
+                           ['AAPL', 'AAPL', 'AAPL', 'AAPL', 'AAPL', 'AAPL', 'AAPL', 'MSFT',
+                            'AAPL', 'MSFT'])
 
     # def test_cuda_factors(self):
     #     spectre.to_cuda()

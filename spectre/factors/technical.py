@@ -17,7 +17,6 @@ class NormalizedBollingerBands(CustomFactor):
 class MovingAverageConvergenceDivergenceSignal(EMA):
     """
     engine.add( MACD(win=sign, inputs=(EMA(win=fast), EMA(win=slow))) )
-    Default sign=9, fast=12, slow=26
     or
     engine.add( MACD().normalized() )
     """

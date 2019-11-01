@@ -1,8 +1,75 @@
+from abc import ABC
 from typing import Optional, Sequence, Union
 import pandas as pd
 
 
 class BaseFactor:
+    # --------------- overload ops ---------------
+
+    def __add__(self, other):
+        return AddFactor(inputs=(self, other))
+
+    def __sub__(self, other):
+        return SubFactor(inputs=(self, other))
+
+    def __mul__(self, other):
+        return MulFactor(inputs=(self, other))
+
+    def __div__(self, other):
+        return DivFactor(inputs=(self, other))
+
+    # __mod__
+
+    def __pow__(self, other):
+        return PowFactor(inputs=(self, other))
+
+    def __neg__(self):
+        return NegFactor(inputs=(self,))
+
+    # and or xor
+
+    def __lt__(self, other):
+        return LtFactor(inputs=(self, other))
+
+    def __le__(self, other):
+        return LeFactor(inputs=(self, other))
+
+    def __gt__(self, other):
+        return LtFactor(inputs=(other, self))
+
+    def __ge__(self, other):
+        return LeFactor(inputs=(other, self))
+
+    def __eq__(self, other):
+        return EqFactor(inputs=(other, self))
+
+    def __ne__(self, other):
+        return NeFactor(inputs=(other, self))
+
+    # --------------- helper functions ---------------
+
+    def top(self, n):
+        return self.rank(ascending=False) <= n
+
+    def bottom(self, n):
+        return self.rank(ascending=True) <= n
+
+    def rank(self, method='first', ascending=True):
+        fact = RankFactor(inputs=(self,))
+        fact.method = method
+        fact.ascending = ascending
+        return fact
+
+    def zscore(self):
+        fact = ZScoreFactor(inputs=(self,))
+        return fact
+
+    def demean(self):
+        fact = DemeanFactor(inputs=(self,))
+        return fact
+
+    # --------------- main methods ---------------
+
     def _get_total_backward(self) -> int:
         raise NotImplementedError("abstractmethod")
 
@@ -27,25 +94,6 @@ class CustomFactor(BaseFactor):
     _min_win = None
     _cache = None
     _cache_hit = 0
-
-    # overload ops
-    def __add__(self, other):
-        return AddFactor(inputs=(self, other))
-
-    def __sub__(self, other):
-        return SubFactor(inputs=(self, other))
-
-    def __mul__(self, other):
-        return MulFactor(inputs=(self, other))
-
-    def __div__(self, other):
-        return DivFactor(inputs=(self, other))
-
-    def __pow__(self, other):
-        return PowFactor(inputs=(self, other))
-
-    def __neg__(self):
-        return NegFactor(inputs=(self,))
 
     def _get_total_backward(self) -> int:
         backward = 0
@@ -138,11 +186,34 @@ class DataFactor(BaseFactor):
         pass
 
 
-class FilterFactor(BaseFactor):
+class FilterFactor(CustomFactor, ABC):
     pass
 
 
-# ops
+# --------------- helper factors ---------------
+
+class RankFactor(CustomFactor):
+    method = 'first'
+    ascending = True,
+
+    def compute(self, data) -> Union[Sequence, pd.DataFrame]:
+        return data.rank(axis=1, method=self.method, ascending=self.ascending)
+
+
+class DemeanFactor(CustomFactor):
+    # todo 不按sector demean没有意义，和rank一样
+    # 可以iex ref-data/sectors 先获取行业列表，然后Collections获取股票？
+    def compute(self, data) -> Union[Sequence, pd.DataFrame]:
+        return data.sub(data.mean(axis=1), axis=0)
+
+
+class ZScoreFactor(CustomFactor):
+
+    def compute(self, data) -> Union[Sequence, pd.DataFrame]:
+        return data.sub(data.mean(axis=1), axis=0).div(data.std(axis=1), axis=0)
+
+# --------------- op factors ---------------
+
 
 class SubFactor(CustomFactor):
     def compute(self, left, right) -> Union[Sequence, pd.DataFrame]:
@@ -172,3 +243,25 @@ class PowFactor(CustomFactor):
 class NegFactor(CustomFactor):
     def compute(self, left) -> Union[Sequence, pd.DataFrame]:
         return -left
+
+
+class LtFactor(FilterFactor):
+    def compute(self, left, right) -> Union[Sequence, pd.DataFrame]:
+        return left.lt(right)
+
+
+class LeFactor(FilterFactor):
+    def compute(self, left, right) -> Union[Sequence, pd.DataFrame]:
+        return left.le(right)
+
+
+class EqFactor(FilterFactor):
+    def compute(self, left, right) -> Union[Sequence, pd.DataFrame]:
+        return left.eq(right)
+
+
+class NeFactor(FilterFactor):
+    def compute(self, left, right) -> Union[Sequence, pd.DataFrame]:
+        return left.ne(right)
+
+

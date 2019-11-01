@@ -15,8 +15,6 @@ Progress: 2/10  🔳🔳⬜⬜⬜⬜⬜⬜⬜⬜
 
 # spectre 
 
-> *A spectre is haunting Market — the spectre of capitalism.*
-
 spectre is an quantitative trading library, 
 targets performance, GPU support(TODO) and keep it simple. 
 
@@ -57,12 +55,15 @@ df
 
 ## Chapter III. Benchmarking
 
-|                 |      SMA100      | Ratio | EMA50 (win=229) | Ratio   | MACD(12,26,9)    | Ratio  |
-|-----------------|------------------|-------|-----------------|---------|------------------|--------|
-|zipline          | 1.93 s ± 34.3 ms |	 1   | 5.6 s ± 68.7 ms |	1    | 5.49 s ± 72.1 ms |	 1   |
-|spectre (CPU)    | 1.46 s ± 6.52 ms | 1.32x | 1.67 s ± 9.14 ms|**3.35x**| 2.67 s ± 23.6 ms |**2.06**|
+|                 |      SMA100      | Ratio | EMA50 (win=229) | Ratio   | MACD(12,26,9)    | Ratio   |
+|-----------------|------------------|-------|-----------------|---------|------------------|---------|
+|zipline          | 1.93 s ± 34.3 ms |	 1   | 5.6 s ± 68.7 ms |	1    | 5.49 s ± 72.1 ms |	 1    |
+|spectre (CPU)    | 1.46 s ± 6.52 ms | 1.32x | 1.67 s ± 9.14 ms|**3.35x**| 2.67 s ± 23.6 ms |**2.06x**|
 |spectre (**GPU**)| TODO             |**  ** |	                |**   **|	                 |      |
 
 Using quandl data, compute factor between '2014-01-02' to '2016-12-30'  
  
 [Under construction]
+
+------------
+> *A spectre is haunting Market — the spectre of capitalism.*
