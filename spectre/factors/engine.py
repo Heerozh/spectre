@@ -62,7 +62,6 @@ class FactorEngine:
         max_backward = max([f._get_total_backward() for f in self._factors.values()]) or 0
         # Get data
         self._dataframe = self._loader.load(start, end, max_backward)
-        # todo 要按calender清除非交易日的数据，因为可能有一行垃圾数据导致所有其他人等于多出一行nan，导致ma之类的就出错了
         # todo if cuda, copy _dataframe to gpu, and return object
 
         # compute

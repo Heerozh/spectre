@@ -168,6 +168,9 @@ class CsvDirLoader(DataLoader):
 
         df_concat = pd.concat(dfs).swaplevel(0, 1).sort_index(level=0)
         if self._calender:
+            # drop the data of the non-trading day by calender,
+            # because there may be some one-line junk data in non-trading day,
+            # causing extra row of nan to all others assets.
             calender = df_concat.loc[(slice(None), self._calender), :].index.get_level_values(0)
             df_concat = df_concat[df_concat.index.get_level_values(0).isin(calender)]
         times = df_concat.index.get_level_values(0)

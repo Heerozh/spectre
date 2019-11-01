@@ -14,27 +14,25 @@ class NormalizedBollingerBands(CustomFactor):
         return (close - ma) / (k * std)
 
 
-class MovingAverageConvergenceDivergence(EMA):
+class MovingAverageConvergenceDivergenceSignal(EMA):
     """
     engine.add( MACD(win=sign, inputs=(EMA(win=fast), EMA(win=slow))) )
     Default sign=9, fast=12, slow=26
     or
     engine.add( MACD().normalized() )
     """
-    inputs = (EMA(win=12) - EMA(win=26))
+    inputs = (EMA(win=12) - EMA(win=26),)
     win = 9
 
     def normalized(self):
+        """In order not to double the calculation, reuse `inputs` factor here"""
         macd = self.inputs[0]
         sign = self
         return macd - sign
 
 
-
-
-
 BBANDS = NormalizedBollingerBands
-MACD = MovingAverageConvergenceDivergence
+MACD = MovingAverageConvergenceDivergenceSignal
 
 
 

@@ -20,13 +20,32 @@ class BaseFactor:
         raise NotImplementedError("abstractmethod")
 
 
-class CustomFactor(BaseFactor): #todo 还要继承有top，加减等方法的term
+class CustomFactor(BaseFactor):
     win = 1
     inputs = None
 
     _min_win = None
     _cache = None
     _cache_hit = 0
+
+    # overload ops
+    def __add__(self, other):
+        return AddFactor(inputs=(self, other))
+
+    def __sub__(self, other):
+        return SubFactor(inputs=(self, other))
+
+    def __mul__(self, other):
+        return MulFactor(inputs=(self, other))
+
+    def __div__(self, other):
+        return DivFactor(inputs=(self, other))
+
+    def __pow__(self, other):
+        return PowFactor(inputs=(self, other))
+
+    def __neg__(self):
+        return NegFactor(inputs=(self,))
 
     def _get_total_backward(self) -> int:
         backward = 0
@@ -121,3 +140,35 @@ class DataFactor(BaseFactor):
 
 class FilterFactor(BaseFactor):
     pass
+
+
+# ops
+
+class SubFactor(CustomFactor):
+    def compute(self, left, right) -> Union[Sequence, pd.DataFrame]:
+        return left - right
+
+
+class AddFactor(CustomFactor):
+    def compute(self, left, right) -> Union[Sequence, pd.DataFrame]:
+        return left + right
+
+
+class MulFactor(CustomFactor):
+    def compute(self, left, right) -> Union[Sequence, pd.DataFrame]:
+        return left * right
+
+
+class DivFactor(CustomFactor):
+    def compute(self, left, right) -> Union[Sequence, pd.DataFrame]:
+        return left / right
+
+
+class PowFactor(CustomFactor):
+    def compute(self, left, right) -> Union[Sequence, pd.DataFrame]:
+        return left ** right
+
+
+class NegFactor(CustomFactor):
+    def compute(self, left) -> Union[Sequence, pd.DataFrame]:
+        return -left

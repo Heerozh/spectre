@@ -192,7 +192,31 @@ class TestFactorLib(unittest.TestCase):
                          0.2460334, 0.3820993, 0.2940921, 0.6198682]
         test_expected(spectre.factors.AnnualizedVolatility(3), expected_aapl, expected_msft, 10)
 
-        # 测试是否已算过的重复factor不会算2遍
+        # test MACD
+        engine.remove_all()
+        engine.add(spectre.factors.MACD(), 'test')
+        result = engine.run('2019-01-01', '2019-01-15')
+        result_aapl_signal = result.loc[(slice(None), 'AAPL'), 'test'].values
+        result_msft_signal = result.loc[(slice(None), 'MSFT'), 'test'].values
+        # # macd normal
+        engine.remove_all()
+        engine.add(spectre.factors.MACD().normalized(), 'test')
+        result = engine.run('2019-01-01', '2019-01-15')
+        result_aapl_normal = result.loc[(slice(None), 'AAPL'), 'test'].values
+        result_msft_normal = result.loc[(slice(None), 'MSFT'), 'test'].values
+        # # ta
+        expected = talib.MACD(df_aapl.values, fastperiod=12, slowperiod=26, signalperiod=9)
+        expected_aapl_signal = expected[1][-total_rows:]
+        expected_aapl_normal = expected[2][-total_rows:]
+        expected = talib.MACD(df_msft.values, fastperiod=12, slowperiod=26, signalperiod=9)
+        expected_msft_signal = expected[1][-total_rows:]
+        expected_msft_normal = expected[2][-total_rows:]
+        assert_almost_equal(result_aapl_signal, expected_aapl_signal, decimal=3)
+        assert_almost_equal(result_msft_signal, expected_msft_signal, decimal=3)
+        assert_almost_equal(result_aapl_normal, expected_aapl_normal, decimal=3)
+        assert_almost_equal(result_msft_normal, expected_msft_normal, decimal=3)
+
+        # todo 测试是否已算过的重复factor不会算2遍
 
         # test cuda result eq cup
 
