@@ -48,6 +48,26 @@ df
 |2019-01-15 00:00:00+00:00|AAPL|    156.932|	156.94|
 |                         |MSFT|    105.332|	108.85|
 
+## Factor lists
+
+```python
+    Returns(inputs=[OHLCV.close])
+    LogReturns(inputs=[OHLCV.close])
+    SimpleMovingAverage = MA = SMA(win=5, inputs=[OHLCV.close])
+    VWAP(inputs=[OHLCV.close, OHLCV.volume])
+    ExponentialWeightedMovingAverage = EMA(win=5, inputs=[OHLCV.close])
+    AverageDollarVolume(win=5, inputs=[OHLCV.close, OHLCV.volume])
+    AnnualizedVolatility(win=20, inputs=[Returns(win=2), 252])
+    NormalizedBollingerBands = BBANDS(win=20, inputs=[OHLCV.close, 2])
+    MovingAverageConvergenceDivergenceSignal = MACD(12, 26, 9, inputs=[OHLCV.close])
+    TrueRange = TRANGE(inputs=[OHLCV.high, OHLCV.low, OHLCV.close])
+    RSI(win=14, inputs=[OHLCV.close])
+    FastStochasticOscillator = STOCHF(win=14, inputs=[OHLCV.high, OHLCV.low, OHLCV.close])
+
+    StandardDeviation = STDDEV(win=5, inputs=[OHLCV.close])
+    RollingHigh = MAX(win=5, inputs=[OHLCV.close])
+    RollingLow = MIN(win=5, inputs=[OHLCV.close])
+```
 
 ## Chapter II. Portfolio and Backtesting
 
