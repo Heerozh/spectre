@@ -125,8 +125,8 @@ al.performance.mean_return_by_quantile(al_clean_data)[0].plot.bar()
 # al.tears.create_full_tear_sheet(al_clean_data)
 ```
 
-![quantile_return](https://github.com/Heerozh/spectre/raw/media/quantile_return.png)
-![cumprod_return](https://github.com/Heerozh/spectre/raw/media/cumprod_return.png)
+<img src="https://github.com/Heerozh/spectre/raw/media/quantile_return.png" width="50%" height="50%">
+<img src="https://github.com/Heerozh/spectre/raw/media/cumprod_return.png" width="50%" height="50%">
 
 [Under construction]
 
