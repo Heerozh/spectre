@@ -139,27 +139,26 @@ class TestFactorLib(unittest.TestCase):
             index_col='date', parse_dates=True,
         )
         engine = spectre.factors.FactorEngine(loader)
+        total_rows = 10
+        engine.add(spectre.factors.OHLCV.high, 'high')
+        engine.add(spectre.factors.OHLCV.low, 'low')
         engine.add(spectre.factors.OHLCV.close, 'close')
         df = engine.run('2018-01-01', '2019-01-15')
-        df_aapl = df.loc[(slice(None), 'AAPL'), 'close']
-        df_msft = df.loc[(slice(None), 'MSFT'), 'close']
-        total_rows = 10
+        df_aapl_close = df.loc[(slice(None), 'AAPL'), 'close']
+        df_msft_close = df.loc[(slice(None), 'MSFT'), 'close']
+        df_aapl_high = df.loc[(slice(None), 'AAPL'), 'high']
+        df_msft_high = df.loc[(slice(None), 'MSFT'), 'high']
+        df_aapl_low = df.loc[(slice(None), 'AAPL'), 'low']
+        df_msft_low = df.loc[(slice(None), 'MSFT'), 'low']
 
-        def test_expected(factor, _expected_aapl, _expected_msft, len, decimal=7):
+        def test_expected(factor, _expected_aapl, _expected_msft, _len=10, decimal=7):
             engine.remove_all()
             engine.add(factor, 'test')
             result = engine.run('2019-01-01', '2019-01-15')
             result_aapl = result.loc[(slice(None), 'AAPL'), 'test'].values
             result_msft = result.loc[(slice(None), 'MSFT'), 'test'].values
-            assert_almost_equal(result_aapl[-len:], _expected_aapl[-len:], decimal=decimal)
-            assert_almost_equal(result_msft[-len:], _expected_msft[-len:], decimal=decimal)
-
-        import talib
-
-        def test_with_ta_lib(factor, ta_func, decimal=7, **ta_kwargs):
-            _expected_aapl = ta_func(df_aapl.values, **ta_kwargs)
-            _expected_msft = ta_func(df_msft.values, **ta_kwargs)
-            test_expected(factor, _expected_aapl, _expected_msft, total_rows, decimal)
+            assert_almost_equal(result_aapl[-_len:], _expected_aapl[-_len:], decimal=decimal)
+            assert_almost_equal(result_msft[-_len:], _expected_msft[-_len:], decimal=decimal)
 
         # test VWAP
         expected_aapl = [149.0790384, 147.3288365, 149.6858806, 151.9418349,
@@ -167,14 +166,6 @@ class TestFactorLib(unittest.TestCase):
         expected_msft = [101.6759377, 102.5480467, 103.2112277, 104.2766662,
                          104.7779232, 104.8471192, 104.2296381, 105.3194997]
         test_expected(spectre.factors.VWAP(3), expected_aapl, expected_msft, 8)
-
-        # test MA
-        test_with_ta_lib(spectre.factors.SMA(3), talib.SMA, timeperiod=3)
-        test_with_ta_lib(spectre.factors.SMA(11), talib.SMA, timeperiod=11)
-
-        # test ema
-        test_with_ta_lib(spectre.factors.EMA(11), talib.EMA, 3, timeperiod=11)
-        test_with_ta_lib(spectre.factors.EMA(50), talib.EMA, 3, timeperiod=50)
 
         # test AverageDollarVolume
         expected_aapl = [9.44651864548e+09, 1.027077776041e+10, 7.946943447e+09, 7.33979891063e+09,
@@ -186,36 +177,15 @@ class TestFactorLib(unittest.TestCase):
         test_expected(spectre.factors.AverageDollarVolume(3), expected_aapl, expected_msft, 8, 2)
 
         # AnnualizedVolatility
-        expected_aapl = [0.391205031, 0.729904932, 0.93215701, 0.981105621, 0.204441551,
-                         0.229019343, 0.12005218, 0.70917034, 0.678461919, 0.557459693]
-        expected_msft = [0.2346743, 0.2658166, 0.327981, 0.1651476, 0.256495, 0.2863985,
-                         0.2460334, 0.3820993, 0.2940921, 0.6198682]
+        expected_aapl = [0.3194176, 0.5959649, 0.761103 , 0.8010694, 0.1669258, 0.1869935,
+                         0.0980222, 0.5790352, 0.5539618, 0.4551639]
+        expected_msft = [0.1916108, 0.2170383, 0.2677953, 0.1348424, 0.2094273, 0.2338434,
+                         0.2008854, 0.3119827, 0.2401252, 0.5061202]
         test_expected(spectre.factors.AnnualizedVolatility(3), expected_aapl, expected_msft, 10)
 
-        # test MACD
-        engine.remove_all()
-        engine.add(spectre.factors.MACD(), 'macd')
-        engine.add(spectre.factors.MACD().normalized(), 'macd hist')
-        result = engine.run('2019-01-01', '2019-01-15')
-        result_aapl_signal = result.loc[(slice(None), 'AAPL'), 'macd'].values
-        result_msft_signal = result.loc[(slice(None), 'MSFT'), 'macd'].values
-        result_aapl_normal = result.loc[(slice(None), 'AAPL'), 'macd hist'].values
-        result_msft_normal = result.loc[(slice(None), 'MSFT'), 'macd hist'].values
-        # # ta
-        expected = talib.MACD(df_aapl.values, fastperiod=12, slowperiod=26, signalperiod=9)
-        expected_aapl_signal = expected[1][-total_rows:]
-        expected_aapl_normal = expected[2][-total_rows:]
-        expected = talib.MACD(df_msft.values, fastperiod=12, slowperiod=26, signalperiod=9)
-        expected_msft_signal = expected[1][-total_rows:]
-        expected_msft_normal = expected[2][-total_rows:]
-        assert_almost_equal(result_aapl_signal, expected_aapl_signal, decimal=3)
-        assert_almost_equal(result_msft_signal, expected_msft_signal, decimal=3)
-        assert_almost_equal(result_aapl_normal, expected_aapl_normal, decimal=3)
-        assert_almost_equal(result_msft_normal, expected_msft_normal, decimal=3)
-
         # test rank
-        _expected_aapl = [2., 2., 2., 2., 2., 2., 2., 2., 2., 2.]
-        _expected_msft = [1, 1, 1, 1, 1, 1, 1, 1, 1, 1, ]
+        _expected_aapl = [2.]*10
+        _expected_msft = [1]*10
         test_expected(spectre.factors.OHLCV.close.rank(),
                       _expected_aapl, _expected_msft, total_rows)
 
@@ -232,28 +202,125 @@ class TestFactorLib(unittest.TestCase):
         _expected_msft = -np.array(_expected_aapl)
         test_expected(spectre.factors.OHLCV.close.demean(groupby={'AAPL': 1, 'MSFT': 1}),
                       _expected_aapl, _expected_msft, total_rows)
+        test_expected(spectre.factors.OHLCV.close.demean(groupby={'AAPL': 1, 'MSFT': 2}),
+                      [0]*10, [0]*10, total_rows)
 
-        # todo test demean groupby
+        import talib
+
+        # test MA
+        expected_aapl = talib.SMA(df_aapl_close.values, timeperiod=3)
+        expected_msft = talib.SMA(df_msft_close.values, timeperiod=3)
+        test_expected(spectre.factors.SMA(3), expected_aapl, expected_msft)
+        expected_aapl = talib.SMA(df_aapl_close.values, timeperiod=11)
+        expected_msft = talib.SMA(df_msft_close.values, timeperiod=11)
+        test_expected(spectre.factors.SMA(11), expected_aapl, expected_msft)
+
+        # test ema
+        expected_aapl = talib.EMA(df_aapl_close.values, timeperiod=11)
+        expected_msft = talib.EMA(df_msft_close.values, timeperiod=11)
+        test_expected(spectre.factors.EMA(11), expected_aapl, expected_msft, decimal=3)
+        expected_aapl = talib.EMA(df_aapl_close.values, timeperiod=50)
+        expected_msft = talib.EMA(df_msft_close.values, timeperiod=50)
+        test_expected(spectre.factors.EMA(50), expected_aapl, expected_msft, decimal=3)
+
+        # test MACD
+        expected = talib.MACD(df_aapl_close.values, fastperiod=12, slowperiod=26, signalperiod=9)
+        expected_aapl_signal = expected[1][-total_rows:]
+        expected_aapl_normal = expected[2][-total_rows:]
+        expected = talib.MACD(df_msft_close.values, fastperiod=12, slowperiod=26, signalperiod=9)
+        expected_msft_signal = expected[1][-total_rows:]
+        expected_msft_normal = expected[2][-total_rows:]
+        test_expected(spectre.factors.MACD(), expected_aapl_signal, expected_msft_signal, decimal=3)
+        test_expected(spectre.factors.MACD().normalized(), expected_aapl_normal,
+                      expected_msft_normal, decimal=3)
+        #  #
+        expected = talib.MACD(df_aapl_close.values, fastperiod=10, slowperiod=15, signalperiod=5)
+        expected_aapl_signal = expected[1][-total_rows:]
+        expected = talib.MACD(df_msft_close.values, fastperiod=10, slowperiod=15, signalperiod=5)
+        expected_msft_signal = expected[1][-total_rows:]
+        test_expected(spectre.factors.MACD(10, 15, 5), expected_aapl_signal, expected_msft_signal,
+                      decimal=3)
+
+        # test BBANDS
+        expected = talib.BBANDS(df_aapl_close.values, timeperiod=20)
+        expected_aapl_normal = (df_aapl_close.values - expected[1]) / (expected[0] - expected[1])
+        expected = talib.BBANDS(df_msft_close.values, timeperiod=20)
+        expected_msft_normal = (df_msft_close.values - expected[1]) / (expected[0] - expected[1])
+        test_expected(spectre.factors.BBANDS(), expected_aapl_normal, expected_msft_normal)
+        expected = talib.BBANDS(df_aapl_close.values, timeperiod=50, nbdevup=3, nbdevdn=3)
+        expected_aapl_normal = (df_aapl_close.values - expected[1]) / (expected[0] - expected[1])
+        expected = talib.BBANDS(df_msft_close.values, timeperiod=50, nbdevup=3, nbdevdn=3)
+        expected_msft_normal = (df_msft_close.values - expected[1]) / (expected[0] - expected[1])
+        test_expected(spectre.factors.BBANDS(win=50, inputs=(spectre.factors.OHLCV.close, 3)),
+                      expected_aapl_normal, expected_msft_normal)
+
+        # test TRANGE
+        expected_aapl = talib.TRANGE(df_aapl_high.values, df_aapl_low.values, df_aapl_close.values)
+        expected_msft = talib.TRANGE(df_msft_high.values, df_msft_low.values, df_msft_close.values)
+        test_expected(spectre.factors.TRANGE(), expected_aapl, expected_msft)
+
+        # test rsi
+        # expected_aapl = talib.RSI(df_aapl_close.values, timeperiod=14)
+        expected_aapl = [46.7915095, 46.2348644, 46.6612279, 46.4354528, 46.5263158,
+                         47.2506481, 47.4633086, 46.6735717, 47.1775162, 47.3809596]
+        # expected_msft = talib.RSI(df_msft_close.values, timeperiod=14)
+        expected_msft = [49.4040005, 49.8240779, 49.5206631, 50.3420499, 50.0310697,
+                         49.9674093, 50.225292 , 50.3566546, 50.1283889, 50.4479649]
+        # expected_aapl += 7
+        test_expected(spectre.factors.RSI(), expected_aapl, expected_msft)
+
+
         # todo 测试是否已算过的重复factor不会算2遍
         # todo 测试错位嵌套factor
 
         # test cuda result eq cup
 
     def test_filter_factor(self):
+        print('test filter:')
         loader = spectre.factors.CsvDirLoader(
             './data/daily/', ohlcv=('uOpen', 'uHigh', 'uLow', 'uClose', 'uVolume'),
             index_col='date', parse_dates=True,
         )
         engine = spectre.factors.FactorEngine(loader)
-
         universe = spectre.factors.OHLCV.volume.top(1)
-        engine.add(spectre.factors.OHLCV.volume, 'vol')
+        engine.add(spectre.factors.OHLCV.volume, 'not_used')
         engine.set_filter(universe)
 
-        data = engine.run("2019-01-01", "2019-01-15")
-        assert_array_equal(data.index.get_level_values(1).values,
+        result = engine.run("2019-01-01", "2019-01-15")
+        assert_array_equal(result.index.get_level_values(1).values,
                            ['AAPL', 'AAPL', 'AAPL', 'AAPL', 'AAPL', 'AAPL', 'AAPL', 'MSFT',
                             'AAPL', 'MSFT'])
+
+        # test ma5 with filter
+        import talib
+        total_rows = 10
+        loader = spectre.factors.CsvDirLoader(
+            './data/daily/', 'AAPL', ohlcv=('uOpen', 'uHigh', 'uLow', 'uClose', 'uVolume'),
+            index_col='date', parse_dates=True,
+        )
+        # get filtered ma5
+        engine = spectre.factors.FactorEngine(loader)
+        universe = spectre.factors.OHLCV.volume.top(1)
+        engine.set_filter(universe)
+        engine.add(spectre.factors.SMA(5), 'ma5')
+        df = engine.run('2019-01-01', '2019-01-15')
+        result_aapl = df.loc[(slice(None), 'AAPL'), 'ma5'].values
+        result_msft = df.loc[(slice(None), 'MSFT'), 'ma5'].values
+        # get not filtered close value
+        engine.remove_all()
+        engine.set_filter(None)
+        engine.add(spectre.factors.OHLCV.close, 'c')
+        df = engine.run('2018-01-01', '2019-01-15')
+        df_aapl_close = df.loc[(slice(None), 'AAPL'), 'c']
+        df_msft_close = df.loc[(slice(None), 'MSFT'), 'c']
+        expected_aapl = talib.SMA(df_aapl_close.values, timeperiod=5)[-total_rows:]
+        expected_msft = talib.SMA(df_msft_close.values, timeperiod=5)[-total_rows:]
+        expected_aapl = np.delete(expected_aapl, [7, 9])
+        expected_msft = [expected_msft[7], expected_msft[9]]
+        # test
+        assert_almost_equal(result_aapl, expected_aapl)
+        assert_almost_equal(result_msft, expected_msft)
+
 
     # def test_cuda_factors(self):
     #     spectre.to_cuda()

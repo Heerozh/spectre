@@ -7,9 +7,10 @@ import pandas as pd
 
 class StandardDeviation(CustomFactor):
     inputs = [OHLCV.close]
+    _min_win = 2
 
     def compute(self, data):
-        return data.rolling(self.win).std()
+        return data.rolling(self.win).std(ddof=0)
 
 
 STDDEV = StandardDeviation

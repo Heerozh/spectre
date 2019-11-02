@@ -40,7 +40,7 @@ class FactorEngine:
                                .format(name))
             self._factors[name] = factor
 
-    def set_filter(self, factor: FilterFactor) -> None:
+    def set_filter(self, factor: Union[FilterFactor, None]) -> None:
         self._filter = factor
 
     def remove_all(self) -> None:
@@ -62,6 +62,8 @@ class FactorEngine:
 
         # Calculate data that requires backward in tree
         max_backward = max([f._get_total_backward() for f in self._factors.values()])
+        if self._filter:
+            max_backward = max(max_backward, self._filter._get_total_backward())
         # Get data
         self._dataframe = self._loader.load(start, end, max_backward)
         # todo if cuda, copy _dataframe to gpu, and return object
@@ -69,14 +71,6 @@ class FactorEngine:
         # compute
         if self._filter:
             self._filter._pre_compute(self, start, end)
-            # remove false rows
-            filter_data = self._filter._compute()
-            if isinstance(filter_data, pd.DataFrame):
-                filter_data = filter_data.stack()
-            else:
-                filter_data = np.hstack(filter_data)
-            self._dataframe = self._dataframe[filter_data]
-
         for f in self._factors.values():
             f._pre_compute(self, start, end)
 
@@ -89,5 +83,15 @@ class FactorEngine:
             else:
                 factor_data = np.hstack(factor_data)
             ret[c] = factor_data
+
+        # Remove filter False rows
+        if self._filter:
+            filter_data = self._filter._compute()
+            if isinstance(filter_data, pd.DataFrame):
+                filter_data = filter_data.stack()
+            else:
+                filter_data = np.hstack(filter_data)
+            filter_data = filter_data.reindex_like(ret)
+            ret = ret[filter_data]
 
         return ret.loc[start:end]

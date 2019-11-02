@@ -11,7 +11,7 @@ class Returns(CustomFactor):
     _min_win = 2
 
     def compute(self, close):
-        return (close.shift(1) - close) / close
+        return (-close.diff(self.win-1)) / close
 
 
 class SimpleMovingAverage(CustomFactor):
@@ -87,7 +87,7 @@ class AnnualizedVolatility(CustomFactor):
     window_length = 252
 
     def compute(self, returns, annualization_factor):
-        return returns.rolling(self.win).std() * (annualization_factor ** .5)
+        return returns.rolling(self.win).std(ddof=0) * (annualization_factor ** .5)
 
 
 MA = SimpleMovingAverage

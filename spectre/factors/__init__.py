@@ -33,6 +33,9 @@ from .technical import (
     MovingAverageConvergenceDivergenceSignal,
     BBANDS,
     MACD,
+    TrueRange,
+    TRANGE,
+    RSI,
 )
 
 from .statistical import (
