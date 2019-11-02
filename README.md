@@ -69,6 +69,24 @@ df
     RollingLow = MIN(win=5, inputs=[OHLCV.close])
 ```
 
+## Factors Common Methods
+
+```python
+    # Standardization
+    new_factor = factor.rank()
+    new_factor = factor.demean(groupby=dict)
+    new_factor = factor.zscore()
+    
+    # Quick computation
+    new_factor = factor1 + factor1
+
+    # To filter (Comparison operator):
+    new_filter = factor1 < factor2
+    # Rank filter
+    new_filter = factor.top(n)
+    new_filter = factor.bottom(n)
+```
+
 ## Chapter II. Portfolio and Backtesting
 
 [Under construction]
