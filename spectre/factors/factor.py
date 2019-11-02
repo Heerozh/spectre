@@ -64,8 +64,10 @@ class BaseFactor:
         fact = ZScoreFactor(inputs=(self,))
         return fact
 
-    def demean(self):
+    def demean(self, groupby=None):
+        """groupby={'name':group_id}"""
         fact = DemeanFactor(inputs=(self,))
+        fact.groupby = groupby
         return fact
 
     # --------------- main methods ---------------
@@ -202,10 +204,16 @@ class RankFactor(CustomFactor):
 
 
 class DemeanFactor(CustomFactor):
-    # todo 不按sector demean没有意义，和rank一样
-    # 可以iex ref-data/sectors 先获取行业列表，然后Collections获取股票？
+    groupby = None
+
+    # todo 可以iex ref-data/sectors 先获取行业列表，然后Collections获取股票？
     def compute(self, data) -> Union[Sequence, pd.DataFrame]:
-        return data.sub(data.mean(axis=1), axis=0)
+        """Recommended to set groupby, otherwise you only need use rank."""
+        if self.groupby:
+            g = data.groupby(self.groupby, axis=1)
+            return g.transform(lambda x: x - x.mean())
+        else:
+            return data.sub(data.mean(axis=1), axis=0)
 
 
 class ZScoreFactor(CustomFactor):

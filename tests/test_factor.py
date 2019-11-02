@@ -222,9 +222,15 @@ class TestFactorLib(unittest.TestCase):
         # test zscore
         _expected_aapl = [0.707106781, 0.707106781, 0.707106781, 0.707106781, 0.707106781,
                           0.707106781, 0.707106781, 0.707106781, 0.707106781, 0.707106781]
-        _expected_msft = [-0.707106781, -0.707106781, -0.707106781, -0.707106781, -0.707106781,
-                          -0.707106781, -0.707106781, -0.707106781, -0.707106781, -0.707106781]
+        _expected_msft = -np.array(_expected_aapl)
         test_expected(spectre.factors.OHLCV.close.zscore(),
+                      _expected_aapl, _expected_msft, total_rows)
+
+        # test demean
+        _expected_aapl = [28.625, 21.965, 23.36, 22.305, 24.175, 25.405, 27.5, 25.245, 26.805,
+                          24.045]
+        _expected_msft = -np.array(_expected_aapl)
+        test_expected(spectre.factors.OHLCV.close.demean(groupby={'AAPL': 1, 'MSFT': 1}),
                       _expected_aapl, _expected_msft, total_rows)
 
         # todo test demean groupby
