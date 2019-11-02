@@ -99,6 +99,7 @@ class CsvDirLoader(DataLoader):
             dfs = self._load(start, end)
 
         df_concat = pd.concat(dfs).swaplevel(0, 1).sort_index(level=0)
+        df_concat = df_concat.rename_axis(['date', 'asset'])
         if self._calender:
             # drop the data of the non-trading day by calender,
             # because there may be some one-line junk data in non-trading day,
@@ -132,6 +133,7 @@ class QuandlLoader(DataLoader):
                                           'ex-dividend', 'split_ratio', ],
                                  )
         df.tz_localize('UTC', level=0, copy=False)
+        df = df.rename_axis(['date', 'asset'])
         if self._calender:
             calender = df.loc[(slice(None), self._calender), :].index.get_level_values(0)
             df = df[df.index.get_level_values(0).isin(calender)]

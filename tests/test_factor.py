@@ -277,8 +277,17 @@ class TestFactorLib(unittest.TestCase):
                                      fastk_period=14)[0]
         test_expected(spectre.factors.STOCHF(), expected_aapl, expected_msft)
 
-        # todo 测试是否已算过的重复factor不会算2遍
-        # todo 测试错位嵌套factor
+        # test same factor only compute once, and nest factor window
+        f1 = spectre.factors.BBANDS(win=20, inputs=[spectre.factors.OHLCV.close, 2])
+        f2 = spectre.factors.EMA(win=10, inputs=[f1])
+        fa = spectre.factors.STDDEV(win=15, inputs=[f2])
+        fb = spectre.factors.MACD(12, 26, 9, inputs=[f2])
+        engine.remove_all()
+        engine.add(f2, 'f2')
+        engine.add(fa, 'fa')
+        engine.add(fb, 'fb')
+        result = engine.run('2019-01-01', '2019-01-15')
+        self.assertEqual(f2._cache_hit, 3)
 
         # test cuda result eq cup
 

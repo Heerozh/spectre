@@ -95,3 +95,11 @@ class FactorEngine:
             ret = ret[filter_data]
 
         return ret.loc[start:end]
+
+    def get_price_matrix(self, start: Union[str, pd.Timestamp],
+                         end: Union[str, pd.Timestamp], prices=OHLCV.close) -> pd.DataFrame:
+        backup = self._factors
+        self._factors = {'price': prices}
+        ret = self.run(start, end)
+        self._factors = backup
+        return ret['price'].unstack(level=[1])
