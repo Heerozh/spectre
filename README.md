@@ -118,7 +118,8 @@ df_factors = engine.run('2014-01-02', '2016-12-30')
 df_prices = engine.get_price_matrix('2014-01-02', '2016-12-30')
 
 import alphalens as al
-al_clean_data = al.utils.get_clean_factor_and_forward_returns(factor=df_factors['ma'], prices=df_prices, periods=[11])
+al_clean_data = al.utils.get_clean_factor_and_forward_returns(
+    factor=df_factors['ma'], prices=df_prices, periods=[11])
 
 al.performance.mean_return_by_quantile(al_clean_data)[0].plot.bar()
 (al.performance.factor_returns(al_clean_data) + 1).cumprod().plot()

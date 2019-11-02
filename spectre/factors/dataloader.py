@@ -123,21 +123,25 @@ class QuandlLoader(DataLoader):
         loader = factors.QuandlLoader('./quandl/WIKI_PRICES.zip')
         """
         super().__init__(calender_assert, ohlcv)
+        try:
+            df = pd.read_hdf(file + '.cache.hdf', 'WIKI_PRICES')
+        except FileNotFoundError:
+            with ZipFile(file) as zip:
+                with zip.open(zip.namelist()[0]) as csv:
+                    df = pd.read_csv(csv, parse_dates=['date'],
+                                     index_col=['date', 'ticker'],
+                                     usecols=['ticker', 'date', 'open', 'high', 'low', 'close',
+                                              'volume',
+                                              'ex-dividend', 'split_ratio', ],
+                                     )
+            df = df.rename_axis(['date', 'asset'])
+            df.sort_index(level=0, inplace=True)
+            df.to_hdf(file + '.cache.hdf', 'WIKI_PRICES')  # complevel=1 slow 3x
 
-        with ZipFile(file) as zip:
-            with zip.open(zip.namelist()[0]) as csv:
-                df = pd.read_csv(csv, parse_dates=['date'],
-                                 index_col=['date', 'ticker'],
-                                 usecols=['ticker', 'date', 'open', 'high', 'low', 'close',
-                                          'volume',
-                                          'ex-dividend', 'split_ratio', ],
-                                 )
         df.tz_localize('UTC', level=0, copy=False)
-        df = df.rename_axis(['date', 'asset'])
         if self._calender:
             calender = df.loc[(slice(None), self._calender), :].index.get_level_values(0)
             df = df[df.index.get_level_values(0).isin(calender)]
-        df.sort_index(level=0, inplace=True)
         self._cache = df
 
     def load(self, start, end, backward: int) -> pd.DataFrame:
