@@ -48,7 +48,7 @@ df
 |2019-01-15 00:00:00+00:00|AAPL|    156.932|	156.94|
 |                         |MSFT|    105.332|	108.85|
 
-## Factor lists
+### Factor lists
 
 ```python
     Returns(inputs=[OHLCV.close])
@@ -69,7 +69,7 @@ df
     RollingLow = MIN(win=5, inputs=[OHLCV.close])
 ```
 
-## Factors Common Methods
+### Factors Common Methods
 
 ```python
     # Standardization
