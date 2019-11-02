@@ -10,8 +10,17 @@ class Returns(CustomFactor):
     win = 2
     _min_win = 2
 
-    def compute(self, close):
-        return (-close.diff(self.win-1)) / close
+    def compute(self, closes):
+        return (-closes.diff(self.win-1)) / closes
+
+
+class LogReturns(CustomFactor):
+    inputs = [OHLCV.close]
+    win = 2
+    _min_win = 2
+
+    def compute(self, closes):
+        return ((-closes.diff(self.win-1)) / closes).log()
 
 
 class SimpleMovingAverage(CustomFactor):
@@ -75,11 +84,11 @@ class ExponentialWeightedMovingAverage(CustomFactor):
 class AverageDollarVolume(CustomFactor):
     inputs = [OHLCV.close, OHLCV.volume]
 
-    def compute(self, close, volume):
+    def compute(self, closes, volumes):
         if self.win == 1:
-            return close * volume
+            return closes * volumes
         else:
-            return (close * volume).rolling(self.win).sum() / self.win
+            return (closes * volumes).rolling(self.win).sum() / self.win
 
 
 class AnnualizedVolatility(CustomFactor):

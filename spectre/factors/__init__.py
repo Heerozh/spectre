@@ -17,29 +17,25 @@ from .factor import (
 
 from .basic import (
     Returns,
-    SimpleMovingAverage,
+    LogReturns,
+    SimpleMovingAverage, MA, SMA,
     WeightedAverageValue,
     VWAP,
-    ExponentialWeightedMovingAverage,
+    ExponentialWeightedMovingAverage, EMA,
     AverageDollarVolume,
     AnnualizedVolatility,
-    MA,
-    SMA,
-    EMA,
 )
 
 from .technical import (
-    NormalizedBollingerBands,
-    MovingAverageConvergenceDivergenceSignal,
-    BBANDS,
-    MACD,
-    TrueRange,
-    TRANGE,
+    NormalizedBollingerBands, BBANDS,
+    MovingAverageConvergenceDivergenceSignal, MACD,
+    TrueRange, TRANGE,
     RSI,
+    FastStochasticOscillator, STOCHF,
 )
 
 from .statistical import (
-    StandardDeviation,
-    STDDEV,
-
+    StandardDeviation, STDDEV,
+    RollingHigh, MAX,
+    RollingLow, MIN,
 )

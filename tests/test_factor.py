@@ -261,14 +261,21 @@ class TestFactorLib(unittest.TestCase):
 
         # test rsi
         # expected_aapl = talib.RSI(df_aapl_close.values, timeperiod=14)
-        expected_aapl = [46.7915095, 46.2348644, 46.6612279, 46.4354528, 46.5263158,
-                         47.2506481, 47.4633086, 46.6735717, 47.1775162, 47.3809596]
+        # calculate at excel
+        expected_aapl = [40.1814301, 33.36385487, 37.37511353, 36.31220413, 41.84100418,
+                         39.19197118, 48.18441452, 44.30411404, 50.05167959, 56.47230321]
         # expected_msft = talib.RSI(df_msft_close.values, timeperiod=14)
-        expected_msft = [49.4040005, 49.8240779, 49.5206631, 50.3420499, 50.0310697,
-                         49.9674093, 50.225292 , 50.3566546, 50.1283889, 50.4479649]
+        expected_msft = [38.6165212, 40.7223796, 34.5582486, 45.4062038, 45.2724595,
+                         45.8940012, 50.7517643, 45.8333333, 57.9325197, 72.4346076]
         # expected_aapl += 7
         test_expected(spectre.factors.RSI(), expected_aapl, expected_msft)
 
+        # test stochf
+        expected_aapl = talib.STOCHF(df_aapl_high.values, df_aapl_low.values, df_aapl_close.values,
+                                     fastk_period=14)[0]
+        expected_msft = talib.STOCHF(df_msft_high.values, df_msft_low.values, df_msft_close.values,
+                                     fastk_period=14)[0]
+        test_expected(spectre.factors.STOCHF(), expected_aapl, expected_msft)
 
         # todo 测试是否已算过的重复factor不会算2遍
         # todo 测试错位嵌套factor

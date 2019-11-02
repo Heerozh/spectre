@@ -1,8 +1,5 @@
-from typing import Optional, Sequence
-from .factor import BaseFactor, CustomFactor
+from .factor import CustomFactor
 from .engine import OHLCV
-import numpy as np
-import pandas as pd
 
 
 class StandardDeviation(CustomFactor):
@@ -13,4 +10,24 @@ class StandardDeviation(CustomFactor):
         return data.rolling(self.win).std(ddof=0)
 
 
+class RollingHigh(CustomFactor):
+    inputs = (OHLCV.close,)
+    win = 5
+    _min_win = 2
+
+    def compute(self, data):
+        return data.rolling(self.win).max()
+
+
+class RollingLow(CustomFactor):
+    inputs = (OHLCV.close,)
+    win = 5
+    _min_win = 2
+
+    def compute(self, data):
+        return data.rolling(self.win).min()
+
+
 STDDEV = StandardDeviation
+MAX = RollingHigh
+MIN = RollingLow
