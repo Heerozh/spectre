@@ -100,8 +100,6 @@ class FactorEngine:
                 filter_data = np.hstack(filter_data)
             filter_data = filter_data.reindex_like(ret)
             ret = ret[filter_data]
-            # todo 如果用到非open价格，则factor值要延后一天
-            # 简单的delay会比较好吧，明天再确认下调试alphalens的代码看他怎么算的
 
         return ret.loc[start:end]
 
@@ -111,7 +109,7 @@ class FactorEngine:
                          prices: BaseFactor = OHLCV.close,
                          forward: int = 1) -> pd.DataFrame:
         """
-
+        Get the price data for Factor Return Analysis.
         :param start: same as run
         :param end: should long than factor end time, for forward returns calculations.
         :param prices: prices data factor. If you traded at the opening, you should set it
