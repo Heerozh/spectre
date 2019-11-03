@@ -4,7 +4,7 @@ Progress: 4/10  🔳🔳🔳🔳⬜⬜⬜⬜⬜⬜
 ~~2/10: FactorEngine~~  
 ~~3/10: Filters~~  
 ~~4/10: All factors~~  
-5/10: Factor returns and analysis    
+5/10: Dividends/Splits  
 6/10: Back-test architecture  
 7/10: Portfolio  
 8/10: Transaction  

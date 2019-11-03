@@ -177,10 +177,10 @@ class TestFactorLib(unittest.TestCase):
         test_expected(spectre.factors.AverageDollarVolume(3), expected_aapl, expected_msft, 8, 2)
 
         # AnnualizedVolatility
-        expected_aapl = [0.3194176, 0.5959649, 0.761103 , 0.8010694, 0.1669258, 0.1869935,
-                         0.0980222, 0.5790352, 0.5539618, 0.4551639]
-        expected_msft = [0.1916108, 0.2170383, 0.2677953, 0.1348424, 0.2094273, 0.2338434,
-                         0.2008854, 0.3119827, 0.2401252, 0.5061202]
+        expected_aapl = [0.3141548, 0.5426118, 0.7150832, 0.7475805, 0.1710541, 0.1923727,
+                         0.1027987, 0.5697543, 0.5436627, 0.4423527]
+        expected_msft = [0.1853587, 0.2104354, 0.2618721, 0.1375558, 0.2109973, 0.2358327,
+                         0.2022665, 0.3088709, 0.2350881, 0.5204212]
         test_expected(spectre.factors.AnnualizedVolatility(3), expected_aapl, expected_msft, 10)
 
         # test rank

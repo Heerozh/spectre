@@ -11,7 +11,7 @@ class Returns(CustomFactor):
     _min_win = 2
 
     def compute(self, closes):
-        return (-closes.diff(self.win-1)) / closes
+        return closes.pct_change(self.win-1)
 
 
 class LogReturns(CustomFactor):
@@ -20,7 +20,7 @@ class LogReturns(CustomFactor):
     _min_win = 2
 
     def compute(self, closes):
-        return ((-closes.diff(self.win-1)) / closes).log()
+        return closes.pct_change(self.win-1).log()
 
 
 class SimpleMovingAverage(CustomFactor):
