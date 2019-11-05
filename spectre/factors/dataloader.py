@@ -1,6 +1,8 @@
 import pandas as pd
 import os
 from zipfile import ZipFile
+import numpy as np
+from numba import jit, njit, prange, vectorize
 
 
 class DataLoader:
@@ -19,14 +21,17 @@ class DataLoader:
         """
         raise NotImplementedError("abstractmethod")
 
+    # 应该有通用adj和sid方法
+
 
 class CsvDirLoader(DataLoader):
-    def __init__(self, path: str, calender_assert=None,
+    def __init__(self, path: str, calender_assert: str = None,
                  split_by_year=False, dividends_path='',
                  ohlcv=('open', 'high', 'low', 'close', 'volume'),
                  **read_csv):
         """
         Load data from csv dir, structured as xxx.csv per stock..
+        :param calender_assert: assert name as trading calendar, like 'SPY'
         :param split_by_year: If file name like 'spy_2017.csv', set this to True
         :param ohlcv: OHLCV column names, If set, you can access those data like
                       `spectre.factors.OHLCV.open`, also
@@ -62,7 +67,10 @@ class CsvDirLoader(DataLoader):
                     "data must index by datetime, set correct `read_csv`, " \
                     "for example index_col='date', parse_dates=True"
                 df = df[~df.index.duplicated(keep='last')]
-                df = df.tz_localize('UTC')
+                if df.index.tzinfo is None:
+                    df = df.tz_localize('UTC')
+                else:
+                    df = df.tz_convert('UTC')
                 dfs[name] = df
         return dfs
 
@@ -74,7 +82,10 @@ class CsvDirLoader(DataLoader):
                 assert isinstance(df.index, pd.DatetimeIndex), \
                     "data must index by datetime, set correct `read_csv`, " \
                     "for example index_col='date', parse_dates=True"
-                df = df.tz_localize('UTC')
+                if df.index.tzinfo is None:
+                    df = df.tz_localize('UTC')
+                else:
+                    df = df.tz_convert('UTC')
                 dfs[entry.name[:-4]] = df
         return dfs
 
@@ -88,7 +99,7 @@ class CsvDirLoader(DataLoader):
         else:
             return None
 
-    def load(self, start, end, backward):
+    def load(self, start, end, backward) -> pd.DataFrame:
         ret = self._load_from_cache(start, end, backward)
         if ret is not None:
             return ret
@@ -136,6 +147,22 @@ class QuandlLoader(DataLoader):
                                      )
             df = df.rename_axis(['date', 'asset'])
             df.sort_index(level=0, inplace=True)
+
+            # move ex-div up 1 row
+            ex_div = df.groupby(level=1)['ex-dividend'].shift(-1)
+            ex_div.loc[ex_div.index.get_level_values(0)[-1]] = 0
+            sp_rto = df.groupby(level=1)['split_ratio'].shift(-1)
+            sp_rto.loc[sp_rto.index.get_level_values(0)[-1]] = 1
+
+            # get dividend multipliers
+            price_multi = (1 - ex_div / df['close']) * (1 / sp_rto)
+            price_multi = price_multi[::-1].groupby(level=1).cumprod()[::-1]
+            df['price_multi'] = price_multi
+            vol_multi = sp_rto[::-1].groupby(level=1).cumprod()[::-1]
+            df['vol_multi'] = vol_multi
+
+            df.drop(['ex-dividend', 'split_ratio'], axis=1, inplace=True)
+
             df.to_hdf(file + '.cache.hdf', 'WIKI_PRICES')  # complevel=1 slow 3x
 
         df.tz_localize('UTC', level=0, copy=False)
@@ -144,9 +171,32 @@ class QuandlLoader(DataLoader):
             df = df[df.index.get_level_values(0).isin(calender)]
         self._cache = df
 
+    @staticmethod
+    @njit(parallel=True)
+    def _group_div(values, keys, last):
+        for key in prange(last.shape[0]):
+            values[keys == key] /= last[key]
+        return values
+
+    @staticmethod
+    def adjust_prices(df):
+        import time
+        s = time.time()
+
+        price_multi = df.price_multi.groupby(level=1).apply(lambda x: x / x[-1])
+        vol_multi = df.vol_multi.groupby(level=1).apply(lambda x: x / x[-1])
+
+        print(time.time() - s)
+
+        # adjust price
+        rtn = df[['open', 'high', 'low', 'close']].mul(price_multi, axis=0)
+        rtn['volume'] = df['volume'].mul(vol_multi, axis=0)
+        print(time.time() - s)
+        return rtn
+
     def load(self, start, end, backward: int) -> pd.DataFrame:
         index = self._cache.index.get_level_values(0).unique()
         start_slice = index.get_loc(start, 'bfill')
         start_slice = max(start_slice - backward, 0)
         start_slice = index[start_slice]
-        return self._cache.loc[start_slice:end]
+        return self.adjust_prices(self._cache.loc[start_slice:end])
