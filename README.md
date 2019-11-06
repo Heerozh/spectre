@@ -1,5 +1,5 @@
 
-Progress: 4/10  🔳🔳🔳🔳⬜⬜⬜⬜⬜⬜  
+Progress: 5/10  🔳🔳🔳🔳🔳⬜⬜⬜⬜⬜  
 ~~1/10: FactorEngine architecture~~  
 ~~2/10: FactorEngine~~  
 ~~3/10: Filters~~  
@@ -15,8 +15,8 @@ Progress: 4/10  🔳🔳🔳🔳⬜⬜⬜⬜⬜⬜
 
 # spectre 
 
-spectre is an quantitative trading library, 
-targets performance, GPU support(TODO) and keep it simple. 
+spectre is an **Parallel** quantitative trading library, 
+totally focused on **performance** and **simplicity**.
 
 [Under construction]
 
@@ -95,32 +95,34 @@ df
 
 ## Chapter III. Benchmarking
 
-|                 |      SMA100      | Ratio | EMA50 (win=229) | Ratio   | MACD(12,26,9)    | Ratio   |
-|-----------------|------------------|-------|-----------------|---------|------------------|---------|
-|zipline          | 1.93 s ± 34.3 ms |	 1   | 5.6 s ± 68.7 ms |	1    | 5.49 s ± 72.1 ms |	 1    |
-|spectre (CPU)    | 1.46 s ± 6.52 ms | 1.32x | 1.67 s ± 9.14 ms|**3.35x**| 2.67 s ± 23.6 ms |**2.06x**|
-|spectre (**GPU**)| TODO             |**  ** |	                |**   **|	                 |      |
+|         |      SMA100      | Ratio | EMA50 (win=229)  | Ratio   | MACD(12,26,9)    | Ratio   |
+|---------|------------------|-------|------------------|---------|------------------|---------|
+|zipline  | 1.89 s ± 23.1 ms |   1   | 5.45 s ± 14.6 ms |	  1   | 5.28 s ± 14 ms   |	   1    |
+|spectre  | 1.79 s ± 7.02 ms | 1.32x | 2.06 s ± 7.68 ms |**3.35x**| 3.05 s ± 24.8 ms |**2.06x**|
 
 Using quandl data, compute factor between '2014-01-02' to '2016-12-30'  
- 
+
+As of now (unfinished)
+
 [Under construction]
 
 ## Chapter IV. Full Example
 
 ```python
 from spectre import factors
+# get data
 loader = factors.QuandlLoader('WIKI_PRICES.zip')
-universe = factors.AverageDollarVolume(win=120).top(500) 
 engine = factors.FactorEngine(loader)
-engine.set_filter(universe)
-engine.add(-factors.MA(100).rank().zscore(), 'ma')
+# set factors
+engine.set_filter( factors.AverageDollarVolume(win=120).top(500) )
+engine.add( -factors.MA(100).rank().zscore(), 'ma' )
+# get factors value and prices
 df_factors = engine.run('2014-01-02', '2016-12-30')
 df_prices = engine.get_price_matrix('2014-01-02', '2016-12-30')
-
+# analysis with alphalens
 import alphalens as al
 al_clean_data = al.utils.get_clean_factor_and_forward_returns(
     factor=df_factors['ma'], prices=df_prices, periods=[11])
-
 al.performance.mean_return_by_quantile(al_clean_data)[0].plot.bar()
 (al.performance.factor_returns(al_clean_data) + 1).cumprod().plot()
 # al.tears.create_full_tear_sheet(al_clean_data)
