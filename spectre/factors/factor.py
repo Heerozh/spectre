@@ -1,6 +1,7 @@
 from abc import ABC
 from typing import Optional, Sequence, Union
 import pandas as pd
+import numpy as np
 
 
 class BaseFactor:
@@ -80,6 +81,13 @@ class BaseFactor:
 
     def _compute(self) -> any:
         raise NotImplementedError("abstractmethod")
+
+    def _stack_compute(self):
+        out = self._compute()
+        if isinstance(out, pd.DataFrame):
+            return out.stack()
+        else:
+            return np.hstack(out)
 
     def __init__(self, win: Optional[int] = None,
                  inputs: Optional[Sequence[any]] = None) -> None:

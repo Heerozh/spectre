@@ -3,6 +3,7 @@ from .factor import BaseFactor, CustomFactor
 from .engine import OHLCV
 import numpy as np
 import pandas as pd
+from numba import jit
 
 
 class Returns(CustomFactor):
@@ -28,7 +29,11 @@ class SimpleMovingAverage(CustomFactor):
 
     def compute(self, data):
         # cuda object should also have shift, rolling and mean
-        return data.rolling(self.win).mean()
+        # return data.rolling(self.win).mean()
+        cumsum = data.cumsum(axis=0)
+        shift = cumsum.shift(self.win)
+        shift.iloc[0:self.win, :] = 0
+        return (cumsum - shift) / self.win
 
 
 class WeightedAverageValue(CustomFactor):

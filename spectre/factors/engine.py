@@ -83,21 +83,11 @@ class FactorEngine:
 
         # Compute factors
         ret = pd.DataFrame(index=self._dataframe.index.copy())
-        for c, f in self._factors.items():
-            factor_data = f._compute()
-            if isinstance(factor_data, pd.DataFrame):
-                factor_data = factor_data.stack()
-            else:
-                factor_data = np.hstack(factor_data)
-            ret[c] = factor_data
+        ret = ret.assign(**{c: f._stack_compute() for c, f in self._factors.items()})
 
         # Remove filter False rows
         if self._filter:
-            filter_data = self._filter._compute()
-            if isinstance(filter_data, pd.DataFrame):
-                filter_data = filter_data.stack()
-            else:
-                filter_data = np.hstack(filter_data)
+            filter_data = self._filter._stack_compute()
             filter_data = filter_data.reindex_like(ret)
             ret = ret[filter_data]
 

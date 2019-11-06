@@ -51,8 +51,6 @@ class DataLoader:
         """
         raise NotImplementedError("abstractmethod")
 
-    # 应该有通用adj和sid方法
-
 
 class CsvDirLoader(DataLoader):
     def __init__(self, csv_path: str, calender_assert: str = None,
@@ -198,6 +196,7 @@ class QuandlLoader(DataLoader):
         asset_type = pd.api.types.CategoricalDtype(categories=pd.unique(df.asset), ordered=True)
         df.asset = df.asset.astype(asset_type)
         df.set_index(['date', 'asset'], inplace=True)
+        df.sort_index(level=0, inplace=True)
         df.tz_localize('UTC', level=0, copy=False)
         if self._calender:
             calender = df.loc[(slice(None), self._calender), :].index.get_level_values(0)
