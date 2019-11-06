@@ -167,7 +167,6 @@ class TestFactorLib(unittest.TestCase):
         # test cuda result eq cup
 
     def test_filter_factor(self):
-        print('test filter:')
         loader = spectre.factors.CsvDirLoader(
             './data/daily/', ohlcv=('uOpen', 'uHigh', 'uLow', 'uClose', 'uVolume'),
             index_col='date', parse_dates=True,

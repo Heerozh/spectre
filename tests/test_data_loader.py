@@ -55,7 +55,8 @@ class TestDataLoaderLib(unittest.TestCase):
     def test_adjust(self):
         df = pd.read_csv('./data/adjustment.csv',
                          parse_dates=['date'], index_col=['date', 'asset'],)
-        df = spectre.factors.QuandlLoader.adjust_prices(df).loc[(slice(None), 'CMCSA'), :]
+        df = spectre.factors.QuandlLoader._adjust_prices(
+            df, ['open', 'high', 'low', 'close'], 'volume').loc[(slice(None), 'CMCSA'), :]
 
         expected = np.array([
             [37.337898, 37.482291, 37.243296, 37.417563, 12684104.0],

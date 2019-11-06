@@ -72,10 +72,10 @@ class RSI(CustomFactor):
 
     def compute(self, closes):
         diffs = closes.diff(1)
-        up = diffs.clip_lower(0)
+        up = diffs.clip(lower=0)
         up = up.rolling(self.win-1).mean()  # Cutler's RSI, more stable, independent to data length
         # up = up.ewm(com=14-1, adjust=False).mean()  # Wilder's RSI
-        down = diffs.clip_upper(0)
+        down = diffs.clip(upper=0)
         down = down.rolling(self.win-1).mean().abs()
         # down = down.ewm(com=14-1, adjust=False).mean().abs()  # Wilder RSI
         if self.normalize:
