@@ -16,7 +16,7 @@ Progress: 5/10  🔳🔳🔳🔳🔳⬜⬜⬜⬜⬜
 # spectre 
 
 spectre is an **Parallel** quantitative trading library, 
-totally focused on **performance** and **simplicity**.
+totally focused on **performance** and **clean**.
 
 [Under construction]
 
@@ -98,7 +98,7 @@ df
 |         |      SMA100      | Ratio | EMA50 (win=229)  | Ratio   | MACD(12,26,9)    | Ratio   |
 |---------|------------------|-------|------------------|---------|------------------|---------|
 |zipline  | 1.89 s ± 23.1 ms |   1   | 5.45 s ± 14.6 ms |	  1   | 5.28 s ± 14 ms   |	   1   |
-|spectre  | 1.79 s ± 7.02 ms | 1.06% | 2.06 s ± 7.68 ms |**2.65x**| 3.05 s ± 24.8 ms |**1.73x**|
+|spectre  | 1.79 s ± 7.02 ms | 1.06x | 2.06 s ± 7.68 ms |**2.65x**| 3.05 s ± 24.8 ms |**1.73x**|
 
 Using quandl data, compute factor between '2014-01-02' to '2016-12-30'  
 
@@ -110,22 +110,21 @@ As of now (unfinished)
 
 ```python
 from spectre import factors
-# get data
+# ------------- get data -------------
 loader = factors.QuandlLoader('WIKI_PRICES.zip')
 engine = factors.FactorEngine(loader)
-# set factors
+# ------------- set factors -------------
 engine.set_filter( factors.AverageDollarVolume(win=120).top(500) )
-engine.add( -factors.MA(100).rank().zscore(), 'ma' )
-# get factors value and prices
-df_factors = engine.run('2014-01-02', '2016-12-30')
+engine.add( (factors.MA(5)-factors.MA(10)-factors.MA(30)).rank().zscore(), 'ma_cross' )
+# ------ get factors value and prices ------
+df_factors = engine.run('2014-01-02', '2016-12-10')
 df_prices = engine.get_price_matrix('2014-01-02', '2016-12-30')
-# analysis with alphalens
+# ------ analysis with alphalens ------
 import alphalens as al
 al_clean_data = al.utils.get_clean_factor_and_forward_returns(
-    factor=df_factors['ma'], prices=df_prices, periods=[11])
+    factor=df_factors['ma_cross'], prices=df_prices, periods=[11])
 al.performance.mean_return_by_quantile(al_clean_data)[0].plot.bar()
 (al.performance.factor_returns(al_clean_data) + 1).cumprod().plot()
-# al.tears.create_full_tear_sheet(al_clean_data)
 ```
 
 <img src="https://github.com/Heerozh/spectre/raw/media/quantile_return.png" width="50%" height="50%">
