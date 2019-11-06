@@ -26,8 +26,7 @@ class DataLoader:
     def _np_div(v1, v2):
         return v1 / v2
 
-    @staticmethod
-    def _adjust_prices(df: pd.DataFrame, price_cols, vol_col) -> pd.DataFrame:
+    def _adjust_prices(self, df: pd.DataFrame) -> pd.DataFrame:
         if 'price_multi' not in df:
             return df
         # 这也就稍微慢一点2.19
@@ -40,8 +39,8 @@ class DataLoader:
         #     df.vol_multi.values, df.vol_multi.groupby(level=1).transform('last').values)
 
         # adjust price
-        rtn = df[price_cols].mul(price_multi, axis=0)
-        rtn[vol_col] = df[vol_col].mul(vol_multi, axis=0)
+        rtn = df[list(self._ohlcv[:4])].mul(price_multi, axis=0)
+        rtn[self._ohlcv[4]] = df[self._ohlcv[4]].mul(vol_multi, axis=0)
         # print(time.time() - s)
         return rtn
 
@@ -112,8 +111,7 @@ class CsvDirLoader(DataLoader):
     def _load_from_cache(self, start, end, backward):
         if self._cache[0] and start >= self._cache[0] and end <= self._cache[1]:
             start_slice = self._backward_date(self._cache[2].index.levels[0], start, backward)
-            return self._adjust_prices(self._cache[2].loc[start_slice:end],
-                                       ['open', 'high', 'low', 'close'], 'volume')
+            return self._adjust_prices(self._cache[2].loc[start_slice:end])
         else:
             return None
 
@@ -208,5 +206,4 @@ class QuandlLoader(DataLoader):
 
     def load(self, start, end, backward: int) -> pd.DataFrame:
         start_slice = self._backward_date(self._cache.index.levels[0], start, backward)
-        return self._adjust_prices(self._cache.loc[start_slice:end],
-                                   ['open', 'high', 'low', 'close'], 'volume')
+        return self._adjust_prices(self._cache.loc[start_slice:end])
