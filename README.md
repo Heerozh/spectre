@@ -15,7 +15,7 @@ Progress: 5/10  🔳🔳🔳🔳🔳⬜⬜⬜⬜⬜
 
 # spectre 
 
-spectre is an **Parallel** quantitative trading library, 
+spectre is an quantitative trading library, 
 totally focused on **performance** and **clean**.
 
 [Under construction]
@@ -48,46 +48,6 @@ df
 |                         |     MSFT|    104.202|	103.39|
 |2019-01-15 00:00:00+00:00|     AAPL|    156.932|	156.94|
 |                         |     MSFT|    105.332|	108.85|
-
-### Factor lists
-
-```python
-    # All technical factors passed TA-Lib Comparison test
-    Returns(inputs=[OHLCV.close])
-    LogReturns(inputs=[OHLCV.close])
-    SimpleMovingAverage = MA = SMA(win=5, inputs=[OHLCV.close])
-    VWAP(inputs=[OHLCV.close, OHLCV.volume])
-    ExponentialWeightedMovingAverage = EMA(win=5, inputs=[OHLCV.close])
-    AverageDollarVolume(win=5, inputs=[OHLCV.close, OHLCV.volume])
-    AnnualizedVolatility(win=20, inputs=[Returns(win=2), 252])
-    NormalizedBollingerBands = BBANDS(win=20, inputs=[OHLCV.close, 2])
-    MovingAverageConvergenceDivergenceSignal = MACD(12, 26, 9, inputs=[OHLCV.close])
-    TrueRange = TRANGE(inputs=[OHLCV.high, OHLCV.low, OHLCV.close])
-    RSI(win=14, inputs=[OHLCV.close])
-    FastStochasticOscillator = STOCHF(win=14, inputs=[OHLCV.high, OHLCV.low, OHLCV.close])
-
-    StandardDeviation = STDDEV(win=5, inputs=[OHLCV.close])
-    RollingHigh = MAX(win=5, inputs=[OHLCV.close])
-    RollingLow = MIN(win=5, inputs=[OHLCV.close])
-```
-
-### Factors Common Methods
-
-```python
-    # Standardization
-    new_factor = factor.rank()
-    new_factor = factor.demean(groupby=dict)
-    new_factor = factor.zscore()
-    
-    # Quick computation
-    new_factor = factor1 + factor1
-
-    # To filter (Comparison operator):
-    new_filter = factor1 < factor2
-    # Rank filter
-    new_filter = factor.top(n)
-    new_filter = factor.bottom(n)
-```
 
 ## Chapter II. Portfolio and Backtesting
 
@@ -131,6 +91,49 @@ al.performance.mean_return_by_quantile(al_clean_data)[0].plot.bar()
 <img src="https://github.com/Heerozh/spectre/raw/media/cumprod_return.png" width="50%" height="50%">
 
 [Under construction]
+
+## Chapter V. API
+
+### Factor lists
+
+```python
+    # All technical factors passed TA-Lib Comparison test
+    Returns(inputs=[OHLCV.close])
+    LogReturns(inputs=[OHLCV.close])
+    SimpleMovingAverage = MA = SMA(win=5, inputs=[OHLCV.close])
+    VWAP(inputs=[OHLCV.close, OHLCV.volume])
+    ExponentialWeightedMovingAverage = EMA(win=5, inputs=[OHLCV.close])
+    AverageDollarVolume(win=5, inputs=[OHLCV.close, OHLCV.volume])
+    AnnualizedVolatility(win=20, inputs=[Returns(win=2), 252])
+    NormalizedBollingerBands = BBANDS(win=20, inputs=[OHLCV.close, 2])
+    MovingAverageConvergenceDivergenceSignal = MACD(12, 26, 9, inputs=[OHLCV.close])
+    TrueRange = TRANGE(inputs=[OHLCV.high, OHLCV.low, OHLCV.close])
+    RSI(win=14, inputs=[OHLCV.close])
+    FastStochasticOscillator = STOCHF(win=14, inputs=[OHLCV.high, OHLCV.low, OHLCV.close])
+
+    StandardDeviation = STDDEV(win=5, inputs=[OHLCV.close])
+    RollingHigh = MAX(win=5, inputs=[OHLCV.close])
+    RollingLow = MIN(win=5, inputs=[OHLCV.close])
+```
+
+### Factors Common Methods
+
+```python
+    # Standardization
+    new_factor = factor.rank()
+    new_factor = factor.demean(groupby=dict)
+    new_factor = factor.zscore()
+    
+    # Quick computation
+    new_factor = factor1 + factor1
+
+    # To filter (Comparison operator):
+    new_filter = factor1 < factor2
+    # Rank filter
+    new_filter = factor.top(n)
+    new_filter = factor.bottom(n)
+```
+
 
 ------------
 > *A spectre is haunting Market — the spectre of capitalism.*

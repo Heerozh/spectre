@@ -80,7 +80,7 @@ class TestFactorLib(unittest.TestCase):
         test_expected(spectre.factors.OHLCV.close.demean(groupby={'AAPL': 1, 'MSFT': 2}),
                       [0]*10, [0]*10, total_rows)
 
-        import talib
+        import talib  # pip install --no-deps d:\doc\Download\TA_Lib-0.4.17-cp37-cp37m-win_amd64.whl
 
         # test MA
         expected_aapl = talib.SMA(df_aapl_close.values, timeperiod=3)
