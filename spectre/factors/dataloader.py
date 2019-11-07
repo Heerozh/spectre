@@ -2,7 +2,7 @@ import pandas as pd
 from os import path
 import glob
 from zipfile import ZipFile
-from numba import jit, njit, prange, vectorize
+# from numba import jit, njit, prange, vectorize
 
 
 class DataLoader:
@@ -21,10 +21,10 @@ class DataLoader:
         start_slice = index[start_slice]
         return start_slice
 
-    @staticmethod
-    @njit(parallel=True)
-    def _np_div(v1, v2):
-        return v1 / v2
+    # @staticmethod
+    # @njit(parallel=True)
+    # def _np_div(v1, v2):
+    #     return v1 / v2
 
     def _adjust_prices(self, df: pd.DataFrame) -> pd.DataFrame:
         if 'price_multi' not in df:
@@ -76,7 +76,6 @@ class CsvDirLoader(DataLoader):
 
     def _load_split_by_year(self, start, end):
         years = set(pd.date_range(start, end).year)
-
         pattern = path.join(self._csv_dir, '*.csv')
         files = glob.glob(pattern)
         assets = {}
@@ -129,6 +128,7 @@ class CsvDirLoader(DataLoader):
             "for example index_col='date', parse_dates=True"
 
         df = df.rename_axis(['asset', 'date'])
+        # speed up string index column search time
         df = df.reset_index()
         asset_type = pd.api.types.CategoricalDtype(categories=pd.unique(df.asset), ordered=True)
         df.asset = df.asset.astype(asset_type)
@@ -187,17 +187,17 @@ class QuandlLoader(DataLoader):
             df['price_multi'] = price_multi
             vol_multi = sp_rto[::-1].groupby(level=1).cumprod()[::-1]
             df['vol_multi'] = vol_multi
-
+            # drop raw dividend columns
             df.drop(['ex-dividend', 'split_ratio'], axis=1, inplace=True)
 
             df.to_hdf(file + '.cache.hdf', 'WIKI_PRICES')  # complevel=1 slow 3x
-
+        # speed up string index column search time
         df = df.reset_index()
         asset_type = pd.api.types.CategoricalDtype(categories=pd.unique(df.asset), ordered=True)
         df.asset = df.asset.astype(asset_type)
         df.set_index(['date', 'asset'], inplace=True)
         df.sort_index(level=0, inplace=True)
-        df.tz_localize('UTC', level=0, copy=False)
+        df = df.tz_localize('UTC', level=0, copy=False)
         if self._calender:
             calender = df.loc[(slice(None), self._calender), :].index.get_level_values(0)
             df = df[df.index.get_level_values(0).isin(calender)]

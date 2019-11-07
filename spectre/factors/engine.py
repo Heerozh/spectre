@@ -59,7 +59,7 @@ class FactorEngine:
         """
         if len(self._factors) == 0:
             raise ValueError('Please add at least one factor to engine, then run again.')
-        start, end = pd.Timestamp(start, tz='UTC'), pd.Timestamp(end, tz='UTC')
+        start, end = pd.to_datetime(start, utc=True), pd.to_datetime(end, utc=True)
         # make columns to data factors.
         OHLCV.open.inputs = (self._loader.get_ohlcv_names()[0],)
         OHLCV.high.inputs = (self._loader.get_ohlcv_names()[1],)
@@ -73,6 +73,14 @@ class FactorEngine:
             max_backward = max(max_backward, self._filter._get_total_backward())
         # Get data
         self._dataframe = self._loader.load(start, end, max_backward)
+        from datetime import datetime, timezone
+        assert self._dataframe.index.is_lexsorted(), \
+            "In the df returned by DateLoader, the index must be sorted, "\
+            "try using df.sort_index(level=0, inplace=True)"
+        assert str(self._dataframe.index.levels[0].tzinfo) == 'UTC', \
+            "In the df returned by DateLoader, the date index must be UTC timezone."
+        assert self._dataframe.index.levels[-1].ordered, \
+            "In the df returned by DateLoader, the asset index must ordered categorical."
         # todo if cuda, copy _dataframe to gpu, and return object
 
         # compute
