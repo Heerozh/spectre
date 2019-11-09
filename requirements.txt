@@ -1,8 +1,7 @@
 python>=3.5
 pytables
 numpy
-pandas<=0.22.0  # high version will 15x slow, founding solution
-dask
-# numba
-# cudatoolkit
+pandas>=0.25.0
+torch
+cudatoolkit
 

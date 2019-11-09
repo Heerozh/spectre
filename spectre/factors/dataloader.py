@@ -166,12 +166,9 @@ class QuandlLoader(DataLoader):
         except FileNotFoundError:
             with ZipFile(file) as pkg:
                 with pkg.open(pkg.namelist()[0]) as csv:
-                    df = pd.read_csv(csv, parse_dates=['date'],
-                                     index_col=['date', 'ticker'],
+                    df = pd.read_csv(csv, parse_dates=['date'], index_col=['date', 'ticker'],
                                      usecols=['ticker', 'date', 'open', 'high', 'low', 'close',
-                                              'volume',
-                                              'ex-dividend', 'split_ratio', ],
-                                     )
+                                              'volume', 'ex-dividend', 'split_ratio', ])
             df = df.rename_axis(['date', 'asset'])
             df.sort_index(level=0, inplace=True)
 

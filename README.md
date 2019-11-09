@@ -1,22 +1,26 @@
 
-Progress: 5/10  🔳🔳🔳🔳🔳⬜⬜⬜⬜⬜  
-~~1/10: FactorEngine architecture~~  
-~~2/10: FactorEngine~~  
-~~3/10: Filters~~  
-~~4/10: All factors~~  
-5/10: Dividends/Splits  
-6/10: Back-test architecture  
-7/10: Portfolio  
-8/10: Transaction  
-9/10: Back-test  
-10/10: Analysis  
-11/10: CUDA support  
-12/10: All CUDA factors  
+Progress: 5/10  🔳🔳🔳🔳🔳⬜⬜⬜⬜⬜
+~~1/10: FactorEngine architecture~~
+~~2/10: FactorEngine~~
+~~3/10: Filters~~
+~~4/10: All factors~~
+5/10: CUDA support
+6/10: Dividends/Splits
+7/10: Back-test architecture
+8/10: Portfolio
+9/10: Transaction
+10/10: Back-test
+11/10: Factor Return Analysis
 
-# spectre 
 
-spectre is an quantitative trading library, 
+# spectre
+
+spectre is a **GPU Enabled Parallel** quantitative trading library,
 totally focused on **performance** and **clean**.
+
+  * Pure python code
+  * Using **PyTorch** for parallel computation. So yes, spectre can return a `torch.Tensor` type, use it in PyTorch Model directly without any performance loss.
+  * zipline limiting pandas version at 0.22 for performance, spectre don't have this limitation.
 
 [Under construction]
 
@@ -37,11 +41,11 @@ engine.add(factors.SMA(5), 'ma5')
 df = engine.run('2019-01-11', '2019-01-15')
 df
 ```
-		
 
-|                         |         |        ma5|	 close|	
+
+|                         |         |        ma5|	 close|
 |-------------------------|---------|-----------|---------|
-|**date**                 |**asset**|           |	      |	
+|**date**                 |**asset**|           |	      |
 |2019-01-11 00:00:00+00:00|     AAPL|    154.254|	153.69|
 |                         |     MSFT|    104.402|	103.20|
 |2019-01-14 00:00:00+00:00|     AAPL|    155.854|	157.00|
@@ -60,7 +64,7 @@ df
 |zipline  | 1.89 s ± 23.1 ms |   1   | 5.45 s ± 14.6 ms |	  1   | 5.28 s ± 14 ms   |	   1   |
 |spectre  | 1.79 s ± 7.02 ms | 1.06x | 2.06 s ± 7.68 ms |**2.65x**| 3.05 s ± 24.8 ms |**1.73x**|
 
-Using quandl data, compute factor between '2014-01-02' to '2016-12-30'  
+Using quandl data, compute factor between '2014-01-02' to '2016-12-30'
 
 As of now (unfinished)
 
@@ -97,41 +101,41 @@ al.performance.mean_return_by_quantile(al_clean_data)[0].plot.bar()
 ### Factor lists
 
 ```python
-    # All technical factors passed TA-Lib Comparison test
-    Returns(inputs=[OHLCV.close])
-    LogReturns(inputs=[OHLCV.close])
-    SimpleMovingAverage = MA = SMA(win=5, inputs=[OHLCV.close])
-    VWAP(inputs=[OHLCV.close, OHLCV.volume])
-    ExponentialWeightedMovingAverage = EMA(win=5, inputs=[OHLCV.close])
-    AverageDollarVolume(win=5, inputs=[OHLCV.close, OHLCV.volume])
-    AnnualizedVolatility(win=20, inputs=[Returns(win=2), 252])
-    NormalizedBollingerBands = BBANDS(win=20, inputs=[OHLCV.close, 2])
-    MovingAverageConvergenceDivergenceSignal = MACD(12, 26, 9, inputs=[OHLCV.close])
-    TrueRange = TRANGE(inputs=[OHLCV.high, OHLCV.low, OHLCV.close])
-    RSI(win=14, inputs=[OHLCV.close])
-    FastStochasticOscillator = STOCHF(win=14, inputs=[OHLCV.high, OHLCV.low, OHLCV.close])
+# All technical factors passed comparison test with TA-Lib
+Returns(inputs=[OHLCV.close])
+LogReturns(inputs=[OHLCV.close])
+SimpleMovingAverage = MA = SMA(win=5, inputs=[OHLCV.close])
+VWAP(inputs=[OHLCV.close, OHLCV.volume])
+ExponentialWeightedMovingAverage = EMA(win=5, inputs=[OHLCV.close])
+AverageDollarVolume(win=5, inputs=[OHLCV.close, OHLCV.volume])
+AnnualizedVolatility(win=20, inputs=[Returns(win=2), 252])
+NormalizedBollingerBands = BBANDS(win=20, inputs=[OHLCV.close, 2])
+MovingAverageConvergenceDivergenceSignal = MACD(12, 26, 9, inputs=[OHLCV.close])
+TrueRange = TRANGE(inputs=[OHLCV.high, OHLCV.low, OHLCV.close])
+RSI(win=14, inputs=[OHLCV.close])
+FastStochasticOscillator = STOCHF(win=14, inputs=[OHLCV.high, OHLCV.low, OHLCV.close])
 
-    StandardDeviation = STDDEV(win=5, inputs=[OHLCV.close])
-    RollingHigh = MAX(win=5, inputs=[OHLCV.close])
-    RollingLow = MIN(win=5, inputs=[OHLCV.close])
+StandardDeviation = STDDEV(win=5, inputs=[OHLCV.close])
+RollingHigh = MAX(win=5, inputs=[OHLCV.close])
+RollingLow = MIN(win=5, inputs=[OHLCV.close])
 ```
 
 ### Factors Common Methods
 
 ```python
-    # Standardization
-    new_factor = factor.rank()
-    new_factor = factor.demean(groupby=dict)
-    new_factor = factor.zscore()
-    
-    # Quick computation
-    new_factor = factor1 + factor1
+# Standardization
+new_factor = factor.rank()
+new_factor = factor.demean(groupby=dict)
+new_factor = factor.zscore()
 
-    # To filter (Comparison operator):
-    new_filter = factor1 < factor2
-    # Rank filter
-    new_filter = factor.top(n)
-    new_filter = factor.bottom(n)
+# Quick computation
+new_factor = factor1 + factor1
+
+# To filter (Comparison operator):
+new_filter = factor1 < factor2
+# Rank filter
+new_filter = factor.top(n)
+new_filter = factor.bottom(n)
 ```
 
 
