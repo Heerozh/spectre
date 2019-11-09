@@ -137,7 +137,7 @@ class CsvDirLoader(DataLoader):
             df = df.tz_localize('UTC', level=0, copy=False)
         else:
             df = df.tz_convert('UTC', level=0, copy=False)
-        df.sort_index(inplace=True)
+        df.sort_index(level=[0, 1], inplace=True)
         if self._calender:
             # drop the data of the non-trading day by calender,
             # because there may be some one-line junk data in non-trading day,
@@ -151,6 +151,40 @@ class CsvDirLoader(DataLoader):
 
 
 class QuandlLoader(DataLoader):
+    @classmethod
+    def _make_hdf(cls, file):
+        with ZipFile(file) as pkg:
+            with pkg.open(pkg.namelist()[0]) as csv:
+                df = pd.read_csv(csv, parse_dates=['date'],
+                                 usecols=['ticker', 'date', 'open', 'high', 'low', 'close',
+                                          'volume', 'ex-dividend', 'split_ratio', ])
+        df = df.rename(columns={'ticker': 'asset'})
+
+        # speed up string index column search time
+        asset_type = pd.api.types.CategoricalDtype(categories=pd.unique(df.asset), ordered=True)
+        df.asset = df.asset.astype(asset_type)
+
+        df.set_index(['date', 'asset'], inplace=True)
+        df.sort_index(level=[0, 1], inplace=True)
+
+        # move ex-div up 1 row
+        ex_div = df.groupby(level=1)['ex-dividend'].shift(-1)
+        ex_div.loc[ex_div.index.get_level_values(0)[-1]] = 0
+        sp_rto = df.groupby(level=1)['split_ratio'].shift(-1)
+        sp_rto.loc[sp_rto.index.get_level_values(0)[-1]] = 1
+
+        # get dividend multipliers
+        price_multi = (1 - ex_div / df['close']) * (1 / sp_rto)
+        price_multi = price_multi[::-1].groupby(level=1).cumprod()[::-1]
+        df['price_multi'] = price_multi
+        vol_multi = sp_rto[::-1].groupby(level=1).cumprod()[::-1]
+        df['vol_multi'] = vol_multi
+        # drop raw dividend columns
+        df.drop(['ex-dividend', 'split_ratio'], axis=1, inplace=True)
+
+        df.to_hdf(file + '.cache.hdf', 'WIKI_PRICES', format='table')  # complevel=1 slow 3x
+        return df
+
     def __init__(self, file: str, calender_assert='AAPL',
                  ohlcv=('open', 'high', 'low', 'close', 'volume')) -> None:
         """
@@ -164,36 +198,8 @@ class QuandlLoader(DataLoader):
         try:
             df = pd.read_hdf(file + '.cache.hdf', 'WIKI_PRICES')
         except FileNotFoundError:
-            with ZipFile(file) as pkg:
-                with pkg.open(pkg.namelist()[0]) as csv:
-                    df = pd.read_csv(csv, parse_dates=['date'], index_col=['date', 'ticker'],
-                                     usecols=['ticker', 'date', 'open', 'high', 'low', 'close',
-                                              'volume', 'ex-dividend', 'split_ratio', ])
-            df = df.rename_axis(['date', 'asset'])
-            df.sort_index(level=0, inplace=True)
+            df = self._make_hdf(file)
 
-            # move ex-div up 1 row
-            ex_div = df.groupby(level=1)['ex-dividend'].shift(-1)
-            ex_div.loc[ex_div.index.get_level_values(0)[-1]] = 0
-            sp_rto = df.groupby(level=1)['split_ratio'].shift(-1)
-            sp_rto.loc[sp_rto.index.get_level_values(0)[-1]] = 1
-
-            # get dividend multipliers
-            price_multi = (1 - ex_div / df['close']) * (1 / sp_rto)
-            price_multi = price_multi[::-1].groupby(level=1).cumprod()[::-1]
-            df['price_multi'] = price_multi
-            vol_multi = sp_rto[::-1].groupby(level=1).cumprod()[::-1]
-            df['vol_multi'] = vol_multi
-            # drop raw dividend columns
-            df.drop(['ex-dividend', 'split_ratio'], axis=1, inplace=True)
-
-            df.to_hdf(file + '.cache.hdf', 'WIKI_PRICES')  # complevel=1 slow 3x
-        # speed up string index column search time
-        df = df.reset_index()
-        asset_type = pd.api.types.CategoricalDtype(categories=pd.unique(df.asset), ordered=True)
-        df.asset = df.asset.astype(asset_type)
-        df.set_index(['date', 'asset'], inplace=True)
-        df.sort_index(level=0, inplace=True)
         df = df.tz_localize('UTC', level=0, copy=False)
         if self._calender:
             calender = df.loc[(slice(None), self._calender), :].index.get_level_values(0)
