@@ -1,3 +1,3 @@
 from .algorithmic import (
-    groupby
+    ParallelGroupBy
 )
