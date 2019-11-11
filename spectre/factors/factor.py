@@ -73,13 +73,13 @@ class BaseFactor:
 
     # --------------- main methods ---------------
 
-    def _get_total_backward(self) -> int:
+    def get_total_backward_(self) -> int:
         raise NotImplementedError("abstractmethod")
 
-    def _build_level_tree(self, tree=None, level=0) -> dict:
+    def build_level_tree_(self, tree=None, level=0) -> dict:
         raise NotImplementedError("abstractmethod")
 
-    def _pre_compute(self, engine, start, end) -> None:
+    def pre_compute_(self, engine, start, end) -> None:
         raise NotImplementedError("abstractmethod")
 
     def _compute(self) -> any:
@@ -108,14 +108,14 @@ class CustomFactor(BaseFactor):
     _cache = None
     _cache_hit = 0
 
-    def _get_total_backward(self) -> int:
+    def get_total_backward_(self) -> int:
         backward = 0
         if self.inputs:
-            backward = max([up._get_total_backward() for up in self.inputs
+            backward = max([up.get_total_backward_() for up in self.inputs
                             if isinstance(up, BaseFactor)] or (0,))
         return backward + self.win - 1
 
-    def _build_level_tree(self, tree=None, level=0) -> dict:
+    def build_level_tree_(self, tree=None, level=0) -> dict:
         if tree is None:
             tree = {level: []}
         elif level not in tree:
@@ -123,10 +123,10 @@ class CustomFactor(BaseFactor):
         tree[level].append(self)
         for i in self.inputs:
             if isinstance(i, BaseFactor):
-                i._build_level_tree(tree, level+1)
+                i.build_level_tree_(tree, level+1)
         return tree
 
-    def _pre_compute(self, engine, start, end) -> None:
+    def pre_compute_(self, engine, start, end) -> None:
         """
         Called when engine run but before compute.
         """
@@ -135,7 +135,7 @@ class CustomFactor(BaseFactor):
         if self.inputs:
             for upstream in self.inputs:
                 if isinstance(upstream, BaseFactor):
-                    upstream._pre_compute(engine, start, end)
+                    upstream.pre_compute_(engine, start, end)
 
     def _compute(self) -> Union[Sequence, pd.DataFrame]:
         if self._cache is not None:
@@ -190,7 +190,7 @@ class CustomFactor(BaseFactor):
 
 
 class DataFactor(BaseFactor):
-    def _get_total_backward(self) -> int:
+    def get_total_backward_(self) -> int:
         return 0
 
     def __init__(self, inputs: Optional[Sequence[str]] = None) -> None:
@@ -198,10 +198,10 @@ class DataFactor(BaseFactor):
         if inputs:
             self.inputs = inputs
         assert (len(self.inputs) == 1), "DataFactor's `inputs` can only contains on column"
+        self._data = None
 
-    def _pre_compute(self, engine, start, end) -> None:
-        df = engine.get_loader_data()
-        self._data = df[self.inputs[0]].unstack(level=1)
+    def pre_compute_(self, engine, start, end) -> None:
+        self._data = engine.get_data_tensor(self.inputs[0])
 
     def _compute(self) -> pd.DataFrame:
         return self._data

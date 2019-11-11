@@ -11,18 +11,18 @@ class TestCustomFactorLib(unittest.TestCase):
         a = spectre.factors.CustomFactor(win=2)
         b = spectre.factors.CustomFactor(win=3, inputs=(a,))
         c = spectre.factors.CustomFactor(win=3, inputs=(b,))
-        self.assertEqual(c._get_total_backward(), 5)
+        self.assertEqual(c.get_total_backward_(), 5)
 
         a1 = spectre.factors.CustomFactor(win=10)
         a2 = spectre.factors.CustomFactor(win=5)
         b1 = spectre.factors.CustomFactor(win=20, inputs=(a1, a2))
         b2 = spectre.factors.CustomFactor(win=100, inputs=(a2,))
         c1 = spectre.factors.CustomFactor(win=100, inputs=(b1,))
-        self.assertEqual(a1._get_total_backward(), 9)
-        self.assertEqual(a2._get_total_backward(), 4)
-        self.assertEqual(b1._get_total_backward(), 28)
-        self.assertEqual(b2._get_total_backward(), 103)
-        self.assertEqual(c1._get_total_backward(), 127)
+        self.assertEqual(a1.get_total_backward_(), 9)
+        self.assertEqual(a2.get_total_backward_(), 4)
+        self.assertEqual(b1.get_total_backward_(), 28)
+        self.assertEqual(b2.get_total_backward_(), 103)
+        self.assertEqual(c1.get_total_backward_(), 127)
 
         # test inheritance
         loader = spectre.factors.CsvDirLoader(
@@ -90,11 +90,11 @@ class TestCustomFactorLib(unittest.TestCase):
         class Lv1a(spectre.factors.CustomFactor):
             inputs = [Lv2a(), Lv2b(), Lv2c()]
 
-        level_tree_1 = Lv1a()._build_level_tree()
+        level_tree_1 = Lv1a().build_level_tree_()
         level_tree_1 = {k: [type(f).__name__ for f in v] for k, v in level_tree_1.items()}
         self.assertEqual(level_tree_1, {0: ['Lv1a'], 1: ['Lv2a', 'Lv2b', 'Lv2c'],
                                         2: ['Lv3a', 'Lv3a', 'Lv3b'], 3: ['Lv4a', 'Lv4a', 'Lv4b']})
 
-        level_tree_2 = Lv3c()._build_level_tree()
+        level_tree_2 = Lv3c().build_level_tree_()
         level_tree_2 = {k: [type(f).__name__ for f in v] for k, v in level_tree_2.items()}
         self.assertEqual(level_tree_2, {0: ['Lv3c'], 1: ['Lv4b']})

@@ -96,17 +96,17 @@ class FactorEngine:
         OHLCV.volume.inputs = (self._loader.get_ohlcv_names()[4],)
 
         # Calculate data that requires backward in tree
-        max_backward = max([f._get_total_backward() for f in self._factors.values()])
+        max_backward = max([f.get_total_backward_() for f in self._factors.values()])
         if self._filter:
-            max_backward = max(max_backward, self._filter._get_total_backward())
+            max_backward = max(max_backward, self._filter.get_total_backward_())
         # Get data
         self._paper_tensor(start, end, max_backward)
 
         # compute
         if self._filter:
-            self._filter._pre_compute(self, start, end)
+            self._filter.pre_compute_(self, start, end)
         for f in self._factors.values():
-            f._pre_compute(self, start, end)
+            f.pre_compute_(self, start, end)
 
         # Compute factors
         ret = pd.DataFrame(index=self._dataframe.index.copy())
