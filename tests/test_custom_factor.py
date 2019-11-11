@@ -64,3 +64,37 @@ class TestCustomFactorLib(unittest.TestCase):
         self.assertEqual(test_f1._cache_hit, 1)
         assert_array_equal(df['test1'].values, [0, 1, 2, 3, 4, 5])
         assert_array_equal(df['test2'].values, [0, 1, 3, 6, 10, 15])
+
+    def test_level_tree(self):
+        class Lv4a(spectre.factors.CustomFactor):
+            inputs = []
+            pass
+        class Lv4b(spectre.factors.CustomFactor):
+            inputs = []
+            pass
+
+        class Lv3a(spectre.factors.CustomFactor):
+            inputs = [Lv4a()]
+        class Lv3b(spectre.factors.CustomFactor):
+            inputs = [Lv4b()]
+        class Lv3c(spectre.factors.CustomFactor):
+            inputs = [Lv4b()]
+
+        class Lv2a(spectre.factors.CustomFactor):
+            inputs = [Lv3a()]
+        class Lv2b(spectre.factors.CustomFactor):
+            inputs = [Lv3a()]
+        class Lv2c(spectre.factors.CustomFactor):
+            inputs = [Lv3b()]
+
+        class Lv1a(spectre.factors.CustomFactor):
+            inputs = [Lv2a(), Lv2b(), Lv2c()]
+
+        level_tree_1 = Lv1a()._build_level_tree()
+        level_tree_1 = {k: [type(f).__name__ for f in v] for k, v in level_tree_1.items()}
+        self.assertEqual(level_tree_1, {0: ['Lv1a'], 1: ['Lv2a', 'Lv2b', 'Lv2c'],
+                                        2: ['Lv3a', 'Lv3a', 'Lv3b'], 3: ['Lv4a', 'Lv4a', 'Lv4b']})
+
+        level_tree_2 = Lv3c()._build_level_tree()
+        level_tree_2 = {k: [type(f).__name__ for f in v] for k, v in level_tree_2.items()}
+        self.assertEqual(level_tree_2, {0: ['Lv3c'], 1: ['Lv4b']})

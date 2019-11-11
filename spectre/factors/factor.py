@@ -76,6 +76,9 @@ class BaseFactor:
     def _get_total_backward(self) -> int:
         raise NotImplementedError("abstractmethod")
 
+    def _build_level_tree(self, tree=None, level=0) -> dict:
+        raise NotImplementedError("abstractmethod")
+
     def _pre_compute(self, engine, start, end) -> None:
         raise NotImplementedError("abstractmethod")
 
@@ -108,9 +111,20 @@ class CustomFactor(BaseFactor):
     def _get_total_backward(self) -> int:
         backward = 0
         if self.inputs:
-            backward = max([up._get_total_backward()
-                            for up in self.inputs if isinstance(up, BaseFactor)] or (0,))
+            backward = max([up._get_total_backward() for up in self.inputs
+                            if isinstance(up, BaseFactor)] or (0,))
         return backward + self.win - 1
+
+    def _build_level_tree(self, tree=None, level=0) -> dict:
+        if tree is None:
+            tree = {level: []}
+        elif level not in tree:
+            tree[level] = []
+        tree[level].append(self)
+        for i in self.inputs:
+            if isinstance(i, BaseFactor):
+                i._build_level_tree(tree, level+1)
+        return tree
 
     def _pre_compute(self, engine, start, end) -> None:
         """
