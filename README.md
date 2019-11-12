@@ -1,19 +1,20 @@
 
-Progress: 5/10  🔳🔳🔳🔳🔳⬜⬜⬜⬜⬜
-~~1/10: FactorEngine architecture~~
-~~2/10: FactorEngine~~
-~~3/10: Filters~~
-~~4/10: All factors~~
-5/10: CUDA support
-6/10: Dividends/Splits
-7/10: Back-test architecture
-8/10: Portfolio
-9/10: Transaction
-10/10: Back-test
+Progress: 4/10  🔳🔳🔳🔳⬜⬜⬜⬜⬜⬜\
+~~1/10: FactorEngine architecture~~\
+~~2/10: FactorEngine~~\
+~~3/10: Filters~~\
+~~4/10: All factors~~\
+5/10: CUDA support\
+6/10: Dividends/Splits\
+7/10: Back-test architecture\
+8/10: Portfolio\
+9/10: Transaction\
+10/10: Back-test\
 11/10: Factor Return Analysis
 
+# ||spectre
 
-# spectre
+spectre is a **GPU-accelerated Parallel** quantitative trading library, focused on **performance**.
 
 spectre is a **GPU Enabled Parallel** quantitative trading library,
 totally focused on **performance** and **clean**.
@@ -24,6 +25,10 @@ totally focused on **performance** and **clean**.
 
 [Under construction]
 
+# Status
+
+In development.
+
 ## Chapter I. Factor and FactorEngine
 
 ### Quick Start
@@ -31,7 +36,7 @@ totally focused on **performance** and **clean**.
 from spectre import factors
 
 loader = factors.CsvDirLoader(
-    './tests/data/daily/',  # Contains AAPL.csv MSFT.csv
+    './tests/data/daily/',  # Contains fake dataset: AAPL.csv MSFT.csv
     ohlcv=('uOpen', 'uHigh', 'uLow', 'uClose', 'uVolume'),
     index_col='date', parse_dates=True,
 )
