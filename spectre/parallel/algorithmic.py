@@ -29,6 +29,7 @@ class ParallelGroupBy:
         self._inverse_indices = inverse_indices
         self._width = width
         self._groups = groups
+        self._data_len = n
 
     def split(self, data: torch.Tensor) -> torch.Tensor:
         # split
@@ -37,7 +38,10 @@ class ParallelGroupBy:
             ret[i, 0:(end - start)] = data[self._sorted_indices[start:end]]
         return ret
 
-    def revert(self, split_data: torch.Tensor) -> torch.Tensor:
+    def revert(self, split_data: torch.Tensor, dbg_str=None) -> torch.Tensor:
+        if np.prod(split_data.shape) != self._data_len:
+            raise ValueError('{} Factor return data{} must same as length({})'
+                             .format(dbg_str, tuple(split_data.shape), self._data_len))
         return torch.take(split_data, self._inverse_indices)
 
 
