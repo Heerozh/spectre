@@ -1,7 +1,6 @@
 from abc import ABC
 from typing import Optional, Sequence, Union
-import pandas as pd
-import numpy as np
+import torch
 
 
 class BaseFactor:
@@ -76,27 +75,17 @@ class BaseFactor:
     def get_total_backward_(self) -> int:
         raise NotImplementedError("abstractmethod")
 
-    def build_level_tree_(self, tree=None, level=0) -> dict:
-        raise NotImplementedError("abstractmethod")
-
     def pre_compute_(self, engine, start, end) -> None:
         raise NotImplementedError("abstractmethod")
 
-    def _compute(self) -> any:
+    def compute_(self, stream: Union[torch.cuda.Stream, None]) -> torch.Tensor:
         raise NotImplementedError("abstractmethod")
-
-    def _stack_compute(self):
-        out = self._compute()
-        if isinstance(out, pd.DataFrame):
-            return out.stack()
-        else:
-            return np.hstack(out)
 
     def __init__(self, win: Optional[int] = None,
                  inputs: Optional[Sequence[any]] = None) -> None:
         pass
 
-    def compute(self, *inputs) -> any:
+    def compute(self, *inputs: Sequence[torch.Tensor]) -> torch.Tensor:
         raise NotImplementedError("abstractmethod")
 
 
@@ -115,17 +104,6 @@ class CustomFactor(BaseFactor):
                             if isinstance(up, BaseFactor)] or (0,))
         return backward + self.win - 1
 
-    def build_level_tree_(self, tree=None, level=0) -> dict:
-        if tree is None:
-            tree = {level: []}
-        elif level not in tree:
-            tree[level] = []
-        tree[level].append(self)
-        for i in self.inputs:
-            if isinstance(i, BaseFactor):
-                i.build_level_tree_(tree, level+1)
-        return tree
-
     def pre_compute_(self, engine, start, end) -> None:
         """
         Called when engine run but before compute.
@@ -137,23 +115,32 @@ class CustomFactor(BaseFactor):
                 if isinstance(upstream, BaseFactor):
                     upstream.pre_compute_(engine, start, end)
 
-    def _compute(self) -> Union[Sequence, pd.DataFrame]:
+    def compute_(self, down_stream: Union[torch.cuda.Stream, None]) -> torch.Tensor:
         if self._cache is not None:
             self._cache_hit += 1
             return self._cache
 
+        # create self stream
+        self_stream = None
+        if down_stream:
+            self_stream = torch.cuda.Stream(device=down_stream.device)
+            down_stream.wait_stream(self_stream)
+
         # Calculate inputs
+        inputs = []
         if self.inputs:
-            inputs = []
             for upstream in self.inputs:
                 if isinstance(upstream, BaseFactor):
-                    upstream_out = upstream._compute()
+                    upstream_out = upstream.compute_(self_stream)
                     inputs.append(upstream_out)
                 else:
                     inputs.append(upstream)
-            out = self.compute(*inputs)
+
+        if self_stream:
+            with torch.cuda.stream(self_stream):
+                out = self.compute(*inputs)
         else:
-            out = self.compute()
+            out = self.compute(*inputs)
         self._cache = out
         return out
 
@@ -175,7 +162,7 @@ class CustomFactor(BaseFactor):
 
         assert (self.win >= (self._min_win or 1))
 
-    def compute(self, *inputs) -> Union[Sequence, pd.DataFrame]:
+    def compute(self, *inputs: Sequence[torch.Tensor]) -> torch.Tensor:
         """
         Abstractmethod, do the actual factor calculation here.
         Unlike zipline, here calculate all data at once. Does not guarantee Look-Ahead Bias.
@@ -201,12 +188,13 @@ class DataFactor(BaseFactor):
         self._data = None
 
     def pre_compute_(self, engine, start, end) -> None:
-        self._data = engine.get_data_tensor(self.inputs[0])
+        self._data = engine.get_data_tensor_(self.inputs[0])
 
-    def _compute(self) -> pd.DataFrame:
+    def compute_(self, stream: Union[torch.cuda.Stream, None]) -> torch.Tensor:
+        # todo 等待自己的数据复制完成
         return self._data
 
-    def compute(self, *inputs) -> any:
+    def compute(self, *inputs: Sequence[torch.Tensor]) -> torch.Tensor:
         pass
 
 
@@ -221,7 +209,7 @@ class RankFactor(CustomFactor):
     method = 'first'
     ascending = True,
 
-    def compute(self, data) -> Union[Sequence, pd.DataFrame]:
+    def compute(self, data: torch.Tensor) -> torch.Tensor:
         return data.rank(axis=1, method=self.method, ascending=self.ascending)
 
 
@@ -229,7 +217,7 @@ class DemeanFactor(CustomFactor):
     groupby = None
 
     # todo 可以iex ref-data/sectors 先获取行业列表，然后Collections获取股票？
-    def compute(self, data) -> Union[Sequence, pd.DataFrame]:
+    def compute(self, data: torch.Tensor) -> torch.Tensor:
         """Recommended to set groupby, otherwise you only need use rank."""
         if self.groupby:
             g = data.groupby(self.groupby, axis=1)
@@ -240,7 +228,7 @@ class DemeanFactor(CustomFactor):
 
 class ZScoreFactor(CustomFactor):
 
-    def compute(self, data) -> Union[Sequence, pd.DataFrame]:
+    def compute(self, data: torch.Tensor) -> torch.Tensor:
         return data.sub(data.mean(axis=1), axis=0).div(data.std(axis=1), axis=0)
 
 
@@ -248,50 +236,51 @@ class ZScoreFactor(CustomFactor):
 
 
 class SubFactor(CustomFactor):
-    def compute(self, left, right) -> Union[Sequence, pd.DataFrame]:
+    def compute(self, left: torch.Tensor, right: torch.Tensor) -> torch.Tensor:
         return left - right
 
 
 class AddFactor(CustomFactor):
-    def compute(self, left, right) -> Union[Sequence, pd.DataFrame]:
+    def compute(self, left: torch.Tensor, right: torch.Tensor) -> torch.Tensor:
         return left + right
 
 
 class MulFactor(CustomFactor):
-    def compute(self, left, right) -> Union[Sequence, pd.DataFrame]:
+    def compute(self, left: torch.Tensor, right: torch.Tensor) -> torch.Tensor:
         return left * right
 
 
 class DivFactor(CustomFactor):
-    def compute(self, left, right) -> Union[Sequence, pd.DataFrame]:
+    def compute(self, left: torch.Tensor, right: torch.Tensor) -> torch.Tensor:
         return left / right
 
 
 class PowFactor(CustomFactor):
-    def compute(self, left, right) -> Union[Sequence, pd.DataFrame]:
+    def compute(self, left: torch.Tensor, right: torch.Tensor) -> torch.Tensor:
         return left ** right
 
 
 class NegFactor(CustomFactor):
-    def compute(self, left) -> Union[Sequence, pd.DataFrame]:
+    def compute(self, left: torch.Tensor) -> torch.Tensor:
         return -left
 
 
 class LtFactor(FilterFactor):
-    def compute(self, left, right) -> Union[Sequence, pd.DataFrame]:
+    def compute(self, left: torch.Tensor, right: torch.Tensor) -> torch.Tensor:
         return left.lt(right)
 
 
 class LeFactor(FilterFactor):
-    def compute(self, left, right) -> Union[Sequence, pd.DataFrame]:
+    def compute(self, left: torch.Tensor, right: torch.Tensor) -> torch.Tensor:
         return left.le(right)
 
 
 class EqFactor(FilterFactor):
-    def compute(self, left, right) -> Union[Sequence, pd.DataFrame]:
+    def compute(self, left: torch.Tensor, right: torch.Tensor) -> torch.Tensor:
         return left.eq(right)
 
 
 class NeFactor(FilterFactor):
-    def compute(self, left, right) -> Union[Sequence, pd.DataFrame]:
+    def compute(self, left: torch.Tensor, right: torch.Tensor) -> torch.Tensor:
         return left.ne(right)
+

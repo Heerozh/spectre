@@ -1,9 +1,8 @@
-from typing import Union, Optional, Iterable
+from typing import Union, Iterable
 from .factor import BaseFactor, DataFactor, FilterFactor
 from .dataloader import DataLoader
 from ..parallel import ParallelGroupBy
 import pandas as pd
-import numpy as np
 import torch
 
 
@@ -25,13 +24,7 @@ class FactorEngine:
         self._datagroup = None
         self._factors = {}
         self._filter = None
-        self._device = None
-
-    def get_data_tensor(self, column) -> torch.Tensor:
-        series = self._dataframe[column]
-        data = torch.tensor(series.values).pin_memory()
-        data = self._datagroup.split(data)
-        return data.to(self._device, non_blocking=True)
+        self._device = torch.device('cpu')
 
     def add(self,
             factor: Union[Iterable[BaseFactor], BaseFactor],
@@ -64,7 +57,15 @@ class FactorEngine:
     def to_cpu(self) -> None:
         self._device = torch.device('cuda')
 
+    def get_data_tensor_(self, column) -> torch.Tensor:
+        # todo cache data with column prevent double copying
+        series = self._dataframe[column]
+        data = torch.tensor(series.values).pin_memory()
+        data = self._datagroup.split(data)
+        return data.to(self._device, non_blocking=True)
+
     def _paper_tensor(self, start, end, max_backward):
+        # todo if unchanging, return
         # Get data
         self._dataframe = self._loader.load(start, end, max_backward)
         from datetime import datetime, timezone
@@ -75,9 +76,7 @@ class FactorEngine:
             "In the df returned by DateLoader, the date index must be UTC timezone."
         assert self._dataframe.index.levels[-1].ordered, \
             "In the df returned by DateLoader, the asset index must ordered categorical."
-        # todo if cuda, copy _dataframe to gpu, and return object
         cat = self._dataframe .index.get_level_values(1).codes
-        cat = cat + np.arange(0, len(cat))/len(cat)
         key = torch.tensor(cat, device=self._device).pin_memory()
         self._datagroup = ParallelGroupBy(key)
 
@@ -102,19 +101,29 @@ class FactorEngine:
         # Get data
         self._paper_tensor(start, end, max_backward)
 
-        # compute
+        # ready to compute
         if self._filter:
             self._filter.pre_compute_(self, start, end)
         for f in self._factors.values():
             f.pre_compute_(self, start, end)
 
-        # Compute factors
+        # if cuda, Compute factors and sync
+        if self._device.type == 'cuda':
+            stream = torch.cuda.Stream(device=self._device)
+            for col, fct in self._factors.items():
+                fct.compute_(stream)
+            if self._filter:
+                self._filter.compute_(stream)
+            torch.cuda.synchronize(device=self._device)
+
+        # compute factors from cpu or read cache
         ret = pd.DataFrame(index=self._dataframe.index.copy())
-        ret = ret.assign(**{c: f._stack_compute() for c, f in self._factors.items()})
+        ret = ret.assign(**{c: self._datagroup.revert(f.compute_(None), c)
+                            for c, f in self._factors.items()})
 
         # Remove filter False rows
         if self._filter:
-            filter_data = self._filter._stack_compute()
+            filter_data = self._filter.compute_(None)
             filter_data = filter_data.reindex_like(ret)
             ret = ret[filter_data]
 
@@ -148,13 +157,15 @@ class FactorEngine:
         self._filter = filter_backup
         return ret['price'].unstack(level=[1]).shift(-forward)
 
-    def get_factor_return(self, period=(1, 5, 10), quantiles=5, filter_zscore=20):
+    def get_factor_return(self, period=(1, 5, 10), quantiles=5, filter_zscore=20) -> pd.DataFrame:
         """
-        :param filter_zscore: drop extreme factor return, for stability of the analysis.
-        Return format:
+        Return this:
         |date	                    |asset	|11D	    |factor	    |factor_quantile	|
         |---------------------------|-------|-----------|-----------|-------------------|
         |2014-01-08 00:00:00+00:00	|ARNC	|0.070159	|0.215274	|5                  |
         |                           |BA	    |-0.038556	|-1.638784	|1                  |
+        :param period: forward return periods
+        :param quantiles: number of quantile
+        :param filter_zscore: drop extreme factor return, for stability of the analysis.
         """
         pass

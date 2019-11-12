@@ -44,7 +44,7 @@ class TestCustomFactorLib(unittest.TestCase):
                 return torch.tensor([1])
 
         engine.add(TestFactor2(), 'test2')
-        self.assertRaisesRegex(ValueError, "test2 Factor return data.*",
+        self.assertRaisesRegex(ValueError, "The return data shape.*test2.*",
                                engine.run, '2019-01-11', '2019-01-15')
         engine.remove_all()
         test_f1 = TestFactor()
@@ -53,8 +53,7 @@ class TestCustomFactorLib(unittest.TestCase):
             inputs = [test_f1]
 
             def compute(self, test_input):
-                print(test_input)
-                return torch.tensor(np.cumsum(test_input))
+                return torch.tensor(np.cumsum(test_input, axis=1))
 
         engine.add(test_f1, 'test1')
         self.assertRaisesRegex(KeyError, ".*exists.*",
@@ -64,5 +63,5 @@ class TestCustomFactorLib(unittest.TestCase):
         df = engine.run('2019-01-11', '2019-01-15')
         self.assertEqual(test_f1._cache_hit, 1)
         assert_array_equal(df['test1'].values, [0, 3, 1, 4, 2, 5])
-        assert_array_equal(df['test2'].values, [0, 6, 1, 10, 3, 15])
+        assert_array_equal(df['test2'].values, [0, 3, 1, 7, 3, 12])
 
