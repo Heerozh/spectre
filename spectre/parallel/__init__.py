@@ -1,3 +1,4 @@
 from .algorithmic import (
-    ParallelGroupBy
+    ParallelGroupBy,
+    Rolling,
 )

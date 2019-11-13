@@ -19,7 +19,7 @@ class ParallelGroupBy:
         # get inverse indices
         width = max(boundary[1:] - boundary[:-1])
         groups = len(boundary) - 1
-        inverse_indices = key.new_full((groups, width), n+1)
+        inverse_indices = sorted_indices.new_full((groups, width), n+1)
         for start, end, i in zip(boundary[:-1], boundary[1:], range(groups)):
             inverse_indices[i, 0:(end-start)] = sorted_indices[start:end]
         inverse_indices = torch.sort(inverse_indices.flatten())[1][:n]
@@ -29,7 +29,7 @@ class ParallelGroupBy:
         self._inverse_indices = inverse_indices
         self._width = width
         self._groups = groups
-        self._data_len = n
+        self._data_shape = (groups, width)
 
     def split(self, data: torch.Tensor) -> torch.Tensor:
         # split
@@ -39,11 +39,19 @@ class ParallelGroupBy:
         return ret
 
     def revert(self, split_data: torch.Tensor, dbg_str=None) -> torch.Tensor:
-        if np.prod(split_data.shape) != self._data_len:
-            raise ValueError('{} Factor return data{} must same as length({})'
-                             .format(dbg_str, tuple(split_data.shape), self._data_len))
+        if tuple(split_data.shape) != self._data_shape:
+            raise ValueError('The return data shape{} of Factor `{}` must same as input{}'
+                             .format(tuple(split_data.shape), dbg_str, self._data_shape))
         return torch.take(split_data, self._inverse_indices)
 
 
+class Rolling:
 
+    def __init__(self, x: torch.Tensor, win: int):
+        nan_stack = x.new_full((x.shape[0], win-1), np.nan)
+        new_x = torch.cat((nan_stack, x), dim=1)
+        self.x = new_x.unfold(1, win, 1)
+        self.win = win
 
+    def sum(self, axis=2):
+        return self.x.sum(dim=axis)

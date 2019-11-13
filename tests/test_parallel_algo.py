@@ -1,7 +1,8 @@
 import unittest
 import torch
 import spectre
-from  numpy.testing import assert_array_equal
+from numpy.testing import assert_array_equal, assert_almost_equal
+import numpy as np
 
 
 class TestParallelAlgorithm(unittest.TestCase):
@@ -17,4 +18,14 @@ class TestParallelAlgorithm(unittest.TestCase):
 
         revert_x = groupby.revert(groups)
         assert_array_equal(revert_x.tolist(), test_x.tolist())
+
+    def test_rolling(self):
+        x = torch.tensor([[164.0000, 163.7100, 158.6100, 145.230],
+                          [104.6100, 104.4200, 101.3000, 102.280]])
+        expected = torch.tensor(
+            [[np.nan,     np.nan, 486.3200, 467.5500],
+             [np.nan,     np.nan, 310.3300, 308.0000]])
+
+        s = spectre.parallel.Rolling(x, 3).sum()
+        assert_almost_equal(s.numpy(), expected.numpy(), decimal=4)
 
