@@ -52,10 +52,10 @@ class FactorEngine:
         return self._device
 
     def to_cuda(self) -> None:
-        self._device = torch.device('cpu')
+        self._device = torch.device('cuda')
 
     def to_cpu(self) -> None:
-        self._device = torch.device('cuda')
+        self._device = torch.device('cpu')
 
     def get_data_tensor_(self, column) -> torch.Tensor:
         # todo cache data with column prevent double copying
@@ -77,7 +77,7 @@ class FactorEngine:
         assert self._dataframe.index.levels[-1].ordered, \
             "In the df returned by DateLoader, the asset index must ordered categorical."
         cat = self._dataframe .index.get_level_values(1).codes
-        key = torch.tensor(cat, device=self._device).pin_memory()
+        key = torch.tensor(cat, device=self._device, dtype=torch.int32)
         self._datagroup = ParallelGroupBy(key)
 
     def run(self, start: Union[str, pd.Timestamp], end: Union[str, pd.Timestamp]) -> pd.DataFrame:
@@ -124,7 +124,8 @@ class FactorEngine:
         # Remove filter False rows
         if self._filter:
             filter_data = self._filter.compute_(None)
-            filter_data = filter_data.reindex_like(ret)
+            filter_data = self._datagroup.revert(filter_data, 'filter')
+            filter_data = pd.Series(filter_data, index=ret.index)
             ret = ret[filter_data]
 
         return ret.loc[start:end]

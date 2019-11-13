@@ -1,9 +1,10 @@
 from typing import Optional, Sequence
 from .factor import BaseFactor, CustomFactor
 from .engine import OHLCV
+from ..parallel import Rolling
 import numpy as np
 import pandas as pd
-from numba import jit
+import torch
 
 
 class Returns(CustomFactor):
@@ -28,17 +29,18 @@ class SimpleMovingAverage(CustomFactor):
     inputs = [OHLCV.close]
 
     def compute(self, data):
-        # cuda object should also have shift, rolling and mean
-        # return data.rolling(self.win).mean()
-        cumsum = data.cumsum(axis=0)
-        shift = cumsum.shift(self.win)
-        shift.iloc[0:self.win, :] = 0
-        return (cumsum - shift) / self.win
+        # cum_sum = data.cumsum(dim=1)
+        # shift = cum_sum.roll(self.win, dims=1)
+        # shift[0:self.win, :] = 0
+        # ret = (cum_sum - shift) / self.win
+        ret = Rolling(data, self.win).sum() / self.win
+        return ret
 
 
 class WeightedAverageValue(CustomFactor):
     def compute(self, base, weight):
-        return (base * weight).rolling(self.win).sum() / weight.rolling(self.win).sum()
+        wav = Rolling(base * weight, self.win).sum() / Rolling(weight, self.win).sum()
+        return wav
 
 
 class VWAP(WeightedAverageValue):
@@ -93,7 +95,7 @@ class AverageDollarVolume(CustomFactor):
         if self.win == 1:
             return closes * volumes
         else:
-            return (closes * volumes).rolling(self.win).sum() / self.win
+            return Rolling(closes * volumes, self.win).sum() / self.win
 
 
 class AnnualizedVolatility(CustomFactor):
@@ -101,7 +103,7 @@ class AnnualizedVolatility(CustomFactor):
     window_length = 20
 
     def compute(self, returns, annualization_factor):
-        return returns.rolling(self.win).std(ddof=0) * (annualization_factor ** .5)
+        return Rolling(returns, self.win).std(unbiased=False) * (annualization_factor ** .5)
 
 
 MA = SimpleMovingAverage

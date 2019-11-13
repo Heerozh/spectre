@@ -185,8 +185,7 @@ class QuandlLoader(DataLoader):
         df.to_hdf(file + '.cache.hdf', 'WIKI_PRICES', format='table')  # complevel=1 slow 3x
         return df
 
-    def __init__(self, file: str, calender_assert='AAPL',
-                 ohlcv=('open', 'high', 'low', 'close', 'volume')) -> None:
+    def __init__(self, file: str, calender_assert='AAPL') -> None:
         """
         Usage:
         download data first:
@@ -194,7 +193,7 @@ class QuandlLoader(DataLoader):
         then:
         loader = factors.QuandlLoader('./quandl/WIKI_PRICES.zip')
         """
-        super().__init__(calender_assert, ohlcv)
+        super().__init__(calender_assert, ohlcv=('open', 'high', 'low', 'close', 'volume'))
         try:
             df = pd.read_hdf(file + '.cache.hdf', 'WIKI_PRICES')
         except FileNotFoundError:

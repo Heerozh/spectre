@@ -35,10 +35,10 @@ class BaseFactor:
         return LeFactor(inputs=(self, other))
 
     def __gt__(self, other):
-        return LtFactor(inputs=(other, self))
+        return LtFactor(inputs=(self, other))
 
     def __ge__(self, other):
-        return LeFactor(inputs=(other, self))
+        return LeFactor(inputs=(self, other))
 
     def __eq__(self, other):
         return EqFactor(inputs=(self, other))
@@ -191,7 +191,6 @@ class DataFactor(BaseFactor):
         self._data = engine.get_data_tensor_(self.inputs[0])
 
     def compute_(self, stream: Union[torch.cuda.Stream, None]) -> torch.Tensor:
-        # todo 等待自己的数据复制完成
         return self._data
 
     def compute(self, *inputs: Sequence[torch.Tensor]) -> torch.Tensor:
@@ -236,51 +235,61 @@ class ZScoreFactor(CustomFactor):
 
 
 class SubFactor(CustomFactor):
-    def compute(self, left: torch.Tensor, right: torch.Tensor) -> torch.Tensor:
+    def compute(self, left, right) -> torch.Tensor:
         return left - right
 
 
 class AddFactor(CustomFactor):
-    def compute(self, left: torch.Tensor, right: torch.Tensor) -> torch.Tensor:
+    def compute(self, left, right) -> torch.Tensor:
         return left + right
 
 
 class MulFactor(CustomFactor):
-    def compute(self, left: torch.Tensor, right: torch.Tensor) -> torch.Tensor:
+    def compute(self, left, right) -> torch.Tensor:
         return left * right
 
 
 class DivFactor(CustomFactor):
-    def compute(self, left: torch.Tensor, right: torch.Tensor) -> torch.Tensor:
+    def compute(self, left, right) -> torch.Tensor:
         return left / right
 
 
 class PowFactor(CustomFactor):
-    def compute(self, left: torch.Tensor, right: torch.Tensor) -> torch.Tensor:
+    def compute(self, left, right) -> torch.Tensor:
         return left ** right
 
 
 class NegFactor(CustomFactor):
-    def compute(self, left: torch.Tensor) -> torch.Tensor:
+    def compute(self, left) -> torch.Tensor:
         return -left
 
 
 class LtFactor(FilterFactor):
-    def compute(self, left: torch.Tensor, right: torch.Tensor) -> torch.Tensor:
-        return left.lt(right)
+    def compute(self, left, right) -> torch.Tensor:
+        return torch.lt(left, right)
 
 
 class LeFactor(FilterFactor):
-    def compute(self, left: torch.Tensor, right: torch.Tensor) -> torch.Tensor:
-        return left.le(right)
+    def compute(self, left, right) -> torch.Tensor:
+        return torch.le(left, right)
+
+
+class GtFactor(FilterFactor):
+    def compute(self, left, right) -> torch.Tensor:
+        return torch.gt(left, right)
+
+
+class GeFactor(FilterFactor):
+    def compute(self, left, right) -> torch.Tensor:
+        return torch.ge(left, right)
 
 
 class EqFactor(FilterFactor):
-    def compute(self, left: torch.Tensor, right: torch.Tensor) -> torch.Tensor:
-        return left.eq(right)
+    def compute(self, left, right) -> torch.Tensor:
+        return torch.eq(left, right)
 
 
 class NeFactor(FilterFactor):
-    def compute(self, left: torch.Tensor, right: torch.Tensor) -> torch.Tensor:
-        return left.ne(right)
+    def compute(self, left, right) -> torch.Tensor:
+        return torch.ne(left, right)
 
