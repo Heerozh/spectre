@@ -16,12 +16,10 @@ Progress: 4/10  🔳🔳🔳🔳⬜⬜⬜⬜⬜⬜\
 
 spectre is a **GPU-accelerated Parallel** quantitative trading library, focused on **performance**.
 
-spectre is a **GPU Enabled Parallel** quantitative trading library,
-totally focused on **performance** and **clean**.
-
+  * Fast, really fast, see below [Benchmarks](#Chapter-III.-Benchmarks)
   * Pure python code
-  * Using **PyTorch** for parallel computation. So yes, spectre can return a `torch.Tensor` type, use it in PyTorch Model directly without any performance loss.
-  * zipline limiting pandas version at 0.22 for performance, spectre don't have this limitation.
+  * Using **PyTorch** for parallelize. And yes, spectre can return Factor as `torch.Tensor` type.
+  * zipline limits pandas version at 0.22 for performance purposes. spectre does not rely on it.
 
 [Under construction]
 
@@ -62,7 +60,17 @@ df
 
 [Under construction]
 
-## Chapter III. Benchmarking
+## Chapter III. Benchmarks
+
+My Machine：
+- i9-7900X @ 3.30GHz
+- DDR4 3800MHz
+- RTX 2080Ti Founders
+
+|                   |       spectre (CUDA)         |       spectre (CPU)          |       zipline         |
+|-------------------|------------------------------|------------------------------|-----------------------|
+|SMA100             | 0.70 s ± 14.6 ms (**2.73x**) | 1.28 s ± 7.02 ms (1.47x)     | 1.89 s ± 23.1 ms (1x) |
+
 
 |         |      SMA100      | Ratio | EMA50 (win=229)  | Ratio   | MACD(12,26,9)    | Ratio   |
 |---------|------------------|-------|------------------|---------|------------------|---------|
