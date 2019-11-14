@@ -35,6 +35,14 @@ class TestFactorLib(unittest.TestCase):
             assert_almost_equal(result_aapl[-_len:], _expected_aapl[-_len:], decimal=decimal)
             assert_almost_equal(result_msft[-_len:], _expected_msft[-_len:], decimal=decimal)
 
+        # test select no trading day
+        engine.add(spectre.factors.SMA(2), 'test')
+        self.assertRaisesRegex(AssertionError, "There is no data between.*",
+                               engine.run, '2019-01-01', '2019-01-01')
+        # test remove unused level bug:
+        self.assertRaises(KeyError, engine._dataframe.index.levels[0].get_loc,
+                          '2019-01-05 00:00:00+00:00')
+
         # test VWAP
         expected_aapl = [149.0790384, 147.3288365, 149.6858806, 151.9418349,
                          155.9166044, 157.0598718, 157.5146325, 155.9634716]

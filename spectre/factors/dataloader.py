@@ -15,11 +15,12 @@ class DataLoader:
         return self._ohlcv
 
     @classmethod
-    def _backward_date(cls, index, date, backward):
-        start_slice = index.get_loc(date, 'bfill')
-        start_slice = max(start_slice - backward, 0)
-        start_slice = index[start_slice]
-        return start_slice
+    def _backward_date(cls, index, start, end, backward):
+        start_loc = index.get_loc(start, 'bfill')
+        backward_loc = max(start_loc - backward, 0)
+        end_loc = index.get_loc(end, 'ffill')
+        assert end_loc >= start_loc, 'There is no data between `start` and `end` date.'
+        return index[backward_loc]
 
     # @staticmethod
     # @njit(parallel=True)
@@ -107,7 +108,8 @@ class CsvDirLoader(DataLoader):
 
     def _load_from_cache(self, start, end, backward):
         if self._cache[0] and start >= self._cache[0] and end <= self._cache[1]:
-            start_slice = self._backward_date(self._cache[2].index.levels[0], start, backward)
+            index = self._cache[2].index.levels[0]
+            start_slice = self._backward_date(index, start, end, backward)
             return self._adjust_prices(self._cache[2].loc[start_slice:end])
         else:
             return None
@@ -144,6 +146,8 @@ class CsvDirLoader(DataLoader):
             # causing extra row of nan to all others assets.
             calender = df.loc[(slice(None), self._calender), :].index.get_level_values(0)
             df = df[df.index.get_level_values(0).isin(calender)]
+            # if not remove will cause backward search get wrong result.
+            df.index = df.index.remove_unused_levels()
 
         times = df.index.get_level_values(0)
         self._cache = (times[0], times[-1], df)
@@ -203,8 +207,10 @@ class QuandlLoader(DataLoader):
         if self._calender:
             calender = df.loc[(slice(None), self._calender), :].index.get_level_values(0)
             df = df[df.index.get_level_values(0).isin(calender)]
+            df.index = df.index.remove_unused_levels()
         self._cache = df
 
     def load(self, start, end, backward: int) -> pd.DataFrame:
-        start_slice = self._backward_date(self._cache.index.levels[0], start, backward)
+        start_slice = self._backward_date(self._cache.index.levels[0], start, end, backward)
+        print(start_slice, end)
         return self._adjust_prices(self._cache.loc[start_slice:end])
