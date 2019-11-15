@@ -1,8 +1,8 @@
 import pandas as pd
+import numpy as np
 from os import path
 import glob
 from zipfile import ZipFile
-# from numba import jit, njit, prange, vectorize
 
 
 class DataLoader:
@@ -42,6 +42,7 @@ class DataLoader:
         # adjust price
         rtn = df[list(self._ohlcv[:4])].mul(price_multi, axis=0)
         rtn[self._ohlcv[4]] = df[self._ohlcv[4]].mul(vol_multi, axis=0)
+        rtn['time_cat_id'] = df['time_cat_id']
         # print(time.time() - s)
         return rtn
 
@@ -151,6 +152,13 @@ class CsvDirLoader(DataLoader):
 
         times = df.index.get_level_values(0)
         self._cache = (times[0], times[-1], df)
+
+        # pre time group id
+        unique_date = times.unique()
+        time_cat = dict(zip(unique_date, range(len(unique_date))))
+        cat = np.fromiter(map(lambda x: time_cat[x], times), dtype=np.int)
+        df['time_cat_id'] = cat
+
         return self._load_from_cache(start, end, backward)
 
 
@@ -186,6 +194,13 @@ class QuandlLoader(DataLoader):
         # drop raw dividend columns
         df.drop(['ex-dividend', 'split_ratio'], axis=1, inplace=True)
 
+        # pre time group id
+        date_index = df.index.get_level_values(0)
+        unique_date = date_index.unique()
+        time_cat = dict(zip(unique_date, range(len(unique_date))))
+        cat = np.fromiter(map(lambda x: time_cat[x], date_index), dtype=np.int)
+        df['time_cat_id'] = cat
+
         df.to_hdf(file + '.cache.hdf', 'WIKI_PRICES', format='table')  # complevel=1 slow 3x
         return df
 
@@ -212,5 +227,4 @@ class QuandlLoader(DataLoader):
 
     def load(self, start, end, backward: int) -> pd.DataFrame:
         start_slice = self._backward_date(self._cache.index.levels[0], start, end, backward)
-        print(start_slice, end)
         return self._adjust_prices(self._cache.loc[start_slice:end])

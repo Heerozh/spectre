@@ -55,18 +55,12 @@ class FactorEngine:
                                'please specify a new name by engine.add(factor, new_name)'
                                .format(name))
             self._factors[name] = factor
-            if factor.is_timegroup:
-                self._timegroup = True
 
     def set_filter(self, factor: Union[FilterFactor, None]) -> None:
         self._filter = factor
-        if factor.is_timegroup:
-            self._timegroup = True
 
-    def remove_all(self) -> None:
+    def remove_all_factors(self) -> None:
         self._factors = {}
-        self._filter = None
-        self._timegroup = None
 
     def to_cuda(self) -> None:
         self._device = torch.device('cuda')
@@ -74,7 +68,7 @@ class FactorEngine:
     def to_cpu(self) -> None:
         self._device = torch.device('cpu')
 
-    def _paper_tensor(self, start, end, max_backward):
+    def _prepare_tensor(self, start, end, max_backward):
         # todo if unchanging, return
         # Get data
         self._dataframe = self._loader.load(start, end, max_backward)
@@ -90,25 +84,19 @@ class FactorEngine:
         keys = torch.tensor(cat, device=self._device, dtype=torch.int32)
         self._assetgroup = ParallelGroupBy(keys)
 
-        if self._timegroup:
-            date_index = self._dataframe.index.get_level_values(0)
-            unique_date = date_index.unique()
-            time_cat = dict(zip(unique_date, range(len(unique_date))))
-            cat = np.fromiter(map(lambda x: time_cat[x], date_index), dtype=np.int)
-            keys = torch.tensor(cat, device=self._device, dtype=torch.int32)
-            self._timegroup = ParallelGroupBy(keys)
+        # time group prepare
+        cat = self._dataframe.time_cat_id.values
+        keys = torch.tensor(cat, device=self._device, dtype=torch.int32)
+        self._timegroup = ParallelGroupBy(keys)
 
     def get_tensor_groupby_asset_(self, column) -> torch.Tensor:
         # todo cache data with column prevent double copying
         series = self._dataframe[column]
-        data = torch.tensor(series.values).pin_memory()
+        data = torch.tensor(series.values).pin_memory().to(self._device, non_blocking=True)
         data = self._assetgroup.split(data)
-        return data.to(self._device, non_blocking=True)
+        return data
 
     def regroup_by_time_(self, data: Union[torch.Tensor, pd.Series]) -> torch.Tensor:
-        if not self._timegroup:
-            raise AttributeError('Factor that requires time group data,  '
-                                 'must first set `factor.timegroup` to `True`')
         if isinstance(data, pd.Series):
             data = torch.tensor(data.values, device=self._device)
         else:
@@ -159,7 +147,7 @@ class FactorEngine:
         if self._filter:
             max_backward = max(max_backward, self._filter.get_total_backward_())
         # Get data
-        self._paper_tensor(start, end, max_backward)
+        self._prepare_tensor(start, end, max_backward)
 
         # ready to compute
         if self._filter:

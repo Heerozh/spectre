@@ -46,7 +46,7 @@ class TestCustomFactorLib(unittest.TestCase):
         engine.add(TestFactor2(), 'test2')
         self.assertRaisesRegex(ValueError, "The return data shape.*test2.*",
                                engine.run, '2019-01-11', '2019-01-15')
-        engine.remove_all()
+        engine.remove_all_factors()
         test_f1 = TestFactor()
 
         class TestFactor2(spectre.factors.CustomFactor):
