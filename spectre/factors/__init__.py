@@ -13,6 +13,7 @@ from .factor import (
     BaseFactor,
     CustomFactor,
     DataFactor,
+    RankFactor,
 )
 
 from .basic import (

@@ -3,6 +3,7 @@ from .factor import BaseFactor, DataFactor, FilterFactor
 from .dataloader import DataLoader
 from ..parallel import ParallelGroupBy
 import pandas as pd
+import numpy as np
 import torch
 
 
@@ -21,7 +22,8 @@ class FactorEngine:
     def __init__(self, loader: DataLoader) -> None:
         self._loader = loader
         self._dataframe = None
-        self._datagroup = None
+        self._assetgroup = None
+        self._timegroup = None
         self._factors = {}
         self._filter = None
         self._device = torch.device('cpu')
@@ -41,12 +43,18 @@ class FactorEngine:
                                'please specify a new name by engine.add(factor, new_name)'
                                .format(name))
             self._factors[name] = factor
+            if factor.is_timegroup:
+                self._timegroup = True
 
     def set_filter(self, factor: Union[FilterFactor, None]) -> None:
         self._filter = factor
+        if factor.is_timegroup:
+            self._timegroup = True
 
     def remove_all(self) -> None:
         self._factors = {}
+        self._filter = None
+        self._timegroup = None
 
     def get_device(self):
         return self._device
@@ -56,13 +64,6 @@ class FactorEngine:
 
     def to_cpu(self) -> None:
         self._device = torch.device('cpu')
-
-    def get_data_tensor_(self, column) -> torch.Tensor:
-        # todo cache data with column prevent double copying
-        series = self._dataframe[column]
-        data = torch.tensor(series.values).pin_memory()
-        data = self._datagroup.split(data)
-        return data.to(self._device, non_blocking=True)
 
     def _paper_tensor(self, start, end, max_backward):
         # todo if unchanging, return
@@ -78,7 +79,43 @@ class FactorEngine:
             "In the df returned by DateLoader, the asset index must ordered categorical."
         cat = self._dataframe .index.get_level_values(1).codes
         key = torch.tensor(cat, device=self._device, dtype=torch.int32)
-        self._datagroup = ParallelGroupBy(key)
+        self._assetgroup = ParallelGroupBy(key)
+
+        if self._timegroup:
+            date_index = self._dataframe.index.get_level_values(0)
+            unique_date = date_index.unique()
+            time_cat = dict(zip(unique_date, range(len(unique_date))))
+            cat = np.fromiter(map(lambda x: time_cat[x], date_index), dtype=np.int)
+            key = torch.tensor(cat, device=self._device, dtype=torch.int32)
+            self._timegroup = ParallelGroupBy(key)
+
+    def get_tensor_groupby_asset_(self, column) -> torch.Tensor:
+        # todo cache data with column prevent double copying
+        series = self._dataframe[column]
+        data = torch.tensor(series.values).pin_memory()
+        data = self._assetgroup.split(data)
+        return data.to(self._device, non_blocking=True)
+
+    def regroup_by_time_(self, data: torch.Tensor) -> torch.Tensor:
+        if not self._timegroup:
+            raise AttributeError('Factor that requires time group data,  '
+                                 'must first set `factor.timegroup` to `True`')
+        data = self._assetgroup.revert(data, 'regroup_by_time_')
+        data = self._timegroup.split(data)
+        return data
+
+    def regroup_by_asset_(self, data: torch.Tensor) -> torch.Tensor:
+        data = self._timegroup.revert(data, 'regroup_by_asset_')
+        data = self._assetgroup.split(data)
+        return data
+
+    def _compute_and_revert(self, f: BaseFactor, name) -> Union[np.array, pd.Series]:
+        """Returning pd.Series will cause very poor performance, please avoid it at 99% costs"""
+        data = f.compute_(None)
+        if f.is_timegroup:
+            return self._timegroup.revert(data, name).cpu().numpy()
+        else:
+            return self._assetgroup.revert(data, name).cpu().numpy()
 
     def run(self, start: Union[str, pd.Timestamp], end: Union[str, pd.Timestamp]) -> pd.DataFrame:
         """
@@ -93,6 +130,7 @@ class FactorEngine:
         OHLCV.low.inputs = (self._loader.get_ohlcv_names()[2],)
         OHLCV.close.inputs = (self._loader.get_ohlcv_names()[3],)
         OHLCV.volume.inputs = (self._loader.get_ohlcv_names()[4],)
+        # todo: 1 刚启动时很慢的问题，2数据加载cache功能，3，快速adjustment
 
         # Calculate data that requires backward in tree
         max_backward = max([f.get_total_backward_() for f in self._factors.values()])
@@ -118,14 +156,13 @@ class FactorEngine:
 
         # compute factors from cpu or read cache
         ret = pd.DataFrame(index=self._dataframe.index.copy())
-        ret = ret.assign(**{c: self._datagroup.revert(f.compute_(None), c)
+        ret = ret.assign(**{c: self._compute_and_revert(f, c)
                             for c, f in self._factors.items()})
 
         # Remove filter False rows
         if self._filter:
-            filter_data = self._filter.compute_(None)
-            filter_data = self._datagroup.revert(filter_data, 'filter')
-            filter_data = pd.Series(filter_data, index=ret.index)
+            filter_data = self._compute_and_revert(self._filter, 'filter')
+            # filter_data = pd.Series(filter_data, index=self._dataframe.index)
             ret = ret[filter_data]
 
         return ret.loc[start:end]

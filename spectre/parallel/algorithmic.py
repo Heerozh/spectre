@@ -1,4 +1,3 @@
-from typing import Tuple, List
 import torch
 import numpy as np
 
@@ -35,8 +34,8 @@ class ParallelGroupBy:
         self._data_shape = (groups, width)
 
     def split(self, data: torch.Tensor) -> torch.Tensor:
-        # split
-        ret = data.new_zeros((self._groups, self._width))
+        # todo 如果这里是瓶颈需要变快的话，那就先生成index让take来做
+        ret = data.new_full((self._groups, self._width), np.nan)
         for start, end, i in zip(self._boundary[:-1], self._boundary[1:], range(self._groups)):
             ret[i, 0:(end - start)] = torch.index_select(data, 0, self._sorted_indices[start:end])
         return ret
@@ -45,7 +44,7 @@ class ParallelGroupBy:
         if tuple(split_data.shape) != self._data_shape:
             raise ValueError('The return data shape{} of Factor `{}` must same as input{}'
                              .format(tuple(split_data.shape), dbg_str, self._data_shape))
-        return torch.take(split_data, self._inverse_indices).cpu()
+        return torch.take(split_data, self._inverse_indices)
 
 
 class Rolling:
@@ -58,6 +57,9 @@ class Rolling:
 
     def sum(self, axis=2):
         return self.x.sum(dim=axis)
+
+    def mean(self, axis=2):
+        return self.sum(axis=axis) / self.win
 
     def std(self, unbiased=True, axis=2):
         """

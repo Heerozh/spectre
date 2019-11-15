@@ -1,9 +1,14 @@
 from abc import ABC
 from typing import Optional, Sequence, Union
+import numpy as np
+import pandas as pd
 import torch
 
 
 class BaseFactor:
+    is_timegroup = False  # indicates inputs and return value of this factor are grouped by time
+    _engine = None
+
     # --------------- overload ops ---------------
 
     def __add__(self, other):
@@ -49,34 +54,60 @@ class BaseFactor:
     # --------------- helper functions ---------------
 
     def top(self, n):
+        """This method will interrupt the parallelism of cuda, please use it at the last step."""
         return self.rank(ascending=False) <= n
 
     def bottom(self, n):
+        """This method will interrupt the parallelism of cuda, please use it at the last step."""
         return self.rank(ascending=True) <= n
 
-    def rank(self, method='first', ascending=True):
+    def rank(self, ascending=True):
+        """This method will interrupt the parallelism of cuda, please use it at the last step."""
         fact = RankFactor(inputs=(self,))
-        fact.method = method
+        # fact.method = method
         fact.ascending = ascending
         return fact
 
     def zscore(self):
+        """This method will interrupt the parallelism of cuda, please use it at the last step."""
         fact = ZScoreFactor(inputs=(self,))
         return fact
 
     def demean(self, groupby=None):
-        """groupby={'name':group_id}"""
+        """
+        This method will interrupt the parallelism of cuda, please use it at the last step.
+        groupby={'name':group_id}
+        """
         fact = DemeanFactor(inputs=(self,))
         fact.groupby = groupby
         return fact
 
     # --------------- main methods ---------------
 
+    def _regroup_by_time(self, data):
+        return self._engine.regroup_by_time_(data)
+
+    def _regroup_by_asset(self, data):
+        return self._engine.regroup_by_asset_(data)
+
     def get_total_backward_(self) -> int:
         raise NotImplementedError("abstractmethod")
 
+    # def _unstack(self, data: torch.Tensor) -> torch.Tensor:
+    #     s = self._engine.revert_to_series_(data)
+    #     self._unstack_df = s.unstack(level=1)
+    #     return data.new_tensor(self._unstack_df.values.T)
+    #
+    # def _stack(self, data: torch.Tensor) -> torch.Tensor:
+    #     df = self._unstack_df
+    #     self._unstack_df = None
+    #     data = data.cpu().numpy().astype(np.float).T
+    #     df[~df.isnull()] = data
+    #     # 不行，还是会报长度不符合的错误，原因是如果原来有数据，计算后变nan，那么stack后就是0了
+    #     return df.stack().values
+
     def pre_compute_(self, engine, start, end) -> None:
-        raise NotImplementedError("abstractmethod")
+        self._engine = engine
 
     def compute_(self, stream: Union[torch.cuda.Stream, None]) -> torch.Tensor:
         raise NotImplementedError("abstractmethod")
@@ -90,10 +121,12 @@ class BaseFactor:
 
 
 class CustomFactor(BaseFactor):
-    win = 1
-    inputs = None
+    # settable member variables
+    win = 1         # determine include how many previous data
+    inputs = None   # any values in `inputs` list will pass to `compute` function by order
+    _min_win = None # assert when `win` less than `_min_win`, prevent user error.
 
-    _min_win = None
+    # internal member variables
     _cache = None
     _cache_hit = 0
 
@@ -108,6 +141,7 @@ class CustomFactor(BaseFactor):
         """
         Called when engine run but before compute.
         """
+        super().pre_compute_(engine, start, end)
         self._cache = None
         self._cache_hit = 0
         if self.inputs:
@@ -132,6 +166,11 @@ class CustomFactor(BaseFactor):
             for upstream in self.inputs:
                 if isinstance(upstream, BaseFactor):
                     upstream_out = upstream.compute_(self_stream)
+                    # 如果input是timegroup，且自己不是，就convert到asset group
+                    if upstream.is_timegroup and not self.is_timegroup:
+                        upstream_out = self._regroup_by_asset(upstream_out)
+                    elif not upstream.is_timegroup and self.is_timegroup:
+                        upstream_out = self._regroup_by_time(upstream_out)
                     inputs.append(upstream_out)
                 else:
                     inputs.append(upstream)
@@ -188,7 +227,8 @@ class DataFactor(BaseFactor):
         self._data = None
 
     def pre_compute_(self, engine, start, end) -> None:
-        self._data = engine.get_data_tensor_(self.inputs[0])
+        super().pre_compute_(engine, start, end)
+        self._data = engine.get_tensor_groupby_asset_(self.inputs[0])
 
     def compute_(self, stream: Union[torch.cuda.Stream, None]) -> torch.Tensor:
         return self._data
@@ -201,15 +241,29 @@ class FilterFactor(CustomFactor, ABC):
     pass
 
 
+class TimeGroupFactor(CustomFactor, ABC):
+    """Class that inputs and return value is grouped by time"""
+    is_timegroup = True
+
+
 # --------------- helper factors ---------------
 
 
-class RankFactor(CustomFactor):
+class RankFactor(TimeGroupFactor):
     method = 'first'
     ascending = True,
 
     def compute(self, data: torch.Tensor) -> torch.Tensor:
-        return data.rank(axis=1, method=self.method, ascending=self.ascending)
+        # todo: 测试下zipline在0.23版本下是否确实慢了
+        if not self.ascending:
+            data = data.clone()
+            data[torch.isnan(data)] = -np.inf
+        _, indices = torch.sort(data, dim=1, descending=not self.ascending)
+        _, rank = torch.sort(indices, dim=1)
+        return torch.take(torch.arange(1, data.shape[0]+1, device=data.device), rank)
+        # 试一下直接拿series来groupby做
+        # s = self._revert_to_series(data)
+        # return s.groupby(level=0).rank(method=self.method, ascending=self.ascending)
 
 
 class DemeanFactor(CustomFactor):
