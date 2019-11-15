@@ -1,7 +1,6 @@
 import torch
 import numpy as np
 
-
 # ----------- group -----------
 
 class ParallelGroupBy:
@@ -25,19 +24,22 @@ class ParallelGroupBy:
         # keep inverse_indices in GPU for sort
         inverse_indices = inverse_indices.flatten().to(keys.device, non_blocking=True)
         inverse_indices = torch.sort(inverse_indices)[1][:n]
+        # for fast split
+        take_indices = sorted_indices.new_full((groups, width), -1)
+        for start, end, i in zip(boundary[:-1], boundary[1:], range(groups)):
+            take_indices[i, 0:(end - start)] = sorted_indices[start:end]
+        take_indices = take_indices.to(keys.device, non_blocking=True)
         # class members
         self._boundary = boundary
-        self._sorted_indices = sorted_indices.cpu()
+        self._sorted_indices = take_indices
         self._inverse_indices = inverse_indices
         self._width = width
         self._groups = groups
         self._data_shape = (groups, width)
 
     def split(self, data: torch.Tensor) -> torch.Tensor:
-        # todo 如果这里是瓶颈需要变快的话，那就先生成index让take来做
-        ret = data.new_full((self._groups, self._width), np.nan)
-        for start, end, i in zip(self._boundary[:-1], self._boundary[1:], range(self._groups)):
-            ret[i, 0:(end - start)] = torch.index_select(data, 0, self._sorted_indices[start:end])
+        ret = torch.take(data, self._sorted_indices)
+        ret[self._sorted_indices == -1] = np.nan
         return ret
 
     def revert(self, split_data: torch.Tensor, dbg_str='None') -> torch.Tensor:

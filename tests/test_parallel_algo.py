@@ -12,9 +12,9 @@ class TestParallelAlgorithm(unittest.TestCase):
 
         groupby = spectre.parallel.ParallelGroupBy(test_k)
         groups = groupby.split(test_x)
-        self.assertEqual(groups[0].tolist(), [1.,   2.,  3.,  4.,  5.,  0.])
-        self.assertEqual(groups[1].tolist(), [10., 11., 12., 13., 14., 15.])
-        self.assertEqual(groups[2].tolist(), [20., 21.,  0.,  0.,  0.,  0.])
+        assert_array_equal([1.,   2.,  3.,  4.,  5.,  np.nan], groups[0].tolist())
+        assert_array_equal([10., 11., 12., 13., 14., 15.], groups[1].tolist())
+        assert_array_equal([20., 21., np.nan, np.nan, np.nan, np.nan], groups[2].tolist())
 
         revert_x = groupby.revert(groups)
         assert_array_equal(revert_x.tolist(), test_x.tolist())
