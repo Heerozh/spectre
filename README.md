@@ -16,7 +16,7 @@ Progress: 4/10  🔳🔳🔳🔳⬜⬜⬜⬜⬜⬜\
 
 spectre is a **GPU-accelerated Parallel** quantitative trading library, focused on **performance**.
 
-  * Fast, really fast, see below [Benchmarks](#Chapter-III.-Benchmarks)
+  * Fast, really fast, see below [Benchmarks](#chapter-iii-benchmarks)
   * Pure python code
   * Using **PyTorch** for parallelize. And yes, spectre can return Factor as `torch.Tensor` type.
   * zipline limits pandas version at 0.22 for performance purposes. spectre does not rely on it.
@@ -63,21 +63,29 @@ df
 ## Chapter III. Benchmarks
 
 My Machine：
-- i9-7900X @ 3.30GHz
+- i9-7900X @ 3.30GHz, 20 Core
 - DDR4 3800MHz
 - RTX 2080Ti Founders
 
 |                   |       spectre (CUDA)         |       spectre (CPU)          |       zipline         |
 |-------------------|------------------------------|------------------------------|-----------------------|
-|SMA100             | 0.70 s ± 14.6 ms (**2.73x**) | 1.28 s ± 7.02 ms (1.47x)     | 1.89 s ± 23.1 ms (1x) |
+|SMA100 (Time)      | 0.70 s ± ??.? ms (**2.73x**) | 1.28 s ± 7.02 ms (1.47x)     | 1.89 s ± 23.1 ms (1x) |
+|SMA100 (CPU Usage) | ?% GPU / 5% CPU              | 35%                          | 5%                    |
 
 
-|         |      SMA100      | Ratio | EMA50 (win=229)  | Ratio   | MACD(12,26,9)    | Ratio   |
-|---------|------------------|-------|------------------|---------|------------------|---------|
-|zipline  | 1.89 s ± 23.1 ms |   1   | 5.45 s ± 14.6 ms |	  1   | 5.28 s ± 14 ms   |	   1   |
-|spectre  | 1.79 s ± 7.02 ms | 1.06x | 2.06 s ± 7.68 ms |**2.65x**| 3.05 s ± 24.8 ms |**1.73x**|
+0.01 cpu data:
 
-Using quandl data, compute factor between '2014-01-02' to '2016-12-30'
+|                   |       spectre (CPU)          |       zipline         |
+|-------------------|------------------------------|-----------------------|
+|EMA50 (win=229)    | 2.06 s ± 7.68 ms (**2.65x**) | 5.45 s ± 14.6 ms (1x) |
+|MACD(12,26,9)      | 3.05 s ± 24.8 ms (**1.73x**) | 5.28 s ± 14.0 ms (1x) |
+
+<!--
+todo
+|Below [Full Example](#chapter-iv-full-example)| 2.06 s ± 7.68 ms (**2.65x**) | 3.05 s ± 24.8 ms (**1.73x**) | 5.28 s ± 14.0 ms (1x) |
+!-->
+
+Using quandl data, compute factor between '2014-01-02' to '2016-12-30' 
 
 As of now (unfinished)
 
