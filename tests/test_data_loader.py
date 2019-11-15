@@ -33,7 +33,7 @@ class TestDataLoaderLib(unittest.TestCase):
         # test value
         df = loader.load(start, end, 0)
         self._assertDFFirstLastEqual(df.loc[(slice(None), 'AAPL'), :], 'close', 160.35, 158.09)
-        self._assertDFFirstLastEqual(df.loc[(slice(None), 'MSFT'), :], 'close', 103.45, 105.36)
+        self._assertDFFirstLastEqual(df.loc[(slice(None), 'MSFT'), :], 'close', 100.1, 105.36)
         self._assertDFFirstLastEqual(df.loc[(slice('2019-01-11', '2019-01-12'), 'MSFT'), :],
                                      'close', 104.5, 104.5)
         start, end = pd.Timestamp('2019-01-11', tz='UTC'), pd.Timestamp('2019-01-12', tz='UTC')
@@ -71,5 +71,10 @@ class TestDataLoaderLib(unittest.TestCase):
             [37.561955, 37.741201, 37.313003, 37.731243, 11557826.0],
         ])
         np.testing.assert_almost_equal(df.values[:10], expected, decimal=5)
+
+    def test_QuandlLoader(self):
+        # loader = spectre.factors.QuandlLoader(
+        #     '../../historical_data/us/prices/quandl/WIKI_PRICES.zip')
+        pass
 
 

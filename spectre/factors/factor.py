@@ -1,8 +1,8 @@
 from abc import ABC
 from typing import Optional, Sequence, Union
 import numpy as np
-import pandas as pd
 import torch
+from ..parallel import nanmean, nanstd
 
 
 class BaseFactor:
@@ -78,7 +78,11 @@ class BaseFactor:
         This method will interrupt the parallelism of cuda, please use it at the last step.
         groupby={'name':group_id}
         """
+        # assets = self._engine.get_dataframe().index.get_level_values(1)
+        # keys = np.fromiter(map(lambda x: groupby[x], assets), dtype=np.int)
         fact = DemeanFactor(inputs=(self,))
+        # keys = torch.tensor(keys, device=self._engine.get_device(), dtype=torch.int32)
+        # fact.groupby = ParallelGroupBy(keys)
         fact.groupby = groupby
         return fact
 
@@ -92,19 +96,6 @@ class BaseFactor:
 
     def get_total_backward_(self) -> int:
         raise NotImplementedError("abstractmethod")
-
-    # def _unstack(self, data: torch.Tensor) -> torch.Tensor:
-    #     s = self._engine.revert_to_series_(data)
-    #     self._unstack_df = s.unstack(level=1)
-    #     return data.new_tensor(self._unstack_df.values.T)
-    #
-    # def _stack(self, data: torch.Tensor) -> torch.Tensor:
-    #     df = self._unstack_df
-    #     self._unstack_df = None
-    #     data = data.cpu().numpy().astype(np.float).T
-    #     df[~df.isnull()] = data
-    #     # 不行，还是会报长度不符合的错误，原因是如果原来有数据，计算后变nan，那么stack后就是0了
-    #     return df.stack().values
 
     def pre_compute_(self, engine, start, end) -> None:
         self._engine = engine
@@ -206,9 +197,16 @@ class CustomFactor(BaseFactor):
         Abstractmethod, do the actual factor calculation here.
         Unlike zipline, here calculate all data at once. Does not guarantee Look-Ahead Bias.
         Data structure:
-                | index    | stock1 | ... | stockN |
+        groupby asset(default):
+                | asset id | price(t+0) | ... | price(t+N) | price(t+N+1) | ... | price(t+Max) |
+                |----------|------------|-----|------------|--------------|-----|--------------|
+                |     0    | 123.45     | ... | 234.56     | NaN          | ... | Nan          |
+            The price is sorted by tick, not by time, so there will be no NaN values in
+            the middle of prices, NaNs all put at the end of the row.
+        groupby time(set is_timegroup = True):
+                | time id  | stock1 | ... | stockN |
                 |----------|--------|-----|--------|
-                | datetime | input  | ... | input  |
+                |     0    | 100.00 | ... | 200.00 |
         :param inputs: All input factors data, including all data from `start(minus win)` to `end`.
         :return: your factor values, length should be same as the inputs`
         """
@@ -266,23 +264,27 @@ class RankFactor(TimeGroupFactor):
         # return s.groupby(level=0).rank(method=self.method, ascending=self.ascending)
 
 
-class DemeanFactor(CustomFactor):
+class DemeanFactor(TimeGroupFactor):
     groupby = None
 
     # todo 可以iex ref-data/sectors 先获取行业列表，然后Collections获取股票？
     def compute(self, data: torch.Tensor) -> torch.Tensor:
         """Recommended to set groupby, otherwise you only need use rank."""
         if self.groupby:
-            g = data.groupby(self.groupby, axis=1)
-            return g.transform(lambda x: x - x.mean())
+            # If we use torch here, we must first group by time, then group each line by sectors,
+            # the efficiency is low, so use pandas directly.
+            s = self._engine.revert_to_series_(data, self.is_timegroup)
+            g = s.groupby([self.groupby, 'date'], level=1)
+            ret = g.transform(lambda x: x - x.mean())
+            return self._engine.regroup_by_time_(ret)
         else:
-            return data.sub(data.mean(axis=1), axis=0)
+            return data - nanmean(data)[:, None]
 
 
-class ZScoreFactor(CustomFactor):
+class ZScoreFactor(TimeGroupFactor):
 
     def compute(self, data: torch.Tensor) -> torch.Tensor:
-        return data.sub(data.mean(axis=1), axis=0).div(data.std(axis=1), axis=0)
+        return (data - nanmean(data)[:, None]) / nanstd(data)[:, None]
 
 
 # --------------- op factors ---------------

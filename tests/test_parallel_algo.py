@@ -29,3 +29,12 @@ class TestParallelAlgorithm(unittest.TestCase):
         s = spectre.parallel.Rolling(x, 3).sum()
         assert_almost_equal(s.numpy(), expected.numpy(), decimal=4)
 
+    def test_nan(self):
+        data = [[1, 2, 1], [4, np.nan, 2], [7, 8, 1]]
+        result = spectre.parallel.nanmean(torch.tensor(data, dtype=torch.float))
+        expected = np.nanmean(data, axis=1)
+        assert_almost_equal(result, expected, decimal=6)
+
+        result = spectre.parallel.nanstd(torch.tensor(data, dtype=torch.float))
+        expected = np.nanstd(data, axis=1)
+        assert_almost_equal(result, expected, decimal=6)

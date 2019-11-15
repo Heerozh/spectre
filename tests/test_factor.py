@@ -46,7 +46,7 @@ class TestFactorLib(unittest.TestCase):
         # test VWAP
         expected_aapl = [149.0790384, 147.3288365, 149.6858806, 151.9418349,
                          155.9166044, 157.0598718, 157.5146325, 155.9634716]
-        expected_msft = [101.6759377, 102.5480467, 103.2112277, 104.2766662,
+        expected_msft = [102.5066541, 102.5480467, 103.2112277, 104.2766662,
                          104.7779232, 104.8471192, 104.2296381, 105.3194997]
         test_expected(spectre.factors.VWAP(3), expected_aapl, expected_msft, 8)
 
@@ -54,39 +54,46 @@ class TestFactorLib(unittest.TestCase):
         expected_aapl = [9.44651864548e+09, 1.027077776041e+10, 7.946943447e+09, 7.33979891063e+09,
                          6.43094032063e+09, 5.70460092069e+09, 5.129334268727e+09,
                          4.747847957413e+09]
-        expected_msft = [4.25596116072e+09, 4.337221881827e+09, 3.967296370427e+09,
-                         3.551354941067e+09, 3.345411315747e+09, 3.206986059747e+09,
-                         3.04420074928e+09, 3.167715409797e+09]
+        expected_msft = [4222040618.907, 4337221881.827, 3967296370.427, 3551354941.067,
+                         3345411315.747, 3206986059.747, 3044200749.280, 3167715409.797]
         test_expected(spectre.factors.AverageDollarVolume(3), expected_aapl, expected_msft, 8, 2)
 
         # AnnualizedVolatility
         expected_aapl = [0.3141548, 0.5426118, 0.7150832, 0.7475805, 0.1710541, 0.1923727,
                          0.1027987, 0.5697543, 0.5436627, 0.4423527]
-        expected_msft = [0.1853587, 0.2104354, 0.2618721, 0.1375558, 0.2109973, 0.2358327,
-                         0.2022665, 0.3088709, 0.2350881, 0.5204212]
+        expected_msft = [0.189534377, 0.263729893, 0.344381405, 0.210997343, 0.235832738,
+                         0.202266499, 0.308870901, 0.235088127, 0.520421161, ]
         test_expected(spectre.factors.AnnualizedVolatility(3), expected_aapl, expected_msft, 10)
 
         # test rank
         _expected_aapl = [2.]*10
-        _expected_msft = [1]*10
+        _expected_aapl[6] = 1  # because msft was nan this day
+        _expected_msft = [1]*9
         test_expected(spectre.factors.OHLCV.close.rank(),
+                      _expected_aapl, _expected_msft, total_rows)
+        _expected_aapl = [1.]*10
+        _expected_msft = [2]*9
+        test_expected(spectre.factors.OHLCV.close.rank(ascending=False),
                       _expected_aapl, _expected_msft, total_rows)
 
         # test zscore
-        _expected_aapl = [0.707106781, 0.707106781, 0.707106781, 0.707106781, 0.707106781,
-                          0.707106781, 0.707106781, 0.707106781, 0.707106781, 0.707106781]
-        _expected_msft = -np.array(_expected_aapl)
+        _expected_aapl = [1.]*10
+        # aapl has prices data, but we only have two stocks, so one data zscore = 0/0 = nan
+        _expected_aapl[6] = np.nan
+        _expected_msft = [-1.]*9
         test_expected(spectre.factors.OHLCV.close.zscore(),
                       _expected_aapl, _expected_msft, total_rows)
 
         # test demean
-        _expected_aapl = [28.625, 21.965, 23.36, 22.305, 24.175, 25.405, 27.5, 25.245, 26.805,
-                          24.045]
+        _expected_aapl = [28.655, 21.475, 22.305, 22.9, 23.165, 25.015, 0, 25.245, 26.805, 24.045]
         _expected_msft = -np.array(_expected_aapl)
+        _expected_msft = np.delete(_expected_msft, 6)
         test_expected(spectre.factors.OHLCV.close.demean(groupby={'AAPL': 1, 'MSFT': 1}),
-                      _expected_aapl, _expected_msft, total_rows)
+                      _expected_aapl, _expected_msft, total_rows, decimal=3)
         test_expected(spectre.factors.OHLCV.close.demean(groupby={'AAPL': 1, 'MSFT': 2}),
-                      [0]*10, [0]*10, total_rows)
+                      [0]*10, [0]*9, total_rows)
+        test_expected(spectre.factors.OHLCV.close.demean(),
+                      _expected_aapl, _expected_msft, total_rows)
 
         import talib  # pip install --no-deps d:\doc\Download\TA_Lib-0.4.17-cp37-cp37m-win_amd64.whl
 
@@ -219,12 +226,20 @@ class TestFactorLib(unittest.TestCase):
         assert_almost_equal(result_aapl, expected_aapl)
         assert_almost_equal(result_msft, expected_msft)
 
+    def test_cuda(self):
+        loader = spectre.factors.CsvDirLoader(
+            './data/daily/', ohlcv=('uOpen', 'uHigh', 'uLow', 'uClose', 'uVolume'),
+            index_col='date', parse_dates=True,
+        )
+        engine = spectre.factors.FactorEngine(loader)
+        engine.to_cuda()
+        universe = spectre.factors.OHLCV.volume > 1
+        f1 = spectre.factors.OHLCV.volume + 1
+        f2 = f1 + 1
+        engine.add(f2, 'f2')
+        engine.add(spectre.factors.OHLCV.volume + 2, 'fv')
+        engine.set_filter(universe)
+        result = engine.run("2019-01-01", "2019-01-15")
 
-    # def test_cuda_factors(self):
-    #     spectre.to_cuda()
-    #     self.test_factors()
-    #     pass
+        assert_array_equal(result.f2, result.fv)
 
-
-if __name__ == '__main__':
-    unittest.main()

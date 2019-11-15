@@ -28,6 +28,18 @@ class FactorEngine:
         self._filter = None
         self._device = torch.device('cpu')
 
+    def get_dataframe_(self):
+        return self._dataframe
+
+    def get_assetgroup_(self):
+        return self._assetgroup
+
+    def get_timegroup_(self):
+        return self._timegroup
+
+    def get_device(self):
+        return self._device
+
     def add(self,
             factor: Union[Iterable[BaseFactor], BaseFactor],
             name: Union[Iterable[str], str]) -> None:
@@ -56,9 +68,6 @@ class FactorEngine:
         self._filter = None
         self._timegroup = None
 
-    def get_device(self):
-        return self._device
-
     def to_cuda(self) -> None:
         self._device = torch.device('cuda')
 
@@ -77,17 +86,17 @@ class FactorEngine:
             "In the df returned by DateLoader, the date index must be UTC timezone."
         assert self._dataframe.index.levels[-1].ordered, \
             "In the df returned by DateLoader, the asset index must ordered categorical."
-        cat = self._dataframe .index.get_level_values(1).codes
-        key = torch.tensor(cat, device=self._device, dtype=torch.int32)
-        self._assetgroup = ParallelGroupBy(key)
+        cat = self._dataframe.index.get_level_values(1).codes
+        keys = torch.tensor(cat, device=self._device, dtype=torch.int32)
+        self._assetgroup = ParallelGroupBy(keys)
 
         if self._timegroup:
             date_index = self._dataframe.index.get_level_values(0)
             unique_date = date_index.unique()
             time_cat = dict(zip(unique_date, range(len(unique_date))))
             cat = np.fromiter(map(lambda x: time_cat[x], date_index), dtype=np.int)
-            key = torch.tensor(cat, device=self._device, dtype=torch.int32)
-            self._timegroup = ParallelGroupBy(key)
+            keys = torch.tensor(cat, device=self._device, dtype=torch.int32)
+            self._timegroup = ParallelGroupBy(keys)
 
     def get_tensor_groupby_asset_(self, column) -> torch.Tensor:
         # todo cache data with column prevent double copying
@@ -96,18 +105,31 @@ class FactorEngine:
         data = self._assetgroup.split(data)
         return data.to(self._device, non_blocking=True)
 
-    def regroup_by_time_(self, data: torch.Tensor) -> torch.Tensor:
+    def regroup_by_time_(self, data: Union[torch.Tensor, pd.Series]) -> torch.Tensor:
         if not self._timegroup:
             raise AttributeError('Factor that requires time group data,  '
                                  'must first set `factor.timegroup` to `True`')
-        data = self._assetgroup.revert(data, 'regroup_by_time_')
+        if isinstance(data, pd.Series):
+            data = torch.tensor(data.values, device=self._device)
+        else:
+            data = self._assetgroup.revert(data, 'regroup_by_time_')
         data = self._timegroup.split(data)
         return data
 
-    def regroup_by_asset_(self, data: torch.Tensor) -> torch.Tensor:
-        data = self._timegroup.revert(data, 'regroup_by_asset_')
+    def regroup_by_asset_(self, data: Union[torch.Tensor, pd.Series]) -> torch.Tensor:
+        if isinstance(data, pd.Series):
+            data = torch.tensor(data.values, device=self._device)
+        else:
+            data = self._timegroup.revert(data, 'regroup_by_asset_')
         data = self._assetgroup.split(data)
         return data
+
+    def revert_to_series_(self, data: torch.Tensor, is_timegroup: bool) -> pd.Series:
+        if is_timegroup:
+            ret = self._timegroup.revert(data)
+        else:
+            ret = self._assetgroup.revert(data)
+        return pd.Series(ret, index=self._dataframe.index)
 
     def _compute_and_revert(self, f: BaseFactor, name) -> Union[np.array, pd.Series]:
         """Returning pd.Series will cause very poor performance, please avoid it at 99% costs"""
@@ -162,7 +184,6 @@ class FactorEngine:
         # Remove filter False rows
         if self._filter:
             filter_data = self._compute_and_revert(self._filter, 'filter')
-            # filter_data = pd.Series(filter_data, index=self._dataframe.index)
             ret = ret[filter_data]
 
         return ret.loc[start:end]

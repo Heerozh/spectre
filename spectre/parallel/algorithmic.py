@@ -6,10 +6,10 @@ import numpy as np
 
 class ParallelGroupBy:
     """Fast parallel group by"""
-    def __init__(self, key: torch.Tensor):
-        n = key.shape[0]
+    def __init__(self, keys: torch.Tensor):
+        n = keys.shape[0]
         # sort by key (keep key in GPU device)
-        relative_key = key + torch.arange(0, n, device=key.device).double() / n  # todo test double float performance difference
+        relative_key = keys + torch.arange(0, n, device=keys.device).double() / n  # todo test double float performance difference
         sorted_keys, sorted_indices = torch.sort(relative_key)
         sorted_keys, sorted_indices = sorted_keys.cpu().int(), sorted_indices.cpu()
         # get group boundary
@@ -23,7 +23,7 @@ class ParallelGroupBy:
         for start, end, i in zip(boundary[:-1], boundary[1:], range(groups)):
             inverse_indices[i, 0:(end-start)] = sorted_indices[start:end]
         # keep inverse_indices in GPU for sort
-        inverse_indices = inverse_indices.flatten().to(key.device, non_blocking=True)
+        inverse_indices = inverse_indices.flatten().to(keys.device, non_blocking=True)
         inverse_indices = torch.sort(inverse_indices)[1][:n]
         # class members
         self._boundary = boundary
@@ -40,11 +40,28 @@ class ParallelGroupBy:
             ret[i, 0:(end - start)] = torch.index_select(data, 0, self._sorted_indices[start:end])
         return ret
 
-    def revert(self, split_data: torch.Tensor, dbg_str=None) -> torch.Tensor:
+    def revert(self, split_data: torch.Tensor, dbg_str='None') -> torch.Tensor:
         if tuple(split_data.shape) != self._data_shape:
             raise ValueError('The return data shape{} of Factor `{}` must same as input{}'
                              .format(tuple(split_data.shape), dbg_str, self._data_shape))
         return torch.take(split_data, self._inverse_indices)
+
+
+def nanmean(data: torch.Tensor) -> torch.Tensor:
+    data = data.clone()
+    isnan = torch.isnan(data)
+    data[isnan] = 0
+    return data.sum(dim=1) / (~isnan).sum(dim=1)
+
+
+def nanstd(data: torch.Tensor) -> torch.Tensor:
+    filled = data.clone()
+    isnan = torch.isnan(data)
+    filled[isnan] = 0
+    mean = filled.sum(dim=1) / (~isnan).sum(dim=1)
+    var = (data - mean[:, None]) ** 2 / (~isnan).sum(dim=1)[:, None]
+    var[isnan] = 0
+    return var.sum(dim=1).sqrt()
 
 
 class Rolling:
