@@ -27,7 +27,7 @@ class TestFactorLib(unittest.TestCase):
         df_msft_low = df.loc[(slice(None), 'MSFT'), 'low']
 
         def test_expected(factor, _expected_aapl, _expected_msft, _len=10, decimal=7):
-            engine.remove_all()
+            engine.remove_all_factors()
             engine.add(factor, 'test')
             result = engine.run('2019-01-01', '2019-01-15')
             result_aapl = result.loc[(slice(None), 'AAPL'), 'test'].values
@@ -75,6 +75,11 @@ class TestFactorLib(unittest.TestCase):
         _expected_msft = [2]*9
         test_expected(spectre.factors.OHLCV.close.rank(ascending=False),
                       _expected_aapl, _expected_msft, total_rows)
+
+        engine.remove_all_factors()
+        engine.add(spectre.factors.OHLCV.close.rank(), 'test')
+        result = engine.run('2019-01-01', '2019-01-02')
+        self.assertEqual([2, 1], result.values)
 
         # test zscore
         _expected_aapl = [1.]*10
@@ -172,7 +177,7 @@ class TestFactorLib(unittest.TestCase):
         f2 = spectre.factors.EMA(win=10, inputs=[f1])
         fa = spectre.factors.STDDEV(win=15, inputs=[f2])
         fb = spectre.factors.MACD(12, 26, 9, inputs=[f2])
-        engine.remove_all()
+        engine.remove_all_factors()
         engine.add(f2, 'f2')
         engine.add(fa, 'fa')
         engine.add(fb, 'fb')
@@ -212,7 +217,7 @@ class TestFactorLib(unittest.TestCase):
         result_aapl = df.loc[(slice(None), 'AAPL'), 'ma5'].values
         result_msft = df.loc[(slice(None), 'MSFT'), 'ma5'].values
         # get not filtered close value
-        engine.remove_all()
+        engine.remove_all_factors()
         engine.set_filter(None)
         engine.add(spectre.factors.OHLCV.close, 'c')
         df = engine.run('2018-01-01', '2019-01-15')

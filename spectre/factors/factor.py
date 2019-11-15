@@ -157,7 +157,7 @@ class CustomFactor(BaseFactor):
             for upstream in self.inputs:
                 if isinstance(upstream, BaseFactor):
                     upstream_out = upstream.compute_(self_stream)
-                    # 如果input是timegroup，且自己不是，就convert到asset group
+                    # If input is timegroup and self not, convert to asset group
                     if upstream.is_timegroup and not self.is_timegroup:
                         upstream_out = self._regroup_by_asset(upstream_out)
                     elif not upstream.is_timegroup and self.is_timegroup:
@@ -248,7 +248,6 @@ class TimeGroupFactor(CustomFactor, ABC):
 
 
 class RankFactor(TimeGroupFactor):
-    method = 'first'
     ascending = True,
 
     def compute(self, data: torch.Tensor) -> torch.Tensor:
@@ -258,10 +257,7 @@ class RankFactor(TimeGroupFactor):
             data[torch.isnan(data)] = -np.inf
         _, indices = torch.sort(data, dim=1, descending=not self.ascending)
         _, rank = torch.sort(indices, dim=1)
-        return torch.take(torch.arange(1, data.shape[0]+1, device=data.device), rank)
-        # 试一下直接拿series来groupby做
-        # s = self._revert_to_series(data)
-        # return s.groupby(level=0).rank(method=self.method, ascending=self.ascending)
+        return torch.take(torch.arange(1, data.shape[1]+1, device=data.device), rank)
 
 
 class DemeanFactor(TimeGroupFactor):
