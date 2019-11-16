@@ -8,7 +8,7 @@ from abc import ABC
 from typing import Optional, Sequence, Union
 import numpy as np
 import torch
-from ..parallel import nanmean, nanstd
+from ..parallel import nanmean, nanstd, Rolling
 
 
 class BaseFactor:
@@ -173,6 +173,12 @@ class CustomFactor(BaseFactor):
                         upstream_out = self._regroup_by_asset(upstream_out)
                     elif not upstream.is_timegroup and self.is_timegroup:
                         upstream_out = self._regroup_by_time(upstream_out)
+                    # if need rolling and adjustment
+                    if self.win > 1:
+                        adj_multi = None
+                        if isinstance(upstream, DataFactor):
+                            adj_multi = upstream.get_adjust_multi()
+                        upstream_out = Rolling(upstream_out, self.win, adj_multi)
                     inputs.append(upstream_out)
                 else:
                     inputs.append(upstream)
@@ -208,7 +214,7 @@ class CustomFactor(BaseFactor):
         Abstractmethod, do the actual factor calculation here.
         Unlike zipline, here calculate all data at once. Does not guarantee Look-Ahead Bias.
 
-        Data structure:
+        All inputs Data structure:
         For parallel, the data structure is designed for optimal performance and fixed.
         * Groupby asset(default):
             set N = asset tick count, Max = Max tick count of all asset
@@ -221,6 +227,8 @@ class CustomFactor(BaseFactor):
                 values in the middle of prices (unless tick value itself is NaN), NaNs all put at
                 the end of the row.
             win > 1:
+                Gives you a rolling object 'r', you can r.mean(), r.sum(), or (r * r).sum()
+                `r.values` gives you raw data structure as:
                 | asset id | Rolling tick | price(t+0) | ... | price(t+Win) |
                 |----------|--------------|------------|-----|--------------|
                 |     0    | 0            | NaN        | ... | 123.45       |
@@ -241,6 +249,9 @@ class CustomFactor(BaseFactor):
 
 
 class DataFactor(BaseFactor):
+    def get_adjust_multi(self):
+        return self._multi
+
     def get_total_backward_(self) -> int:
         return 0
 
@@ -248,12 +259,17 @@ class DataFactor(BaseFactor):
         super().__init__(inputs)
         if inputs:
             self.inputs = inputs
-        assert (len(self.inputs) == 1), "DataFactor's `inputs` can only contains on column"
+        assert (3 > len(self.inputs) > 0), \
+            "DataFactor's `inputs` can only contains one data column and corresponding " \
+            "adjustment column"
         self._data = None
+        self._multi = None
 
     def pre_compute_(self, engine, start, end) -> None:
         super().pre_compute_(engine, start, end)
         self._data = engine.get_tensor_groupby_asset_(self.inputs[0])
+        if len(self.inputs) > 1 and self.inputs[1] in engine.get_dataframe_():
+            self._multi = engine.get_tensor_groupby_asset_(self.inputs[1])
 
     def compute_(self, stream: Union[torch.cuda.Stream, None]) -> torch.Tensor:
         return self._data

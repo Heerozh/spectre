@@ -2,6 +2,7 @@ import unittest
 import spectre
 import pandas as pd
 import numpy as np
+from numpy.testing import assert_almost_equal
 
 
 class TestDataLoaderLib(unittest.TestCase):
@@ -52,29 +53,19 @@ class TestDataLoaderLib(unittest.TestCase):
         self._assertDFFirstLastEqual(df.loc[(slice(None), 'AAPL'), :], 'Open', 157.45, 155.17)
         self._assertDFFirstLastEqual(df.loc[(slice(None), 'MSFT'), :], 'Open', 101.44, 99.55)
 
-    def test_adjust(self):
-        df = pd.read_csv('./data/adjustment.csv',
-                         parse_dates=['date'], index_col=['date', 'asset'],)
-        dl = spectre.factors.DataLoader(ohlcv=('open', 'high', 'low', 'close', 'volume'))
-        df = dl._adjust_prices(df).loc[(slice(None), 'CMCSA'), :]
-
-        expected = np.array([
-            [37.337898, 37.482291, 37.243296, 37.417563, 12684104.0],
-            [37.442458, 37.701369, 37.392668, 37.696390, 20421818.0],
-            [37.641620, 37.955300, 37.566934, 37.885594, 15477494.0],
-            [37.716306, 38.169399, 37.686432, 38.137036, 13849182.0],
-            [38.064839, 38.064839, 37.681453, 37.835803, 16599476.0],
-            [37.810908, 37.860698, 37.352835, 37.502207, 19599952.0],
-            [37.870656, 37.870656, 37.253254, 37.731243, 13556274.0],
-            [37.711327, 38.059860, 37.661536, 37.781034, 13126051.0],
-            [37.960279, 38.000112, 37.402626, 37.492249, 13258356.0],
-            [37.561955, 37.741201, 37.313003, 37.731243, 11557826.0],
-        ])
-        np.testing.assert_almost_equal(df.values[:10], expected, decimal=5)
-
+    @unittest.skipUnless(False, "too slow, run manually")
     def test_QuandlLoader(self):
-        # loader = spectre.factors.QuandlLoader(
-        #     '../../historical_data/us/prices/quandl/WIKI_PRICES.zip')
-        pass
+        loader = spectre.factors.QuandlLoader(
+            '../../historical_data/us/prices/quandl/WIKI_PRICES.zip')
+        engine = spectre.factors.FactorEngine(loader)
+        engine.add(spectre.factors.MA(100), 'ma')
+        engine.to_cuda()
+        df = engine.run("2014-01-02", "2014-01-02")
+        # expected result comes from zipline
+        # AAOI only got 68 tick, so it's nan
+        assert_almost_equal(df.head().values.T,
+                            [[51.388700, 49.194407, 599.280580, 28.336585, np.nan]], decimal=4)
+        assert_almost_equal(df.tail().values.T,
+                            [[86.087988, 3.602880, 7.364000, 31.428209, 27.605950]], decimal=4)
 
 

@@ -10,6 +10,7 @@ import numpy as np
 
 class ParallelGroupBy:
     """Fast parallel group by"""
+
     def __init__(self, keys: torch.Tensor):
         n = keys.shape[0]
         # sort by key (keep key in GPU device)
@@ -23,9 +24,9 @@ class ParallelGroupBy:
         # get inverse indices
         width = max(boundary[1:] - boundary[:-1])
         groups = len(boundary) - 1
-        inverse_indices = sorted_indices.new_full((groups, width), n+1).pin_memory()
+        inverse_indices = sorted_indices.new_full((groups, width), n + 1).pin_memory()
         for start, end, i in zip(boundary[:-1], boundary[1:], range(groups)):
-            inverse_indices[i, 0:(end-start)] = sorted_indices[start:end]
+            inverse_indices[i, 0:(end - start)] = sorted_indices[start:end]
         # keep inverse_indices in GPU for sort
         inverse_indices = inverse_indices.flatten().to(keys.device, non_blocking=True)
         inverse_indices = torch.sort(inverse_indices)[1][:n]
@@ -44,7 +45,7 @@ class ParallelGroupBy:
 
     def split(self, data: torch.Tensor) -> torch.Tensor:
         ret = torch.take(data, self._sorted_indices)
-        assert ret.type not in {torch.int8, torch.int16, torch.int32, torch.int64},\
+        assert ret.type not in {torch.int8, torch.int16, torch.int32, torch.int64}, \
             'tensor cannot be any type of int, recommended to use float32'
         ret[self._sorted_indices == -1] = np.nan
         return ret
@@ -75,14 +76,38 @@ def nanstd(data: torch.Tensor) -> torch.Tensor:
 
 class Rolling:
 
-    def __init__(self, x: torch.Tensor, win: int):
-        nan_stack = x.new_full((x.shape[0], win-1), np.nan)
+    def __init__(self, x: torch.Tensor, win: int, _adj_multi: torch.Tensor = None):
+        nan_stack = x.new_full((x.shape[0], win - 1), np.nan)
         new_x = torch.cat((nan_stack, x), dim=1)
-        self.x = new_x.unfold(1, win, 1)
+        self.values = new_x.unfold(1, win, 1)
         self.win = win
 
+        if _adj_multi is not None:
+            multi = Rolling(_adj_multi, win)
+            self.values = self.values * (multi.values / multi.values[:, :, -1, None])
+
+    @classmethod
+    def empty(cls):
+        return cls.__new__(cls)
+
+    def __repr__(self):
+        return 'spectre.parallel.Rolling object contains:\n' + self.values.__repr__()
+
+    def __mul__(self, o):
+        assert self.win == o.win
+        r = Rolling.empty()
+        r.win = self.win
+        r.values = self.values * o.values
+        return r
+
+    def last(self):
+        return self.values[:, :, -1]
+
+    def first(self):
+        return self.values[:, :, 0]
+
     def sum(self, axis=2):
-        return self.x.sum(dim=axis)
+        return self.values.sum(dim=axis)
 
     def mean(self, axis=2):
         return self.sum(axis=axis) / self.win
@@ -91,4 +116,4 @@ class Rolling:
         """
         unbiased=False eq ddof=0
         """
-        return self.x.std(unbiased=unbiased, dim=axis)
+        return self.values.std(unbiased=unbiased, dim=axis)

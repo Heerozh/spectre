@@ -148,11 +148,11 @@ class FactorEngine:
             raise ValueError('Please add at least one factor to engine, then run again.')
         start, end = pd.to_datetime(start, utc=True), pd.to_datetime(end, utc=True)
         # make columns to data factors.
-        OHLCV.open.inputs = (self._loader.get_ohlcv_names()[0],)
-        OHLCV.high.inputs = (self._loader.get_ohlcv_names()[1],)
-        OHLCV.low.inputs = (self._loader.get_ohlcv_names()[2],)
-        OHLCV.close.inputs = (self._loader.get_ohlcv_names()[3],)
-        OHLCV.volume.inputs = (self._loader.get_ohlcv_names()[4],)
+        OHLCV.open.inputs = (self._loader.get_ohlcv_names()[0], 'price_multi')
+        OHLCV.high.inputs = (self._loader.get_ohlcv_names()[1], 'price_multi')
+        OHLCV.low.inputs = (self._loader.get_ohlcv_names()[2], 'price_multi')
+        OHLCV.close.inputs = (self._loader.get_ohlcv_names()[3], 'price_multi')
+        OHLCV.volume.inputs = (self._loader.get_ohlcv_names()[4], 'vol_multi')
         # todo: 1 刚启动时很慢的问题，2数据加载cache功能，3，快速adjustment
 
         # Calculate data that requires backward in tree

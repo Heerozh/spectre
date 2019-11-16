@@ -28,30 +28,6 @@ class DataLoader:
         assert end_loc >= start_loc, 'There is no data between `start` and `end` date.'
         return index[backward_loc]
 
-    # @staticmethod
-    # @njit(parallel=True)
-    # def _np_div(v1, v2):
-    #     return v1 / v2
-
-    def _adjust_prices(self, df: pd.DataFrame) -> pd.DataFrame:
-        if 'price_multi' not in df:
-            return df
-        # 这也就稍微慢一点2.19
-        price_multi = df.price_multi / df.price_multi.groupby(level=1).transform('last')
-        vol_multi = df.vol_multi / df.vol_multi.groupby(level=1).transform('last')
-        # 下面的代码2.16
-        # price_multi = QuandlLoader._np_div(
-        #     df.price_multi.values,  df.price_multi.groupby(level=1).transform('last').values)
-        # vol_multi = QuandlLoader._np_div(
-        #     df.vol_multi.values, df.vol_multi.groupby(level=1).transform('last').values)
-
-        # adjust price
-        rtn = df[list(self._ohlcv[:4])].mul(price_multi, axis=0)
-        rtn[self._ohlcv[4]] = df[self._ohlcv[4]].mul(vol_multi, axis=0)
-        rtn['time_cat_id'] = df['time_cat_id']
-        # print(time.time() - s)
-        return rtn
-
     def load(self, start: pd.Timestamp, end: pd.Timestamp, backward: int) -> pd.DataFrame:
         """
         If for back-testing, `start` `end` parameter has no meaning,
@@ -117,7 +93,7 @@ class CsvDirLoader(DataLoader):
         if self._cache[0] and start >= self._cache[0] and end <= self._cache[1]:
             index = self._cache[2].index.levels[0]
             start_slice = self._backward_date(index, start, end, backward)
-            return self._adjust_prices(self._cache[2].loc[start_slice:end])
+            return self._cache[2].loc[start_slice:end]
         else:
             return None
 
@@ -237,4 +213,4 @@ class QuandlLoader(DataLoader):
 
     def load(self, start, end, backward: int) -> pd.DataFrame:
         start_slice = self._backward_date(self._cache.index.levels[0], start, end, backward)
-        return self._adjust_prices(self._cache.loc[start_slice:end])
+        return self._cache.loc[start_slice:end]
