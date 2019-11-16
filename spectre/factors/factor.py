@@ -1,3 +1,9 @@
+"""
+@author: Heerozh (Zhang Jianhao)
+@copyright: Copyright 2019, Heerozh. All rights reserved.
+@license: Apache 2.0
+@email: heeroz@gmail.com
+"""
 from abc import ABC
 from typing import Optional, Sequence, Union
 import numpy as np

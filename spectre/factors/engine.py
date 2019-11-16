@@ -1,3 +1,9 @@
+"""
+@author: Heerozh (Zhang Jianhao)
+@copyright: Copyright 2019, Heerozh. All rights reserved.
+@license: Apache 2.0
+@email: heeroz@gmail.com
+"""
 from typing import Union, Iterable
 from .factor import BaseFactor, DataFactor, FilterFactor
 from .dataloader import DataLoader

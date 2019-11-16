@@ -1,7 +1,12 @@
+"""
+@author: Heerozh (Zhang Jianhao)
+@copyright: Copyright 2019, Heerozh. All rights reserved.
+@license: Apache 2.0
+@email: heeroz@gmail.com
+"""
 import torch
 import numpy as np
 
-# ----------- group -----------
 
 class ParallelGroupBy:
     """Fast parallel group by"""
