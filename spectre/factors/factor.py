@@ -259,11 +259,16 @@ class RankFactor(TimeGroupFactor):
     def compute(self, data: torch.Tensor) -> torch.Tensor:
         # todo: 测试下zipline在0.23版本下是否确实慢了
         if not self.ascending:
-            data = data.clone()
-            data[torch.isnan(data)] = -np.inf
-        _, indices = torch.sort(data, dim=1, descending=not self.ascending)
-        _, rank = torch.sort(indices, dim=1)
-        return torch.take(torch.arange(1, data.shape[1]+1, device=data.device), rank)
+            filled = data.clone()
+            filled[torch.isnan(data)] = -np.inf
+        else:
+            filled = data
+        _, indices = torch.sort(filled, dim=1, descending=not self.ascending)
+        _, indices = torch.sort(indices, dim=1)
+        rank = torch.arange(1, filled.shape[1]+1, device=data.device, dtype=torch.float32)
+        rank = torch.take(rank, indices)
+        rank[torch.isnan(data)] = np.nan
+        return rank
 
 
 class DemeanFactor(TimeGroupFactor):

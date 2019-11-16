@@ -75,7 +75,7 @@ class TestFactorLib(unittest.TestCase):
         _expected_msft = [2]*9
         test_expected(spectre.factors.OHLCV.close.rank(ascending=False),
                       _expected_aapl, _expected_msft, total_rows)
-
+        # test rank bug #98a0bdc
         engine.remove_all_factors()
         engine.add(spectre.factors.OHLCV.close.rank(), 'test')
         result = engine.run('2019-01-01', '2019-01-02')
@@ -198,7 +198,7 @@ class TestFactorLib(unittest.TestCase):
 
         result = engine.run("2019-01-01", "2019-01-15")
         assert_array_equal(result.index.get_level_values(1).values,
-                           ['AAPL', 'AAPL', 'AAPL', 'AAPL', 'AAPL', 'AAPL', 'AAPL', 'MSFT',
+                           ['MSFT', 'AAPL', 'AAPL', 'AAPL', 'AAPL', 'AAPL', 'AAPL', 'MSFT',
                             'AAPL', 'MSFT'])
 
         # test ma5 with filter
