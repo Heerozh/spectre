@@ -1,7 +1,7 @@
 python>=3.5
 pytables
 numpy
-pandas>=0.25.0
-torch
+pandas>=0.22
+torch>=1.3
 cudatoolkit
 

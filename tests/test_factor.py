@@ -79,7 +79,7 @@ class TestFactorLib(unittest.TestCase):
         engine.remove_all_factors()
         engine.add(spectre.factors.OHLCV.close.rank(), 'test')
         result = engine.run('2019-01-01', '2019-01-02')
-        self.assertEqual([2, 1], result.values)
+        assert_array_equal([[2.0], [1.0]], result.values)
 
         # test zscore
         _expected_aapl = [1.]*10

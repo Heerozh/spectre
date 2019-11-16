@@ -60,28 +60,24 @@ class BaseFactor:
     # --------------- helper functions ---------------
 
     def top(self, n):
-        """This method will interrupt the parallelism of cuda, please use it at the last step."""
         return self.rank(ascending=False) <= n
 
     def bottom(self, n):
-        """This method will interrupt the parallelism of cuda, please use it at the last step."""
         return self.rank(ascending=True) <= n
 
     def rank(self, ascending=True):
-        """This method will interrupt the parallelism of cuda, please use it at the last step."""
         fact = RankFactor(inputs=(self,))
         # fact.method = method
         fact.ascending = ascending
         return fact
 
     def zscore(self):
-        """This method will interrupt the parallelism of cuda, please use it at the last step."""
         fact = ZScoreFactor(inputs=(self,))
         return fact
 
     def demean(self, groupby=None):
         """
-        This method will interrupt the parallelism of cuda, please use it at the last step.
+        This method will interrupt the parallelism of cuda, please use it at the last few step.
         groupby={'name':group_id}
         """
         # assets = self._engine.get_dataframe().index.get_level_values(1)
@@ -99,6 +95,15 @@ class BaseFactor:
 
     def _regroup_by_asset(self, data):
         return self._engine.regroup_by_asset_(data)
+
+    def _regroup(self, data):
+        if self.is_timegroup:
+            return self._engine.regroup_by_time_(data)
+        else:
+            return self._engine.regroup_by_asset_(data)
+
+    def _revert_to_series(self, data):
+        return self._engine.revert_to_series_(data, self.is_timegroup)
 
     def get_total_backward_(self) -> int:
         raise NotImplementedError("abstractmethod")
@@ -119,9 +124,9 @@ class BaseFactor:
 
 class CustomFactor(BaseFactor):
     # settable member variables
-    win = 1         # determine include how many previous data
-    inputs = None   # any values in `inputs` list will pass to `compute` function by order
-    _min_win = None # assert when `win` less than `_min_win`, prevent user error.
+    win = 1          # determine include how many previous data
+    inputs = None    # any values in `inputs` list will pass to `compute` function by order
+    _min_win = None  # assert when `win` less than `_min_win`, prevent user error.
 
     # internal member variables
     _cache = None
@@ -202,19 +207,35 @@ class CustomFactor(BaseFactor):
         """
         Abstractmethod, do the actual factor calculation here.
         Unlike zipline, here calculate all data at once. Does not guarantee Look-Ahead Bias.
+
         Data structure:
-        groupby asset(default):
+        For parallel, the data structure is designed for optimal performance and fixed.
+        * Groupby asset(default):
+            set N = asset tick count, Max = Max tick count of all asset
+            win = 1:
                 | asset id | price(t+0) | ... | price(t+N) | price(t+N+1) | ... | price(t+Max) |
                 |----------|------------|-----|------------|--------------|-----|--------------|
                 |     0    | 123.45     | ... | 234.56     | NaN          | ... | Nan          |
-            The price is sorted by tick, not by time, so there will be no NaN values in
-            the middle of prices, NaNs all put at the end of the row.
-        groupby time(set is_timegroup = True):
+
+                The price is sorted by tick, not by time, so it won't be aligned by time and got NaN
+                values in the middle of prices (unless tick value itself is NaN), NaNs all put at
+                the end of the row.
+            win > 1:
+                | asset id | Rolling tick | price(t+0) | ... | price(t+Win) |
+                |----------|--------------|------------|-----|--------------|
+                |     0    | 0            | NaN        | ... | 123.45       |
+                |          | ...          | ...        | ... | ...          |
+                |          | N            | xxx.xx     | ... | 234.56       |
+        * Groupby time(set `is_timegroup = True`):
                 | time id  | stock1 | ... | stockN |
                 |----------|--------|-----|--------|
                 |     0    | 100.00 | ... | 200.00 |
+        * Custom:
+            Use `series = self._revert_to_series(data)` you can get `pd.Series` data type, and
+            manipulate by your own. Remember to call `return self._regroup(series)` when returning.
+            WARNING: This method will be very inefficient and break parallel.
         :param inputs: All input factors data, including all data from `start(minus win)` to `end`.
-        :return: your factor values, length should be same as the inputs`
+        :return: your factor values, length should be same as the `inputs`
         """
         raise NotImplementedError("abstractmethod")
 
@@ -248,6 +269,11 @@ class FilterFactor(CustomFactor, ABC):
 class TimeGroupFactor(CustomFactor, ABC):
     """Class that inputs and return value is grouped by time"""
     is_timegroup = True
+    win = 1
+
+    def __init__(self, win: Optional[int] = None, inputs: Optional[Sequence[BaseFactor]] = None):
+        super().__init__(win, inputs)
+        assert self.win == 1, 'TimeGroupFactor can only be win=1'
 
 
 # --------------- helper factors ---------------
@@ -257,7 +283,6 @@ class RankFactor(TimeGroupFactor):
     ascending = True,
 
     def compute(self, data: torch.Tensor) -> torch.Tensor:
-        # todo: 测试下zipline在0.23版本下是否确实慢了
         if not self.ascending:
             filled = data.clone()
             filled[torch.isnan(data)] = -np.inf
@@ -280,10 +305,10 @@ class DemeanFactor(TimeGroupFactor):
         if self.groupby:
             # If we use torch here, we must first group by time, then group each line by sectors,
             # the efficiency is low, so use pandas directly.
-            s = self._engine.revert_to_series_(data, self.is_timegroup)
+            s = self._revert_to_series(data)
             g = s.groupby([self.groupby, 'date'], level=1)
             ret = g.transform(lambda x: x - x.mean())
-            return self._engine.regroup_by_time_(ret)
+            return self._regroup(ret)
         else:
             return data - nanmean(data)[:, None]
 
