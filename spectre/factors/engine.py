@@ -25,14 +25,8 @@ class FactorEngine:
     """
     Engine for compute factors, used for back-testing and alpha-research both.
     """
-    def __init__(self, loader: DataLoader) -> None:
-        self._loader = loader
-        self._dataframe = None
-        self._assetgroup = None
-        self._timegroup = None
-        self._factors = {}
-        self._filter = None
-        self._device = torch.device('cpu')
+
+    # friend private:
 
     def get_dataframe_(self):
         return self._dataframe
@@ -42,6 +36,78 @@ class FactorEngine:
 
     def get_timegroup_(self):
         return self._timegroup
+
+    def get_tensor_groupby_asset_(self, column) -> torch.Tensor:
+        # todo cache data with column prevent double copying
+        series = self._dataframe[column]
+        data = torch.tensor(series.values).pin_memory().to(self._device, non_blocking=True)
+        data = self._assetgroup.split(data)
+        return data
+
+    def regroup_by_asset_(self, data: Union[torch.Tensor, pd.Series]) -> torch.Tensor:
+        if isinstance(data, pd.Series):
+            data = torch.tensor(data.values, device=self._device)
+        else:
+            data = self._timegroup.revert(data, 'regroup_by_asset_')
+        data = self._assetgroup.split(data)
+        return data
+
+    def regroup_by_time_(self, data: Union[torch.Tensor, pd.Series]) -> torch.Tensor:
+        if isinstance(data, pd.Series):
+            data = torch.tensor(data.values, device=self._device)
+        else:
+            data = self._assetgroup.revert(data, 'regroup_by_time_')
+        data = self._timegroup.split(data)
+        return data
+
+    def revert_to_series_(self, data: torch.Tensor, is_timegroup: bool) -> pd.Series:
+        if is_timegroup:
+            ret = self._timegroup.revert(data)
+        else:
+            ret = self._assetgroup.revert(data)
+        return pd.Series(ret, index=self._dataframe.index)
+
+    # private:
+
+    def _prepare_tensor(self, start, end, max_backward):
+        # todo if unchanging, return
+        # Get data
+        self._dataframe = self._loader.load(start, end, max_backward)
+        from datetime import datetime, timezone
+        assert self._dataframe.index.is_lexsorted(), \
+            "In the df returned by DateLoader, the index must be sorted, " \
+            "try using df.sort_index(level=0, inplace=True)"
+        assert str(self._dataframe.index.levels[0].tzinfo) == 'UTC', \
+            "In the df returned by DateLoader, the date index must be UTC timezone."
+        assert self._dataframe.index.levels[-1].ordered, \
+            "In the df returned by DateLoader, the asset index must ordered categorical."
+        cat = self._dataframe.index.get_level_values(1).codes
+        keys = torch.tensor(cat, device=self._device, dtype=torch.int32)
+        self._assetgroup = ParallelGroupBy(keys)
+
+        # time group prepare
+        cat = self._dataframe.time_cat_id.values
+        keys = torch.tensor(cat, device=self._device, dtype=torch.int32)
+        self._timegroup = ParallelGroupBy(keys)
+
+    def _compute_and_revert(self, f: BaseFactor, name) -> Union[np.array, pd.Series]:
+        """Returning pd.Series will cause very poor performance, please avoid it at 99% costs"""
+        data = f.compute_(None)
+        if f.is_timegroup:
+            return self._timegroup.revert(data, name).cpu().numpy()
+        else:
+            return self._assetgroup.revert(data, name).cpu().numpy()
+
+    # public:
+
+    def __init__(self, loader: DataLoader) -> None:
+        self._loader = loader
+        self._dataframe = None
+        self._assetgroup = None
+        self._timegroup = None
+        self._factors = {}
+        self._filter = None
+        self._device = torch.device('cpu')
 
     def get_device(self):
         return self._device
@@ -73,65 +139,6 @@ class FactorEngine:
 
     def to_cpu(self) -> None:
         self._device = torch.device('cpu')
-
-    def _prepare_tensor(self, start, end, max_backward):
-        # todo if unchanging, return
-        # Get data
-        self._dataframe = self._loader.load(start, end, max_backward)
-        from datetime import datetime, timezone
-        assert self._dataframe.index.is_lexsorted(), \
-            "In the df returned by DateLoader, the index must be sorted, "\
-            "try using df.sort_index(level=0, inplace=True)"
-        assert str(self._dataframe.index.levels[0].tzinfo) == 'UTC', \
-            "In the df returned by DateLoader, the date index must be UTC timezone."
-        assert self._dataframe.index.levels[-1].ordered, \
-            "In the df returned by DateLoader, the asset index must ordered categorical."
-        cat = self._dataframe.index.get_level_values(1).codes
-        keys = torch.tensor(cat, device=self._device, dtype=torch.int32)
-        self._assetgroup = ParallelGroupBy(keys)
-
-        # time group prepare
-        cat = self._dataframe.time_cat_id.values
-        keys = torch.tensor(cat, device=self._device, dtype=torch.int32)
-        self._timegroup = ParallelGroupBy(keys)
-
-    def get_tensor_groupby_asset_(self, column) -> torch.Tensor:
-        # todo cache data with column prevent double copying
-        series = self._dataframe[column]
-        data = torch.tensor(series.values).pin_memory().to(self._device, non_blocking=True)
-        data = self._assetgroup.split(data)
-        return data
-
-    def regroup_by_time_(self, data: Union[torch.Tensor, pd.Series]) -> torch.Tensor:
-        if isinstance(data, pd.Series):
-            data = torch.tensor(data.values, device=self._device)
-        else:
-            data = self._assetgroup.revert(data, 'regroup_by_time_')
-        data = self._timegroup.split(data)
-        return data
-
-    def regroup_by_asset_(self, data: Union[torch.Tensor, pd.Series]) -> torch.Tensor:
-        if isinstance(data, pd.Series):
-            data = torch.tensor(data.values, device=self._device)
-        else:
-            data = self._timegroup.revert(data, 'regroup_by_asset_')
-        data = self._assetgroup.split(data)
-        return data
-
-    def revert_to_series_(self, data: torch.Tensor, is_timegroup: bool) -> pd.Series:
-        if is_timegroup:
-            ret = self._timegroup.revert(data)
-        else:
-            ret = self._assetgroup.revert(data)
-        return pd.Series(ret, index=self._dataframe.index)
-
-    def _compute_and_revert(self, f: BaseFactor, name) -> Union[np.array, pd.Series]:
-        """Returning pd.Series will cause very poor performance, please avoid it at 99% costs"""
-        data = f.compute_(None)
-        if f.is_timegroup:
-            return self._timegroup.revert(data, name).cpu().numpy()
-        else:
-            return self._assetgroup.revert(data, name).cpu().numpy()
 
     def run(self, start: Union[str, pd.Timestamp], end: Union[str, pd.Timestamp]) -> pd.DataFrame:
         """
