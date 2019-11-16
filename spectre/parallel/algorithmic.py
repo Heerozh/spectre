@@ -44,6 +44,8 @@ class ParallelGroupBy:
 
     def split(self, data: torch.Tensor) -> torch.Tensor:
         ret = torch.take(data, self._sorted_indices)
+        assert ret.type not in {torch.int8, torch.int16, torch.int32, torch.int64},\
+            'tensor cannot be any type of int, recommended to use float32'
         ret[self._sorted_indices == -1] = np.nan
         return ret
 

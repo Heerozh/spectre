@@ -175,7 +175,11 @@ class QuandlLoader(DataLoader):
             with pkg.open(pkg.namelist()[0]) as csv:
                 df = pd.read_csv(csv, parse_dates=['date'],
                                  usecols=['ticker', 'date', 'open', 'high', 'low', 'close',
-                                          'volume', 'ex-dividend', 'split_ratio', ])
+                                          'volume', 'ex-dividend', 'split_ratio', ],
+                                 dtype={
+                                     'open': np.float32, 'high': np.float32, 'low': np.float32,
+                                     'close': np.float32, 'volume': np.float64, },
+                                 )
         df = df.rename(columns={'ticker': 'asset'})
 
         # speed up string index column search time
