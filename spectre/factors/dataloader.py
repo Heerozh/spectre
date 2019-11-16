@@ -174,9 +174,9 @@ class QuandlLoader(DataLoader):
         # get dividend multipliers
         price_multi = (1 - ex_div / df['close']) * (1 / sp_rto)
         price_multi = price_multi[::-1].groupby(level=1).cumprod()[::-1]
-        df['price_multi'] = price_multi
+        df['price_multi'] = price_multi.astype(np.float32)
         vol_multi = sp_rto[::-1].groupby(level=1).cumprod()[::-1]
-        df['vol_multi'] = vol_multi
+        df['vol_multi'] = vol_multi.astype(np.float32)
         # drop raw dividend columns
         df.drop(['ex-dividend', 'split_ratio'], axis=1, inplace=True)
 

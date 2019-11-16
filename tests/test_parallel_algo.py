@@ -46,7 +46,6 @@ class TestParallelAlgorithm(unittest.TestCase):
                  [104.6100*(0.6/0.75),  104.4200,               101.3000],
                  [104.4200*0.75,        101.3000*0.75,          102.280],
              ]])
-        print(s.values)
         assert_almost_equal(s.values.numpy(), expected.numpy(), decimal=4)
 
     def test_nan(self):

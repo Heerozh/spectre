@@ -67,10 +67,11 @@ My Machine：
 - DDR4 3800MHz
 - RTX 2080Ti Founders
 
-|                   |       spectre (CUDA)         |       spectre (CPU)          |       zipline         |
-|-------------------|------------------------------|------------------------------|-----------------------|
-|SMA100 (Initial start)      | 0.70 s ± ??.? ms (**2.73x**) | 1.28 s ± 7.02 ms (1.47x)     | 1.89 s ± 23.1 ms (1x) |
-|SMA100 (CPU Usage) | ?% GPU / 5% CPU              | 35%                          | 5%                    |
+Running on Quandl 5 years, 3196 Assets, total 3,637,344 ticks.
+
+|             |       spectre (CUDA)         |       spectre (CPU)        |       zipline         |
+|-------------|------------------------------|----------------------------|-----------------------|
+|SMA100       | 397 ms ± 7.36 ms (**7.63x**) | 2.68 s ± 36.1 ms (1.13x)   | 3.03 s ± 31.2 (1x)    |
 
 
 0.01 cpu data:
@@ -85,11 +86,7 @@ todo
 |Below [Full Example](#chapter-iv-full-example)| 2.06 s ± 7.68 ms (**2.65x**) | 3.05 s ± 24.8 ms (**1.73x**) | 5.28 s ± 14.0 ms (1x) |
 !-->
 
-Using quandl data, compute factor between '2014-01-02' to '2016-12-30' 
-
-As of now (unfinished)
-
-[Under construction]
+* Benchmarks exclude the initial run.
 
 ## Chapter IV. Full Example
 

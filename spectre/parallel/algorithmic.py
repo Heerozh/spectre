@@ -84,7 +84,8 @@ class Rolling:
 
         if _adj_multi is not None:
             multi = Rolling(_adj_multi, win)
-            self.values = self.values * (multi.values / multi.values[:, :, -1, None])
+            multi = multi.values / multi.values[:, :, -1, None]
+            self.values = self.values * multi
 
     @classmethod
     def empty(cls):
