@@ -1,10 +1,10 @@
 
-Progress: 4/10  🔳🔳🔳🔳⬜⬜⬜⬜⬜⬜\
+Progress: 5/10  🔳🔳🔳🔳🔳⬜⬜⬜⬜⬜\
 ~~1/10: FactorEngine architecture~~\
 ~~2/10: FactorEngine~~\
 ~~3/10: Filters~~\
 ~~4/10: All factors~~\
-5/10: CUDA support\
+~~5/10: CUDA support~~\
 6/10: Dividends/Splits\
 7/10: Back-test architecture\
 8/10: Portfolio\
@@ -72,17 +72,12 @@ Running on Quandl 5 years, 3196 Assets, total 3,637,344 ticks.
 
 |                |       spectre (CUDA)         |       spectre (CPU)        |       zipline         |
 |----------------|------------------------------|----------------------------|-----------------------|
-|SMA(100)        | 397 ms ± 7.36 ms (**7.63x**) | 2.68 s ± 36.1 ms (1.13x)   | 2.98 s ± 14.4 ms (1x) |
-|EMA(50) win=229 | 541 ms ± 42.3 ms (**14.0x**) | 4.37 s ± 46.4 ms (1.93x)   | 8.41 s ± 33.8 ms (1x) |
+|SMA(100)        | 397 ms ± 7.36 ms (**7.51x**) | 2.68 s ± 36.1 ms (1.11x)   | 2.98 s ± 14.4 ms (1x) |
+|EMA(50) win=229 | 541 ms ± 42.3 ms (**15.5x**) | 4.37 s ± 46.4 ms (1.92x)   | 8.41 s ± 33.8 ms (1x) |
+|MACD(12,26,9)   | 639 ms ± 29.8 ms (**13.5x**) | 4.23 s ± 44.1 ms (2.03x)   | 8.6 s ± 78.2 ms (1x) |
 
 The CUDA memory used in the spectre benchmark is 1.4G, returned by cuda.max_memory_allocated().
 
-0.01 cpu data:
-
-|                   |       spectre (CPU)          |       zipline         |
-|-------------------|------------------------------|-----------------------|
-|EMA50 (win=229)    | 2.06 s ± 7.68 ms (**2.65x**) | 5.45 s ± 14.6 ms (1x) |
-|MACD(12,26,9)      | 3.05 s ± 24.8 ms (**1.73x**) | 5.28 s ± 14.0 ms (1x) |
 
 <!--
 todo
