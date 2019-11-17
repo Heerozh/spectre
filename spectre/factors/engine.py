@@ -40,7 +40,7 @@ class FactorEngine:
     def get_tensor_groupby_asset_(self, column) -> torch.Tensor:
         # todo cache data with column prevent double copying
         series = self._dataframe[column]
-        data = torch.tensor(series.values).pin_memory().to(self._device, non_blocking=True)
+        data = torch.from_numpy(series.values).pin_memory().to(self._device, non_blocking=True)
         data = self._assetgroup.split(data)
         return data
 
@@ -189,6 +189,9 @@ class FactorEngine:
 
         return ret.loc[start:end]
 
+    def get_factors_raw_value(self):
+        return {c: f.compute_(None) for c, f in self._factors.items()}
+
     def get_price_matrix(self,
                          start: Union[str, pd.Timestamp],
                          end: Union[str, pd.Timestamp],
@@ -213,6 +216,7 @@ class FactorEngine:
         self._factors = {'price': prices}
         self._filter = None
         ret = self.run(start, end)
+        # todo 需要按end日期full adjust, 也许弄个full adjust data factor?
         self._factors = factors_backup
         self._filter = filter_backup
         return ret['price'].unstack(level=[1]).shift(-forward)
