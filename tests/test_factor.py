@@ -1,6 +1,5 @@
 import unittest
 import spectre
-import pandas as pd
 import numpy as np
 from numpy.testing import assert_almost_equal, assert_array_equal
 
@@ -160,8 +159,8 @@ class TestFactorLib(unittest.TestCase):
         expected_aapl = [40.1814301, 33.36385487, 37.37511353, 36.31220413, 41.84100418,
                          39.19197118, 48.18441452, 44.30411404, 50.05167959, 56.47230321]
         # expected_msft = talib.RSI(df_msft_close.values, timeperiod=14)
-        expected_msft = [38.6165212, 40.7223796, 34.5582486, 45.4062038, 45.2724595,
-                         45.8940012, 50.7517643, 45.8333333, 57.9325197, 72.4346076]
+        expected_msft = [38.5647217, 42.0627596, 37.9693676, 43.8641553, 48.3458438,
+                         47.095672 , 46.7363662, 46.127465 , 64.8259304]
         # expected_aapl += 7
         test_expected(spectre.factors.RSI(), expected_aapl, expected_msft)
 
@@ -225,8 +224,8 @@ class TestFactorLib(unittest.TestCase):
         df_msft_close = df.loc[(slice(None), 'MSFT'), 'c']
         expected_aapl = talib.SMA(df_aapl_close.values, timeperiod=5)[-total_rows:]
         expected_msft = talib.SMA(df_msft_close.values, timeperiod=5)[-total_rows:]
-        expected_aapl = np.delete(expected_aapl, [7, 9])
-        expected_msft = [expected_msft[7], expected_msft[9]]
+        expected_aapl = np.delete(expected_aapl, [0, 7, 9])
+        expected_msft = [expected_msft[1], expected_msft[7], expected_msft[9]]
         # test
         assert_almost_equal(result_aapl, expected_aapl)
         assert_almost_equal(result_msft, expected_msft)

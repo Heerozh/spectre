@@ -4,7 +4,7 @@
 @license: Apache 2.0
 @email: heeroz@gmail.com
 """
-from typing import Union, Callable
+from typing import Callable
 import torch
 import numpy as np
 
@@ -112,6 +112,10 @@ class Rolling:
         return 'spectre.parallel.Rolling object contains:\n' + self.values.__repr__()
 
     def agg(self, op: Callable, *others: 'Rolling'):
+        """
+        Call `op` on the split rolling data one by one, pass in all the adjusted values,
+        and finally aggregate them into a whole.
+        """
         assert all(r.win == self.win for r in others), '`others` must have same `win` with `self`'
         if self.adjustment is not None:
             return torch.cat([op(self.adjusted(s, e), *[r.adjusted(s, e) for r in others])

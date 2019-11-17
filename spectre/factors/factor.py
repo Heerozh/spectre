@@ -179,6 +179,8 @@ class CustomFactor(BaseFactor):
                         if isinstance(upstream, DataFactor):
                             adj_multi = upstream.get_adjust_multi()
                         upstream_out = Rolling(upstream_out, self.win, adj_multi)
+                    # elif isinstance(upstream, DataFactor):
+                    #     # 不需要adjustment了，不rolling就是获取当前的数据直接出fct，就不用adj了
                     inputs.append(upstream_out)
                 else:
                     inputs.append(upstream)
@@ -214,20 +216,19 @@ class CustomFactor(BaseFactor):
         Abstractmethod, do the actual factor calculation here.
         Unlike zipline, here calculate all data at once. Does not guarantee Look-Ahead Bias.
 
-        All inputs Data structure:
+        `inputs` Data structure:
         For parallel, the data structure is designed for optimal performance and fixed.
         * Groupby asset(default):
-            set N = asset tick count, Max = Max tick count of all asset
+            set N = individual asset tick count, Max = Max tick count of all asset
             win = 1:
                 | asset id | price(t+0) | ... | price(t+N) | price(t+N+1) | ... | price(t+Max) |
                 |----------|------------|-----|------------|--------------|-----|--------------|
                 |     0    | 123.45     | ... | 234.56     | NaN          | ... | Nan          |
-
                 The price is sorted by tick, not by time, so it won't be aligned by time and got NaN
                 values in the middle of prices (unless tick value itself is NaN), NaNs all put at
                 the end of the row.
             win > 1:
-                Gives you a rolling object 'r', you can r.mean(), r.sum(), or (r * r).sum()
+                Gives you a rolling object `r`, you can `r.mean()`, `r.sum()`, or `r.agg()`
                 `r.values` gives you raw data structure as:
                 | asset id | Rolling tick | price(t+0) | ... | price(t+Win) |
                 |----------|--------------|------------|-----|--------------|
@@ -238,8 +239,9 @@ class CustomFactor(BaseFactor):
                 | time id  | stock1 | ... | stockN |
                 |----------|--------|-----|--------|
                 |     0    | 100.00 | ... | 200.00 |
+                If this table too big, it will split to multiple tables.
         * Custom:
-            Use `series = self._revert_to_series(data)` you can get `pd.Series` data type, and
+            Use `series = self._revert_to_series(input)` you can get `pd.Series` data type, and
             manipulate by your own. Remember to call `return self._regroup(series)` when returning.
             WARNING: This method will be very inefficient and break parallel.
         :param inputs: All input factors data, including all data from `start(minus win)` to `end`.
