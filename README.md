@@ -19,6 +19,7 @@ spectre is a **GPU-accelerated Parallel** quantitative trading library, focused 
   * Fast, really fast, see below [Benchmarks](#chapter-iii-benchmarks)
   * Pure python code
   * Using **PyTorch** for parallelize. And yes, spectre can return Factor as `torch.Tensor` type.
+  * Low CUDA memory usage
   * Python 3.7, pandas 0.25 supported
 
 [Under construction]
@@ -69,11 +70,12 @@ My Machine：
 
 Running on Quandl 5 years, 3196 Assets, total 3,637,344 ticks.
 
-|             |       spectre (CUDA)         |       spectre (CPU)        |       zipline         |
-|-------------|------------------------------|----------------------------|-----------------------|
-|SMA(100)     | 397 ms ± 7.36 ms (**7.63x**) | 2.68 s ± 36.1 ms (1.13x)   | 3.03 s ± 31.2 ms (1x) |
-|EMA(50)      | 607 ms ± 7.36 ms (**14.0x**) | 4.37 s ± 46.4 ms (1.93x)   | 8.42 s ± 35.4 ms (1x) |
+|                |       spectre (CUDA)         |       spectre (CPU)        |       zipline         |
+|----------------|------------------------------|----------------------------|-----------------------|
+|SMA(100)        | 397 ms ± 7.36 ms (**7.63x**) | 2.68 s ± 36.1 ms (1.13x)   | 2.98 s ± 14.4 ms (1x) |
+|EMA(50) win=229 | 541 ms ± 42.3 ms (**14.0x**) | 4.37 s ± 46.4 ms (1.93x)   | 8.41 s ± 33.8 ms (1x) |
 
+The CUDA memory used in the spectre benchmark is 1.4G, returned by cuda.max_memory_allocated().
 
 0.01 cpu data:
 

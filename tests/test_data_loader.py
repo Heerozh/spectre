@@ -57,6 +57,7 @@ class TestDataLoaderLib(unittest.TestCase):
     def test_QuandlLoader(self):
         loader = spectre.factors.QuandlLoader(
             '../../historical_data/us/prices/quandl/WIKI_PRICES.zip')
+        spectre.parallel.Rolling._split_multi = 80
         engine = spectre.factors.FactorEngine(loader)
         engine.add(spectre.factors.MA(100), 'ma')
         engine.to_cuda()

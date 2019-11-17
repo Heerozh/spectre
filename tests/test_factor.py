@@ -26,7 +26,7 @@ class TestFactorLib(unittest.TestCase):
         df_aapl_low = df.loc[(slice(None), 'AAPL'), 'low']
         df_msft_low = df.loc[(slice(None), 'MSFT'), 'low']
 
-        def test_expected(factor, _expected_aapl, _expected_msft, _len=10, decimal=7):
+        def test_expected(factor, _expected_aapl, _expected_msft, _len=9, decimal=7):
             engine.remove_all_factors()
             engine.add(factor, 'test')
             result = engine.run('2019-01-01', '2019-01-15')
@@ -116,7 +116,7 @@ class TestFactorLib(unittest.TestCase):
         test_expected(spectre.factors.EMA(11), expected_aapl, expected_msft, decimal=3)
         expected_aapl = talib.EMA(df_aapl_close.values, timeperiod=50)
         expected_msft = talib.EMA(df_msft_close.values, timeperiod=50)
-        test_expected(spectre.factors.EMA(50), expected_aapl, expected_msft, decimal=3)
+        test_expected(spectre.factors.EMA(50), expected_aapl, expected_msft, decimal=2)
 
         # test MACD
         expected = talib.MACD(df_aapl_close.values, fastperiod=12, slowperiod=26, signalperiod=9)

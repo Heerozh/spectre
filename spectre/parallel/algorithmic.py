@@ -4,6 +4,7 @@
 @license: Apache 2.0
 @email: heeroz@gmail.com
 """
+from typing import Union, Callable
 import torch
 import numpy as np
 
@@ -14,7 +15,7 @@ class ParallelGroupBy:
     def __init__(self, keys: torch.Tensor):
         n = keys.shape[0]
         # sort by key (keep key in GPU device)
-        relative_key = keys + torch.arange(0, n, device=keys.device).double() / n  # todo test double float performance difference
+        relative_key = keys + torch.arange(0, n, device=keys.device).double() / n
         sorted_keys, sorted_indices = torch.sort(relative_key)
         sorted_keys, sorted_indices = sorted_keys.cpu().int(), sorted_indices.cpu()
         # get group boundary
@@ -75,46 +76,116 @@ def nanstd(data: torch.Tensor) -> torch.Tensor:
 
 
 class Rolling:
+    _split_multi = 8  # float64 = 8
 
-    def __init__(self, x: torch.Tensor, win: int, _adj_multi: torch.Tensor = None):
+    def __init__(self, x: torch.Tensor, win: int, _adjustment: torch.Tensor = None):
         nan_stack = x.new_full((x.shape[0], win - 1), np.nan)
         new_x = torch.cat((nan_stack, x), dim=1)
         self.values = new_x.unfold(1, win, 1)
         self.win = win
 
-        if _adj_multi is not None:
-            multi = Rolling(_adj_multi, win)
-            multi = multi.values / multi.values[:, :, -1, None]
-            self.values = self.values * multi
+        if _adjustment is not None:
+            self.adjustment = Rolling(_adjustment, win).values
+
+            # rolling multiplication will consume lot of memory, split it by size
+            memory_usage = np.prod(self.values.shape, dtype=np.uint) / (1024. ** 3)
+            memory_usage *= Rolling._split_multi
+            step = int(self.values.shape[0] / memory_usage)
+            boundary = list(range(0, self.values.shape[0], step)) + [self.values.shape[0]]
+            self.split = list(zip(boundary[:-1], boundary[1:]))
+        else:
+            self.adjustment = None
+            self.split = None
 
     @classmethod
     def empty(cls):
         return cls.__new__(cls)
 
+    def adjusted(self, s=None, e=None) -> torch.Tensor:
+        """this will contiguous tensor consume lot of memory, limit e-s size"""
+        if self.adjustment is not None:
+            return self.values[s:e] * self.adjustment[s:e] / self.adjustment[s:e, :, -1, None]
+        else:
+            return self.values[s:e]
+
     def __repr__(self):
         return 'spectre.parallel.Rolling object contains:\n' + self.values.__repr__()
 
-    def __mul__(self, o):
-        assert self.win == o.win
-        r = Rolling.empty()
-        r.win = self.win
-        r.values = self.values * o.values
-        return r
+    def agg(self, op: Callable, *others: 'Rolling'):
+        assert all(r.win == self.win for r in others), '`others` must have same `win` with `self`'
+        if self.adjustment is not None:
+            return torch.cat([op(self.adjusted(s, e), *[r.adjusted(s, e) for r in others])
+                              for s, e in self.split])
+        else:
+            return op(self.adjusted(), *[r.adjusted() for r in others])
+
+    # def __mul__(self, o: Union['Rolling', torch.Tensor]):
+    #     """this will contiguous tensor consume lot of memory, do not call"""
+    #     r = Rolling.empty()
+    #     r.win = self.win
+    #     r.values = self.adjusted()
+    #     if isinstance(o, Rolling):
+    #         assert self.win == o.win
+    #         if self.values.is_contiguous():
+    #             # save memory
+    #             r.values *= o.adjusted()
+    #         else:
+    #             r.values = r.values * o.adjusted()
+    #     else:
+    #         if self.values.is_contiguous():
+    #             r.values *= o
+    #         else:
+    #             r.values = r.values * o
+    #     r.adjustment = None
+    #     r.split = None
+    #     return r
+
+    def loc(self, i):
+        if i == -1:
+            # last doesn't need to adjust, just return directly
+            return self.values[:, :, i]
+
+        def _loc(x):
+            return x[:, :, i]
+
+        return self.agg(_loc)
 
     def last(self):
-        return self.values[:, :, -1]
+        return self.loc(-1)
 
     def first(self):
-        return self.values[:, :, 0]
+        return self.loc(0)
 
     def sum(self, axis=2):
-        return self.values.sum(dim=axis)
+        def _sum(x):
+            return x.sum(dim=axis)
+
+        return self.agg(_sum)
 
     def mean(self, axis=2):
-        return self.sum(axis=axis) / self.win
+        def _mean(x):
+            return x.sum(dim=axis) / self.win
+
+        return self.agg(_mean)
 
     def std(self, unbiased=True, axis=2):
         """
         unbiased=False eq ddof=0
         """
-        return self.values.std(unbiased=unbiased, dim=axis)
+
+        def _std(x):
+            return x.std(unbiased=unbiased, dim=axis)
+
+        return self.agg(_std)
+
+    def max(self):
+        def _max(x):
+            return x.max(dim=2)
+
+        return self.agg(_max)
+
+    def min(self):
+        def _min(x):
+            return x.min(dim=2)
+
+        return self.agg(_min)

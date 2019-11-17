@@ -1,9 +1,13 @@
+"""
+@author: Heerozh (Zhang Jianhao)
+@copyright: Copyright 2019, Heerozh. All rights reserved.
+@license: Apache 2.0
+@email: heeroz@gmail.com
+"""
 from typing import Optional, Sequence
 from .factor import BaseFactor, CustomFactor
 from .engine import OHLCV
-from ..parallel import Rolling
 import numpy as np
-import pandas as pd
 import torch
 
 
@@ -13,7 +17,7 @@ class Returns(CustomFactor):
     _min_win = 2
 
     def compute(self, closes):
-        return closes.pct_change(self.win-1)
+        return closes.last() / closes.first() - 1
 
 
 class LogReturns(CustomFactor):
@@ -22,25 +26,25 @@ class LogReturns(CustomFactor):
     _min_win = 2
 
     def compute(self, closes):
-        return closes.pct_change(self.win-1).log()
+        return (closes.last() / closes.first() - 1).log()
 
 
 class SimpleMovingAverage(CustomFactor):
     inputs = [OHLCV.close]
+    _min_win = 2
 
     def compute(self, data):
-        # cum_sum = data.cumsum(dim=1)
-        # shift = cum_sum.roll(self.win, dims=1)
-        # shift[0:self.win, :] = 0
-        # ret = (cum_sum - shift) / self.win
-        ret = Rolling(data, self.win).sum() / self.win
-        return ret
+        return data.mean()
 
 
 class WeightedAverageValue(CustomFactor):
+    _min_win = 2
+
     def compute(self, base, weight):
-        wav = Rolling(base * weight, self.win).sum() / Rolling(weight, self.win).sum()
-        return wav
+        def _weight_mean(_base, _weight):
+            return (_base * _weight).sum(dim=2) / _weight.sum(dim=2)
+
+        return base.agg(_weight_mean, weight)
 
 
 class VWAP(WeightedAverageValue):
@@ -68,24 +72,21 @@ class ExponentialWeightedMovingAverage(CustomFactor):
         if self.adjust:
             self.weight = self.weight / sum(self.weight)  # to sum one
 
+    def pre_compute_(self, engine, start, end) -> None:
+        super().pre_compute_(engine, start, end)
+        if not isinstance(self.weight, torch.Tensor):
+            self.weight = torch.tensor(self.weight, dtype=torch.float32,
+                                       device=engine.get_device())
+
     def compute(self, data):
-        if isinstance(data, pd.DataFrame):
-            return data.ewm(span=self.span, min_periods=self.win, adjust=self.adjust).mean()
+        weighted_mean = data.agg(lambda x: (x * self.weight).sum(dim=2))
+        if self.adjust:
+            return weighted_mean
         else:
-            # todo for cuda
-            # dat_rows, dat_cols = data.shape
-            # stride_x, stride_y = data.strides
-            # new_shape = (dat_rows - self.win + 1, dat_cols, self.win)
-            # new_stride = (stride_x, stride_y, stride_x)
-            # for i in range(self.win):
-            #       index = (row, col, i) * new_stride
-            #       sum += data[index] * self.weight[i]
-            weighted_mean = data.rolling(self.win).apply(lambda x: (x * self.weight).sum())
-            if self.adjust:
-                return weighted_mean
-            else:
-                alpha = self.alpha
-                return alpha * weighted_mean + (data.shift(self.win - 1) * (1 - alpha) ** self.win)
+            shift = data.last().roll(self.win - 1, dims=1)
+            shift[:, 0:self.win - 1] = 0
+            alpha = self.alpha
+            return alpha * weighted_mean + (shift * (1 - alpha) ** self.win)
 
 
 class AverageDollarVolume(CustomFactor):
@@ -95,15 +96,16 @@ class AverageDollarVolume(CustomFactor):
         if self.win == 1:
             return closes * volumes
         else:
-            return Rolling(closes * volumes, self.win).sum() / self.win
+            return closes.agg(lambda c, v: (c * v).sum(dim=2) / self.win, volumes)
 
 
 class AnnualizedVolatility(CustomFactor):
     inputs = [Returns(win=2), 252]
     window_length = 20
+    _min_win = 2
 
     def compute(self, returns, annualization_factor):
-        return Rolling(returns, self.win).std(unbiased=False) * (annualization_factor ** .5)
+        return returns.std(unbiased=False) * (annualization_factor ** .5)
 
 
 MA = SimpleMovingAverage

@@ -1,3 +1,9 @@
+"""
+@author: Heerozh (Zhang Jianhao)
+@copyright: Copyright 2019, Heerozh. All rights reserved.
+@license: Apache 2.0
+@email: heeroz@gmail.com
+"""
 from .factor import CustomFactor
 from .engine import OHLCV
 
@@ -7,7 +13,7 @@ class StandardDeviation(CustomFactor):
     _min_win = 2
 
     def compute(self, data):
-        return data.rolling(self.win).std(ddof=0)
+        return data.std(unbiased=False)
 
 
 class RollingHigh(CustomFactor):
@@ -16,7 +22,7 @@ class RollingHigh(CustomFactor):
     _min_win = 2
 
     def compute(self, data):
-        return data.rolling(self.win).max()
+        return data.max()
 
 
 class RollingLow(CustomFactor):
@@ -25,7 +31,7 @@ class RollingLow(CustomFactor):
     _min_win = 2
 
     def compute(self, data):
-        return data.rolling(self.win).min()
+        return data.min()
 
 
 STDDEV = StandardDeviation
