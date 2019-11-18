@@ -17,7 +17,7 @@ Progress: 5/10  🔳🔳🔳🔳🔳⬜⬜⬜⬜⬜\
 
 spectre is a **GPU-accelerated Parallel** quantitative trading library, focused on **performance**.
 
-  * Fast, really fast, see below [Benchmarks](#chapter-iii-benchmarks)
+  * Fast, really fast, see below [Benchmarks](#benchmarks)
   * Pure python code
   * Using **PyTorch** for parallelize. And yes, spectre can return Factor as `torch.Tensor` type.
   * Low CUDA memory usage
@@ -42,6 +42,31 @@ Dependencies:
 conda install pytorch torchvision cudatoolkit=10.1 -c pytorch
 conda install pytables pandas
 ```
+
+## Benchmarks
+
+My Machine：
+- i9-7900X @ 3.30GHz, 20 Core
+- DDR4 3800MHz
+- RTX 2080Ti Founders
+
+Running on Quandl 5 years, 3196 Assets, total 3,637,344 ticks.
+
+|                |       spectre (CUDA)         |       spectre (CPU)        |       zipline         |
+|----------------|------------------------------|----------------------------|-----------------------|
+|SMA(100)        | 478 ms ± 56.4 ms (**6.23x**) | 2.68 s ± 36.1 ms (1.11x)   | 2.98 s ± 14.4 ms (1x) |
+|EMA(50) win=229 | 400 ms ± 22.3 ms (**21.0x**) | 4.37 s ± 46.4 ms (1.92x)   | 8.41 s ± 33.8 ms (1x) |
+|MACD(12,26,9)   | 513 ms ± 20.8 ms (**16.8x**) | 4.23 s ± 44.1 ms (2.03x)   | 8.6 s ± 78.2 ms (1x) |
+
+* The CUDA memory used in the spectre benchmark is 1.4G, returned by cuda.max_memory_allocated().
+
+
+<!--
+todo
+|Below [Full Example](#chapter-iii-full-example)| 2.06 s ± 7.68 ms (**2.65x**) | 3.05 s ± 24.8 ms (**1.73x**) | 5.28 s ± 14.0 ms (1x) |
+!-->
+
+* Benchmarks exclude the initial run.
 
 ## Chapter I. Factor and FactorEngine
 
@@ -76,32 +101,8 @@ df
 
 [Under construction]
 
-## Chapter III. Benchmarks
 
-My Machine：
-- i9-7900X @ 3.30GHz, 20 Core
-- DDR4 3800MHz
-- RTX 2080Ti Founders
-
-Running on Quandl 5 years, 3196 Assets, total 3,637,344 ticks.
-
-|                |       spectre (CUDA)         |       spectre (CPU)        |       zipline         |
-|----------------|------------------------------|----------------------------|-----------------------|
-|SMA(100)        | 478 ms ± 56.4 ms (**6.23x**) | 2.68 s ± 36.1 ms (1.11x)   | 2.98 s ± 14.4 ms (1x) |
-|EMA(50) win=229 | 400 ms ± 22.3 ms (**21.0x**) | 4.37 s ± 46.4 ms (1.92x)   | 8.41 s ± 33.8 ms (1x) |
-|MACD(12,26,9)   | 513 ms ± 20.8 ms (**16.8x**) | 4.23 s ± 44.1 ms (2.03x)   | 8.6 s ± 78.2 ms (1x) |
-
-* The CUDA memory used in the spectre benchmark is 1.4G, returned by cuda.max_memory_allocated().
-
-
-<!--
-todo
-|Below [Full Example](#chapter-iv-full-example)| 2.06 s ± 7.68 ms (**2.65x**) | 3.05 s ± 24.8 ms (**1.73x**) | 5.28 s ± 14.0 ms (1x) |
-!-->
-
-* Benchmarks exclude the initial run.
-
-## Chapter IV. Full Example
+## Chapter III. Full Example
 
 ```python
 from spectre import factors
@@ -127,7 +128,7 @@ al.performance.mean_return_by_quantile(al_clean_data)[0].plot.bar()
 
 [Under construction]
 
-## Chapter V. API
+## Chapter IV. API
 
 ### Note
 
