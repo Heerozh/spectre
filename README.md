@@ -40,7 +40,7 @@ Dependencies:
 
 ```bash
 conda install pytorch torchvision cudatoolkit=10.1 -c pytorch
-conda install pytables numpy pandas
+conda install pytables pandas
 ```
 
 ## Chapter I. Factor and FactorEngine
@@ -91,7 +91,7 @@ Running on Quandl 5 years, 3196 Assets, total 3,637,344 ticks.
 |EMA(50) win=229 | 541 ms ± 42.3 ms (**15.5x**) | 4.37 s ± 46.4 ms (1.92x)   | 8.41 s ± 33.8 ms (1x) |
 |MACD(12,26,9)   | 639 ms ± 29.8 ms (**13.5x**) | 4.23 s ± 44.1 ms (2.03x)   | 8.6 s ± 78.2 ms (1x) |
 
-The CUDA memory used in the spectre benchmark is 1.4G, returned by cuda.max_memory_allocated().
+* The CUDA memory used in the spectre benchmark is 1.4G, returned by cuda.max_memory_allocated().
 
 
 <!--
@@ -128,6 +128,13 @@ al.performance.mean_return_by_quantile(al_clean_data)[0].plot.bar()
 [Under construction]
 
 ## Chapter V. API
+
+### Note
+
+* All factors value are returned as same datetime, no shift, unlike zipline. 
+* The data is re-adjusted every day, so the factor you got, like the MA, will be different 
+    from the stock chart software which only adjusted according to last day. 
+
 
 ### Factor lists
 

@@ -229,7 +229,7 @@ class CustomFactor(BaseFactor):
                 the end of the row.
             win > 1:
                 Gives you a rolling object `r`, you can `r.mean()`, `r.sum()`, or `r.agg()`
-                `r.values` gives you raw data structure as:
+                `r.agg(callback)` gives you raw data structure as:
                 | asset id | Rolling tick | price(t+0) | ... | price(t+Win) |
                 |----------|--------------|------------|-----|--------------|
                 |     0    | 0            | NaN        | ... | 123.45       |

@@ -97,10 +97,6 @@ class Rolling:
             self.adjustment = None
             self.split = None
 
-    @classmethod
-    def empty(cls):
-        return cls.__new__(cls)
-
     def adjusted(self, s=None, e=None) -> torch.Tensor:
         """this will contiguous tensor consume lot of memory, limit e-s size"""
         if self.adjustment is not None:
@@ -122,27 +118,6 @@ class Rolling:
                               for s, e in self.split])
         else:
             return op(self.adjusted(), *[r.adjusted() for r in others])
-
-    # def __mul__(self, o: Union['Rolling', torch.Tensor]):
-    #     """this will contiguous tensor consume lot of memory, do not call"""
-    #     r = Rolling.empty()
-    #     r.win = self.win
-    #     r.values = self.adjusted()
-    #     if isinstance(o, Rolling):
-    #         assert self.win == o.win
-    #         if self.values.is_contiguous():
-    #             # save memory
-    #             r.values *= o.adjusted()
-    #         else:
-    #             r.values = r.values * o.adjusted()
-    #     else:
-    #         if self.values.is_contiguous():
-    #             r.values *= o
-    #         else:
-    #             r.values = r.values * o
-    #     r.adjustment = None
-    #     r.split = None
-    #     return r
 
     def loc(self, i):
         if i == -1:
