@@ -3,6 +3,10 @@ import spectre
 import numpy as np
 from numpy.testing import assert_array_equal
 import torch
+from os.path import dirname
+
+data_dir = dirname(__file__) + '/data/'
+
 
 class TestCustomFactorLib(unittest.TestCase):
 
@@ -26,7 +30,7 @@ class TestCustomFactorLib(unittest.TestCase):
 
         # test inheritance
         loader = spectre.factors.CsvDirLoader(
-            './data/daily/', ohlcv=('uOpen', 'uHigh', 'uLow', 'uClose', 'uVolume'),
+            data_dir + '/daily/', ohlcv=('uOpen', 'uHigh', 'uLow', 'uClose', 'uVolume'),
             index_col='date', parse_dates=True,
         )
         engine = spectre.factors.FactorEngine(loader)
@@ -64,4 +68,3 @@ class TestCustomFactorLib(unittest.TestCase):
         self.assertEqual(test_f1._cache_hit, 1)
         assert_array_equal(df['test1'].values, [0, 3, 1, 4, 2, 5])
         assert_array_equal(df['test2'].values, [0, 3, 1, 7, 3, 12])
-

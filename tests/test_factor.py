@@ -2,13 +2,16 @@ import unittest
 import spectre
 import numpy as np
 from numpy.testing import assert_almost_equal, assert_array_equal
+from os.path import dirname
+
+data_dir = dirname(__file__) + '/data/'
 
 
 class TestFactorLib(unittest.TestCase):
 
     def test_factors(self):
         loader = spectre.factors.CsvDirLoader(
-            './data/daily/', 'AAPL',
+            data_dir + '/daily/', 'AAPL',
             ohlcv=('uOpen', 'uHigh', 'uLow', 'uClose', 'uVolume'),
             index_col='date', parse_dates=True,
         )
@@ -65,13 +68,13 @@ class TestFactorLib(unittest.TestCase):
         test_expected(spectre.factors.AnnualizedVolatility(3), expected_aapl, expected_msft, 10)
 
         # test rank
-        _expected_aapl = [2.]*10
+        _expected_aapl = [2.] * 10
         _expected_aapl[6] = 1  # because msft was nan this day
-        _expected_msft = [1]*9
+        _expected_msft = [1] * 9
         test_expected(spectre.factors.OHLCV.close.rank(),
                       _expected_aapl, _expected_msft, total_rows)
-        _expected_aapl = [1.]*10
-        _expected_msft = [2]*9
+        _expected_aapl = [1.] * 10
+        _expected_msft = [2] * 9
         test_expected(spectre.factors.OHLCV.close.rank(ascending=False),
                       _expected_aapl, _expected_msft, total_rows)
         # test rank bug #98a0bdc
@@ -81,10 +84,10 @@ class TestFactorLib(unittest.TestCase):
         assert_array_equal([[2.0], [1.0]], result.values)
 
         # test zscore
-        _expected_aapl = [1.]*10
+        _expected_aapl = [1.] * 10
         # aapl has prices data, but we only have two stocks, so one data zscore = 0/0 = nan
         _expected_aapl[6] = np.nan
-        _expected_msft = [-1.]*9
+        _expected_msft = [-1.] * 9
         test_expected(spectre.factors.OHLCV.close.zscore(),
                       _expected_aapl, _expected_msft, total_rows)
 
@@ -95,7 +98,7 @@ class TestFactorLib(unittest.TestCase):
         test_expected(spectre.factors.OHLCV.close.demean(groupby={'AAPL': 1, 'MSFT': 1}),
                       _expected_aapl, _expected_msft, total_rows, decimal=3)
         test_expected(spectre.factors.OHLCV.close.demean(groupby={'AAPL': 1, 'MSFT': 2}),
-                      [0]*10, [0]*9, total_rows)
+                      [0] * 10, [0] * 9, total_rows)
         test_expected(spectre.factors.OHLCV.close.demean(),
                       _expected_aapl, _expected_msft, total_rows)
 
@@ -160,7 +163,7 @@ class TestFactorLib(unittest.TestCase):
                          39.19197118, 48.18441452, 44.30411404, 50.05167959, 56.47230321]
         # expected_msft = talib.RSI(df_msft_close.values, timeperiod=14)
         expected_msft = [38.5647217, 42.0627596, 37.9693676, 43.8641553, 48.3458438,
-                         47.095672 , 46.7363662, 46.127465 , 64.8259304]
+                         47.095672, 46.7363662, 46.127465, 64.8259304]
         # expected_aapl += 7
         test_expected(spectre.factors.RSI(), expected_aapl, expected_msft)
 
@@ -187,7 +190,7 @@ class TestFactorLib(unittest.TestCase):
 
     def test_filter_factor(self):
         loader = spectre.factors.CsvDirLoader(
-            './data/daily/', ohlcv=('uOpen', 'uHigh', 'uLow', 'uClose', 'uVolume'),
+            data_dir + 'daily/', ohlcv=('uOpen', 'uHigh', 'uLow', 'uClose', 'uVolume'),
             index_col='date', parse_dates=True,
         )
         engine = spectre.factors.FactorEngine(loader)
@@ -204,7 +207,7 @@ class TestFactorLib(unittest.TestCase):
         import talib
         total_rows = 10
         loader = spectre.factors.CsvDirLoader(
-            './data/daily/', 'AAPL', ohlcv=('uOpen', 'uHigh', 'uLow', 'uClose', 'uVolume'),
+            data_dir + '/daily/', 'AAPL', ohlcv=('uOpen', 'uHigh', 'uLow', 'uClose', 'uVolume'),
             index_col='date', parse_dates=True,
         )
         # get filtered ma5
@@ -232,7 +235,7 @@ class TestFactorLib(unittest.TestCase):
 
     def test_cuda(self):
         loader = spectre.factors.CsvDirLoader(
-            './data/daily/', ohlcv=('uOpen', 'uHigh', 'uLow', 'uClose', 'uVolume'),
+            data_dir + '/daily/', ohlcv=('uOpen', 'uHigh', 'uLow', 'uClose', 'uVolume'),
             index_col='date', parse_dates=True,
         )
         engine = spectre.factors.FactorEngine(loader)
@@ -246,4 +249,3 @@ class TestFactorLib(unittest.TestCase):
         result = engine.run("2019-01-01", "2019-01-15")
 
         assert_array_equal(result.f2, result.fv)
-

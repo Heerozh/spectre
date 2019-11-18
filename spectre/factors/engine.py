@@ -153,7 +153,7 @@ class FactorEngine:
         OHLCV.low.inputs = (self._loader.get_ohlcv_names()[2], 'price_multi')
         OHLCV.close.inputs = (self._loader.get_ohlcv_names()[3], 'price_multi')
         OHLCV.volume.inputs = (self._loader.get_ohlcv_names()[4], 'vol_multi')
-        # todo: 1 刚启动时很慢的问题，2数据加载cache功能，3，快速adjustment
+        # todo: 1 刚启动时很慢的问题，2数据加载cache功能，
 
         # Calculate data that requires backward in tree
         max_backward = max([f.get_total_backward_() for f in self._factors.values()])

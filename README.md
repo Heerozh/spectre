@@ -1,3 +1,4 @@
+[![Coverage Status](https://coveralls.io/repos/github/Heerozh/spectre/badge.svg?branch=master)](https://coveralls.io/github/Heerozh/spectre?branch=master)
 
 Progress: 5/10  🔳🔳🔳🔳🔳⬜⬜⬜⬜⬜\
 ~~1/10: FactorEngine architecture~~\

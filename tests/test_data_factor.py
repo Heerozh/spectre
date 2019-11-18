@@ -1,13 +1,16 @@
 import unittest
 import spectre
 from numpy.testing import assert_array_equal
+from os.path import dirname
+
+data_dir = dirname(__file__) + '/data/'
 
 
 class TestDataFactorLib(unittest.TestCase):
-
     def test_datafactor_value(self):
         loader = spectre.factors.CsvDirLoader(
-            './data/daily/', ohlcv=('uOpen', 'uHigh', 'uLow', 'uClose', 'uVolume'),
+            data_dir + '/daily/',
+            ohlcv=('uOpen', 'uHigh', 'uLow', 'uClose', 'uVolume'),
             index_col='date', parse_dates=True,
         )
         engine = spectre.factors.FactorEngine(loader)

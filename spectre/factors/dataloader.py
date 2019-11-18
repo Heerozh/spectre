@@ -47,7 +47,6 @@ class CsvDirLoader(DataLoader):
         :param split_by_year: If file name like 'spy_2017.csv', set this to True
         :param ohlcv: OHLCV column names, If set, you can access those data like
                       `spectre.factors.OHLCV.open`, also
-                      TODO all those column will be adjust by Dividends/Splits(anchor at `end` time)
         :param read_csv: Parameters for pd.read_csv.
         """
         super().__init__(calender_assert, ohlcv)
@@ -86,7 +85,7 @@ class CsvDirLoader(DataLoader):
         return dfs
 
     def _load_div_split(self):
-        # todo
+        # todo load div/split data from csv folder
         pass
 
     def _load_from_cache(self, start, end, backward):

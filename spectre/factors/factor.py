@@ -272,6 +272,8 @@ class DataFactor(BaseFactor):
         self._data = engine.get_tensor_groupby_asset_(self.inputs[0])
         if len(self.inputs) > 1 and self.inputs[1] in engine.get_dataframe_():
             self._multi = engine.get_tensor_groupby_asset_(self.inputs[1])
+        else:
+            self._multi = None
 
     def compute_(self, stream: Union[torch.cuda.Stream, None]) -> torch.Tensor:
         return self._data
