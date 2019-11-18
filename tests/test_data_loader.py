@@ -45,6 +45,14 @@ class TestDataLoaderLib(unittest.TestCase):
         df = loader.load(start, end, 0)
         self._assertDFFirstLastEqual(df.loc[(slice(None), 'MSFT'), :], 'close', 104.5, 104.5)
 
+        assert df.index.is_lexsorted(), \
+            "In the df returned by DateLoader, the index must be sorted, " \
+            "try using df.sort_index(level=0, inplace=True)"
+        assert str(df.index.levels[0].tzinfo) == 'UTC', \
+            "In the df returned by DateLoader, the date index must be UTC timezone."
+        assert df.index.levels[-1].ordered, \
+            "In the df returned by DateLoader, the asset index must ordered categorical."
+
     def test_csv_split_loader_value(self):
         loader = spectre.factors.CsvDirLoader(
             data_dir + '/5mins/', split_by_year=True, index_col='Date', parse_dates=True, )
@@ -56,6 +64,14 @@ class TestDataLoaderLib(unittest.TestCase):
         df = loader.load(start, end, 0)
         self._assertDFFirstLastEqual(df.loc[(slice(None), 'AAPL'), :], 'Open', 157.45, 155.17)
         self._assertDFFirstLastEqual(df.loc[(slice(None), 'MSFT'), :], 'Open', 101.44, 99.55)
+
+        assert df.index.is_lexsorted(), \
+            "In the df returned by DateLoader, the index must be sorted, " \
+            "try using df.sort_index(level=0, inplace=True)"
+        assert str(df.index.levels[0].tzinfo) == 'UTC', \
+            "In the df returned by DateLoader, the date index must be UTC timezone."
+        assert df.index.levels[-1].ordered, \
+            "In the df returned by DateLoader, the asset index must ordered categorical."
 
     @unittest.skipUnless(os.getenv('COVERAGE_RUNNING'), "too slow, run manually")
     def test_QuandlLoader(self):

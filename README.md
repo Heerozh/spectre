@@ -87,9 +87,9 @@ Running on Quandl 5 years, 3196 Assets, total 3,637,344 ticks.
 
 |                |       spectre (CUDA)         |       spectre (CPU)        |       zipline         |
 |----------------|------------------------------|----------------------------|-----------------------|
-|SMA(100)        | 397 ms ± 7.36 ms (**7.51x**) | 2.68 s ± 36.1 ms (1.11x)   | 2.98 s ± 14.4 ms (1x) |
-|EMA(50) win=229 | 541 ms ± 42.3 ms (**15.5x**) | 4.37 s ± 46.4 ms (1.92x)   | 8.41 s ± 33.8 ms (1x) |
-|MACD(12,26,9)   | 639 ms ± 29.8 ms (**13.5x**) | 4.23 s ± 44.1 ms (2.03x)   | 8.6 s ± 78.2 ms (1x) |
+|SMA(100)        | 478 ms ± 56.4 ms (**6.23x**) | 2.68 s ± 36.1 ms (1.11x)   | 2.98 s ± 14.4 ms (1x) |
+|EMA(50) win=229 | 400 ms ± 22.3 ms (**21.0x**) | 4.37 s ± 46.4 ms (1.92x)   | 8.41 s ± 33.8 ms (1x) |
+|MACD(12,26,9)   | 513 ms ± 20.8 ms (**16.8x**) | 4.23 s ± 44.1 ms (2.03x)   | 8.6 s ± 78.2 ms (1x) |
 
 * The CUDA memory used in the spectre benchmark is 1.4G, returned by cuda.max_memory_allocated().
 

@@ -74,20 +74,9 @@ class FactorEngine:
     # private:
 
     def _prepare_tensor(self, start, end, max_backward):
-        load_params = [start, end, max_backward]
-        if load_params == self._last_load:
-            return
-
         # Get data
         self._dataframe = self._loader.load(start, end, max_backward)
-        from datetime import datetime, timezone
-        assert self._dataframe.index.is_lexsorted(), \
-            "In the df returned by DateLoader, the index must be sorted, " \
-            "try using df.sort_index(level=0, inplace=True)"
-        assert str(self._dataframe.index.levels[0].tzinfo) == 'UTC', \
-            "In the df returned by DateLoader, the date index must be UTC timezone."
-        assert self._dataframe.index.levels[-1].ordered, \
-            "In the df returned by DateLoader, the asset index must ordered categorical."
+
         cat = self._dataframe.index.get_level_values(1).codes
         keys = torch.tensor(cat, device=self._device, dtype=torch.int32)
         self._assetgroup = ParallelGroupBy(keys)
@@ -97,7 +86,6 @@ class FactorEngine:
         keys = torch.tensor(cat, device=self._device, dtype=torch.int32)
         self._timegroup = ParallelGroupBy(keys)
 
-        self._last_load = load_params
         self._column_cache = {}
 
     def _compute_and_revert(self, f: BaseFactor, name) -> Union[np.array, pd.Series]:
@@ -114,7 +102,6 @@ class FactorEngine:
         self._loader = loader
         self._dataframe = None
         self._assetgroup = None
-        self._last_load = [None, None, None]
         self._column_cache = {}
         self._timegroup = None
         self._factors = {}

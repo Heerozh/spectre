@@ -57,7 +57,7 @@ class TestCustomFactorLib(unittest.TestCase):
             inputs = [test_f1]
 
             def compute(self, test_input):
-                return torch.tensor(np.cumsum(test_input, axis=1))
+                return torch.tensor(np.cumsum(test_input.numpy(), axis=1))
 
         engine.add(test_f1, 'test1')
         self.assertRaisesRegex(KeyError, ".*exists.*",
