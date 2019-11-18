@@ -33,6 +33,14 @@ In development.
 
 ```bash
 pip install git+git://github.com/Heerozh/spectre.git
+
+```
+
+Dependencies: 
+
+```bash
+conda install pytorch torchvision cudatoolkit=10.1 -c pytorch
+conda install pytables numpy pandas
 ```
 
 ## Chapter I. Factor and FactorEngine

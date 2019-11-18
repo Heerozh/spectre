@@ -1,8 +1,5 @@
 from setuptools import setup
 
-with open('requirements.txt') as f:
-    requirements = f.read().splitlines()
-
 setup(
     name="spectre",
     author='Zhang Jianhao',
@@ -16,7 +13,7 @@ setup(
         "Programming Language :: Python :: 3",
         "Operating System :: OS Independent",
     ],
-    install_requires=requirements,
+    python_requires='>=3.5',
 
     version="0.08",
     packages=['spectre', 'spectre.factors', 'spectre.parallel'],
