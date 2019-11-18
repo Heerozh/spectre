@@ -55,8 +55,8 @@ loader = factors.CsvDirLoader(
     index_col='date', parse_dates=True,
 )
 engine = factors.FactorEngine(loader)
-engine.add(factors.OHLCV.close, 'close')
 engine.add(factors.SMA(5), 'ma5')
+engine.add(factors.OHLCV.close, 'close')
 df = engine.run('2019-01-11', '2019-01-15')
 df
 ```
@@ -66,7 +66,7 @@ df
 |-------------------------|---------|-----------|---------|
 |**date**                 |**asset**|           |	      |
 |2019-01-11 00:00:00+00:00|     AAPL|    154.254|	153.69|
-|                         |     MSFT|    104.402|	103.20|
+|                         |     MSFT|        NaN|	103.20|
 |2019-01-14 00:00:00+00:00|     AAPL|    155.854|	157.00|
 |                         |     MSFT|    104.202|	103.39|
 |2019-01-15 00:00:00+00:00|     AAPL|    156.932|	156.94|
