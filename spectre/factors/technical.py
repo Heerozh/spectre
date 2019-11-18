@@ -105,8 +105,8 @@ class FastStochasticOscillator(CustomFactor):
     normalize = False
 
     def compute(self, highs, lows, closes):
-        highest_highs, _ = highs.max()
-        lowest_lows, _ = lows.min()
+        highest_highs = highs.max()
+        lowest_lows = lows.min()
         k = (closes.last() - lowest_lows) / (highest_highs - lowest_lows)
 
         if self.normalize:

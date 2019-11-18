@@ -159,12 +159,12 @@ class Rolling:
 
     def max(self):
         def _max(x):
-            return x.max(dim=2)
+            return x.max(dim=2)[0]
 
         return self.agg(_max)
 
     def min(self):
         def _min(x):
-            return x.min(dim=2)
+            return x.min(dim=2)[0]
 
         return self.agg(_min)

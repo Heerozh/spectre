@@ -26,7 +26,8 @@ class TestParallelAlgorithm(unittest.TestCase):
             [[np.nan, np.nan, 486.3200, 467.5500],
              [np.nan, np.nan, 310.3300, 308.0000]])
 
-        print(spectre.parallel.Rolling(x, 3))
+        self.assertRegex(str(spectre.parallel.Rolling(x, 3)),
+                         "spectre.parallel.Rolling object(.|\n)*tensor(.|\n)*")
         s = spectre.parallel.Rolling(x, 3).sum()
         assert_almost_equal(s.numpy(), expected.numpy(), decimal=4)
 
