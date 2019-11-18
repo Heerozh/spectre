@@ -29,6 +29,12 @@ spectre is a **GPU-accelerated Parallel** quantitative trading library, focused 
 
 In development.
 
+# Installation
+
+```bash
+pip install git+git://github.com/Heerozh/spectre.git
+```
+
 ## Chapter I. Factor and FactorEngine
 
 ### Quick Start
