@@ -38,10 +38,14 @@ class FactorEngine:
         return self._timegroup
 
     def get_tensor_groupby_asset_(self, column) -> torch.Tensor:
-        # todo cache data with column prevent double copying
+        # cache data with column prevent double copying
+        if column in self._column_cache:
+            return self._column_cache[column]
+
         series = self._dataframe[column]
         data = torch.from_numpy(series.values).pin_memory().to(self._device, non_blocking=True)
         data = self._assetgroup.split(data)
+        self._column_cache[column] = data
         return data
 
     def regroup_by_asset_(self, data: Union[torch.Tensor, pd.Series]) -> torch.Tensor:
@@ -70,7 +74,10 @@ class FactorEngine:
     # private:
 
     def _prepare_tensor(self, start, end, max_backward):
-        # todo if unchanging, return
+        load_params = [start, end, max_backward]
+        if load_params == self._last_load:
+            return
+
         # Get data
         self._dataframe = self._loader.load(start, end, max_backward)
         from datetime import datetime, timezone
@@ -90,6 +97,9 @@ class FactorEngine:
         keys = torch.tensor(cat, device=self._device, dtype=torch.int32)
         self._timegroup = ParallelGroupBy(keys)
 
+        self._last_load = load_params
+        self._column_cache = {}
+
     def _compute_and_revert(self, f: BaseFactor, name) -> Union[np.array, pd.Series]:
         """Returning pd.Series will cause very poor performance, please avoid it at 99% costs"""
         data = f.compute_(None)
@@ -104,6 +114,8 @@ class FactorEngine:
         self._loader = loader
         self._dataframe = None
         self._assetgroup = None
+        self._last_load = [None, None, None]
+        self._column_cache = {}
         self._timegroup = None
         self._factors = {}
         self._filter = None
@@ -136,6 +148,8 @@ class FactorEngine:
 
     def to_cuda(self) -> None:
         self._device = torch.device('cuda')
+        # Hot start cuda
+        torch.tensor([0], device=self._device, dtype=torch.int32)
 
     def to_cpu(self) -> None:
         self._device = torch.device('cpu')
@@ -153,7 +167,6 @@ class FactorEngine:
         OHLCV.low.inputs = (self._loader.get_ohlcv_names()[2], 'price_multi')
         OHLCV.close.inputs = (self._loader.get_ohlcv_names()[3], 'price_multi')
         OHLCV.volume.inputs = (self._loader.get_ohlcv_names()[4], 'vol_multi')
-        # todo: 1 刚启动时很慢的问题，2数据加载cache功能，
 
         # Calculate data that requires backward in tree
         max_backward = max([f.get_total_backward_() for f in self._factors.values()])
@@ -187,7 +200,7 @@ class FactorEngine:
             filter_data = self._compute_and_revert(self._filter, 'filter')
             ret = ret[filter_data]
 
-        return ret.loc[start:end]
+        return ret.loc[start:]
 
     def get_factors_raw_value(self):
         return {c: f.compute_(None) for c, f in self._factors.items()}
