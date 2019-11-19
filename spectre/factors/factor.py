@@ -88,9 +88,9 @@ class BaseFactor:
         fact.groupby = groupby
         return fact
 
-    def quantile(self):
+    def quantile(self, bins=5):
         fact = QuantileFactor(inputs=(self,))
-        fact.bins = 5
+        fact.bins = bins
         return fact
 
     # --------------- main methods ---------------
@@ -343,28 +343,33 @@ class ZScoreFactor(TimeGroupFactor):
         return (data - nanmean(data)[:, None]) / nanstd(data)[:, None]
 
 
-class QuantileFactor(CustomFactor):
+class QuantileFactor(TimeGroupFactor):
+    """return the quantile that factor belongs to each day"""
     bins = 5
 
     def compute(self, data: torch.Tensor) -> torch.Tensor:
-        x = data.view(-1)
-        size = x.shape[0] - torch.isnan(data).sum()
-        x, _ = torch.sort(x)
+        x, _ = torch.sort(data, dim=1)
+        size = x.shape[1]
+        mask = torch.isnan(data)
+        print(data)
 
-        def get_b(q):
-            i = q * (size - 1)
-            j = int(i) + 1
-            if j >= size:
-                j = int(i)
-            b = x[int(i)] + (x[j] - x[int(i)]) * (i % 1)
+        def get_b(x_row, nans, q):
+            nan_size = size - nans
+            idx = q * (nan_size - 1)
+            nxt = int(idx) + 1
+            if nxt >= nan_size:
+                nxt = int(idx)
+            b = x_row[int(idx)] + (x_row[nxt] - x_row[int(idx)]) * (idx % 1)
             return b
 
-        boundary = [get_b(q) for q in np.linspace(0, 1, self.bins + 1)]
-        boundary[0] -= 1
-
         ret = data.new_full(data.shape, np.nan, dtype=torch.float32)
-        for s, e, t in zip(boundary[:-1], boundary[1:], range(self.bins)):
-            ret[((data > s) & (data <= e))] = t
+        for i in range(x.shape[0]):
+            data_row = data[i]
+            boundary = [get_b(x[i], mask[i].sum(), q)
+                        for q in np.linspace(0, 1, self.bins + 1)]
+            boundary[0] -= 1
+            for s, e, tile in zip(boundary[:-1], boundary[1:], range(self.bins)):
+                ret[i][(data_row > s) & (data_row <= e)] = tile + 1.
         return ret
 
 

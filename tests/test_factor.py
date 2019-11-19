@@ -1,6 +1,7 @@
 import unittest
 import spectre
 import numpy as np
+import pandas as pd
 from numpy.testing import assert_almost_equal, assert_array_equal
 from os.path import dirname
 
@@ -254,12 +255,29 @@ class TestFactorLib(unittest.TestCase):
         f = spectre.factors.QuantileFactor()
         f.bins = 5
         import torch
-        result = f.compute(torch.tensor([[1, 1, np.nan, 1.01, 1.01,  2],
-                                         [3,  4,  5, 1.01, np.nan, 1.01]]))
-        expected = [[0, 0, np.nan, 1, 1, 3], [3, 4, 4, 1, np.nan, 1]]
+        result = f.compute(torch.tensor([[1, 1, np.nan, 1.01, 1.01, 2],
+                                         [3, 4, 5, 1.01, np.nan, 1.01]]))
+        expected = [[1, 1, np.nan, 3, 3, 5], [3, 4, 5, 1, np.nan, 1]]
         assert_array_equal(result, expected)
 
-        result = f.compute(torch.tensor([[-1, 1, np.nan, 1.01, 1.02,  2],
-                                         [3,  -4,  5, 1.01, np.nan, 1.01]]))
-        expected = [[0, 1, np.nan, 1, 3, 3], [4, 0, 4, 1, np.nan, 1]]
+        result = f.compute(torch.tensor([[-1, 1, np.nan, 1.01, 1.02, 2],
+                                         [3, -4, 5, 1.01, np.nan, 1.01]]))
+        expected = [[1, 2, np.nan, 3, 4, 5], [4, 1, 5, 2, np.nan, 2]]
         assert_array_equal(result, expected)
+
+        data = [-1.01656508e+00, -6.47827625e-01, -1.57361794e+00, -1.71908307e+00,
+                -9.08311903e-01, -1.27141106e+00, -4.88830775e-01, -1.55332041e+00,
+                -1.36726034e+00, -1.05941534e+00, -8.50802362e-01, -6.41061842e-01,
+                -1.39432359e+00, -1.70104098e+00, -7.70740151e-01, -5.82424700e-01,
+                -7.74123013e-01, -1.22517800e+00, -1.21615684e+00, -1.67059469e+00,
+                4.38087106e-01, -8.59823465e-01, -7.44804442e-01, -9.72587228e-01,
+                -1.08196807e+00, -1.08084035e+00, -1.40447235e+00, -1.38981307e+00,
+                -7.05337167e-01, -1.06279814e+00, -1.65931833e+00, -1.12707353e+00,
+                8.13590348e-01, -7.12103009e-01, -4.07640904e-01, -1.39206827e+00,
+                6.46700025e-01, -1.86623976e-01, -1.67848814e+00, -1.69145607e-03,
+                -1.54880989e+00, -6.03285991e-02, -6.99698985e-01, -1.53753352e+00,
+                1.04137313e+00, -1.17894483e+00, -5.27170479e-01, -1.33455884e+00,
+                -1.50483203e+00, -1.50595963e+00, 1.53978884e+00, -2.41878211e-01]
+        result = f.compute(torch.tensor([data]))
+        expected = pd.qcut(data, 5, labels=False) + 1
+        assert_array_equal(result[-1], expected)
