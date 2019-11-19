@@ -351,7 +351,6 @@ class QuantileFactor(TimeGroupFactor):
         x, _ = torch.sort(data, dim=1)
         size = x.shape[1]
         mask = torch.isnan(data)
-        print(data)
 
         def get_b(x_row, nans, q):
             nan_size = size - nans
