@@ -249,3 +249,17 @@ class TestFactorLib(unittest.TestCase):
         result = engine.run("2019-01-01", "2019-01-15")
 
         assert_array_equal(result.f2, result.fv)
+
+    def test_quantile(self):
+        f = spectre.factors.QuantileFactor()
+        f.bins = 5
+        import torch
+        result = f.compute(torch.tensor([[1, 1, np.nan, 1.01, 1.01,  2],
+                                         [3,  4,  5, 1.01, np.nan, 1.01]]))
+        expected = [[0, 0, np.nan, 1, 1, 3], [3, 4, 4, 1, np.nan, 1]]
+        assert_array_equal(result, expected)
+
+        result = f.compute(torch.tensor([[-1, 1, np.nan, 1.01, 1.02,  2],
+                                         [3,  -4,  5, 1.01, np.nan, 1.01]]))
+        expected = [[0, 1, np.nan, 1, 3, 3], [4, 0, 4, 1, np.nan, 1]]
+        assert_array_equal(result, expected)

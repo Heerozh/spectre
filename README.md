@@ -58,7 +58,7 @@ Running on Quandl 5 years, 3196 Assets, total 3,637,344 ticks.
 |EMA(50) win=200 | 400 ms ± 22.3 ms (**19.0x**) | 4.37 s ± 46.4 ms (1.74x)   | 7.6 s ± 15.4 ms (1x) |
 |(MACD+RSI+STOCHF).rank.zscore | 675 ms ± 13 ms (**21.2x**) | 6.01 s ± 28.1 (2.38x)   | 14.3 s ± 277 ms (1x) |
 
-* The CUDA memory used in the spectre benchmark is 1.4G, returned by cuda.max_memory_allocated().
+* The CUDA memory used in the spectre benchmark is 1.6G, returned by cuda.max_memory_allocated().
 
 
 <!--
@@ -80,6 +80,7 @@ loader = factors.CsvDirLoader(
     index_col='date', parse_dates=True,
 )
 engine = factors.FactorEngine(loader)
+engine.to_cuda()
 engine.add(factors.SMA(5), 'ma5')
 engine.add(factors.OHLCV.close, 'close')
 df = engine.run('2019-01-11', '2019-01-15')
@@ -176,6 +177,27 @@ new_filter = factor1 < factor2
 new_filter = factor.top(n)
 new_filter = factor.bottom(n)
 ```
+
+## Chapter V. How to write your own factor
+
+Inherit from `CustomFactor`, write `compute` function.
+
+You have to use `torch.Tensor` to write parallel code yourself.
+
+If you can't, here is a simple way:
+
+### Using Pandas Series
+```python
+class YourFactor(CustomFactor):
+
+    def compute(self, data: torch.Tensor) -> torch.Tensor:
+        # convert to pd.Series data
+        pd_series = self._revert_to_series(data)
+        # ...
+        # convert back to grouped tensor
+        return self._regroup(pd_series)
+```
+This method is completely non-parallel and inefficient, but easy to write.
 
 
 ------------

@@ -14,6 +14,7 @@ from .factor import (
     CustomFactor,
     DataFactor,
     RankFactor,
+    QuantileFactor,
 )
 
 from .basic import (

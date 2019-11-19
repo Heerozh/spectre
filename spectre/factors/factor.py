@@ -88,6 +88,11 @@ class BaseFactor:
         fact.groupby = groupby
         return fact
 
+    def quantile(self):
+        fact = QuantileFactor(inputs=(self,))
+        fact.bins = 5
+        return fact
+
     # --------------- main methods ---------------
 
     def _regroup_by_time(self, data):
@@ -310,8 +315,7 @@ class RankFactor(TimeGroupFactor):
             filled = data
         _, indices = torch.sort(filled, dim=1, descending=not self.ascending)
         _, indices = torch.sort(indices, dim=1)
-        rank = torch.arange(1, filled.shape[1]+1, device=data.device, dtype=torch.float32)
-        rank = torch.take(rank, indices)
+        rank = indices.float() + 1.
         rank[torch.isnan(data)] = np.nan
         return rank
 
@@ -337,6 +341,31 @@ class ZScoreFactor(TimeGroupFactor):
 
     def compute(self, data: torch.Tensor) -> torch.Tensor:
         return (data - nanmean(data)[:, None]) / nanstd(data)[:, None]
+
+
+class QuantileFactor(CustomFactor):
+    bins = 5
+
+    def compute(self, data: torch.Tensor) -> torch.Tensor:
+        x = data.view(-1)
+        size = x.shape[0] - torch.isnan(data).sum()
+        x, _ = torch.sort(x)
+
+        def get_b(q):
+            i = q * (size - 1)
+            j = int(i) + 1
+            if j >= size:
+                j = int(i)
+            b = x[int(i)] + (x[j] - x[int(i)]) * (i % 1)
+            return b
+
+        boundary = [get_b(q) for q in np.linspace(0, 1, self.bins + 1)]
+        boundary[0] -= 1
+
+        ret = data.new_full(data.shape, np.nan, dtype=torch.float32)
+        for s, e, t in zip(boundary[:-1], boundary[1:], range(self.bins)):
+            ret[((data > s) & (data <= e))] = t
+        return ret
 
 
 # --------------- op factors ---------------
@@ -400,4 +429,3 @@ class EqFactor(FilterFactor):
 class NeFactor(FilterFactor):
     def compute(self, left, right) -> torch.Tensor:
         return torch.ne(left, right)
-
