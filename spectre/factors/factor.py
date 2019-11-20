@@ -349,26 +349,25 @@ class QuantileFactor(TimeGroupFactor):
 
     def compute(self, data: torch.Tensor) -> torch.Tensor:
         x, _ = torch.sort(data, dim=1)
-        size = x.shape[1]
         mask = torch.isnan(data)
+        act_size = data.shape[1] - mask.sum(dim=1)
+        q = np.linspace(0, 1, self.bins + 1, dtype=np.float32)
+        q = torch.tensor(q[:, None], device=data.device)
+        q_index = q * (act_size - 1)
+        q_weight = q % 1
+        q_index = q_index.long()
+        q_next = q_index + 1
+        q_next[-1] = act_size - 1
 
-        def get_b(x_row, nans, q):
-            nan_size = size - nans
-            idx = q * (nan_size - 1)
-            nxt = int(idx) + 1
-            if nxt >= nan_size:
-                nxt = int(idx)
-            b = x_row[int(idx)] + (x_row[nxt] - x_row[int(idx)]) * (idx % 1)
-            return b
+        rows = torch.arange(data.shape[0])
+        b_start = x[rows, q_index]
+        b = b_start + (x[rows, q_next] - b_start) * q_weight
+        b[0] -= 1
+        b = b[:, :, None]
 
         ret = data.new_full(data.shape, np.nan, dtype=torch.float32)
-        for i in range(x.shape[0]):
-            data_row = data[i]
-            boundary = [get_b(x[i], mask[i].sum(), q)
-                        for q in np.linspace(0, 1, self.bins + 1)]
-            boundary[0] -= 1
-            for s, e, tile in zip(boundary[:-1], boundary[1:], range(self.bins)):
-                ret[i][(data_row > s) & (data_row <= e)] = tile + 1.
+        for start, end, tile in zip(b[:-1], b[1:], range(self.bins)):
+            ret[(data > start) & (data <= end)] = tile + 1.
         return ret
 
 
