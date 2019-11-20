@@ -83,10 +83,18 @@ class TestFactorLib(unittest.TestCase):
         engine.add(spectre.factors.OHLCV.close.rank(), 'test')
         result = engine.run('2019-01-01', '2019-01-02')
         assert_array_equal([[2.0], [1.0]], result.values)
+        # test rank with filter cuda
+        engine.remove_all_factors()
+        engine.set_filter(spectre.factors.OHLCV.volume.top(1))
+        engine.add(spectre.factors.OHLCV.close.rank(), 'test')
+        engine.to_cuda()
+        result = engine.run('2019-01-01', '2019-01-15')
+        assert_array_equal([1.] * 10, result.test.values)
         # test rank with filter
         engine.remove_all_factors()
         engine.set_filter(spectre.factors.OHLCV.volume.top(1))
         engine.add(spectre.factors.OHLCV.close.rank(), 'test')
+        engine.to_cpu()
         result = engine.run('2019-01-01', '2019-01-15')
         assert_array_equal([1.] * 10, result.test.values)
         engine.set_filter(None)

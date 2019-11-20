@@ -174,6 +174,10 @@ class FactorEngine:
         for f in self._factors.values():
             f.pre_compute_(self, start, end)
 
+        # get filter data for mask
+        if self._filter:
+            self._mask = self._compute_and_revert(self._filter, 'filter')
+
         # if cuda, Compute factors and sync
         if self._device.type == 'cuda':
             stream = torch.cuda.Stream(device=self._device)
@@ -182,10 +186,6 @@ class FactorEngine:
             if self._filter:
                 self._filter.compute_(stream)
             torch.cuda.synchronize(device=self._device)
-
-        # get filter data for mask
-        if self._filter:
-            self._mask = self._compute_and_revert(self._filter, 'filter')
 
         # compute factors from cpu or read cache
         ret = pd.DataFrame(index=self._dataframe.index.copy())
