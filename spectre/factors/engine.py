@@ -61,6 +61,9 @@ class FactorEngine:
             data = torch.tensor(data.values, device=self._device)
         else:
             data = self._assetgroup.revert(data, 'regroup_by_time_')
+        if self._mask is not None:
+            data = data.masked_fill(~self._mask, np.nan)
+
         data = self._timegroup.split(data)
         return data
 
@@ -74,6 +77,7 @@ class FactorEngine:
     # private:
 
     def _prepare_tensor(self, start, end, max_backward):
+        # 如果为了模型反复run，这里还是要cache一下，时间日期和max back小于已有的就不重新load
         # Get data
         self._dataframe = self._loader.load(start, end, max_backward)
 
@@ -92,9 +96,9 @@ class FactorEngine:
         """Returning pd.Series will cause very poor performance, please avoid it at 99% costs"""
         data = f.compute_(None)
         if f.is_timegroup:
-            return self._timegroup.revert(data, name).cpu().numpy()
+            return self._timegroup.revert(data, name)
         else:
-            return self._assetgroup.revert(data, name).cpu().numpy()
+            return self._assetgroup.revert(data, name)
 
     # public:
 
@@ -107,6 +111,7 @@ class FactorEngine:
         self._factors = {}
         self._filter = None
         self._device = torch.device('cpu')
+        self._mask = None
 
     def get_device(self):
         return self._device
@@ -161,6 +166,7 @@ class FactorEngine:
             max_backward = max(max_backward, self._filter.get_total_backward_())
         # Get data
         self._prepare_tensor(start, end, max_backward)
+        self._mask = None
 
         # ready to compute
         if self._filter:
@@ -177,16 +183,20 @@ class FactorEngine:
                 self._filter.compute_(stream)
             torch.cuda.synchronize(device=self._device)
 
+        # get filter data for mask
+        if self._filter:
+            self._mask = self._compute_and_revert(self._filter, 'filter')
+
         # compute factors from cpu or read cache
         ret = pd.DataFrame(index=self._dataframe.index.copy())
-        ret = ret.assign(**{c: self._compute_and_revert(f, c)
+        ret = ret.assign(**{c: self._compute_and_revert(f, c).cpu().numpy()
                             for c, f in self._factors.items()})
 
         # Remove filter False rows
         if self._filter:
-            filter_data = self._compute_and_revert(self._filter, 'filter')
-            ret = ret[filter_data]
+            ret = ret[self._mask.cpu().numpy()]
 
+        # 这句话也很慢，如果为了模型计算用可以不需要
         return ret.loc[start:]
 
     def get_factors_raw_value(self):
@@ -232,4 +242,7 @@ class FactorEngine:
         :param quantiles: number of quantile
         :param filter_zscore: drop extreme factor return, for stability of the analysis.
         """
+        # 首先end时间设为 last run的end+maxperiod
+        # 然后按end前复权
+        # 然后查找对应的回报加上去，同时别忘记factor的quntaile
         pass
