@@ -4,7 +4,7 @@
 @license: Apache 2.0
 @email: heeroz@gmail.com
 """
-from typing import Union, Iterable
+from typing import Union, Iterable, Tuple
 from .factor import BaseFactor, DataFactor, FilterFactor
 from .dataloader import DataLoader
 from ..parallel import ParallelGroupBy
@@ -231,18 +231,66 @@ class FactorEngine:
         self._filter = filter_backup
         return ret['price'].unstack(level=[1]).shift(-forward)
 
-    def get_factor_return(self, period=(1, 5, 10), quantiles=5, filter_zscore=20) -> pd.DataFrame:
+    def full_run(self, start, end, trade_at='close', periods=(1, 4, 9), quantiles=5,
+                 filter_zscore=20, preview=True) -> Tuple[pd.DataFrame, pd.DataFrame]:
         """
         Return this:
         |date	                    |asset	|11D	    |factor	    |factor_quantile	|
         |---------------------------|-------|-----------|-----------|-------------------|
         |2014-01-08 00:00:00+00:00	|ARNC	|0.070159	|0.215274	|5                  |
         |                           |BA	    |-0.038556	|-1.638784	|1                  |
-        :param period: forward return periods
+        :param str, pd.Timestamp start: factor analysis start time
+        :param str, pd.Timestamp end: factor analysis end time
+        :param trade_at: which price for forward returns.
+                         If is 'open' or 'close', use next tick open/close price.
+                         If is 'current_close', trade at current tick close price. Be sure that
+                         no any high,low,close data is used in factor, otherwise will cause
+                         lookahead bias.
+        :param periods: forward return periods
         :param quantiles: number of quantile
         :param filter_zscore: drop extreme factor return, for stability of the analysis.
+        :param preview: display a preview chart of the result
         """
-        # 首先end时间设为 last run的end+maxperiod
-        # 然后按end前复权
-        # 然后查找对应的回报加上去，同时别忘记factor的quntaile
+        factors_bak = self._factors.copy()
+
+        # add quantile factor of all factors
+        for c, f in factors_bak.items():
+            self.add(f.quantile(quantiles), c + '_quantile')
+
+        # add the rolling returns of each period
+        shift = 1
+        inputs = (OHLCV.close,)
+        if trade_at == 'open':
+            inputs = (OHLCV.open,)
+        elif trade_at == 'current_close':
+            shift = 0
+        from .basic import Returns
+        for n in periods:
+            self.add(Returns(win=n+1, inputs=inputs).shift(-n-shift), str(n) + '_t_')
+
+        # run and get df
+        df = self.run(start, end)
+        self._factors = factors_bak
+        df.index = df.index.remove_unused_levels()
+
+        # infer freq
+        delta = min(df.index.levels[0][1:] - df.index.levels[0][:-1])
+        unit = delta.resolution_string
+        freq = int(delta / pd.Timedelta(1, unit))
+        # change columns name
+        df.rename(columns={str(n) + '_t_': str(n*freq) + unit for n in periods}, inplace=True)
+        print(df)
+
+        # 获得mean return, return std等
+        # 先取样获得每天的mean
+        # df.groupby['' + 'quantile', 'date'].agg(['mean'])
+        # # 然后获得这些mean的mean，和std, count计算standard error
+        # df.mean.groupby['' + 'quantile'].agg(['mean', 'std', 'count'])
+        # 还原之前的factors
+        # drop nan行
+        # 用pyplot画复杂的图 先做quantile的，之后再做累计收益
+        # 第一个返回factor data， 第二个返回mean return, 第三个返回performance factor return?
         pass
+
+
+

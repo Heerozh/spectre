@@ -93,6 +93,11 @@ class BaseFactor:
         fact.bins = bins
         return fact
 
+    def shift(self, periods=1):
+        fact = ShiftFactor(inputs=(self,))
+        fact.periods = periods
+        return fact
+
     # --------------- main methods ---------------
 
     def _regroup_by_time(self, data):
@@ -304,6 +309,18 @@ class TimeGroupFactor(CustomFactor, ABC):
 # --------------- helper factors ---------------
 
 
+class ShiftFactor(CustomFactor):
+    periods = 1
+
+    def compute(self, data: torch.Tensor) -> torch.Tensor:
+        shift = data.roll(self.periods, dims=1)
+        if self.periods > 0:
+            shift[:, 0:self.periods] = np.nan
+        else:
+            shift[:, self.periods:] = np.nan
+        return shift
+
+
 class RankFactor(TimeGroupFactor):
     ascending = True,
 
@@ -344,7 +361,7 @@ class ZScoreFactor(TimeGroupFactor):
 
 
 class QuantileFactor(TimeGroupFactor):
-    """return the quantile that factor belongs to each day"""
+    """return the quantile that factor belongs to each tick"""
     bins = 5
 
     def compute(self, data: torch.Tensor) -> torch.Tensor:
