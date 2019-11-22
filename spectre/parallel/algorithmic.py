@@ -88,7 +88,7 @@ class Rolling:
             self.adjustment = Rolling(_adjustment, win).values
 
             # rolling multiplication will consume lot of memory, split it by size
-            memory_usage = np.prod(self.values.shape, dtype=np.uint) / (1024. ** 3)
+            memory_usage = self.values.nelement() / (1024. ** 3)
             memory_usage *= Rolling._split_multi
             step = int(self.values.shape[0] / memory_usage)
             boundary = list(range(0, self.values.shape[0], step)) + [self.values.shape[0]]
@@ -131,6 +131,13 @@ class Rolling:
 
     def last(self):
         return self.loc(-1)
+
+    def last_nonnan(self):
+        mask = torch.isnan(self.values)
+        idx = torch.arange(mask.nelement()).reshape(mask.shape)
+        idx[mask] = -1
+        last, _ = idx.max(dim=2)
+        return torch.take(self.values, last)
 
     def first(self):
         return self.loc(0)

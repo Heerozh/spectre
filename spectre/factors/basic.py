@@ -17,7 +17,8 @@ class Returns(CustomFactor):
     _min_win = 2
 
     def compute(self, closes):
-        return closes.last() / closes.first() - 1
+        # missing data considered as delisted, calculated on the last day's data.
+        return closes.last_nonnan() / closes.first() - 1
 
 
 class LogReturns(CustomFactor):
@@ -26,7 +27,7 @@ class LogReturns(CustomFactor):
     _min_win = 2
 
     def compute(self, closes):
-        return (closes.last() / closes.first() - 1).log()
+        return (closes.last_nonnan() / closes.first() - 1).log()
 
 
 class SimpleMovingAverage(CustomFactor):

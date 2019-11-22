@@ -118,6 +118,21 @@ class TestFactorLib(unittest.TestCase):
         test_expected(spectre.factors.OHLCV.close.demean(),
                       _expected_aapl, _expected_msft, total_rows)
 
+        # test shift
+        _expected_aapl = df_aapl_close.shift(2)[-total_rows:]
+        _expected_aapl[0:2] = np.nan
+        _expected_msft = df_msft_close.shift(2)[-total_rows+1:]
+        _expected_msft[0:2] = np.nan
+        test_expected(spectre.factors.OHLCV.close.shift(2),
+                      _expected_aapl, _expected_msft, total_rows)
+
+        _expected_aapl = df_aapl_close.shift(-2)[-total_rows:]
+        _expected_aapl[-2:] = np.nan
+        _expected_msft = df_msft_close.shift(-2)[-total_rows+1:]
+        _expected_msft[-2:] = np.nan
+        test_expected(spectre.factors.OHLCV.close.shift(-2),
+                      _expected_aapl, _expected_msft, total_rows)
+
         import talib  # pip install --no-deps d:\doc\Download\TA_Lib-0.4.17-cp37-cp37m-win_amd64.whl
 
         # test MA
@@ -265,6 +280,18 @@ class TestFactorLib(unittest.TestCase):
         result = engine.run("2019-01-01", "2019-01-15")
 
         assert_array_equal(result.f2, result.fv)
+
+    def test_return(self):
+        f = spectre.factors.Returns()
+        import torch
+        data = torch.tensor([
+            [1, 2, np.nan, 4, 8, np.nan],
+            [3, 4, 4.5, 6, np.nan, np.nan]
+        ])
+        result = f.compute(spectre.parallel.Rolling(data, win=3))
+        expected = [[np.nan, np.nan, 1, 1, np.nan, 1],
+                    [np.nan, np.nan, 0.5, 0.5, 1/3, 0]]
+        assert_almost_equal(result, expected)
 
     def test_quantile(self):
         f = spectre.factors.QuantileFactor()
