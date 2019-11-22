@@ -165,10 +165,13 @@ class QuandlLoader(DataLoader):
         df.sort_index(level=[0, 1], inplace=True)
 
         # move ex-div up 1 row
-        ex_div = df.groupby(level=1)['ex-dividend'].shift(-1)
-        ex_div.loc[ex_div.index.get_level_values(0)[-1]] = 0
-        sp_rto = df.groupby(level=1)['split_ratio'].shift(-1)
-        sp_rto.loc[sp_rto.index.get_level_values(0)[-1]] = 1
+        groupby = df.groupby(level=1)
+        last = pd.DataFrame.last_valid_index
+
+        ex_div = groupby['ex-dividend'].shift(-1)
+        ex_div.loc[groupby.apply(last)] = 0
+        sp_rto = groupby['split_ratio'].shift(-1)
+        sp_rto.loc[groupby.apply(last)] = 1
 
         # get dividend multipliers
         price_multi = (1 - ex_div / df['close']) * (1 / sp_rto)

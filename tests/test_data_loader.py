@@ -75,7 +75,11 @@ class TestDataLoaderLib(unittest.TestCase):
 
     @unittest.skipUnless(os.getenv('COVERAGE_RUNNING'), "too slow, run manually")
     def test_QuandlLoader(self):
-        os.remove(data_dir + '../../../historical_data/us/prices/quandl/WIKI_PRICES.zip.cache.hdf')
+        try:
+            os.remove(data_dir + '../../../historical_data/us/prices/quandl/WIKI_PRICES.zip.cache.hdf')
+        except FileNotFoundError:
+           pass
+
         loader = spectre.factors.QuandlLoader(
             data_dir + '../../../historical_data/us/prices/quandl/WIKI_PRICES.zip')
         spectre.parallel.Rolling._split_multi = 80
@@ -89,3 +93,8 @@ class TestDataLoaderLib(unittest.TestCase):
                             [[51.388700, 49.194407, 599.280580, 28.336585, np.nan]], decimal=4)
         assert_almost_equal(df.tail().values.T,
                             [[86.087988, 3.602880, 7.364000, 31.428209, 27.605950]], decimal=4)
+
+        # test last line bug
+        df = engine.run("2016-12-15", "2017-01-02")
+        df = engine._dataframe.loc[(slice('2016-12-15', '2017-12-15'), 'STJ'), :]
+        assert df.price_multi.values[-1] == 1
