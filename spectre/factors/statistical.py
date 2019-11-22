@@ -13,7 +13,7 @@ class StandardDeviation(CustomFactor):
     _min_win = 2
 
     def compute(self, data):
-        return data.std(unbiased=False)
+        return data.std()
 
 
 class RollingHigh(CustomFactor):

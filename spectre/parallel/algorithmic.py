@@ -58,21 +58,22 @@ class ParallelGroupBy:
         return torch.take(split_data, self._inverse_indices)
 
 
-def nanmean(data: torch.Tensor) -> torch.Tensor:
+def nanmean(data: torch.Tensor, dim=1) -> torch.Tensor:
     data = data.clone()
     isnan = torch.isnan(data)
     data[isnan] = 0
-    return data.sum(dim=1) / (~isnan).sum(dim=1)
+    return data.sum(dim=dim) / (~isnan).sum(dim=dim)
 
 
-def nanstd(data: torch.Tensor) -> torch.Tensor:
+def nanstd(data: torch.Tensor, dim=1) -> torch.Tensor:
     filled = data.clone()
     isnan = torch.isnan(data)
     filled[isnan] = 0
-    mean = filled.sum(dim=1) / (~isnan).sum(dim=1)
-    var = (data - mean[:, None]) ** 2 / (~isnan).sum(dim=1)[:, None]
+    mean = filled.sum(dim=dim) / (~isnan).sum(dim=dim)
+    mean.unsqueeze_(-1)
+    var = (data - mean) ** 2 / (~isnan).sum(dim=dim).unsqueeze(-1)
     var[isnan] = 0
-    return var.sum(dim=1).sqrt()
+    return var.sum(dim=dim).sqrt()
 
 
 class Rolling:
@@ -84,23 +85,25 @@ class Rolling:
         self.values = new_x.unfold(1, win, 1)
         self.win = win
 
-        if _adjustment is not None:
-            self.adjustment = Rolling(_adjustment, win).values
+        # rolling multiplication will consume lot of memory, split it by size
+        memory_usage = self.values.nelement() / (1024. ** 3)
+        memory_usage *= Rolling._split_multi
+        step = int(self.values.shape[0] / memory_usage)
+        boundary = list(range(0, self.values.shape[0], step)) + [self.values.shape[0]]
+        self.split = list(zip(boundary[:-1], boundary[1:]))
 
-            # rolling multiplication will consume lot of memory, split it by size
-            memory_usage = self.values.nelement() / (1024. ** 3)
-            memory_usage *= Rolling._split_multi
-            step = int(self.values.shape[0] / memory_usage)
-            boundary = list(range(0, self.values.shape[0], step)) + [self.values.shape[0]]
-            self.split = list(zip(boundary[:-1], boundary[1:]))
+        if _adjustment is not None:
+            rolling_adj = Rolling(_adjustment, win)
+            self.adjustment = rolling_adj.values
+            self.adjustment_last = rolling_adj.last_nonnan()[:, :, None]
         else:
             self.adjustment = None
-            self.split = None
+            self.adjustment_last = None
 
     def adjusted(self, s=None, e=None) -> torch.Tensor:
         """this will contiguous tensor consume lot of memory, limit e-s size"""
         if self.adjustment is not None:
-            return self.values[s:e] * self.adjustment[s:e] / self.adjustment[s:e, :, -1, None]
+            return self.values[s:e] * self.adjustment[s:e] / self.adjustment_last[s:e]
         else:
             return self.values[s:e]
 
@@ -113,11 +116,8 @@ class Rolling:
         and finally aggregate them into a whole.
         """
         assert all(r.win == self.win for r in others), '`others` must have same `win` with `self`'
-        if self.adjustment is not None:
-            return torch.cat([op(self.adjusted(s, e), *[r.adjusted(s, e) for r in others])
-                              for s, e in self.split])
-        else:
-            return op(self.adjusted(), *[r.adjusted() for r in others])
+        return torch.cat([op(self.adjusted(s, e), *[r.adjusted(s, e) for r in others])
+                          for s, e in self.split])
 
     def loc(self, i):
         if i == -1:
@@ -133,11 +133,15 @@ class Rolling:
         return self.loc(-1)
 
     def last_nonnan(self):
-        mask = torch.isnan(self.values)
-        idx = torch.arange(mask.nelement()).reshape(mask.shape)
-        idx[mask] = -1
-        last, _ = idx.max(dim=2)
-        return torch.take(self.values, last)
+        def _last_nonnan(x):
+            mask = torch.isnan(x)
+            idx = torch.arange(mask.nelement(), device=mask.device)
+            idx = idx.view(mask.shape)
+            idx.masked_fill_(mask, -1)
+            last, _ = idx.max(dim=2)
+            return torch.take(x, last)
+
+        return self.agg(_last_nonnan)
 
     def first(self):
         return self.loc(0)
@@ -150,17 +154,17 @@ class Rolling:
 
     def mean(self, axis=2):
         def _mean(x):
+            # return nanmean(x, dim=axis)
+            # tensor.sum encounters nan will return nan anyway
             return x.sum(dim=axis) / self.win
 
         return self.agg(_mean)
 
-    def std(self, unbiased=True, axis=2):
-        """
-        unbiased=False eq ddof=0
-        """
-
+    def std(self, axis=2):
         def _std(x):
-            return x.std(unbiased=unbiased, dim=axis)
+            # return nanstd(x, dim=axis)
+            # unbiased=False eq ddof=0
+            return x.std(unbiased=False, dim=axis)
 
         return self.agg(_std)
 

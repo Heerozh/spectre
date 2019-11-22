@@ -106,7 +106,7 @@ class AnnualizedVolatility(CustomFactor):
     _min_win = 2
 
     def compute(self, returns, annualization_factor):
-        return returns.std(unbiased=False) * (annualization_factor ** .5)
+        return returns.std() * (annualization_factor ** .5)
 
 
 MA = SimpleMovingAverage

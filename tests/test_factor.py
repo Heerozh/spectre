@@ -121,14 +121,14 @@ class TestFactorLib(unittest.TestCase):
         # test shift
         _expected_aapl = df_aapl_close.shift(2)[-total_rows:]
         _expected_aapl[0:2] = np.nan
-        _expected_msft = df_msft_close.shift(2)[-total_rows+1:]
+        _expected_msft = df_msft_close.shift(2)[-total_rows + 1:]
         _expected_msft[0:2] = np.nan
         test_expected(spectre.factors.OHLCV.close.shift(2),
                       _expected_aapl, _expected_msft, total_rows)
 
         _expected_aapl = df_aapl_close.shift(-2)[-total_rows:]
         _expected_aapl[-2:] = np.nan
-        _expected_msft = df_msft_close.shift(-2)[-total_rows+1:]
+        _expected_msft = df_msft_close.shift(-2)[-total_rows + 1:]
         _expected_msft[-2:] = np.nan
         test_expected(spectre.factors.OHLCV.close.shift(-2),
                       _expected_aapl, _expected_msft, total_rows)
@@ -290,7 +290,11 @@ class TestFactorLib(unittest.TestCase):
         ])
         result = f.compute(spectre.parallel.Rolling(data, win=3))
         expected = [[np.nan, np.nan, 1, 1, np.nan, 1],
-                    [np.nan, np.nan, 0.5, 0.5, 1/3, 0]]
+                    [np.nan, np.nan, 0.5, 0.5, 1 / 3, 0]]
+        assert_almost_equal(result, expected)
+        # test on cuda
+        data = data.cuda()
+        result = f.compute(spectre.parallel.Rolling(data, win=3)).cpu()
         assert_almost_equal(result, expected)
 
     def test_quantile(self):
