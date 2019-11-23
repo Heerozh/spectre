@@ -5,7 +5,7 @@
 @email: heeroz@gmail.com
 """
 from typing import Union, Iterable, Tuple
-from .factor import BaseFactor, DataFactor, FilterFactor
+from .factor import BaseFactor, DataFactor, FilterFactor, AdjustedDataFactor
 from .dataloader import DataLoader
 from ..parallel import ParallelGroupBy
 import pandas as pd
@@ -78,6 +78,9 @@ class FactorEngine:
 
     def _prepare_tensor(self, start, end, max_backward):
         # 如果为了模型反复run，这里还是要cache一下，时间日期和max back小于已有的就不重新load
+        if start == self._last_load[0] and end == self._last_load[1] \
+                and max_backward <= self._last_load[2]:
+            return
         # Get data
         self._dataframe = self._loader.load(start, end, max_backward)
 
@@ -91,6 +94,7 @@ class FactorEngine:
         self._timegroup = ParallelGroupBy(keys)
 
         self._column_cache = {}
+        self._last_load = [start, end, max_backward]
 
     def _compute_and_revert(self, f: BaseFactor, name) -> Union[np.array, pd.Series]:
         """Returning pd.Series will cause very poor performance, please avoid it at 99% costs"""
@@ -106,6 +110,7 @@ class FactorEngine:
         self._loader = loader
         self._dataframe = None
         self._assetgroup = None
+        self._last_load = [None, None, None]
         self._column_cache = {}
         self._timegroup = None
         self._factors = {}
@@ -142,9 +147,11 @@ class FactorEngine:
         self._device = torch.device('cuda')
         # Hot start cuda
         torch.tensor([0], device=self._device, dtype=torch.int32)
+        self._last_load = [None, None, None]
 
     def to_cpu(self) -> None:
         self._device = torch.device('cpu')
+        self._last_load = [None, None, None]
 
     def run(self, start: Union[str, pd.Timestamp], end: Union[str, pd.Timestamp]) -> pd.DataFrame:
         """
@@ -174,17 +181,21 @@ class FactorEngine:
         for f in self._factors.values():
             f.pre_compute_(self, start, end)
 
+        # if cuda, parallel compute filter and sync
+        if self._filter and self._device.type == 'cuda':
+            stream = torch.cuda.Stream(device=self._device)
+            self._filter.compute_(stream)
+            torch.cuda.synchronize(device=self._device)
+
         # get filter data for mask
         if self._filter:
             self._mask = self._compute_and_revert(self._filter, 'filter')
 
-        # if cuda, Compute factors and sync
+        # if cuda, parallel compute factors and sync
         if self._device.type == 'cuda':
             stream = torch.cuda.Stream(device=self._device)
             for col, fct in self._factors.items():
                 fct.compute_(stream)
-            if self._filter:
-                self._filter.compute_(stream)
             torch.cuda.synchronize(device=self._device)
 
         # compute factors from cpu or read cache
@@ -205,7 +216,7 @@ class FactorEngine:
     def get_price_matrix(self,
                          start: Union[str, pd.Timestamp],
                          end: Union[str, pd.Timestamp],
-                         prices: BaseFactor = OHLCV.close,
+                         prices: DataFactor = OHLCV.close,
                          forward: int = 1) -> pd.DataFrame:
         """
         Get the price data for Factor Return Analysis.
@@ -213,22 +224,16 @@ class FactorEngine:
         :param end: should long than factor end time, for forward returns calculations.
         :param prices: prices data factor. If you traded at the opening, you should set it
                        to OHLCV.open.
-        :param forward: int To prevent lookahead bias, please set it carefully.
-                        You can only able to trade after factor calculation, so if you use
-                        'close' price data to calculate the factor, the forward should be set
-                        to 1 or greater, this means that the price of the trade due to the factor,
-                        is the next day price in the future.
-                        If you only use Open data, and trade at the close price, you can set it
-                        to 0.
+        :param forward: for alphalens. trade time, 0: current tick(or today), 1: next tick
         """
         factors_backup = self._factors
         filter_backup = self._filter
-        self._factors = {'price': prices}
+        self._factors = {'price': AdjustedDataFactor(prices)}
         self._filter = None
         ret = self.run(start, end)
-        # todo 需要按end日期full adjust, 也许弄个full adjust data factor?
         self._factors = factors_backup
         self._filter = filter_backup
+
         return ret['price'].unstack(level=[1]).shift(-forward)
 
     def full_run(self, start, end, trade_at='close', periods=(1, 4, 9), quantiles=5,
@@ -266,31 +271,39 @@ class FactorEngine:
             shift = 0
         from .basic import Returns
         for n in periods:
-            self.add(Returns(win=n+1, inputs=inputs).shift(-n-shift), str(n) + '_t_')
+            rtn = Returns(win=n + 1, inputs=inputs).shift(-n - shift)
+            self.add(rtn, str(n) + '_r_')
+            self.add(rtn.demean(), str(n) + '_d_')
 
         # run and get df
-        df = self.run(start, end)
+        factor_data = self.run(start, end)
         self._factors = factors_bak
-        df.index = df.index.remove_unused_levels()
+        factor_data.index = factor_data.index.remove_unused_levels()
+        last_date = factor_data.index.levels[0][-max(periods) - shift - 1]
+        factor_data = factor_data.loc[:last_date]
 
         # infer freq
-        delta = min(df.index.levels[0][1:] - df.index.levels[0][:-1])
+        delta = min(factor_data.index.levels[0][1:] - factor_data.index.levels[0][:-1])
         unit = delta.resolution_string
         freq = int(delta / pd.Timedelta(1, unit))
         # change columns name
-        df.rename(columns={str(n) + '_t_': str(n*freq) + unit for n in periods}, inplace=True)
-        print(df)
+        period_cols = {n: str(n * freq) + unit for n in periods}
+        factor_data.rename(columns={str(n) + '_r_': c
+                                    for n, c in period_cols.items()}, inplace=True)
+        factor_data.rename(columns={str(n) + '_d_': c + '_demean'
+                                    for n, c in period_cols.items()}, inplace=True)
 
         # 获得mean return, return std等
-        # 先取样获得每天的mean
-        # df.groupby['' + 'quantile', 'date'].agg(['mean'])
-        # # 然后获得这些mean的mean，和std, count计算standard error
-        # df.mean.groupby['' + 'quantile'].agg(['mean', 'std', 'count'])
-        # 还原之前的factors
-        # drop nan行
+        mean_return = pd.DataFrame()
+        for fact_name, f in factors_bak.items():
+            for n, period_col in period_cols.items():
+                group = [fact_name + '_quantile', 'date']
+                demean_col = period_col + '_demean'
+                mean_col = fact_name + period_col
+                mean_return[mean_col] = factor_data.groupby(group)[demean_col].agg('mean')
+        mean_return.index.levels[0].name = 'quantile'
+        mean_return = mean_return.groupby(level=0).agg(['mean', 'sem'])
+
         # 用pyplot画复杂的图 先做quantile的，之后再做累计收益
         # 第一个返回factor data， 第二个返回mean return, 第三个返回performance factor return?
-        pass
-
-
-
+        return factor_data, mean_return

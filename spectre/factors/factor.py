@@ -8,7 +8,7 @@ from abc import ABC
 from typing import Optional, Sequence, Union
 import numpy as np
 import torch
-from ..parallel import nanmean, nanstd, Rolling
+from ..parallel import nanmean, nanstd, nanlast, Rolling
 
 
 class BaseFactor:
@@ -290,6 +290,16 @@ class DataFactor(BaseFactor):
 
     def compute(self, *inputs: Sequence[torch.Tensor]) -> torch.Tensor:
         pass
+
+
+class AdjustedDataFactor(CustomFactor):
+    def __init__(self, data: DataFactor):
+        super().__init__(1, (data, ))
+        self.parent = data
+
+    def compute(self, data) -> torch.Tensor:
+        multi = self.parent.get_adjust_multi()
+        return data * multi / nanlast(multi, dim=1)[:, None]
 
 
 class FilterFactor(CustomFactor, ABC):

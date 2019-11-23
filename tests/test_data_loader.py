@@ -98,3 +98,7 @@ class TestDataLoaderLib(unittest.TestCase):
         df = engine.run("2016-12-15", "2017-01-02")
         df = engine._dataframe.loc[(slice('2016-12-15', '2017-12-15'), 'STJ'), :]
         assert df.price_multi.values[-1] == 1
+
+
+
+

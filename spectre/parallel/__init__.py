@@ -3,4 +3,5 @@ from .algorithmic import (
     Rolling,
     nanmean,
     nanstd,
+    nanlast,
 )

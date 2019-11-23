@@ -76,8 +76,17 @@ def nanstd(data: torch.Tensor, dim=1) -> torch.Tensor:
     return var.sum(dim=dim).sqrt()
 
 
+def nanlast(data: torch.Tensor, dim=1) -> torch.Tensor:
+    mask = torch.isnan(data)
+    idx = torch.arange(mask.nelement(), device=mask.device)
+    idx = idx.view(mask.shape)
+    idx.masked_fill_(mask, -1)
+    last, _ = idx.max(dim=dim)
+    return torch.take(data, last)
+
+
 class Rolling:
-    _split_multi = 8  # float64 = 8
+    _split_multi = 32  # 32 better for 11G GPU, you can tune this for memory allocation performance
 
     def __init__(self, x: torch.Tensor, win: int, _adjustment: torch.Tensor = None):
         nan_stack = x.new_full((x.shape[0], win - 1), np.nan)
@@ -116,8 +125,8 @@ class Rolling:
         and finally aggregate them into a whole.
         """
         assert all(r.win == self.win for r in others), '`others` must have same `win` with `self`'
-        return torch.cat([op(self.adjusted(s, e), *[r.adjusted(s, e) for r in others])
-                          for s, e in self.split])
+        seq = [op(self.adjusted(s, e), *[r.adjusted(s, e) for r in others]) for s, e in self.split]
+        return torch.cat(seq)
 
     def loc(self, i):
         if i == -1:
@@ -133,15 +142,7 @@ class Rolling:
         return self.loc(-1)
 
     def last_nonnan(self):
-        def _last_nonnan(x):
-            mask = torch.isnan(x)
-            idx = torch.arange(mask.nelement(), device=mask.device)
-            idx = idx.view(mask.shape)
-            idx.masked_fill_(mask, -1)
-            last, _ = idx.max(dim=2)
-            return torch.take(x, last)
-
-        return self.agg(_last_nonnan)
+        return self.agg(lambda x: nanlast(x, dim=2))
 
     def first(self):
         return self.loc(0)
