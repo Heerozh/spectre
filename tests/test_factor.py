@@ -342,7 +342,7 @@ class TestFactorLib(unittest.TestCase):
         expected = pd.qcut(data[1], 5, labels=False) + 1
         assert_array_equal(result[-1], expected)
 
-    @unittest.skipUnless(os.getenv('COVERAGE_RUNNING'), "too slow, run manually")
+    # @unittest.skipUnless(os.getenv('COVERAGE_RUNNING'), "too slow, run manually")
     def test_full_run(self):
         loader = spectre.factors.QuandlLoader(
             data_dir + '../../../historical_data/us/prices/quandl/WIKI_PRICES.zip')
@@ -352,20 +352,22 @@ class TestFactorLib(unittest.TestCase):
         engine.set_filter(spectre.factors.AverageDollarVolume(win=120).top(500))
         f = spectre.factors.MA(5) - spectre.factors.MA(10) - spectre.factors.MA(30)
         engine.add(f.rank().zscore(), 'ma_cross')
-        df_prices = engine.get_price_matrix('2014-01-02', '2017-01-18')
+        df_prices = engine.get_price_matrix('2014-01-02', '2017-01-18') #.shift(-1)
         factor_data, mean_return = engine.full_run('2014-01-02', '2017-01-18', periods=(10,))
 
         import alphalens as al
         al_clean_data = al.utils.get_clean_factor_and_forward_returns(
-            factor=factor_data['ma_cross'], prices=df_prices, periods=[10], filter_zscore=None)
+            factor=factor_data[('ma_cross', 'factor')], prices=df_prices, periods=[10],
+            filter_zscore=None)
         al_mean, al_std = al.performance.mean_return_by_quantile(al_clean_data)
-        assert_almost_equal(mean_return[('ma_cross10D', 'mean')].values, al_mean['10D'].values,
-                            decimal=5)
-        assert_almost_equal(mean_return[('ma_cross10D', 'sem')].values, al_std['10D'].values,
-                            decimal=5)
+        assert_almost_equal(mean_return[('ma_cross', '10D', 'mean')].values,
+                            al_mean['10D'].values, decimal=5)
+        assert_almost_equal(mean_return[('ma_cross', '10D', 'sem')].values,
+                            al_std['10D'].values, decimal=5)
 
         # check last line bug, nanlast function
-        stj_10d_return = factor_data.loc[(slice('2016-12-15', '2016-12-31'), 'STJ'), '10D']
+        stj_10d_return = factor_data.loc[(slice('2016-12-15', '2016-12-31'), 'STJ'),
+                                         ('Returns', '10D')]
         expected = [0.01881325, 0.01290882, 0.01762784, 0.0194248, 0.01405275,
                     0.01240134, 0.00835931, 0.01265514, 0.01240134, 0.00785625,
                     0.00161111]
