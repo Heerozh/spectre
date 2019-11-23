@@ -77,10 +77,12 @@ class FactorEngine:
     # private:
 
     def _prepare_tensor(self, start, end, max_backward):
-        # 如果为了模型反复run，这里还是要cache一下，时间日期和max back小于已有的就不重新load
+        # Check cache, just in case, if use some ML techniques, engine may be called repeatedly
+        # with same date range.
         if start == self._last_load[0] and end == self._last_load[1] \
                 and max_backward <= self._last_load[2]:
             return
+
         # Get data
         self._dataframe = self._loader.load(start, end, max_backward)
 
@@ -181,6 +183,8 @@ class FactorEngine:
         for f in self._factors.values():
             f.pre_compute_(self, start, end)
 
+        # todo filter就是永远晚一天执行，或者说永远shift 1
+
         # if cuda, parallel compute filter and sync
         if self._filter and self._device.type == 'cuda':
             stream = torch.cuda.Stream(device=self._device)
@@ -191,6 +195,7 @@ class FactorEngine:
         if self._filter:
             self._mask = self._compute_and_revert(self._filter, 'filter')
 
+        # todo 应该每个factor都存一下子是否有用close数据的内容，应该precompute就算出来，有的话要shift 1
         # if cuda, parallel compute factors and sync
         if self._device.type == 'cuda':
             stream = torch.cuda.Stream(device=self._device)
@@ -217,14 +222,13 @@ class FactorEngine:
                          start: Union[str, pd.Timestamp],
                          end: Union[str, pd.Timestamp],
                          prices: DataFactor = OHLCV.close,
-                         forward: int = 1) -> pd.DataFrame:
+                         ) -> pd.DataFrame:
         """
         Get the price data for Factor Return Analysis.
         :param start: same as run
         :param end: should long than factor end time, for forward returns calculations.
         :param prices: prices data factor. If you traded at the opening, you should set it
                        to OHLCV.open.
-        :param forward: for alphalens. trade time, 0: current tick(or today), 1: next tick
         """
         factors_backup = self._factors
         filter_backup = self._filter
@@ -234,16 +238,20 @@ class FactorEngine:
         self._factors = factors_backup
         self._filter = filter_backup
 
-        return ret['price'].unstack(level=[1]).shift(-forward)
+        return ret['price'].unstack(level=[1])
 
     def full_run(self, start, end, trade_at='close', periods=(1, 4, 9), quantiles=5,
                  filter_zscore=20, preview=True) -> Tuple[pd.DataFrame, pd.DataFrame]:
         """
         Return this:
-        |date	                    |asset	|11D	    |factor	    |factor_quantile	|
+        |    	                    |    	|  Returns  |      factor_name          	|
+        |date	                    |asset	|10D	    |factor	    |factor_quantile	|
         |---------------------------|-------|-----------|-----------|-------------------|
         |2014-01-08 00:00:00+00:00	|ARNC	|0.070159	|0.215274	|5                  |
         |                           |BA	    |-0.038556	|-1.638784	|1                  |
+        for alphalens analysis, you can use this:
+        factor_data = full_run_return[['factor_name', 'Returns']].droplevel(0, axis=1)
+        al.tears.create_returns_tear_sheet(factor_data)
         :param str, pd.Timestamp start: factor analysis start time
         :param str, pd.Timestamp end: factor analysis end time
         :param trade_at: which price for forward returns.
@@ -258,9 +266,12 @@ class FactorEngine:
         """
         factors_bak = self._factors.copy()
 
+        column_names = {}
         # add quantile factor of all factors
         for c, f in factors_bak.items():
-            self.add(f.quantile(quantiles), c + '_quantile')
+            self.add(f.quantile(quantiles), c + '_q_')
+            column_names[c] = (c, 'factor')
+            column_names[c + '_q_'] = (c, 'factor_quantile')
 
         # add the rolling returns of each period
         shift = 1
@@ -282,28 +293,34 @@ class FactorEngine:
         last_date = factor_data.index.levels[0][-max(periods) - shift - 1]
         factor_data = factor_data.loc[:last_date]
 
+        # todo filter_zscore
+
         # infer freq
         delta = min(factor_data.index.levels[0][1:] - factor_data.index.levels[0][:-1])
         unit = delta.resolution_string
         freq = int(delta / pd.Timedelta(1, unit))
         # change columns name
         period_cols = {n: str(n * freq) + unit for n in periods}
-        factor_data.rename(columns={str(n) + '_r_': c
-                                    for n, c in period_cols.items()}, inplace=True)
-        factor_data.rename(columns={str(n) + '_d_': c + '_demean'
-                                    for n, c in period_cols.items()}, inplace=True)
+        for n, period_col in period_cols.items():
+            column_names[str(n) + '_r_'] = ('Returns', period_col)
+            column_names[str(n) + '_d_'] = ('Demeaned', period_col)
+        new_cols = pd.MultiIndex.from_tuples([column_names[c] for c in factor_data.columns])
+        factor_data.columns = new_cols
+        factor_data.sort_index(axis=1, inplace=True)
 
-        # 获得mean return, return std等
-        mean_return = pd.DataFrame()
+        # mean return, return std err
+        mean_return = pd.DataFrame(columns=pd.MultiIndex.from_arrays([[], []]))
         for fact_name, f in factors_bak.items():
+            group = [(fact_name, 'factor_quantile'), 'date']
             for n, period_col in period_cols.items():
-                group = [fact_name + '_quantile', 'date']
-                demean_col = period_col + '_demean'
-                mean_col = fact_name + period_col
-                mean_return[mean_col] = factor_data.groupby(group)[demean_col].agg('mean')
+                demean_col = ('Demeaned', period_col)
+                mean_col = (fact_name, period_col)
+                grouped_mean = factor_data.groupby(group)[demean_col, ].agg('mean')
+                mean_return[mean_col] = grouped_mean[demean_col]
         mean_return.index.levels[0].name = 'quantile'
         mean_return = mean_return.groupby(level=0).agg(['mean', 'sem'])
 
         # 用pyplot画复杂的图 先做quantile的，之后再做累计收益
+
         # 第一个返回factor data， 第二个返回mean return, 第三个返回performance factor return?
         return factor_data, mean_return
