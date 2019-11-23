@@ -303,7 +303,10 @@ class AdjustedDataFactor(CustomFactor):
 
 
 class FilterFactor(CustomFactor, ABC):
-    pass
+    def shift(self, periods=1):
+        fact = FilterShiftFactor(inputs=(self,))
+        fact.periods = periods
+        return fact
 
 
 class TimeGroupFactor(CustomFactor, ABC):
@@ -329,6 +332,19 @@ class ShiftFactor(CustomFactor):
         else:
             shift[:, self.periods:] = np.nan
         return shift
+
+
+class FilterShiftFactor(CustomFactor):
+    periods = 1
+
+    def compute(self, data: torch.Tensor) -> torch.Tensor:
+        shift = data.char().roll(self.periods, dims=1)
+        if self.periods > 0:
+            shift[:, 0:self.periods] = 0
+        else:
+            shift[:, self.periods:] = 0
+
+        return shift.bool()
 
 
 class RankFactor(TimeGroupFactor):
