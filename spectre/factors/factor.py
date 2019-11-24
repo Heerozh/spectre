@@ -46,10 +46,10 @@ class BaseFactor:
         return LeFactor(inputs=(self, other))
 
     def __gt__(self, other):
-        return LtFactor(inputs=(self, other))
+        return GtFactor(inputs=(self, other))
 
     def __ge__(self, other):
-        return LeFactor(inputs=(self, other))
+        return GeFactor(inputs=(self, other))
 
     def __eq__(self, other):
         return EqFactor(inputs=(self, other))

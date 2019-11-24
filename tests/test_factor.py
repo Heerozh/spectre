@@ -66,31 +66,27 @@ class TestFactorLib(unittest.TestCase):
         test_expected(spectre.factors.AverageDollarVolume(3), expected_aapl, expected_msft, 8, 2)
 
         # AnnualizedVolatility
-        expected_aapl = [np.nan, 0.3141548, 0.5426118, 0.7150832, 0.7475805, 0.1710541,
+        expected_aapl = [0.3141548, 0.5426118, 0.7150832, 0.7475805, 0.1710541,
                          0.1923727, 0.1027987, 0.5697543, 0.5436627]
-        expected_msft = [np.nan, 0.189534377, 0.263729893, 0.344381405, 0.210997343,
+        expected_msft = [0.189534377, 0.263729893, 0.344381405, 0.210997343,
                          0.235832738, 0.202266499, 0.308870901, 0.235088127]
         test_expected(spectre.factors.AnnualizedVolatility(3), expected_aapl, expected_msft, 10)
 
         # test rank
-        _expected_aapl = [2.] * 10
-        _expected_aapl[7] = 1  # because msft was nan this day
-        _expected_aapl[0] = np.nan  # because no filter, those day still here
-        _expected_msft = [1] * 9
-        _expected_msft[0] = np.nan
+        _expected_aapl = [2.] * 9
+        _expected_aapl[6] = 1  # because msft was nan this day
+        _expected_msft = [1] * 8
         test_expected(spectre.factors.OHLCV.close.rank(),
                       _expected_aapl, _expected_msft, total_rows)
-        _expected_aapl = [1.] * 10
-        _expected_aapl[0] = np.nan
-        _expected_msft = [2] * 9
-        _expected_msft[0] = np.nan
+        _expected_aapl = [1.] * 9
+        _expected_msft = [2] * 8
         test_expected(spectre.factors.OHLCV.close.rank(ascending=False),
                       _expected_aapl, _expected_msft, total_rows)
         # test rank bug #98a0bdc
         engine.remove_all_factors()
         engine.add(spectre.factors.OHLCV.close.rank(), 'test')
         result = engine.run('2019-01-01', '2019-01-03')
-        assert_array_equal([[np.nan], [np.nan], [2.0], [1.0]], result.values)
+        assert_array_equal([[2.0], [1.0]], result.values)
         # test rank with filter cuda
         engine.remove_all_factors()
         engine.set_filter(spectre.factors.OHLCV.volume.top(1))
@@ -108,36 +104,34 @@ class TestFactorLib(unittest.TestCase):
         engine.set_filter(None)
 
         # test zscore
-        expected_aapl = [1.] * 10
+        expected_aapl = [1.] * 9
         # aapl has prices data, but we only have two stocks, so one data zscore = 0/0 = nan
-        expected_aapl[7] = np.nan
-        expected_aapl[0] = np.nan
-        expected_msft = [-1.] * 9
-        expected_msft[0] = np.nan
+        expected_aapl[6] = np.nan
+        expected_msft = [-1.] * 8
         test_expected(spectre.factors.OHLCV.close.zscore(),
                       expected_aapl, expected_msft, total_rows)
 
         # test demean
-        expected_aapl = [np.nan, 28.655, 21.475, 22.305, 22.9, 23.165, 25.015, 0, 25.245, 26.805]
+        expected_aapl = [28.655, 21.475, 22.305, 22.9, 23.165, 25.015, 0, 25.245, 26.805]
         expected_msft = -np.array(expected_aapl)
-        expected_msft = np.delete(expected_msft, 7)
+        expected_msft = np.delete(expected_msft, 6)
         test_expected(spectre.factors.OHLCV.close.demean(groupby={'AAPL': 1, 'MSFT': 1}),
                       expected_aapl, expected_msft, total_rows, decimal=3)
         test_expected(spectre.factors.OHLCV.close.demean(groupby={'AAPL': 1, 'MSFT': 2}),
-                      [np.nan] + [0] * 9, [np.nan] + [0] * 8, total_rows)
+                      [0] * 9, [0] * 8, total_rows)
         test_expected(spectre.factors.OHLCV.close.demean(),
                       expected_aapl, expected_msft, total_rows)
 
         # test shift
-        expected_aapl = df_aapl_close.shift(2)[-total_rows:]
-        expected_aapl[0:3] = np.nan
-        expected_msft = df_msft_close.shift(2)[-total_rows + 1:]
-        expected_msft[0:3] = np.nan
+        expected_aapl = df_aapl_close.shift(2)[-total_rows + 1:]
+        expected_aapl[0:2] = np.nan
+        expected_msft = df_msft_close.shift(2)[-total_rows + 2:]
+        expected_msft[0:2] = np.nan
         test_expected(spectre.factors.OHLCV.close.shift(2),
                       expected_aapl, expected_msft, total_rows)
 
-        expected_aapl = [np.nan, 149, 149, 151.55, 156.03, 161, 153.69, 157, 156.94, np.nan]
-        expected_msft = [np.nan, 104.39, 103.2, 105.22, 106, 103.2, 103.39, 108.85, np.nan]
+        expected_aapl = [149, 149, 151.55, 156.03, 161, 153.69, 157, 156.94, np.nan]
+        expected_msft = [104.39, 103.2, 105.22, 106, 103.2, 103.39, 108.85, np.nan]
         # bcuz down is shift(-2) then shift(1)
         test_expected(spectre.factors.OHLCV.close.shift(-2),
                       expected_aapl, expected_msft, total_rows)
@@ -290,8 +284,8 @@ class TestFactorLib(unittest.TestCase):
         df_msft_close = df.loc[(slice(None), 'MSFT'), 'c']
         expected_aapl = talib.SMA(df_aapl_close.values, timeperiod=5)[-total_rows:]
         expected_msft = talib.SMA(df_msft_close.values, timeperiod=5)[-total_rows:]
-        expected_aapl = np.delete(expected_aapl, [0, 7, 9])
-        expected_msft = [expected_msft[1], expected_msft[7], expected_msft[9]]
+        expected_aapl = np.delete(expected_aapl, [0, 1, 8])
+        expected_msft = [expected_msft[2], expected_msft[8]]
         # test
         assert_almost_equal(result_aapl, expected_aapl)
         assert_almost_equal(result_msft, expected_msft)

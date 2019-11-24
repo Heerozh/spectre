@@ -18,16 +18,16 @@ class TestDataFactorLib(unittest.TestCase):
         engine.add(spectre.factors.OHLCV.volume, 'CpVol')
         df = engine.run('2019-01-11', '2019-01-15')
         assert_array_equal(df.loc[(slice(None), 'AAPL'), 'CpVol'].values,
-                           (np.nan, 28065422, 33834032))
+                           (28065422, 33834032))
         assert_array_equal(df.loc[(slice(None), 'MSFT'), 'CpVol'].values,
-                           (np.nan, 28627674, 28720936))
+                           (28627674, 28720936))
 
         engine.add(spectre.factors.DataFactor(inputs=('changePercent',)), 'Chg')
         df = engine.run('2019-01-11', '2019-01-15')
         assert_array_equal(df.loc[(slice(None), 'AAPL'), 'Chg'].values,
-                           (np.nan, -0.9835, -1.5724))
+                           ( -0.9835, -1.5724))
         assert_array_equal(df.loc[(slice(None), 'MSFT'), 'Chg'].values,
-                           (np.nan, -0.8025, -0.7489))
+                           (-0.8025, -0.7489))
 
         engine.add(spectre.factors.OHLCV.open, 'open')
         df = engine.run('2019-01-11', '2019-01-15')
