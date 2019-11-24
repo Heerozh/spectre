@@ -126,7 +126,8 @@ class FactorEngine:
 
     def add(self,
             factor: Union[Iterable[BaseFactor], BaseFactor],
-            name: Union[Iterable[str], str]) -> None:
+            name: Union[Iterable[str], str],
+            not_shift: bool = False) -> None:
         """
         Add factor or filter to engine, as a column.
         """
@@ -138,7 +139,7 @@ class FactorEngine:
                 raise KeyError('A factor with the name {} already exists.'
                                'please specify a new name by engine.add(factor, new_name)'
                                .format(name))
-            if factor.is_need_shift():
+            if factor.is_need_shift() and not not_shift:
                 # print(name, factor, 'need shift')
                 self._factors[name] = factor.shift(1)
             else:
@@ -195,8 +196,6 @@ class FactorEngine:
         for f in self._factors.values():
             f.pre_compute_(self, start, end)
 
-        # todo filter就是永远晚一天执行，或者说永远shift 1
-
         # if cuda, parallel compute filter and sync
         if self._filter and self._device.type == 'cuda':
             stream = torch.cuda.Stream(device=self._device)
@@ -207,7 +206,6 @@ class FactorEngine:
         if self._filter:
             self._mask = self._compute_and_revert(self._filter, 'filter')
 
-        # todo 应该每个factor都存一下子是否有用close数据的内容，应该precompute就算出来，有的话要shift 1
         # if cuda, parallel compute factors and sync
         if self._device.type == 'cuda':
             stream = torch.cuda.Stream(device=self._device)
@@ -297,8 +295,8 @@ class FactorEngine:
         from .basic import Returns
         for n in periods:
             rtn = Returns(win=n + 1, inputs=inputs).shift(-n)
-            self.add(rtn, str(n) + '_r_')
-            self.add(rtn.demean(), str(n) + '_d_')
+            self.add(rtn, str(n) + '_r_', not_shift=True)
+            self.add(rtn.demean(), str(n) + '_d_', not_shift=True)
 
         # run and get df
         factor_data = self.run(start, end)
