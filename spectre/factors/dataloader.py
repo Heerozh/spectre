@@ -78,7 +78,7 @@ class CsvDirLoader(DataLoader):
         dfs = {symbol: multi_read_csv(file_list) for symbol, file_list in assets.items()}
         return dfs
 
-    def _load(self, start, end):
+    def _load(self):
         pattern = path.join(self._csv_dir, '*.csv')
         files = glob.glob(pattern)
         dfs = {path.basename(fn)[:-4].upper(): pd.read_csv(fn, **self._read_csv) for fn in files}
@@ -104,7 +104,7 @@ class CsvDirLoader(DataLoader):
         if self._split_by_year:
             dfs = self._load_split_by_year(start, end)
         else:
-            dfs = self._load(start, end)
+            dfs = self._load()
 
         df = pd.concat(dfs)
         assert isinstance(df.index.levels[1], pd.DatetimeIndex), \
