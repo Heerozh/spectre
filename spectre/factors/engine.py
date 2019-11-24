@@ -14,7 +14,7 @@ import torch
 
 
 class OHLCV:
-    open = DataFactor(inputs=('',))
+    open = DataFactor(inputs=('',), is_data_after_market_close=False)
     high = DataFactor(inputs=('',))
     low = DataFactor(inputs=('',))
     close = DataFactor(inputs=('',))
@@ -116,6 +116,7 @@ class FactorEngine:
         self._column_cache = {}
         self._timegroup = None
         self._factors = {}
+        self._origin_factors = {}
         self._filter = None
         self._device = torch.device('cpu')
         self._mask = None
@@ -137,13 +138,22 @@ class FactorEngine:
                 raise KeyError('A factor with the name {} already exists.'
                                'please specify a new name by engine.add(factor, new_name)'
                                .format(name))
-            self._factors[name] = factor
+            if factor.is_need_shift():
+                # print(name, factor, 'need shift')
+                self._factors[name] = factor.shift(1)
+            else:
+                self._factors[name] = factor
+            self._origin_factors[name] = factor
 
     def set_filter(self, factor: Union[FilterFactor, None]) -> None:
         self._filter = factor
 
+    def get_factor(self, name):
+        return self._origin_factors[name]
+
     def remove_all_factors(self) -> None:
         self._factors = {}
+        self._last_load = [None, None, None]
 
     def to_cuda(self) -> None:
         self._device = torch.device('cuda')
@@ -178,8 +188,10 @@ class FactorEngine:
         self._mask = None
 
         # ready to compute
+        shift_filter = None
         if self._filter:
-            self._filter.pre_compute_(self, start, end)
+            shift_filter = self._filter.shift(1)
+            shift_filter.pre_compute_(self, start, end)
         for f in self._factors.values():
             f.pre_compute_(self, start, end)
 
@@ -188,7 +200,7 @@ class FactorEngine:
         # if cuda, parallel compute filter and sync
         if self._filter and self._device.type == 'cuda':
             stream = torch.cuda.Stream(device=self._device)
-            self._filter.compute_(stream)
+            shift_filter.compute_(stream)
             torch.cuda.synchronize(device=self._device)
 
         # get filter data for mask
@@ -210,7 +222,9 @@ class FactorEngine:
 
         # Remove filter False rows
         if self._filter:
-            ret = ret[self._mask.cpu().numpy()]
+            # only shift when need select
+            shift_mask = self._compute_and_revert(shift_filter, 'filter')
+            ret = ret[shift_mask.cpu().numpy()]
 
         # 这句话也很慢，如果为了模型计算用可以不需要
         return ret.loc[start:]
@@ -254,43 +268,40 @@ class FactorEngine:
         al.tears.create_returns_tear_sheet(factor_data)
         :param str, pd.Timestamp start: factor analysis start time
         :param str, pd.Timestamp end: factor analysis end time
-        :param trade_at: which price for forward returns.
-                         If is 'open' or 'close', use next tick open/close price.
-                         If is 'current_close', trade at current tick close price. Be sure that
-                         no any high,low,close data is used in factor, otherwise will cause
-                         lookahead bias.
+        :param trade_at: which price for forward returns. 'open', or 'close
         :param periods: forward return periods
         :param quantiles: number of quantile
         :param filter_zscore: drop extreme factor return, for stability of the analysis.
         :param preview: display a preview chart of the result
         """
-        factors_bak = self._factors.copy()
+        factors = self._factors.copy()
+        origin_factors = self._origin_factors.copy()
 
         column_names = {}
         # add quantile factor of all factors
-        for c, f in factors_bak.items():
+        for c, f in origin_factors.items():
             self.add(f.quantile(quantiles), c + '_q_')
             column_names[c] = (c, 'factor')
             column_names[c + '_q_'] = (c, 'factor_quantile')
 
         # add the rolling returns of each period
-        shift = 1
         inputs = (OHLCV.close,)
         if trade_at == 'open':
             inputs = (OHLCV.open,)
-        elif trade_at == 'current_close':
-            shift = 0
         from .basic import Returns
         for n in periods:
-            rtn = Returns(win=n + 1, inputs=inputs).shift(-n - shift)
+            rtn = Returns(win=n + 1, inputs=inputs).shift(-n)
             self.add(rtn, str(n) + '_r_')
             self.add(rtn.demean(), str(n) + '_d_')
 
         # run and get df
         factor_data = self.run(start, end)
-        self._factors = factors_bak
+        self._factors = factors
+        self._origin_factors = origin_factors
         factor_data.index = factor_data.index.remove_unused_levels()
-        last_date = factor_data.index.levels[0][-max(periods) - shift - 1]
+        assert len(factor_data.index.levels[0]) > max(periods), \
+            'No enough data for forward returns, please expand the end date'
+        last_date = factor_data.index.levels[0][-max(periods) - 1]
         factor_data = factor_data.loc[:last_date]
 
         # todo filter_zscore
@@ -310,7 +321,7 @@ class FactorEngine:
 
         # mean return, return std err
         mean_return = pd.DataFrame(columns=pd.MultiIndex.from_arrays([[], []]))
-        for fact_name, f in factors_bak.items():
+        for fact_name, _ in origin_factors.items():
             group = [(fact_name, 'factor_quantile'), 'date']
             for n, period_col in period_cols.items():
                 demean_col = ('Demeaned', period_col)
@@ -321,6 +332,8 @@ class FactorEngine:
         mean_return = mean_return.groupby(level=0).agg(['mean', 'sem'])
 
         # 用pyplot画复杂的图 先做quantile的，之后再做累计收益
+        if preview:
+            pass
 
         # 第一个返回factor data， 第二个返回mean return, 第三个返回performance factor return?
         return factor_data, mean_return

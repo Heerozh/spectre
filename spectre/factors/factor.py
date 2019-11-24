@@ -118,14 +118,16 @@ class BaseFactor:
     def get_total_backward_(self) -> int:
         raise NotImplementedError("abstractmethod")
 
+    def is_need_shift(self) -> bool:
+        return False
+
     def pre_compute_(self, engine, start, end) -> None:
         self._engine = engine
 
     def compute_(self, stream: Union[torch.cuda.Stream, None]) -> torch.Tensor:
         raise NotImplementedError("abstractmethod")
 
-    def __init__(self, win: Optional[int] = None,
-                 inputs: Optional[Sequence[any]] = None) -> None:
+    def __init__(self) -> None:
         pass
 
     def compute(self, *inputs: Sequence[torch.Tensor]) -> torch.Tensor:
@@ -148,6 +150,15 @@ class CustomFactor(BaseFactor):
             backward = max([up.get_total_backward_() for up in self.inputs
                             if isinstance(up, BaseFactor)] or (0,))
         return backward + self.win - 1
+
+    def is_need_shift(self) -> bool:
+        ret = super().is_need_shift()
+        if self.inputs:
+            for upstream in self.inputs:
+                if isinstance(upstream, BaseFactor):
+                    up_ret = upstream.is_need_shift()
+                    ret = max(ret, up_ret)
+        return ret
 
     def pre_compute_(self, engine, start, end) -> None:
         """
@@ -213,7 +224,7 @@ class CustomFactor(BaseFactor):
             Input factors, will all passed to the `compute` function.
             **If not specified, use `self.inputs` instead.**
         """
-        super().__init__(win, inputs)
+        super().__init__()
         if win:
             self.win = win
         if inputs:
@@ -267,8 +278,9 @@ class DataFactor(BaseFactor):
     def get_total_backward_(self) -> int:
         return 0
 
-    def __init__(self, inputs: Optional[Sequence[str]] = None) -> None:
-        super().__init__(inputs)
+    def __init__(self, inputs: Optional[Sequence[str]] = None,
+                 is_data_after_market_close=True) -> None:
+        super().__init__()
         if inputs:
             self.inputs = inputs
         assert (3 > len(self.inputs) > 0), \
@@ -276,6 +288,10 @@ class DataFactor(BaseFactor):
             "adjustment column"
         self._data = None
         self._multi = None
+        self.is_data_after_market_close = is_data_after_market_close
+
+    def is_need_shift(self) -> bool:
+        return self.is_data_after_market_close
 
     def pre_compute_(self, engine, start, end) -> None:
         super().pre_compute_(engine, start, end)
@@ -294,7 +310,7 @@ class DataFactor(BaseFactor):
 
 class AdjustedDataFactor(CustomFactor):
     def __init__(self, data: DataFactor):
-        super().__init__(1, (data, ))
+        super().__init__(1, (data,))
         self.parent = data
 
     def compute(self, data) -> torch.Tensor:
@@ -335,6 +351,7 @@ class ShiftFactor(CustomFactor):
 
 
 class FilterShiftFactor(CustomFactor):
+    """For "roll_cuda" not implemented for 'Bool' """
     periods = 1
 
     def compute(self, data: torch.Tensor) -> torch.Tensor:

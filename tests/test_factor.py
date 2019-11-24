@@ -19,10 +19,13 @@ class TestFactorLib(unittest.TestCase):
         )
         engine = spectre.factors.FactorEngine(loader)
         total_rows = 10
+        engine.add(spectre.factors.OHLCV.open, 'open')
         engine.add(spectre.factors.OHLCV.high, 'high')
         engine.add(spectre.factors.OHLCV.low, 'low')
         engine.add(spectre.factors.OHLCV.close, 'close')
         df = engine.run('2018-01-01', '2019-01-15')
+        df_aapl_open = df.loc[(slice(None), 'AAPL'), 'open']
+        df_msft_open = df.loc[(slice(None), 'MSFT'), 'open']
         df_aapl_close = df.loc[(slice(None), 'AAPL'), 'close']
         df_msft_close = df.loc[(slice(None), 'MSFT'), 'close']
         df_aapl_high = df.loc[(slice(None), 'AAPL'), 'high']
@@ -30,12 +33,12 @@ class TestFactorLib(unittest.TestCase):
         df_aapl_low = df.loc[(slice(None), 'AAPL'), 'low']
         df_msft_low = df.loc[(slice(None), 'MSFT'), 'low']
 
-        def test_expected(factor, _expected_aapl, _expected_msft, _len=9, decimal=7):
+        def test_expected(factor, _expected_aapl, _expected_msft, _len=8, decimal=7):
             engine.remove_all_factors()
             engine.add(factor, 'test')
-            result = engine.run('2019-01-01', '2019-01-15')
-            result_aapl = result.loc[(slice(None), 'AAPL'), 'test'].values
-            result_msft = result.loc[(slice(None), 'MSFT'), 'test'].values
+            _result = engine.run('2019-01-01', '2019-01-15')
+            result_aapl = _result.loc[(slice(None), 'AAPL'), 'test'].values
+            result_msft = _result.loc[(slice(None), 'MSFT'), 'test'].values
             assert_almost_equal(result_aapl[-_len:], _expected_aapl[-_len:], decimal=decimal)
             assert_almost_equal(result_msft[-_len:], _expected_msft[-_len:], decimal=decimal)
 
@@ -48,91 +51,113 @@ class TestFactorLib(unittest.TestCase):
                           '2019-01-05 00:00:00+00:00')
 
         # test VWAP
-        expected_aapl = [149.0790384, 147.3288365, 149.6858806, 151.9418349,
-                         155.9166044, 157.0598718, 157.5146325, 155.9634716]
-        expected_msft = [102.5066541, 102.5480467, 103.2112277, 104.2766662,
-                         104.7779232, 104.8471192, 104.2296381, 105.3194997]
+        expected_aapl = [152.3003451, 149.0790384, 147.3288365, 149.6858806,
+                         151.9418349, 155.9166044, 157.0598718, 157.5146325]
+        expected_msft = [103.3029256, 102.5066541, 102.5480467, 103.2112277,
+                         104.2766662, 104.7779232, 104.8471192, 104.2296381]
         test_expected(spectre.factors.VWAP(3), expected_aapl, expected_msft, 8)
 
         # test AverageDollarVolume
-        expected_aapl = [9.44651864548e+09, 1.027077776041e+10, 7.946943447e+09, 7.33979891063e+09,
-                         6.43094032063e+09, 5.70460092069e+09, 5.129334268727e+09,
-                         4.747847957413e+09]
-        expected_msft = [4222040618.907, 4337221881.827, 3967296370.427, 3551354941.067,
-                         3345411315.747, 3206986059.747, 3044200749.280, 3167715409.797]
+        expected_aapl = [8.48373212946e+09, 9.44651864548e+09, 1.027077776041e+10, 7.946943447e+09,
+                         7.33979891063e+09, 6.43094032063e+09, 5.70460092069e+09,
+                         5.129334268727e+09]
+        expected_msft = [4022824628.837, 4222040618.907, 4337221881.827, 3967296370.427,
+                         3551354941.067, 3345411315.747, 3206986059.747, 3044200749.280]
         test_expected(spectre.factors.AverageDollarVolume(3), expected_aapl, expected_msft, 8, 2)
 
         # AnnualizedVolatility
-        expected_aapl = [0.3141548, 0.5426118, 0.7150832, 0.7475805, 0.1710541, 0.1923727,
-                         0.1027987, 0.5697543, 0.5436627, 0.4423527]
-        expected_msft = [0.189534377, 0.263729893, 0.344381405, 0.210997343, 0.235832738,
-                         0.202266499, 0.308870901, 0.235088127, 0.520421161, ]
+        expected_aapl = [np.nan, 0.3141548, 0.5426118, 0.7150832, 0.7475805, 0.1710541,
+                         0.1923727, 0.1027987, 0.5697543, 0.5436627]
+        expected_msft = [np.nan, 0.189534377, 0.263729893, 0.344381405, 0.210997343,
+                         0.235832738, 0.202266499, 0.308870901, 0.235088127]
         test_expected(spectre.factors.AnnualizedVolatility(3), expected_aapl, expected_msft, 10)
 
         # test rank
         _expected_aapl = [2.] * 10
-        _expected_aapl[6] = 1  # because msft was nan this day
+        _expected_aapl[7] = 1  # because msft was nan this day
+        _expected_aapl[0] = np.nan  # because no filter, those day still here
         _expected_msft = [1] * 9
+        _expected_msft[0] = np.nan
         test_expected(spectre.factors.OHLCV.close.rank(),
                       _expected_aapl, _expected_msft, total_rows)
         _expected_aapl = [1.] * 10
+        _expected_aapl[0] = np.nan
         _expected_msft = [2] * 9
+        _expected_msft[0] = np.nan
         test_expected(spectre.factors.OHLCV.close.rank(ascending=False),
                       _expected_aapl, _expected_msft, total_rows)
         # test rank bug #98a0bdc
         engine.remove_all_factors()
         engine.add(spectre.factors.OHLCV.close.rank(), 'test')
-        result = engine.run('2019-01-01', '2019-01-02')
-        assert_array_equal([[2.0], [1.0]], result.values)
+        result = engine.run('2019-01-01', '2019-01-03')
+        assert_array_equal([[np.nan], [np.nan], [2.0], [1.0]], result.values)
         # test rank with filter cuda
         engine.remove_all_factors()
         engine.set_filter(spectre.factors.OHLCV.volume.top(1))
         engine.add(spectre.factors.OHLCV.close.rank(), 'test')
         engine.to_cuda()
         result = engine.run('2019-01-01', '2019-01-15')
-        assert_array_equal([1.] * 10, result.test.values)
+        assert_array_equal([1.] * 9, result.test.values)
         # test rank with filter
         engine.remove_all_factors()
         engine.set_filter(spectre.factors.OHLCV.volume.top(1))
         engine.add(spectre.factors.OHLCV.close.rank(), 'test')
         engine.to_cpu()
         result = engine.run('2019-01-01', '2019-01-15')
-        assert_array_equal([1.] * 10, result.test.values)
+        assert_array_equal([1.] * 9, result.test.values)
         engine.set_filter(None)
 
         # test zscore
-        _expected_aapl = [1.] * 10
+        expected_aapl = [1.] * 10
         # aapl has prices data, but we only have two stocks, so one data zscore = 0/0 = nan
-        _expected_aapl[6] = np.nan
-        _expected_msft = [-1.] * 9
+        expected_aapl[7] = np.nan
+        expected_aapl[0] = np.nan
+        expected_msft = [-1.] * 9
+        expected_msft[0] = np.nan
         test_expected(spectre.factors.OHLCV.close.zscore(),
-                      _expected_aapl, _expected_msft, total_rows)
+                      expected_aapl, expected_msft, total_rows)
 
         # test demean
-        _expected_aapl = [28.655, 21.475, 22.305, 22.9, 23.165, 25.015, 0, 25.245, 26.805, 24.045]
-        _expected_msft = -np.array(_expected_aapl)
-        _expected_msft = np.delete(_expected_msft, 6)
+        expected_aapl = [np.nan, 28.655, 21.475, 22.305, 22.9, 23.165, 25.015, 0, 25.245, 26.805]
+        expected_msft = -np.array(expected_aapl)
+        expected_msft = np.delete(expected_msft, 7)
         test_expected(spectre.factors.OHLCV.close.demean(groupby={'AAPL': 1, 'MSFT': 1}),
-                      _expected_aapl, _expected_msft, total_rows, decimal=3)
+                      expected_aapl, expected_msft, total_rows, decimal=3)
         test_expected(spectre.factors.OHLCV.close.demean(groupby={'AAPL': 1, 'MSFT': 2}),
-                      [0] * 10, [0] * 9, total_rows)
+                      [np.nan] + [0] * 9, [np.nan] + [0] * 8, total_rows)
         test_expected(spectre.factors.OHLCV.close.demean(),
-                      _expected_aapl, _expected_msft, total_rows)
+                      expected_aapl, expected_msft, total_rows)
 
         # test shift
-        _expected_aapl = df_aapl_close.shift(2)[-total_rows:]
-        _expected_aapl[0:2] = np.nan
-        _expected_msft = df_msft_close.shift(2)[-total_rows + 1:]
-        _expected_msft[0:2] = np.nan
+        expected_aapl = df_aapl_close.shift(2)[-total_rows:]
+        expected_aapl[0:3] = np.nan
+        expected_msft = df_msft_close.shift(2)[-total_rows + 1:]
+        expected_msft[0:3] = np.nan
         test_expected(spectre.factors.OHLCV.close.shift(2),
-                      _expected_aapl, _expected_msft, total_rows)
+                      expected_aapl, expected_msft, total_rows)
 
-        _expected_aapl = df_aapl_close.shift(-2)[-total_rows:]
-        _expected_aapl[-2:] = np.nan
-        _expected_msft = df_msft_close.shift(-2)[-total_rows + 1:]
-        _expected_msft[-2:] = np.nan
+        expected_aapl = [np.nan, 149, 149, 151.55, 156.03, 161, 153.69, 157, 156.94, np.nan]
+        expected_msft = [np.nan, 104.39, 103.2, 105.22, 106, 103.2, 103.39, 108.85, np.nan]
+        # bcuz down is shift(-2) then shift(1)
         test_expected(spectre.factors.OHLCV.close.shift(-2),
-                      _expected_aapl, _expected_msft, total_rows)
+                      expected_aapl, expected_msft, total_rows)
+
+        # test zscore and shift, mask bug
+        expected_aapl = [1.] * 9
+        expected_aapl[6] = np.nan
+        expected_msft = [-1.] * 8
+        engine.set_filter(spectre.factors.OHLCV.open.top(2))
+        test_expected(spectre.factors.OHLCV.open.zscore().shift(1),
+                      expected_aapl, expected_msft, total_rows)
+
+        # test quantile get factors from engine._factorsnan bug
+        expected_aapl = [5.] * 9
+        expected_aapl[6] = np.nan
+        expected_msft = [1.] * 8
+        engine.set_filter(spectre.factors.OHLCV.close.top(2))
+        engine.add(spectre.factors.OHLCV.close.zscore(), 'pre')
+        f = engine.get_factor('pre')
+        test_expected(f.quantile(), expected_aapl, expected_msft, total_rows)
 
         import talib  # pip install --no-deps d:\doc\Download\TA_Lib-0.4.17-cp37-cp37m-win_amd64.whl
 
@@ -143,6 +168,12 @@ class TestFactorLib(unittest.TestCase):
         expected_aapl = talib.SMA(df_aapl_close.values, timeperiod=11)
         expected_msft = talib.SMA(df_msft_close.values, timeperiod=11)
         test_expected(spectre.factors.SMA(11), expected_aapl, expected_msft)
+
+        # test open ma not shift
+        expected_aapl = talib.SMA(df_aapl_open.values, timeperiod=11)
+        expected_msft = talib.SMA(df_msft_open.values, timeperiod=11)
+        test_expected(spectre.factors.SMA(11, inputs=[spectre.factors.OHLCV.open]),
+                      expected_aapl, expected_msft, _len=9)
 
         # test ema
         expected_aapl = talib.EMA(df_aapl_close.values, timeperiod=11)
@@ -192,10 +223,10 @@ class TestFactorLib(unittest.TestCase):
         # expected_aapl = talib.RSI(df_aapl_close.values, timeperiod=14)
         # calculate at excel
         expected_aapl = [40.1814301, 33.36385487, 37.37511353, 36.31220413, 41.84100418,
-                         39.19197118, 48.18441452, 44.30411404, 50.05167959, 56.47230321]
+                         39.19197118, 48.18441452, 44.30411404, 50.05167959]
         # expected_msft = talib.RSI(df_msft_close.values, timeperiod=14)
         expected_msft = [38.5647217, 42.0627596, 37.9693676, 43.8641553, 48.3458438,
-                         47.095672, 46.7363662, 46.127465, 64.8259304]
+                         47.095672, 46.7363662, 46.127465]
         # expected_aapl += 7
         test_expected(spectre.factors.RSI(), expected_aapl, expected_msft)
 
@@ -233,7 +264,7 @@ class TestFactorLib(unittest.TestCase):
         result = engine.run("2019-01-01", "2019-01-15")
         assert_array_equal(result.index.get_level_values(1).values,
                            ['MSFT', 'AAPL', 'AAPL', 'AAPL', 'AAPL', 'AAPL', 'AAPL', 'MSFT',
-                            'AAPL', 'MSFT'])
+                            'AAPL'])
 
         # test ma5 with filter
         import talib
@@ -342,7 +373,7 @@ class TestFactorLib(unittest.TestCase):
         expected = pd.qcut(data[1], 5, labels=False) + 1
         assert_array_equal(result[-1], expected)
 
-    # @unittest.skipUnless(os.getenv('COVERAGE_RUNNING'), "too slow, run manually")
+    @unittest.skipUnless(os.getenv('COVERAGE_RUNNING'), "too slow, run manually")
     def test_full_run(self):
         loader = spectre.factors.QuandlLoader(
             data_dir + '../../../historical_data/us/prices/quandl/WIKI_PRICES.zip')
@@ -352,7 +383,7 @@ class TestFactorLib(unittest.TestCase):
         engine.set_filter(spectre.factors.AverageDollarVolume(win=120).top(500))
         f = spectre.factors.MA(5) - spectre.factors.MA(10) - spectre.factors.MA(30)
         engine.add(f.rank().zscore(), 'ma_cross')
-        df_prices = engine.get_price_matrix('2014-01-02', '2017-01-18') #.shift(-1)
+        df_prices = engine.get_price_matrix('2014-01-02', '2017-01-18')  # .shift(-1)
         factor_data, mean_return = engine.full_run('2014-01-02', '2017-01-18', periods=(10,))
 
         import alphalens as al
