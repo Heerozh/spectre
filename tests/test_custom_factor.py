@@ -36,7 +36,7 @@ class TestCustomFactorLib(unittest.TestCase):
         engine = spectre.factors.FactorEngine(loader)
 
         class TestFactor(spectre.factors.CustomFactor):
-            inputs = [spectre.factors.OHLCV.close]
+            inputs = [spectre.factors.OHLCV.open]
 
             def compute(self, close):
                 return torch.tensor(np.arange(close.nelement()).reshape(close.shape))
