@@ -1,10 +1,6 @@
 [![Coverage Status](https://coveralls.io/repos/github/Heerozh/spectre/badge.svg?branch=master)](https://coveralls.io/github/Heerozh/spectre?branch=master)
 
 Progress: 5/10  🔳🔳🔳🔳🔳⬜⬜⬜⬜⬜\
-~~1/10: FactorEngine architecture~~\
-~~2/10: FactorEngine~~\
-~~3/10: Filters~~\
-~~4/10: All factors~~\
 ~~5/10: CUDA support~~\
 6/10: Dividends/Splits\
 7/10: Back-test architecture\
@@ -18,18 +14,17 @@ Progress: 5/10  🔳🔳🔳🔳🔳⬜⬜⬜⬜⬜\
 spectre is a **GPU-accelerated Parallel** quantitative trading library, focused on **performance**.
 
   * Fast, really fast, see below [Benchmarks](#benchmarks)
-  * Pure python code
-  * Using **PyTorch** for parallelize. And yes, spectre can return Factor as `torch.Tensor` type.
+  * Pure python code, using PyTorch for parallelize. 
   * Low CUDA memory usage
-  * Python 3.7, pandas 0.25 supported
+  * Python 3.7, pandas 0.25 recommended
 
 [Under construction]
 
-# Status
+## Status
 
 In development.
 
-# Installation
+## Installation
 
 ```bash
 pip install git+git://github.com/Heerozh/spectre.git
@@ -54,23 +49,22 @@ Running on Quandl 5 years, 3196 Assets, total 3,637,344 ticks.
 
 |                |       spectre (CUDA)         |       spectre (CPU)        |       zipline         |
 |----------------|------------------------------|----------------------------|-----------------------|
-|SMA(100)        | 478 ms ± 56.4 ms (**6.23x**) | 2.68 s ± 36.1 ms (1.11x)   | 2.98 s ± 14.4 ms (1x) |
-|EMA(50) win=200 | 400 ms ± 22.3 ms (**19.0x**) | 4.37 s ± 46.4 ms (1.74x)   | 7.6 s ± 15.4 ms (1x) |
-|(MACD+RSI+STOCHF).rank.zscore | 675 ms ± 13 ms (**21.2x**) | 6.01 s ± 28.1 (2.38x)   | 14.3 s ± 277 ms (1x) |
-
-* The CUDA memory used in the spectre benchmark is 1.6G, returned by cuda.max_memory_allocated().
+|SMA(100)        | 130 ms ± 41.5 ms (**22.9x**) | 2.68 s ± 36.1 ms (1.11x)   | 2.98 s ± 14.4 ms (1x) |
+|EMA(50) win=200 | 184 ms ± 35.9 ms ms (**41.3x**) | 4.37 s ± 46.4 ms (1.74x)   | 7.6 s ± 15.4 ms (1x) |
+|(MACD+RSI+STOCHF).rank.zscore | 451 ms ± 12.3 ms (**31.7x**) | 6.01 s ± 28.1 (2.38x)   | 14.3 s ± 277 ms (1x) |
 
 
-<!--
-todo
-|Below [Full Example](#chapter-iii-full-example)| 2.06 s ± 7.68 ms (**2.65x**) | 3.05 s ± 24.8 ms (**1.73x**) | 5.28 s ± 14.0 ms (1x) |
-!-->
+* The CUDA memory used in the spectre benchmark is 1.3G, returned by cuda.max_memory_allocated().
+* Benchmarks exclude the initial run (no copy data to VRAM, about saving 300ms).
 
-* Benchmarks exclude the initial run.
 
-## Chapter I. Factor and FactorEngine
 
-### Quick Start
+
+## Quick Start
+
+### Factor and FactorEngine
+
+#### Factor
 ```python
 from spectre import factors
 
@@ -98,44 +92,43 @@ df
 |2019-01-15 00:00:00+00:00|     AAPL|    156.932|	156.94|
 |                         |     MSFT|    105.332|	108.85|
 
-## Chapter II. Portfolio and Backtesting
-
-[Under construction]
-
-
-## Chapter III. Full Example
+#### Factor Analysis
 
 ```python
 from spectre import factors
-# ------------- get data -------------
 loader = factors.QuandlLoader('WIKI_PRICES.zip')
 engine = factors.FactorEngine(loader)
-# ------------- set factors -------------
 engine.set_filter( factors.AverageDollarVolume(win=120).top(500) )
 engine.add( (factors.MA(5)-factors.MA(10)-factors.MA(30)).rank().zscore(), 'ma_cross' )
-# ------ get factors value and prices ------
-df_factors = engine.run('2014-01-02', '2016-12-10')
-df_prices = engine.get_price_matrix('2014-01-02', '2016-12-30')
-# ------ analysis with alphalens ------
-import alphalens as al
-al_clean_data = al.utils.get_clean_factor_and_forward_returns(
-    factor=df_factors['ma_cross'], prices=df_prices, periods=[11])
-al.performance.mean_return_by_quantile(al_clean_data)[0].plot.bar()
-(al.performance.factor_returns(al_clean_data) + 1).cumprod().plot()
+engine.to_cuda()
+factor_data = engine.full_run('2014-01-02', '2016-12-10')
+factor_data
 ```
 
 <img src="https://github.com/Heerozh/spectre/raw/media/quantile_return.png" width="50%" height="50%">
 <img src="https://github.com/Heerozh/spectre/raw/media/cumprod_return.png" width="50%" height="50%">
 
+
+###  Portfolio and Backtesting
+
 [Under construction]
 
-## Chapter IV. API
+
+
+## API
 
 ### Note
 
-* All factors value are returned as same datetime, no shift, unlike zipline. 
+#### Differences with zipline:
+* spectre's `QuandlLoader` using float32 datatype for GPU performance.
+* When encounter NaN, spectre returns NaN, zipline uses `nan*` so still give you a number.
+* If an asset has no data on the day, spectre will filter it out, no matter what value you return.
+
+
+#### Differences with common chart:
 * The data is re-adjusted every day, so the factor you got, like the MA, will be different 
     from the stock chart software which only adjusted according to last day. 
+    If you want adjusted by last day, use like 'AdjustedDataFactor(OHLCV.close)' as input data. 
 
 
 ### Factor lists
@@ -178,7 +171,7 @@ new_filter = factor.top(n)
 new_filter = factor.bottom(n)
 ```
 
-## Chapter V. How to write your own factor
+## How to write your own factor
 
 Inherit from `CustomFactor`, write `compute` function.
 
@@ -199,6 +192,8 @@ class YourFactor(CustomFactor):
 ```
 This method is completely non-parallel and inefficient, but easy to write.
 
+# Copyright 
+Copyright (C) 2019-2020, by Zhang Jianhao (heeroz@gmail.com), All rights reserved.
 
 ------------
 > *A spectre is haunting Market — the spectre of capitalism.*
