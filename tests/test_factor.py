@@ -139,9 +139,11 @@ class TestFactorLib(unittest.TestCase):
                       expected_aapl, expected_msft, total_rows)
 
         # test zscore and shift, mask bug
-        expected_aapl = [1.] * 9
-        expected_aapl[6] = np.nan
-        expected_msft = [-1.] * 8
+        expected_aapl = [1.] * 10
+        expected_aapl[0] = np.nan
+        expected_aapl[7] = np.nan
+        expected_msft = [-1.] * 9
+        expected_msft[0] = np.nan
         engine.set_filter(spectre.factors.OHLCV.open.top(2))
         test_expected(spectre.factors.OHLCV.open.zscore().shift(1),
                       expected_aapl, expected_msft, total_rows, delay=False)

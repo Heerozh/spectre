@@ -293,6 +293,13 @@ class CustomFactor(BaseFactor):
         raise NotImplementedError("abstractmethod")
 
 
+class FilterFactor(CustomFactor, ABC):
+    def shift(self, periods=1):
+        fact = FilterShiftFactor(inputs=(self,))
+        fact.periods = periods
+        return fact
+
+
 class DataFactor(BaseFactor):
     def get_adjust_multi(self):
         return self._multi
@@ -338,13 +345,6 @@ class AdjustedDataFactor(CustomFactor):
     def compute(self, data) -> torch.Tensor:
         multi = self.parent.get_adjust_multi()
         return data * multi / nanlast(multi, dim=1)[:, None]
-
-
-class FilterFactor(CustomFactor, ABC):
-    def shift(self, periods=1):
-        fact = FilterShiftFactor(inputs=(self,))
-        fact.periods = periods
-        return fact
 
 
 class TimeGroupFactor(CustomFactor, ABC):

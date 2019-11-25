@@ -57,6 +57,11 @@ class ParallelGroupBy:
                              .format(tuple(split_data.shape), dbg_str, self._data_shape))
         return torch.take(split_data, self._inverse_indices)
 
+    def create(self, dtype, values, nan_values):
+        ret = self._sorted_indices.new_full(self._sorted_indices.shape, values, dtype=dtype)
+        ret[self._sorted_indices == -1] = nan_values
+        return ret
+
 
 def nanmean(data: torch.Tensor, dim=1) -> torch.Tensor:
     data = data.clone()

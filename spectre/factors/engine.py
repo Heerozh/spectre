@@ -49,6 +49,9 @@ class FactorEngine:
         self._column_cache[column] = data
         return data
 
+    def create_tensor(self, dtype, values, nan_values) -> torch.Tensor:
+        return self._assetgroup.create(dtype, values, nan_values)
+
     def regroup_by_asset_(self, data: Union[torch.Tensor, pd.Series]) -> torch.Tensor:
         if isinstance(data, pd.Series):
             data = torch.tensor(data.values, device=self._device)
@@ -212,7 +215,7 @@ class FactorEngine:
             torch.cuda.synchronize(device=self._device)
 
         # get filter data for mask, use un-shifted filter
-        if filter_:
+        if self._filter:
             self._mask = self._compute_and_revert(self._filter, 'filter')
 
         # if cuda, parallel compute factors and sync
@@ -232,8 +235,11 @@ class FactorEngine:
             shift_mask = self._compute_and_revert(filter_, 'filter')
             ret = ret[shift_mask.cpu().numpy()]
 
-        # 这句话也很慢，如果为了模型计算用可以不需要
-        return ret.loc[start:]
+        index = ret.index.levels[0]
+        start = index.get_loc(start, 'bfill')
+        if delay_factor:
+            start += 1
+        return ret.loc[index[start]:]
 
     def get_factors_raw_value(self):
         return {c: f.compute_(None) for c, f in self._factors.items()}
