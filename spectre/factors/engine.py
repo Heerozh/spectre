@@ -233,13 +233,7 @@ class FactorEngine:
             ret = ret[shift_mask.cpu().numpy()]
 
         # 这句话也很慢，如果为了模型计算用可以不需要
-        ret = ret.loc[start:]
-
-        # if there is no factor values in first tick, drop
-        if ret.loc[ret.index[0][0]].isna().all(axis=None):
-            ret.drop(ret.index[0][0], level=0, inplace=True)
-
-        return ret
+        return ret.loc[start:]
 
     def get_factors_raw_value(self):
         return {c: f.compute_(None) for c, f in self._factors.items()}

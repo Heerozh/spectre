@@ -371,7 +371,7 @@ class TestFactorLib(unittest.TestCase):
         expected = pd.qcut(data[1], 5, labels=False) + 1
         assert_array_equal(result[-1], expected)
 
-    # @unittest.skipUnless(os.getenv('COVERAGE_RUNNING'), "too slow, run manually")
+    @unittest.skipUnless(os.getenv('COVERAGE_RUNNING'), "too slow, run manually")
     def test_full_run(self):
         loader = spectre.factors.QuandlLoader(
             data_dir + '../../../historical_data/us/prices/quandl/WIKI_PRICES.zip')

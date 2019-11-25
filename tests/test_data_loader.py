@@ -76,9 +76,10 @@ class TestDataLoaderLib(unittest.TestCase):
     @unittest.skipUnless(os.getenv('COVERAGE_RUNNING'), "too slow, run manually")
     def test_QuandlLoader(self):
         try:
-            os.remove(data_dir + '../../../historical_data/us/prices/quandl/WIKI_PRICES.zip.cache.hdf')
+            os.remove(
+                data_dir + '../../../historical_data/us/prices/quandl/WIKI_PRICES.zip.cache.hdf')
         except FileNotFoundError:
-           pass
+            pass
 
         loader = spectre.factors.QuandlLoader(
             data_dir + '../../../historical_data/us/prices/quandl/WIKI_PRICES.zip')
@@ -86,7 +87,7 @@ class TestDataLoaderLib(unittest.TestCase):
         engine = spectre.factors.FactorEngine(loader)
         engine.add(spectre.factors.MA(100), 'ma')
         engine.to_cuda()
-        df = engine.run("2014-01-02", "2014-01-02")
+        df = engine.run("2014-01-02", "2014-01-02", delay_factor=False)
         # expected result comes from zipline
         # AAOI only got 68 tick, so it's nan
         assert_almost_equal(df.head().values.T,
@@ -98,7 +99,3 @@ class TestDataLoaderLib(unittest.TestCase):
         df = engine.run("2016-12-15", "2017-01-02")
         df = engine._dataframe.loc[(slice('2016-12-15', '2017-12-15'), 'STJ'), :]
         assert df.price_multi.values[-1] == 1
-
-
-
-

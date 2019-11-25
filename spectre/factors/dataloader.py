@@ -153,7 +153,9 @@ class QuandlLoader(DataLoader):
                                           'volume', 'ex-dividend', 'split_ratio', ],
                                  dtype={
                                      'open': np.float32, 'high': np.float32, 'low': np.float32,
-                                     'close': np.float32, 'volume': np.float64, },
+                                     'close': np.float32, 'volume': np.float64,
+                                     'ex-dividend': np.float64, 'split_ratio': np.float64
+                                    },
                                  )
         df = df.rename(columns={'ticker': 'asset'})
 
