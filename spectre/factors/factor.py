@@ -150,6 +150,7 @@ class CustomFactor(BaseFactor):
     # internal member variables
     _cache = None
     _cache_hit = 0
+    _cache_stream = None
 
     def get_total_backward_(self) -> int:
         backward = 0
@@ -174,21 +175,42 @@ class CustomFactor(BaseFactor):
         super().pre_compute_(engine, start, end)
         self._cache = None
         self._cache_hit = 0
+        self._cache_stream = None
         if self.inputs:
             for upstream in self.inputs:
                 if isinstance(upstream, BaseFactor):
                     upstream.pre_compute_(engine, start, end)
 
+    def _format_input(self, upstream, upstream_out):
+        # If input is timegroup and self not, convert to asset group
+        if upstream.is_timegroup and not self.is_timegroup:
+            ret = self._regroup_by_asset(upstream_out)
+        elif not upstream.is_timegroup and self.is_timegroup:
+            ret = self._regroup_by_time(upstream_out)
+        else:
+            ret = upstream_out
+        # if need rolling and adjustment
+        if self.win > 1:
+            adj_multi = None
+            if isinstance(upstream, DataFactor):
+                adj_multi = upstream.get_adjust_multi()
+            ret = Rolling(ret, self.win, adj_multi)
+        # elif isinstance(upstream, DataFactor):
+        #     # 不需要adjustment了，不rolling就是获取当前的数据直接出fct，就不用adj了
+        return ret
+
     def compute_(self, down_stream: Union[torch.cuda.Stream, None]) -> torch.Tensor:
         if self._cache is not None:
             self._cache_hit += 1
+            if down_stream:
+                down_stream.wait_event(self._cache_stream.record_event())
             return self._cache
 
         # create self stream
         self_stream = None
         if down_stream:
             self_stream = torch.cuda.Stream(device=down_stream.device)
-            down_stream.wait_stream(self_stream)
+            self._cache_stream = self_stream
 
         # Calculate inputs
         inputs = []
@@ -196,19 +218,11 @@ class CustomFactor(BaseFactor):
             for upstream in self.inputs:
                 if isinstance(upstream, BaseFactor):
                     upstream_out = upstream.compute_(self_stream)
-                    # If input is timegroup and self not, convert to asset group
-                    if upstream.is_timegroup and not self.is_timegroup:
-                        upstream_out = self._regroup_by_asset(upstream_out)
-                    elif not upstream.is_timegroup and self.is_timegroup:
-                        upstream_out = self._regroup_by_time(upstream_out)
-                    # if need rolling and adjustment
-                    if self.win > 1:
-                        adj_multi = None
-                        if isinstance(upstream, DataFactor):
-                            adj_multi = upstream.get_adjust_multi()
-                        upstream_out = Rolling(upstream_out, self.win, adj_multi)
-                    # elif isinstance(upstream, DataFactor):
-                    #     # 不需要adjustment了，不rolling就是获取当前的数据直接出fct，就不用adj了
+                    if self_stream:
+                        with torch.cuda.stream(self_stream):
+                            upstream_out = self._format_input(upstream, upstream_out)
+                    else:
+                        upstream_out = self._format_input(upstream, upstream_out)
                     inputs.append(upstream_out)
                 else:
                     inputs.append(upstream)
@@ -216,6 +230,7 @@ class CustomFactor(BaseFactor):
         if self_stream:
             with torch.cuda.stream(self_stream):
                 out = self.compute(*inputs)
+            down_stream.wait_event(self_stream.record_event())
         else:
             out = self.compute(*inputs)
         self._cache = out
