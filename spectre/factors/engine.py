@@ -5,6 +5,7 @@
 @email: heeroz@gmail.com
 """
 from typing import Union, Iterable, Tuple
+import warnings
 from .factor import BaseFactor, DataFactor, FilterFactor, AdjustedDataFactor
 from .dataloader import DataLoader
 from ..parallel import ParallelGroupBy
@@ -116,7 +117,6 @@ class FactorEngine:
         self._column_cache = {}
         self._timegroup = None
         self._factors = {}
-        self._origin_factors = {}
         self._filter = None
         self._device = torch.device('cpu')
         self._mask = None
@@ -127,7 +127,7 @@ class FactorEngine:
     def add(self,
             factor: Union[Iterable[BaseFactor], BaseFactor],
             name: Union[Iterable[str], str],
-            not_shift: bool = False) -> None:
+            ) -> None:
         """
         Add factor or filter to engine, as a column.
         """
@@ -139,18 +139,13 @@ class FactorEngine:
                 raise KeyError('A factor with the name {} already exists.'
                                'please specify a new name by engine.add(factor, new_name)'
                                .format(name))
-            if factor.is_need_shift() and not not_shift:
-                # print(name, factor, 'need shift')
-                self._factors[name] = factor.shift(1)
-            else:
-                self._factors[name] = factor
-            self._origin_factors[name] = factor
+            self._factors[name] = factor
 
     def set_filter(self, factor: Union[FilterFactor, None]) -> None:
         self._filter = factor
 
     def get_factor(self, name):
-        return self._origin_factors[name]
+        return self._factors[name]
 
     def remove_all_factors(self) -> None:
         self._factors = {}
@@ -166,12 +161,22 @@ class FactorEngine:
         self._device = torch.device('cpu')
         self._last_load = [None, None, None]
 
-    def run(self, start: Union[str, pd.Timestamp], end: Union[str, pd.Timestamp]) -> pd.DataFrame:
+    def run(self, start: Union[str, pd.Timestamp], end: Union[str, pd.Timestamp],
+            delay_factor=True) -> pd.DataFrame:
         """
         Compute factors and filters, return a df contains all.
         """
         if len(self._factors) == 0:
             raise ValueError('Please add at least one factor to engine, then run again.')
+
+        if not delay_factor:
+            for c, f in self._factors.items():
+                if f.include_close_data():
+                    warnings.warn("Warning!! delay_factor is set to False, "
+                                  "but {} factor uses data that is only available "
+                                  "after the market is closed.".format(c),
+                                  RuntimeWarning)
+
         start, end = pd.to_datetime(start, utc=True), pd.to_datetime(end, utc=True)
         # make columns to data factors.
         OHLCV.open.inputs = (self._loader.get_ohlcv_names()[0], 'price_multi')
@@ -180,48 +185,51 @@ class FactorEngine:
         OHLCV.close.inputs = (self._loader.get_ohlcv_names()[3], 'price_multi')
         OHLCV.volume.inputs = (self._loader.get_ohlcv_names()[4], 'vol_multi')
 
+        # get factor
+        filter_ = self._filter
+        if filter_ and delay_factor:
+            filter_ = filter_.shift(1)
+        factors = {c: delay_factor and f.shift(1) or f for c, f in self._factors.items()}
+
         # Calculate data that requires backward in tree
-        max_backward = max([f.get_total_backward_() for f in self._factors.values()])
-        if self._filter:
-            max_backward = max(max_backward, self._filter.get_total_backward_())
+        max_backward = max([f.get_total_backward_() for f in factors.values()])
+        if filter_:
+            max_backward = max(max_backward, filter_.get_total_backward_())
         # Get data
         self._prepare_tensor(start, end, max_backward)
         self._mask = None
 
         # ready to compute
-        shift_filter = None
-        if self._filter:
-            shift_filter = self._filter.shift(1)
-            shift_filter.pre_compute_(self, start, end)
-        for f in self._factors.values():
+        if filter_:
+            filter_.pre_compute_(self, start, end)
+        for f in factors.values():
             f.pre_compute_(self, start, end)
 
         # if cuda, parallel compute filter and sync
-        if self._filter and self._device.type == 'cuda':
+        if filter_ and self._device.type == 'cuda':
             stream = torch.cuda.Stream(device=self._device)
-            shift_filter.compute_(stream)
+            filter_.compute_(stream)
             torch.cuda.synchronize(device=self._device)
 
-        # get filter data for mask
-        if self._filter:
+        # get filter data for mask, use un-shifted filter
+        if filter_:
             self._mask = self._compute_and_revert(self._filter, 'filter')
 
         # if cuda, parallel compute factors and sync
         if self._device.type == 'cuda':
             stream = torch.cuda.Stream(device=self._device)
-            for col, fct in self._factors.items():
+            for col, fct in factors.items():
                 fct.compute_(stream)
             torch.cuda.synchronize(device=self._device)
 
         # compute factors from cpu or read cache
         ret = pd.DataFrame(index=self._dataframe.index.copy())
         ret = ret.assign(**{c: self._compute_and_revert(f, c).cpu().numpy()
-                            for c, f in self._factors.items()})
+                            for c, f in factors.items()})
 
         # Remove filter False rows
-        if self._filter:
-            # only shift when need select
-            shift_mask = self._compute_and_revert(shift_filter, 'filter')
+        if filter_:
+            shift_mask = self._compute_and_revert(filter_, 'filter')
             ret = ret[shift_mask.cpu().numpy()]
 
         # 这句话也很慢，如果为了模型计算用可以不需要
@@ -252,14 +260,17 @@ class FactorEngine:
         filter_backup = self._filter
         self._factors = {'price': AdjustedDataFactor(prices)}
         self._filter = None
-        ret = self.run(start, end)
+        with warnings.catch_warnings():
+            warnings.simplefilter("ignore")
+            ret = self.run(start, end, delay_factor=False)
         self._factors = factors_backup
         self._filter = filter_backup
 
         return ret['price'].unstack(level=[1])
 
-    def full_run(self, start, end, trade_at='close', periods=(1, 4, 9), quantiles=5,
-                 filter_zscore=20, preview=True) -> Tuple[pd.DataFrame, pd.DataFrame]:
+    def full_run(self, start, end, trade_at='close', periods=(1, 4, 9),
+                 quantiles=5, filter_zscore=20, preview=True
+                 ) -> Tuple[pd.DataFrame, pd.DataFrame]:
         """
         Return this:
         |    	                    |    	|  Returns  |      factor_name          	|
@@ -272,40 +283,45 @@ class FactorEngine:
         al.tears.create_returns_tear_sheet(factor_data)
         :param str, pd.Timestamp start: factor analysis start time
         :param str, pd.Timestamp end: factor analysis end time
-        :param trade_at: which price for forward returns. 'open', or 'close
+        :param trade_at: which price for forward returns. 'open', or 'close.
+                         If is 'current_close', same as run engine with delay_factor=False,
+                         Meaning use the factor to trade on the same day it generated. Be sure that
+                         no any high,low,close data is used in factor, otherwise will cause
+                         lookahead bias.
         :param periods: forward return periods
         :param quantiles: number of quantile
         :param filter_zscore: drop extreme factor return, for stability of the analysis.
         :param preview: display a preview chart of the result
         """
         factors = self._factors.copy()
-        origin_factors = self._origin_factors.copy()
 
         column_names = {}
         # add quantile factor of all factors
-        for c, f in origin_factors.items():
+        for c, f in factors.items():
             self.add(f.quantile(quantiles), c + '_q_')
             column_names[c] = (c, 'factor')
             column_names[c + '_q_'] = (c, 'factor_quantile')
 
         # add the rolling returns of each period
+        shift = -1
         inputs = (OHLCV.close,)
         if trade_at == 'open':
             inputs = (OHLCV.open,)
+        elif trade_at == 'current_close':
+            shift = 0
         from .basic import Returns
         for n in periods:
-            rtn = Returns(win=n + 1, inputs=inputs).shift(-n)
-            self.add(rtn, str(n) + '_r_', not_shift=True)
-            self.add(rtn.demean(), str(n) + '_d_', not_shift=True)
+            rtn = Returns(win=n + 1, inputs=inputs).shift(-n + shift)
+            self.add(rtn, str(n) + '_r_')
+            self.add(rtn.demean(), str(n) + '_d_')
 
         # run and get df
-        factor_data = self.run(start, end)
+        factor_data = self.run(start, end, trade_at != 'current_close')
         self._factors = factors
-        self._origin_factors = origin_factors
         factor_data.index = factor_data.index.remove_unused_levels()
         assert len(factor_data.index.levels[0]) > max(periods), \
             'No enough data for forward returns, please expand the end date'
-        last_date = factor_data.index.levels[0][-max(periods) - 1]
+        last_date = factor_data.index.levels[0][-max(periods) + shift - 1]
         factor_data = factor_data.loc[:last_date]
 
         # todo filter_zscore
@@ -325,7 +341,7 @@ class FactorEngine:
 
         # mean return, return std err
         mean_return = pd.DataFrame(columns=pd.MultiIndex.from_arrays([[], []]))
-        for fact_name, _ in origin_factors.items():
+        for fact_name, _ in factors.items():
             group = [(fact_name, 'factor_quantile'), 'date']
             for n, period_col in period_cols.items():
                 demean_col = ('Demeaned', period_col)

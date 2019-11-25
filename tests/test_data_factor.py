@@ -30,7 +30,7 @@ class TestDataFactorLib(unittest.TestCase):
                            (-0.8025, -0.7489))
 
         engine.add(spectre.factors.OHLCV.open, 'open')
-        df = engine.run('2019-01-11', '2019-01-15')
+        df = engine.run('2019-01-11', '2019-01-15', delay_factor=False)
         assert_array_equal(df.loc[(slice(None), 'AAPL'), 'open'].values,
                            (155.72, 155.19, 150.81))
         assert_array_equal(df.loc[(slice(None), 'MSFT'), 'open'].values,

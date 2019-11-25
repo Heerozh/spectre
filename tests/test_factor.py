@@ -19,24 +19,26 @@ class TestFactorLib(unittest.TestCase):
         )
         engine = spectre.factors.FactorEngine(loader)
         total_rows = 10
-        engine.add(spectre.factors.OHLCV.open, 'open')
         engine.add(spectre.factors.OHLCV.high, 'high')
         engine.add(spectre.factors.OHLCV.low, 'low')
         engine.add(spectre.factors.OHLCV.close, 'close')
         df = engine.run('2018-01-01', '2019-01-15')
-        df_aapl_open = df.loc[(slice(None), 'AAPL'), 'open']
-        df_msft_open = df.loc[(slice(None), 'MSFT'), 'open']
         df_aapl_close = df.loc[(slice(None), 'AAPL'), 'close']
         df_msft_close = df.loc[(slice(None), 'MSFT'), 'close']
         df_aapl_high = df.loc[(slice(None), 'AAPL'), 'high']
         df_msft_high = df.loc[(slice(None), 'MSFT'), 'high']
         df_aapl_low = df.loc[(slice(None), 'AAPL'), 'low']
         df_msft_low = df.loc[(slice(None), 'MSFT'), 'low']
+        engine.remove_all_factors()
+        engine.add(spectre.factors.OHLCV.open, 'open')
+        df = engine.run('2018-01-01', '2019-01-15', False)
+        df_aapl_open = df.loc[(slice(None), 'AAPL'), 'open']
+        df_msft_open = df.loc[(slice(None), 'MSFT'), 'open']
 
-        def test_expected(factor, _expected_aapl, _expected_msft, _len=8, decimal=7):
+        def test_expected(factor, _expected_aapl, _expected_msft, _len=8, decimal=7, delay=True):
             engine.remove_all_factors()
             engine.add(factor, 'test')
-            _result = engine.run('2019-01-01', '2019-01-15')
+            _result = engine.run('2019-01-01', '2019-01-15', delay)
             result_aapl = _result.loc[(slice(None), 'AAPL'), 'test'].values
             result_msft = _result.loc[(slice(None), 'MSFT'), 'test'].values
             assert_almost_equal(result_aapl[-_len:], _expected_aapl[-_len:], decimal=decimal)
@@ -142,7 +144,7 @@ class TestFactorLib(unittest.TestCase):
         expected_msft = [-1.] * 8
         engine.set_filter(spectre.factors.OHLCV.open.top(2))
         test_expected(spectre.factors.OHLCV.open.zscore().shift(1),
-                      expected_aapl, expected_msft, total_rows)
+                      expected_aapl, expected_msft, total_rows, delay=False)
 
         # test quantile get factors from engine._factorsnan bug
         expected_aapl = [5.] * 9
@@ -162,12 +164,14 @@ class TestFactorLib(unittest.TestCase):
         expected_aapl = talib.SMA(df_aapl_close.values, timeperiod=11)
         expected_msft = talib.SMA(df_msft_close.values, timeperiod=11)
         test_expected(spectre.factors.SMA(11), expected_aapl, expected_msft)
+        with self.assertWarns(RuntimeWarning):
+            engine.run('2019-01-01', '2019-01-15', False)
 
         # test open ma not shift
         expected_aapl = talib.SMA(df_aapl_open.values, timeperiod=11)
         expected_msft = talib.SMA(df_msft_open.values, timeperiod=11)
         test_expected(spectre.factors.SMA(11, inputs=[spectre.factors.OHLCV.open]),
-                      expected_aapl, expected_msft, _len=9)
+                      expected_aapl, expected_msft, _len=9, delay=False)
 
         # test ema
         expected_aapl = talib.EMA(df_aapl_close.values, timeperiod=11)
@@ -367,7 +371,7 @@ class TestFactorLib(unittest.TestCase):
         expected = pd.qcut(data[1], 5, labels=False) + 1
         assert_array_equal(result[-1], expected)
 
-    @unittest.skipUnless(os.getenv('COVERAGE_RUNNING'), "too slow, run manually")
+    # @unittest.skipUnless(os.getenv('COVERAGE_RUNNING'), "too slow, run manually")
     def test_full_run(self):
         loader = spectre.factors.QuandlLoader(
             data_dir + '../../../historical_data/us/prices/quandl/WIKI_PRICES.zip')
@@ -378,7 +382,7 @@ class TestFactorLib(unittest.TestCase):
         f = spectre.factors.MA(5) - spectre.factors.MA(10) - spectre.factors.MA(30)
         engine.add(f.rank().zscore(), 'ma_cross')
         df_prices = engine.get_price_matrix('2014-01-02', '2017-01-18')  # .shift(-1)
-        factor_data, mean_return = engine.full_run('2014-01-02', '2017-01-18', periods=(10,))
+        factor_data, mean_return = engine.full_run('2014-01-02', '2017-01-19', periods=(10,))
 
         import alphalens as al
         al_clean_data = al.utils.get_clean_factor_and_forward_returns(
@@ -391,9 +395,9 @@ class TestFactorLib(unittest.TestCase):
                             al_std['10D'].values, decimal=5)
 
         # check last line bug, nanlast function
-        stj_10d_return = factor_data.loc[(slice('2016-12-15', '2016-12-31'), 'STJ'),
+        stj_10d_return = factor_data.loc[(slice('2016-12-15', '2017-01-03'), 'STJ'),
                                          ('Returns', '10D')]
-        expected = [0.01881325, 0.01290882, 0.01762784, 0.0194248, 0.01405275,
+        expected = [0.003880821, 0.01881325, 0.01290882, 0.01762784, 0.0194248, 0.01405275,
                     0.01240134, 0.00835931, 0.01265514, 0.01240134, 0.00785625,
                     0.00161111]
         assert_almost_equal(stj_10d_return.values, expected)

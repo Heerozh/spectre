@@ -49,7 +49,7 @@ class TestCustomFactorLib(unittest.TestCase):
 
         engine.add(TestFactor2(), 'test2')
         self.assertRaisesRegex(ValueError, "The return data shape.*test2.*",
-                               engine.run, '2019-01-11', '2019-01-15')
+                               engine.run, '2019-01-11', '2019-01-15', False)
         engine.remove_all_factors()
         test_f1 = TestFactor()
 
@@ -64,7 +64,7 @@ class TestCustomFactorLib(unittest.TestCase):
                                engine.add, TestFactor(), 'test1')
 
         engine.add(TestFactor2(), 'test2')
-        df = engine.run('2019-01-11', '2019-01-15')
+        df = engine.run('2019-01-11', '2019-01-15', delay_factor=False)
         self.assertEqual(test_f1._cache_hit, 1)
         assert_array_equal(df['test1'].values, [0, 3, 1, 4, 2, 5])
         assert_array_equal(df['test2'].values, [0, 3, 1, 7, 3, 12])

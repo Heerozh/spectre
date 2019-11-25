@@ -37,7 +37,11 @@ class BaseFactor:
     def __neg__(self):
         return NegFactor(inputs=(self,))
 
-    # and or xor
+    def __and__(self, other):
+        return AndFactor(inputs=(self, other))
+
+    def __or__(self, other):
+        return OrFactor(inputs=(self, other))
 
     def __lt__(self, other):
         return LtFactor(inputs=(self, other))
@@ -56,6 +60,9 @@ class BaseFactor:
 
     def __ne__(self, other):
         return NeFactor(inputs=(self, other))
+
+    def __invert__(self):
+        return InvertFactor(inputs=(self,))
 
     # --------------- helper functions ---------------
 
@@ -118,7 +125,7 @@ class BaseFactor:
     def get_total_backward_(self) -> int:
         raise NotImplementedError("abstractmethod")
 
-    def is_need_shift(self) -> bool:
+    def include_close_data(self) -> bool:
         return False
 
     def pre_compute_(self, engine, start, end) -> None:
@@ -151,12 +158,12 @@ class CustomFactor(BaseFactor):
                             if isinstance(up, BaseFactor)] or (0,))
         return backward + self.win - 1
 
-    def is_need_shift(self) -> bool:
-        ret = super().is_need_shift()
+    def include_close_data(self) -> bool:
+        ret = super().include_close_data()
         if self.inputs:
             for upstream in self.inputs:
                 if isinstance(upstream, BaseFactor):
-                    up_ret = upstream.is_need_shift()
+                    up_ret = upstream.include_close_data()
                     ret = max(ret, up_ret)
         return ret
 
@@ -290,7 +297,7 @@ class DataFactor(BaseFactor):
         self._multi = None
         self.is_data_after_market_close = is_data_after_market_close
 
-    def is_need_shift(self) -> bool:
+    def include_close_data(self) -> bool:
         return self.is_data_after_market_close
 
     def pre_compute_(self, engine, start, end) -> None:
@@ -462,6 +469,21 @@ class PowFactor(CustomFactor):
 class NegFactor(CustomFactor):
     def compute(self, left) -> torch.Tensor:
         return -left
+
+
+class InvertFactor(FilterFactor):
+    def compute(self, left) -> torch.Tensor:
+        return ~left
+
+
+class OrFactor(FilterFactor):
+    def compute(self, left, right) -> torch.Tensor:
+        return left | right
+
+
+class AndFactor(FilterFactor):
+    def compute(self, left, right) -> torch.Tensor:
+        return left & right
 
 
 class LtFactor(FilterFactor):
