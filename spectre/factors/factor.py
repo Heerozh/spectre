@@ -117,6 +117,11 @@ class BaseFactor:
     def abs(self):
         return AbsFactor(inputs=(self,))
 
+    def filter(self, mask):
+        mf = DoNothingFactor(inputs=(self,))
+        mf.set_mask(mask)
+        return mf
+
     # --------------- main methods ---------------
 
     def _regroup_by_time(self, data):
@@ -409,6 +414,11 @@ class ShiftFactor(CustomFactor):
 class AbsFactor(CustomFactor):
     def compute(self, data: torch.Tensor) -> torch.Tensor:
         return data.abs()
+
+
+class DoNothingFactor(CustomFactor):
+    def compute(self, data: torch.Tensor) -> torch.Tensor:
+        return data
 
 
 class FilterShiftFactor(CustomFactor):

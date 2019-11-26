@@ -56,7 +56,8 @@ class TestDataLoaderLib(unittest.TestCase):
     def test_csv_split_loader_value(self):
         loader = spectre.factors.CsvDirLoader(
             data_dir + '/5mins/', split_by_year=True, index_col='Date', parse_dates=True, )
-        start, end = pd.Timestamp('2019-01-01', tz='UTC'), pd.Timestamp('2019-01-15', tz='UTC')
+        start = pd.Timestamp('2019-01-02 14:30:00', tz='UTC')
+        end = pd.Timestamp('2019-01-15', tz='UTC')
         loader.load(start, end, 0)
 
         start = pd.Timestamp('2018-12-31 14:50:00', tz='America/New_York').tz_convert('UTC')
