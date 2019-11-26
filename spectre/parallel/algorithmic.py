@@ -91,7 +91,7 @@ def nanlast(data: torch.Tensor, dim=1) -> torch.Tensor:
 
 
 class Rolling:
-    _split_multi = 32  # 32 better for 11G GPU, you can tune this for memory allocation performance
+    _split_multi = 64  # 32-64 recommended, you can tune this for kernel performance
 
     def __init__(self, x: torch.Tensor, win: int, _adjustment: torch.Tensor = None):
         nan_stack = x.new_full((x.shape[0], win - 1), np.nan)
