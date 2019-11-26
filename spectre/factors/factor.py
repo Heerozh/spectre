@@ -12,6 +12,7 @@ from ..parallel import nanmean, nanstd, nanlast, Rolling
 
 
 class BaseFactor:
+    """ Basic factor class, only helper methods, not dealing with dependencies """
     is_timegroup = False  # indicates inputs and return value of this factor are grouped by time
     _engine = None
 
@@ -66,44 +67,52 @@ class BaseFactor:
 
     # --------------- helper functions ---------------
 
-    def top(self, n):
-        return self.rank(ascending=False) <= n
+    def top(self, n, mask: 'BaseFactor' = None):
+        return self.rank(ascending=False, mask=mask) <= n
 
-    def bottom(self, n):
-        return self.rank(ascending=True) <= n
+    def bottom(self, n, mask: 'BaseFactor' = None):
+        return self.rank(ascending=True, mask=mask) <= n
 
-    def rank(self, ascending=True):
-        fact = RankFactor(inputs=(self,))
-        # fact.method = method
-        fact.ascending = ascending
-        return fact
+    def rank(self, ascending=True, mask: 'BaseFactor' = None):
+        factor = RankFactor(inputs=(self,))
+        # factor.method = method
+        factor.ascending = ascending
+        factor.set_mask(mask)
+        return factor
 
-    def zscore(self):
-        fact = ZScoreFactor(inputs=(self,))
-        return fact
+    def zscore(self, axis_asset=False, mask: 'BaseFactor' = None):
+        if axis_asset:
+            factor = AssetZScoreFactor(inputs=(self,))
+        else:
+            factor = ZScoreFactor(inputs=(self,))
+        factor.set_mask(mask)
+        return factor
 
-    def demean(self, groupby=None):
+    def demean(self, groupby=None, mask: 'BaseFactor' = None):
         """
         This method will interrupt the parallelism of cuda, please use it at the last few step.
         groupby={'name':group_id}
         """
+        # for future optimization:
         # assets = self._engine.get_dataframe().index.get_level_values(1)
         # keys = np.fromiter(map(lambda x: groupby[x], assets), dtype=np.int)
-        fact = DemeanFactor(inputs=(self,))
         # keys = torch.tensor(keys, device=self._engine.get_device(), dtype=torch.int32)
-        # fact.groupby = ParallelGroupBy(keys)
-        fact.groupby = groupby
-        return fact
+        # factor.groupby = ParallelGroupBy(keys)
+        factor = DemeanFactor(inputs=(self,))
+        factor.groupby = groupby
+        factor.set_mask(mask)
+        return factor
 
-    def quantile(self, bins=5):
-        fact = QuantileFactor(inputs=(self,))
-        fact.bins = bins
-        return fact
+    def quantile(self, bins=5, mask: 'BaseFactor' = None):
+        factor = QuantileFactor(inputs=(self,))
+        factor.bins = bins
+        factor.set_mask(mask)
+        return factor
 
     def shift(self, periods=1):
-        fact = ShiftFactor(inputs=(self,))
-        fact.periods = periods
-        return fact
+        factor = ShiftFactor(inputs=(self,))
+        factor.periods = periods
+        return factor
 
     # --------------- main methods ---------------
 
@@ -112,6 +121,14 @@ class BaseFactor:
 
     def _regroup_by_asset(self, data):
         return self._engine.regroup_by_asset_(data)
+
+    def _regroup_by_other(self, factor, factor_out):
+        if factor.is_timegroup and not self.is_timegroup:
+            return self._regroup_by_asset(factor_out)
+        elif not factor.is_timegroup and self.is_timegroup:
+            return self._regroup_by_time(factor_out)
+        else:
+            return factor_out
 
     def _regroup(self, data):
         if self.is_timegroup:
@@ -142,6 +159,8 @@ class BaseFactor:
 
 
 class CustomFactor(BaseFactor):
+    """ Common base class for factor, that can contain child factors and handle
+    hierarchical relationships """
     # settable member variables
     win = 1          # determine include how many previous data
     inputs = None    # any values in `inputs` list will pass to `compute` function by order
@@ -151,6 +170,28 @@ class CustomFactor(BaseFactor):
     _cache = None
     _cache_hit = 0
     _cache_stream = None
+    _mask = None
+
+    def __init__(self, win: Optional[int] = None, inputs: Optional[Sequence[BaseFactor]] = None):
+        """
+        :param win:  Optional[int]
+            Including additional past data with 'window length' in `input`
+            when passed to the `compute` function.
+            **If not specified, use `self.win` instead.**
+        :param inputs: Optional[Iterable[OHLCV|BaseFactor]]
+            Input factors, will all passed to the `compute` function.
+            **If not specified, use `self.inputs` instead.**
+        """
+        super().__init__()
+        if win:
+            self.win = win
+        if inputs:
+            self.inputs = inputs
+
+        assert (self.win >= (self._min_win or 1))
+
+    def set_mask(self, mask: BaseFactor = None):
+        self._mask = mask
 
     def get_total_backward_(self) -> int:
         backward = 0
@@ -181,14 +222,17 @@ class CustomFactor(BaseFactor):
                 if isinstance(upstream, BaseFactor):
                     upstream.pre_compute_(engine, start, end)
 
-    def _format_input(self, upstream, upstream_out):
+        if self._mask is not None:
+            self._mask.pre_compute_(engine, start, end)
+
+    def _format_input(self, upstream, upstream_out, mask_factor, mask_out):
         # If input is timegroup and self not, convert to asset group
-        if upstream.is_timegroup and not self.is_timegroup:
-            ret = self._regroup_by_asset(upstream_out)
-        elif not upstream.is_timegroup and self.is_timegroup:
-            ret = self._regroup_by_time(upstream_out)
-        else:
-            ret = upstream_out
+        ret = self._regroup_by_other(upstream, upstream_out)
+
+        if mask_out is not None:
+            mask = self._regroup_by_other(mask_factor, mask_out)
+            ret = ret.masked_fill(~mask, np.nan)
+
         # if need rolling and adjustment
         if self.win > 1:
             adj_multi = None
@@ -212,18 +256,22 @@ class CustomFactor(BaseFactor):
             self_stream = torch.cuda.Stream(device=down_stream.device)
             self._cache_stream = self_stream
 
+        # Calculate mask
+        mask_out = None
+        if self._mask:
+            mask_out = self._mask.compute_(self_stream)
         # Calculate inputs
         inputs = []
         if self.inputs:
             for upstream in self.inputs:
                 if isinstance(upstream, BaseFactor):
-                    upstream_out = upstream.compute_(self_stream)
+                    out = upstream.compute_(self_stream)
                     if self_stream:
                         with torch.cuda.stream(self_stream):
-                            upstream_out = self._format_input(upstream, upstream_out)
+                            out = self._format_input(upstream, out, self._mask, mask_out)
                     else:
-                        upstream_out = self._format_input(upstream, upstream_out)
-                    inputs.append(upstream_out)
+                        out = self._format_input(upstream, out, self._mask, mask_out)
+                    inputs.append(out)
                 else:
                     inputs.append(upstream)
 
@@ -235,24 +283,6 @@ class CustomFactor(BaseFactor):
             out = self.compute(*inputs)
         self._cache = out
         return out
-
-    def __init__(self, win: Optional[int] = None, inputs: Optional[Sequence[BaseFactor]] = None):
-        """
-        :param win:  Optional[int]
-            Including additional past data with 'window length' in `input`
-            when passed to the `compute` function.
-            **If not specified, use `self.win` instead.**
-        :param inputs: Optional[Iterable[OHLCV|BaseFactor]]
-            Input factors, will all passed to the `compute` function.
-            **If not specified, use `self.inputs` instead.**
-        """
-        super().__init__()
-        if win:
-            self.win = win
-        if inputs:
-            self.inputs = inputs
-
-        assert (self.win >= (self._min_win or 1))
 
     def compute(self, *inputs: Sequence[torch.Tensor]) -> torch.Tensor:
         """
@@ -295,9 +325,9 @@ class CustomFactor(BaseFactor):
 
 class FilterFactor(CustomFactor, ABC):
     def shift(self, periods=1):
-        fact = FilterShiftFactor(inputs=(self,))
-        fact.periods = periods
-        return fact
+        factor = FilterShiftFactor(inputs=(self,))
+        factor.periods = periods
+        return factor
 
 
 class DataFactor(BaseFactor):
@@ -420,6 +450,12 @@ class DemeanFactor(TimeGroupFactor):
 
 
 class ZScoreFactor(TimeGroupFactor):
+
+    def compute(self, data: torch.Tensor) -> torch.Tensor:
+        return (data - nanmean(data)[:, None]) / nanstd(data)[:, None]
+
+
+class AssetZScoreFactor(CustomFactor):
 
     def compute(self, data: torch.Tensor) -> torch.Tensor:
         return (data - nanmean(data)[:, None]) / nanstd(data)[:, None]

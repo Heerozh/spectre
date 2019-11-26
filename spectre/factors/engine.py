@@ -65,9 +65,6 @@ class FactorEngine:
             data = torch.tensor(data.values, device=self._device)
         else:
             data = self._assetgroup.revert(data, 'regroup_by_time_')
-        if self._mask is not None:
-            data = data.masked_fill(~self._mask, np.nan)
-
         data = self._timegroup.split(data)
         return data
 
@@ -146,6 +143,9 @@ class FactorEngine:
 
     def set_filter(self, factor: Union[FilterFactor, None]) -> None:
         self._filter = factor
+
+    def get_filter(self):
+        return self._filter
 
     def get_factor(self, name):
         return self._factors[name]
