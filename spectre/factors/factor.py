@@ -114,6 +114,9 @@ class BaseFactor:
         factor.periods = periods
         return factor
 
+    def abs(self):
+        return AbsFactor(inputs=(self,))
+
     # --------------- main methods ---------------
 
     def _regroup_by_time(self, data):
@@ -191,6 +194,7 @@ class CustomFactor(BaseFactor):
         assert (self.win >= (self._min_win or 1))
 
     def set_mask(self, mask: BaseFactor = None):
+        """ Mask fill all **INPUT** data to NaN """
         self._mask = mask
 
     def get_total_backward_(self) -> int:
@@ -400,6 +404,11 @@ class ShiftFactor(CustomFactor):
         else:
             shift[:, self.periods:] = np.nan
         return shift
+
+
+class AbsFactor(CustomFactor):
+    def compute(self, data: torch.Tensor) -> torch.Tensor:
+        return data.abs()
 
 
 class FilterShiftFactor(CustomFactor):
