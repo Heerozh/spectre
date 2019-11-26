@@ -28,6 +28,14 @@ class DataLoader:
         assert end_loc >= start_loc, 'There is no data between `start` and `end` date.'
         return index[backward_loc]
 
+    @classmethod
+    def _generate_time_key(cls, df):
+        date_index = df.index.get_level_values(0)
+        unique_date = date_index.unique()
+        time_cat = dict(zip(unique_date, range(len(unique_date))))
+        cat = np.fromiter(map(lambda x: time_cat[x], date_index), dtype=np.int)
+        df['time_cat_id'] = cat
+
     def load(self, start: pd.Timestamp, end: pd.Timestamp, backward: int) -> pd.DataFrame:
         """
         If for back-testing, `start` `end` parameter has no meaning,
@@ -131,14 +139,13 @@ class CsvDirLoader(DataLoader):
             # if not remove will cause backward search get wrong result.
             df.index = df.index.remove_unused_levels()
 
+        # pre time group id
+        self._generate_time_key(df)
+
         times = df.index.get_level_values(0)
         self._cache = (times[0], times[-1], df)
-
-        # pre time group id
-        unique_date = times.unique()
-        time_cat = dict(zip(unique_date, range(len(unique_date))))
-        cat = np.fromiter(map(lambda x: time_cat[x], times), dtype=np.int)
-        df['time_cat_id'] = cat
+        assert times[0] <= start, "`start` date less than actual data's first line."
+        assert times[-1] >= end, "`end` date greater than actual data's last line."
 
         return self._load_from_cache(start, end, backward)
 
@@ -184,11 +191,7 @@ class QuandlLoader(DataLoader):
         df.drop(['ex-dividend', 'split_ratio'], axis=1, inplace=True)
 
         # pre time group id
-        date_index = df.index.get_level_values(0)
-        unique_date = date_index.unique()
-        time_cat = dict(zip(unique_date, range(len(unique_date))))
-        cat = np.fromiter(map(lambda x: time_cat[x], date_index), dtype=np.int)
-        df['time_cat_id'] = cat
+        cls._generate_time_key(df)
 
         df.to_hdf(file + '.cache.hdf', 'WIKI_PRICES', format='table')  # complevel=1 slow 3x
         return df
