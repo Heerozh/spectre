@@ -7,6 +7,7 @@
 from typing import Union, Iterable, Tuple
 import warnings
 from .factor import BaseFactor, DataFactor, FilterFactor, AdjustedDataFactor
+from .plotting import plot_quantile_returns, plot_cumulative_return
 from .dataloader import DataLoader
 from ..parallel import ParallelGroupBy
 import pandas as pd
@@ -119,7 +120,6 @@ class FactorEngine:
         self._factors = {}
         self._filter = None
         self._device = torch.device('cpu')
-        self._mask = None
 
     def get_device(self):
         return self._device
@@ -200,7 +200,6 @@ class FactorEngine:
             max_backward = max(max_backward, filter_.get_total_backward_())
         # Get data
         self._prepare_tensor(start, end, max_backward)
-        self._mask = None
 
         # ready to compute
         if filter_:
@@ -214,9 +213,9 @@ class FactorEngine:
             filter_.compute_(stream)
             torch.cuda.synchronize(device=self._device)
 
-        # get filter data for mask, use un-shifted filter
+        # pre compute no shift filter for mask
         if self._filter:
-            self._mask = self._compute_and_revert(self._filter, 'filter')
+            filter_.compute_(None)
 
         # if cuda, parallel compute factors and sync
         if self._device.type == 'cuda':
@@ -294,11 +293,12 @@ class FactorEngine:
         :param preview: display a preview chart of the result
         """
         factors = self._factors.copy()
+        universe = self.get_filter()
 
         column_names = {}
         # add quantile factor of all factors
         for c, f in factors.items():
-            self.add(f.quantile(quantiles), c + '_q_')
+            self.add(f.quantile(quantiles, mask=universe), c + '_q_')
             column_names[c] = (c, 'factor')
             column_names[c + '_q_'] = (c, 'factor_quantile')
 
@@ -311,20 +311,28 @@ class FactorEngine:
             shift = 0
         from .basic import Returns
         for n in periods:
-            rtn = Returns(win=n + 1, inputs=inputs).shift(-n + shift)
-            self.add(rtn, str(n) + '_r_')
-            self.add(rtn.demean(), str(n) + '_d_')
+            ret = Returns(win=n + 1, inputs=inputs).shift(-n + shift)
+            mask = universe
+            if filter_zscore is not None:
+                # Different: The zscore here contains all backward data which alphalens not counted.
+                zscore_factor = ret.zscore(axis_asset=True, mask=universe)
+                zscore_filter = zscore_factor.abs() <= filter_zscore
+                mask = mask & zscore_filter
+                self.add(ret.filter(mask), str(n) + '_r_')
+            else:
+                self.add(ret, str(n) + '_r_')
+            # make filter for zscore
+            self.add(ret.demean(mask=mask), str(n) + '_d_')
 
         # run and get df
         factor_data = self.run(start, end, trade_at != 'current_close')
         self._factors = factors
         factor_data.index = factor_data.index.remove_unused_levels()
+        factor_data.sort_index(inplace=True)
         assert len(factor_data.index.levels[0]) > max(periods) - shift, \
             'No enough data for forward returns, please expand the end date'
         last_date = factor_data.index.levels[0][-max(periods) + shift - 1]
         factor_data = factor_data.loc[:last_date]
-
-        # todo filter_zscore
 
         # infer freq
         delta = min(factor_data.index.levels[0][1:] - factor_data.index.levels[0][:-1])
@@ -353,7 +361,8 @@ class FactorEngine:
 
         # 用pyplot画复杂的图 先做quantile的，之后再做累计收益
         if preview:
-            pass
+            plot_quantile_returns(mean_return)
+            plot_cumulative_return(factor_data)
 
         # 第一个返回factor data， 第二个返回mean return, 第三个返回performance factor return?
         return factor_data, mean_return

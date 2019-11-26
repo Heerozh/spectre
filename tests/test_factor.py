@@ -380,11 +380,14 @@ class TestFactorLib(unittest.TestCase):
         engine = spectre.factors.FactorEngine(loader)
 
         engine.to_cuda()
-        engine.set_filter(spectre.factors.AverageDollarVolume(win=120).top(500))
+        universe = spectre.factors.AverageDollarVolume(win=120).top(500)
+        engine.set_filter(universe)
         f = spectre.factors.MA(5) - spectre.factors.MA(10) - spectre.factors.MA(30)
-        engine.add(f.rank().zscore(), 'ma_cross')
+        engine.add(f.rank(mask=universe).zscore(), 'ma_cross')
         df_prices = engine.get_price_matrix('2014-01-02', '2017-01-18')  # .shift(-1)
-        factor_data, mean_return = engine.full_run('2014-01-02', '2017-01-19', periods=(10,))
+        factor_data, mean_return = engine.full_run(
+            '2014-01-02', '2017-01-19',
+            periods=(10,), filter_zscore=None, preview=False)
 
         import alphalens as al
         al_clean_data = al.utils.get_clean_factor_and_forward_returns(
@@ -403,3 +406,21 @@ class TestFactorLib(unittest.TestCase):
                     0.01240134, 0.00835931, 0.01265514, 0.01240134, 0.00785625,
                     0.00161111]
         assert_almost_equal(stj_10d_return.values, expected)
+
+        # test zscore filter
+        factor_data, mean_return = engine.full_run(
+            '2014-01-02', '2017-01-19',
+            periods=(10,), filter_zscore=0.5, preview=False)
+
+        al_clean_data = al.utils.get_clean_factor_and_forward_returns(
+            factor=factor_data[('ma_cross', 'factor')], prices=df_prices, periods=[10],
+            filter_zscore=0.5, max_loss=1)
+        al_mean, al_std = al.performance.mean_return_by_quantile(al_clean_data)
+        # only test sign of data, because alphalens filter zscore only uses returned data.
+        # we use include backward data.
+        assert_almost_equal(mean_return[('ma_cross', '10D', 'mean')].values,
+                            al_mean['10D'].values, decimal=3)
+        assert_almost_equal(mean_return[('ma_cross', '10D', 'sem')].values,
+                            al_std['10D'].values, decimal=3)
+
+
