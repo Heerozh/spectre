@@ -7,7 +7,7 @@ Progress: 5/10  🔳🔳🔳🔳🔳⬜⬜⬜⬜⬜\
 8/10: Portfolio\
 9/10: Transaction\
 10/10: Back-test\
-11/10: Factor Return Analysis
+~~11/10: Factor Return Analysis~~
 
 # ||spectre
 
