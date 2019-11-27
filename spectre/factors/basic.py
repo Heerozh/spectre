@@ -12,6 +12,7 @@ import torch
 
 
 class Returns(CustomFactor):
+    """ Returns by tick (not by time) """
     inputs = [OHLCV.close]
     win = 2
     _min_win = 2

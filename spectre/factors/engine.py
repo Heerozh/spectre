@@ -150,9 +150,12 @@ class FactorEngine:
     def get_factor(self, name):
         return self._factors[name]
 
+    def clear(self):
+        self.remove_all_factors()
+        self.set_filter(None)
+
     def remove_all_factors(self) -> None:
         self._factors = {}
-        self._last_load = [None, None, None]
 
     def to_cuda(self) -> None:
         self._device = torch.device('cuda')
@@ -311,6 +314,7 @@ class FactorEngine:
             shift = 0
         from .basic import Returns
         for n in periods:
+            # Different: returns here diff by tick, which alphalens diff by time
             ret = Returns(win=n + 1, inputs=inputs).shift(-n + shift)
             mask = universe
             if filter_zscore is not None:
@@ -321,7 +325,6 @@ class FactorEngine:
                 self.add(ret.filter(mask), str(n) + '_r_')
             else:
                 self.add(ret, str(n) + '_r_')
-            # make filter for zscore
             self.add(ret.demean(mask=mask), str(n) + '_d_')
 
         # run and get df
@@ -358,11 +361,11 @@ class FactorEngine:
                 mean_return[mean_col] = grouped_mean[demean_col]
         mean_return.index.levels[0].name = 'quantile'
         mean_return = mean_return.groupby(level=0).agg(['mean', 'sem'])
+        mean_return.sort_index(axis=1, inplace=True)
 
-        # 用pyplot画复杂的图 先做quantile的，之后再做累计收益
         if preview:
             plot_quantile_returns(mean_return)
             plot_cumulative_return(factor_data)
 
-        # 第一个返回factor data， 第二个返回mean return, 第三个返回performance factor return?
+        # 第三个返回performance factor return?
         return factor_data, mean_return
