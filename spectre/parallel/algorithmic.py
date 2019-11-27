@@ -97,10 +97,14 @@ def nanlast(data: torch.Tensor, dim=1) -> torch.Tensor:
 class Rolling:
     _split_multi = 64  # 32-64 recommended, you can tune this for kernel performance
 
-    def __init__(self, x: torch.Tensor, win: int, _adjustment: torch.Tensor = None):
-        nan_stack = x.new_full((x.shape[0], win - 1), np.nan)
+    @classmethod
+    def unfold(cls, x, win, fill=np.nan):
+        nan_stack = x.new_full((x.shape[0], win - 1), fill)
         new_x = torch.cat((nan_stack, x), dim=1)
-        self.values = new_x.unfold(1, win, 1)
+        return new_x.unfold(1, win, 1)
+
+    def __init__(self, x: torch.Tensor, win: int, _adjustment: torch.Tensor = None):
+        self.values = self.unfold(x, win)
         self.win = win
 
         # rolling multiplication will consume lot of memory, split it by size

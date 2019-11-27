@@ -13,7 +13,6 @@ def plot_quantile_returns(mean_ret):
 
     import plotly.graph_objects as go
     import plotly.subplots as subplots
-    from plotly.colors import DEFAULT_PLOTLY_COLORS
 
     x = quantiles
     factors = mean_ret.columns.levels[0]
@@ -21,10 +20,14 @@ def plot_quantile_returns(mean_ret):
     rows = math.ceil(len(factors) / 2)
     cols = 2
 
-    colors = dict(zip(periods, cycle(DEFAULT_PLOTLY_COLORS)))
+    colors = dict(zip(periods, cycle([
+        'rgb(99, 110, 250)', 'rgb(239, 85, 59)', 'rgb(0, 204, 150)',
+        'rgb(171, 99, 250)', 'rgb(255, 161, 90)', 'rgb(25, 211, 243)'
+    ])))
     styles = {
         period: {'name': period, 'legendgroup': period,
-                 'hovertemplate': '<b>Quantile</b>:%{x}<br><b>Return</b>: %{y:$.3f}%',
+                 'hovertemplate': '<b>Quantile</b>:%{x}<br>'
+                                  '<b>Return</b>: %{y:.3f}%±%{error_y.array:.3f}%',
                  'marker': {'color': colors[period]}}
         for period in periods
     }
@@ -48,7 +51,7 @@ def plot_quantile_returns(mean_ret):
             styles[period]['showlegend'] = False
             fig.update_xaxes(title_text="factor quantile", type="category", row=row, col=col)
 
-    fig.update_layout(height=350*rows, barmode='group', bargap=0.5,
+    fig.update_layout(height=400*rows, barmode='group', bargap=0.5,
                       title_text="Mean return by quantile")
     fig.show()
 

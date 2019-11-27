@@ -331,7 +331,7 @@ class FactorEngine:
         factor_data = self.run(start, end, trade_at != 'current_close')
         self._factors = factors
         factor_data.index = factor_data.index.remove_unused_levels()
-        factor_data.sort_index(inplace=True)
+        # factor_data.sort_index(inplace=True)
         assert len(factor_data.index.levels[0]) > max(periods) - shift, \
             'No enough data for forward returns, please expand the end date'
         last_date = factor_data.index.levels[0][-max(periods) + shift - 1]
@@ -354,10 +354,10 @@ class FactorEngine:
         mean_return = pd.DataFrame(columns=pd.MultiIndex.from_arrays([[], []]))
         for fact_name, _ in factors.items():
             group = [(fact_name, 'factor_quantile'), 'date']
+            grouped_mean = factor_data[['Demeaned', fact_name]].groupby(group).agg('mean')
             for n, period_col in period_cols.items():
                 demean_col = ('Demeaned', period_col)
                 mean_col = (fact_name, period_col)
-                grouped_mean = factor_data.groupby(group)[demean_col, ].agg('mean')
                 mean_return[mean_col] = grouped_mean[demean_col]
         mean_return.index.levels[0].name = 'quantile'
         mean_return = mean_return.groupby(level=0).agg(['mean', 'sem'])
