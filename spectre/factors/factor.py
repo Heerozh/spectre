@@ -8,7 +8,7 @@ from abc import ABC
 from typing import Optional, Sequence, Union
 import numpy as np
 import torch
-from ..parallel import nanmean, nanstd, nanlast, Rolling
+from ..parallel import nansum, nanmean, nanstd, nanlast, Rolling
 
 
 class BaseFactor:
@@ -106,6 +106,11 @@ class BaseFactor:
     def quantile(self, bins=5, mask: 'BaseFactor' = None):
         factor = QuantileFactor(inputs=(self,))
         factor.bins = bins
+        factor.set_mask(mask)
+        return factor
+
+    def to_weight(self, mask: 'BaseFactor' = None):
+        factor = ToWeightFactor(inputs=(self,))
         factor.set_mask(mask)
         return factor
 
@@ -509,6 +514,10 @@ class QuantileFactor(TimeGroupFactor):
             ret[(data > start) & (data <= end)] = tile + 1.
         return ret
 
+
+class ToWeightFactor(TimeGroupFactor):
+    def compute(self, data: torch.Tensor) -> torch.Tensor:
+        return data / nansum(data.abs(), dim=1)[:, None]
 
 # --------------- op factors ---------------
 

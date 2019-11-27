@@ -302,8 +302,10 @@ class FactorEngine:
         # add quantile factor of all factors
         for c, f in factors.items():
             self.add(f.quantile(quantiles, mask=universe), c + '_q_')
+            self.add(f.to_weight(), c + '_w_')
             column_names[c] = (c, 'factor')
             column_names[c + '_q_'] = (c, 'factor_quantile')
+            column_names[c + '_w_'] = (c, 'factor_weight')
 
         # add the rolling returns of each period, use AdjustedDataFactor for best performance
         shift = -1
@@ -363,9 +365,9 @@ class FactorEngine:
         mean_return = mean_return.groupby(level=0).agg(['mean', 'sem'])
         mean_return.sort_index(axis=1, inplace=True)
 
+        # plot
         if preview:
             plot_quantile_returns(mean_return)
             plot_cumulative_return(factor_data)
 
-        # 第三个返回performance factor return?
         return factor_data, mean_return

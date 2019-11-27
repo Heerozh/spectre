@@ -64,6 +64,13 @@ class ParallelGroupBy:
         return ret
 
 
+def nansum(data: torch.Tensor, dim=1) -> torch.Tensor:
+    data = data.clone()
+    isnan = torch.isnan(data)
+    data[isnan] = 0
+    return data.sum(dim=dim)
+
+
 def nanmean(data: torch.Tensor, dim=1) -> torch.Tensor:
     data = data.clone()
     isnan = torch.isnan(data)
