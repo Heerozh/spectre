@@ -39,6 +39,7 @@ class ParallelGroupBy:
         # class members
         self._boundary = boundary
         self._sorted_indices = take_indices
+        self._padding_mask = take_indices == -1
         self._inverse_indices = inverse_indices
         self._width = width
         self._groups = groups
@@ -48,7 +49,7 @@ class ParallelGroupBy:
         ret = torch.take(data, self._sorted_indices)
         assert ret.type not in {torch.int8, torch.int16, torch.int32, torch.int64}, \
             'tensor cannot be any type of int, recommended to use float32'
-        ret[self._sorted_indices == -1] = np.nan
+        ret.masked_fill_(self._padding_mask, np.nan)
         return ret
 
     def revert(self, split_data: torch.Tensor, dbg_str='None') -> torch.Tensor:
@@ -59,7 +60,7 @@ class ParallelGroupBy:
 
     def create(self, dtype, values, nan_values):
         ret = self._sorted_indices.new_full(self._sorted_indices.shape, values, dtype=dtype)
-        ret[self._sorted_indices == -1] = nan_values
+        ret.masked_fill_(self._padding_mask, np.nan)
         return ret
 
 
@@ -83,6 +84,9 @@ def nanstd(data: torch.Tensor, dim=1) -> torch.Tensor:
 
 def nanlast(data: torch.Tensor, dim=1) -> torch.Tensor:
     mask = torch.isnan(data)
+    # argmin on bool gives unpredictable result
+    # _, last = mask.min(dim=dim)
+    # return data.gather(dim, last.unsqueeze(-1)).squeeze()
     idx = torch.arange(mask.nelement(), device=mask.device)
     idx = idx.view(mask.shape)
     idx.masked_fill_(mask, -1)

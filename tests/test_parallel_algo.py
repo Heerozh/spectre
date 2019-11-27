@@ -58,3 +58,8 @@ class TestParallelAlgorithm(unittest.TestCase):
         result = spectre.parallel.nanstd(torch.tensor(data, dtype=torch.float))
         expected = np.nanstd(data, axis=1)
         assert_almost_equal(result, expected, decimal=6)
+
+        data = [[1, 2, np.nan], [4, np.nan, 2], [7, 8, 1]]
+        result = spectre.parallel.nanlast(torch.tensor(data, dtype=torch.float))
+        expected = [2., 2., 1.]
+        assert_almost_equal(result, expected, decimal=6)
