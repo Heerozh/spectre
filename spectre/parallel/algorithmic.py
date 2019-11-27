@@ -84,14 +84,10 @@ def nanstd(data: torch.Tensor, dim=1) -> torch.Tensor:
 
 def nanlast(data: torch.Tensor, dim=1) -> torch.Tensor:
     mask = torch.isnan(data)
-    # argmin on bool gives unpredictable result
-    # _, last = mask.min(dim=dim)
-    # return data.gather(dim, last.unsqueeze(-1)).squeeze()
-    idx = torch.arange(mask.nelement(), device=mask.device)
-    idx = idx.view(mask.shape)
-    idx.masked_fill_(mask, -1)
-    last, _ = idx.max(dim=dim)
-    return torch.take(data, last)
+    w = torch.linspace(0.1, 0, mask.shape[-1], dtype=torch.float, device=mask.device)
+    mask = mask.float() + w
+    last = mask.argmin(dim=dim)
+    return data.gather(dim, last.unsqueeze(-1)).squeeze()
 
 
 class Rolling:

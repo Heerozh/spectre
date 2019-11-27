@@ -305,11 +305,11 @@ class FactorEngine:
             column_names[c] = (c, 'factor')
             column_names[c + '_q_'] = (c, 'factor_quantile')
 
-        # add the rolling returns of each period
+        # add the rolling returns of each period, use AdjustedDataFactor for best performance
         shift = -1
-        inputs = (OHLCV.close,)
+        inputs = (AdjustedDataFactor(OHLCV.close),)
         if trade_at == 'open':
-            inputs = (OHLCV.open,)
+            inputs = (AdjustedDataFactor(OHLCV.open),)
         elif trade_at == 'current_close':
             shift = 0
         from .basic import Returns
@@ -331,7 +331,7 @@ class FactorEngine:
         factor_data = self.run(start, end, trade_at != 'current_close')
         self._factors = factors
         factor_data.index = factor_data.index.remove_unused_levels()
-        # factor_data.sort_index(inplace=True)
+        # factor_data.sort_index(inplace=True)  # 140 ms
         assert len(factor_data.index.levels[0]) > max(periods) - shift, \
             'No enough data for forward returns, please expand the end date'
         last_date = factor_data.index.levels[0][-max(periods) + shift - 1]

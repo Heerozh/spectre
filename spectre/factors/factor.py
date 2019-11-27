@@ -383,6 +383,8 @@ class AdjustedDataFactor(CustomFactor):
 
     def compute(self, data) -> torch.Tensor:
         multi = self.parent.get_adjust_multi()
+        if multi is None:
+            return data
         return data * multi / nanlast(multi, dim=1)[:, None]
 
 
@@ -441,7 +443,7 @@ class RankFactor(TimeGroupFactor):
     def compute(self, data: torch.Tensor) -> torch.Tensor:
         if not self.ascending:
             filled = data.clone()
-            filled[torch.isnan(data)] = -np.inf
+            filled.masked_fill_(torch.isnan(data), -np.inf)
         else:
             filled = data
         _, indices = torch.sort(filled, dim=1, descending=not self.ascending)
