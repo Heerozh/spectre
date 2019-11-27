@@ -302,7 +302,7 @@ class FactorEngine:
         # add quantile factor of all factors
         for c, f in factors.items():
             self.add(f.quantile(quantiles, mask=universe), c + '_q_')
-            self.add(f.to_weight(), c + '_w_')
+            self.add(f.to_weight(mask=universe), c + '_w_')
             column_names[c] = (c, 'factor')
             column_names[c + '_q_'] = (c, 'factor_quantile')
             column_names[c + '_w_'] = (c, 'factor_weight')

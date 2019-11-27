@@ -517,7 +517,8 @@ class QuantileFactor(TimeGroupFactor):
 
 class ToWeightFactor(TimeGroupFactor):
     def compute(self, data: torch.Tensor) -> torch.Tensor:
-        return data / nansum(data.abs(), dim=1)[:, None]
+        demean = data - nanmean(data)[:, None]
+        return demean / nansum(demean.abs(), dim=1)[:, None]
 
 # --------------- op factors ---------------
 
