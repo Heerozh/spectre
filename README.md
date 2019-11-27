@@ -111,7 +111,7 @@ engine.to_cuda()
 %time engine.full_run("2013-01-02", "2018-01-19", periods=(1,5,10,)) 
 ```
 
-<img src="https://github.com/Heerozh/spectre/raw/media/full_run.png" width="50%" height="50%">
+<img src="https://github.com/Heerozh/spectre/raw/media/full_run.png">
 
 
 ###  Portfolio and Backtesting
