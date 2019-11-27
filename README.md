@@ -49,9 +49,9 @@ Running on Quandl 5 years, 3196 Assets, total 3,637,344 ticks.
 
 |                |       spectre (CUDA)         |       spectre (CPU)        |       zipline         |
 |----------------|------------------------------|----------------------------|-----------------------|
-|SMA(100)        | 130 ms ± 41.5 ms (**22.9x**) | 2.68 s ± 36.1 ms (1.11x)   | 2.98 s ± 14.4 ms (1x) |
-|EMA(50) win=200 | 184 ms ± 35.9 ms ms (**41.3x**) | 4.37 s ± 46.4 ms (1.74x)   | 7.6 s ± 15.4 ms (1x) |
-|(MACD+RSI+STOCHF).rank.zscore | 451 ms ± 12.3 ms (**31.7x**) | 6.01 s ± 28.1 (2.38x)   | 14.3 s ± 277 ms (1x) |
+|SMA(100)        | 87.4 ms ± 745 µs (**34.1x**) | 2.68 s ± 36.1 ms (1.11x)   | 2.98 s ± 14.4 ms (1x) |
+|EMA(50) win=200 | 144 ms ± 1.14 ms (**52.8x**) | 4.37 s ± 46.4 ms (1.74x)   | 7.6 s ± 15.4 ms (1x) |
+|(MACD+RSI+STOCHF).rank.zscore | 375 ms ± 65.4 ms (**38.1x**) | 6.01 s ± 28.1 (2.38x)   | 14.3 s ± 277 ms (1x) |
 
 
 * The CUDA memory used in the spectre benchmark is 1.3G, returned by cuda.max_memory_allocated().
@@ -98,15 +98,20 @@ df
 from spectre import factors
 loader = factors.QuandlLoader('WIKI_PRICES.zip')
 engine = factors.FactorEngine(loader)
-engine.set_filter( factors.AverageDollarVolume(win=120).top(500) )
-engine.add( (factors.MA(5)-factors.MA(10)-factors.MA(30)).rank().zscore(), 'ma_cross' )
+universe = factors.AverageDollarVolume(win=120).top(500)
+engine.set_filter( universe )
+
+f1 = -(factors.MA(5)-factors.MA(10)-factors.MA(30))
+f2 = -factors.BBANDS(win=5)
+
+engine.add( f1.rank(mask=universe).zscore(), 'ma_cross' )
+engine.add( f2.filter(f2 > -0.5).rank(mask=universe).zscore(), 'bb' )
+
 engine.to_cuda()
-factor_data = engine.full_run('2014-01-02', '2016-12-10')
-factor_data
+%time engine.full_run("2013-01-02", "2018-01-19", periods=(1,5,10,)) 
 ```
 
-<img src="https://github.com/Heerozh/spectre/raw/media/quantile_return.png" width="50%" height="50%">
-<img src="https://github.com/Heerozh/spectre/raw/media/cumprod_return.png" width="50%" height="50%">
+<img src="https://github.com/Heerozh/spectre/raw/media/full_run.png" width="50%" height="50%">
 
 
 ###  Portfolio and Backtesting
@@ -121,6 +126,8 @@ factor_data
 
 #### Differences with zipline:
 * spectre's `QuandlLoader` using float32 datatype for GPU performance.
+* For performance, spectre's arranges the data to be flattened by ticks without time 
+  information so may be differences such as `Return(win=10)` may actually be more than 10 days/time.
 * When encounter NaN, spectre returns NaN, zipline uses `nan*` so still give you a number.
 * If an asset has no data on the day, spectre will filter it out, no matter what value you return.
 
