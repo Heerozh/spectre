@@ -15,6 +15,6 @@ setup(
     ],
     python_requires='>=3.5',
 
-    version="0.08",
+    version="0.09",
     packages=['spectre', 'spectre.factors', 'spectre.parallel'],
 )

@@ -108,10 +108,21 @@ engine.add( f1.rank(mask=universe).zscore(), 'ma_cross' )
 engine.add( f2.filter(f2 > -0.5).rank(mask=universe).zscore(), 'bb' )
 
 engine.to_cuda()
-%time engine.full_run("2013-01-02", "2018-01-19", periods=(1,5,10,)) 
+%time factor_data = engine.full_run("2013-01-02", "2018-01-19", periods=(1,5,10,)) 
 ```
 
 <img src="https://github.com/Heerozh/spectre/raw/media/full_run.png">
+
+#### Compatible with alphalens
+
+The return value of `full_run` is compatible with alphalens:
+```python
+import alphalens as al
+...
+factor_data = engine.full_run("2013-01-02", "2018-01-19") 
+clean_data = factor_data[['factor_name', 'Returns']].droplevel(0, axis=1)
+al.tears.create_returns_tear_sheet(clean_data)
+```
 
 
 ###  Portfolio and Backtesting
