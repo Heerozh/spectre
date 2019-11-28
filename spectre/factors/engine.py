@@ -7,7 +7,7 @@
 from typing import Union, Iterable, Tuple
 import warnings
 from .factor import BaseFactor, DataFactor, FilterFactor, AdjustedDataFactor
-from .plotting import plot_quantile_returns, plot_cumulative_return
+from .plotting import plot_quantile_and_cumulative_returns
 from .dataloader import DataLoader
 from ..parallel import ParallelGroupBy
 import pandas as pd
@@ -367,7 +367,6 @@ class FactorEngine:
 
         # plot
         if preview:
-            plot_quantile_returns(mean_return)
-            plot_cumulative_return(factor_data)
+            plot_quantile_and_cumulative_returns(factor_data, mean_return)
 
         return factor_data, mean_return

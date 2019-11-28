@@ -103,9 +103,10 @@ engine.set_filter( universe )
 
 f1 = -(factors.MA(5)-factors.MA(10)-factors.MA(30))
 f2 = -factors.BBANDS(win=5)
+f2 = f2.filter(f2 < 0.5)
 
 engine.add( f1.rank(mask=universe).zscore(), 'ma_cross' )
-engine.add( f2.filter(f2 > -0.5).rank(mask=universe).zscore(), 'bb' )
+engine.add( f2.rank(mask=universe).zscore(), 'bb' )
 
 engine.to_cuda()
 %time factor_data = engine.full_run("2013-01-02", "2018-01-19", periods=(1,5,10,)) 

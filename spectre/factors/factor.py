@@ -322,11 +322,17 @@ class CustomFactor(BaseFactor):
                 |     0    | 0            | NaN        | ... | 123.45       |
                 |          | ...          | ...        | ... | ...          |
                 |          | N            | xxx.xx     | ... | 234.56       |
+                If this table too big, it will split to multiple tables and call the callback
+                function separately.
         * Groupby time(set `is_timegroup = True`):
-                | time id  | stock1 | ... | stockN |
-                |----------|--------|-----|--------|
-                |     0    | 100.00 | ... | 200.00 |
-                If this table too big, it will split to multiple tables.
+            set N = asset count, Max = Max asset count in all time
+                | time id  | price(t+0) | ... | price(t+N) | price(t+N+1) | ... | price(t+Max) |
+                |----------|------------|-----|------------|--------------|-----|--------------|
+                |     0    | 100.00     | ... | 200.00     | NaN          | ... | Nan          |
+                The prices is all asset price in same tick time, this is useful for calculations
+                such as rank, quantile.
+                But the order of assets in each row (time) is random, so the column cannot be
+                considered as a particular asset.
         * Custom:
             Use `series = self._revert_to_series(input)` you can get `pd.Series` data type, and
             manipulate by your own. Remember to call `return self._regroup(series)` when returning.
