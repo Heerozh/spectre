@@ -122,7 +122,7 @@ import alphalens as al
 ...
 factor_data = engine.full_run("2013-01-02", "2018-01-19") 
 clean_data = factor_data[['factor_name', 'Returns']].droplevel(0, axis=1)
-al.tears.create_returns_tear_sheet(clean_data)
+al.tears.create_full_tear_sheet(clean_data)
 ```
 
 
