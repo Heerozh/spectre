@@ -24,7 +24,7 @@ def plot_quantile_and_cumulative_returns(factor_data, mean_ret):
     quantiles = mean_ret.index
 
     if 'plotly.graph_objects' not in sys.modules:
-        print('Importing plotly...')
+        print('Importing plotly, it may take a while...')
     import plotly.graph_objects as go
     import plotly.subplots as subplots
 

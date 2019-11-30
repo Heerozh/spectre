@@ -112,9 +112,9 @@ engine.to_cuda()
 %time factor_data = engine.full_run("2013-01-02", "2018-01-19", periods=(1,5,10,)) 
 ```
 
-<img src="https://github.com/Heerozh/spectre/raw/media/full_run.png">
+<img src="https://github.com/Heerozh/spectre/raw/media/full_run.png" width="811" height="600">
 
-#### Compatible with alphalens
+##### Compatible with alphalens
 
 The return value of `full_run` is compatible with alphalens:
 ```python
