@@ -509,7 +509,7 @@ class QuantileFactor(TimeGroupFactor):
         q_next = q_index + 1
         q_next[-1] = act_size - 1
 
-        rows = torch.arange(data.shape[0])
+        rows = torch.arange(data.shape[0], device=data.device)
         b_start = x[rows, q_index]
         b = b_start + (x[rows, q_next] - b_start) * q_weight
         b[0] -= 1
