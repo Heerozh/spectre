@@ -190,6 +190,7 @@ class QuandlLoader(DataLoader):
         # drop raw dividend columns
         df.drop(['ex-dividend', 'split_ratio'], axis=1, inplace=True)
 
+        df = df.tz_localize('UTC', level=0, copy=False)
         # pre time group id
         cls._generate_time_key(df)
 
@@ -210,7 +211,6 @@ class QuandlLoader(DataLoader):
         except FileNotFoundError:
             df = self._make_hdf(file)
 
-        df = df.tz_localize('UTC', level=0, copy=False)
         if self._calender:
             calender = df.loc[(slice(None), self._calender), :].index.get_level_values(0)
             df = df[df.index.get_level_values(0).isin(calender)]

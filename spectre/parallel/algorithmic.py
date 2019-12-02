@@ -23,7 +23,7 @@ class ParallelGroupBy:
         boundary = (diff.nonzero(as_tuple=True)[0] + 1).tolist()
         boundary = np.array([0] + boundary + [n])
         # get inverse indices
-        width = max(boundary[1:] - boundary[:-1])
+        width = np.diff(boundary).max()
         groups = len(boundary) - 1
         inverse_indices = sorted_indices.new_full((groups, width), n + 1).pin_memory()
         for start, end, i in zip(boundary[:-1], boundary[1:], range(groups)):
