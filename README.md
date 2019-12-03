@@ -201,8 +201,8 @@ When `win = 1`, the `inputs` data is tensor type, the first dimension of data is
 asset, the second dimension is each tick price data.
 
 ```python
-class LogReturn(CustomFactor):
-    inputs = [OHLCV.change]
+class LogReturns(CustomFactor):
+    inputs = [Returns(OHLCV.close)]
     win = 1
 
     def compute(self, change: torch.Tensor) -> torch.Tensor:
