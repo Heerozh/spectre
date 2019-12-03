@@ -194,11 +194,55 @@ new_filter = factor.bottom(n)
 
 Inherit from `CustomFactor`, write `compute` function.
 
-You have to use `torch.Tensor` to write parallel code yourself.
+Use `torch.Tensor` to write parallel computing code.
 
-If you can't, here is a simple way:
+### win = 1
+When `win = 1`, the `inputs` data is tensor type, the first dimension of data is the 
+asset, the second dimension is each tick price data.
+
+```python
+class LogReturn(CustomFactor):
+    inputs = [OHLCV.change]
+    win = 1
+
+    def compute(self, change: torch.Tensor) -> torch.Tensor:
+        return change.log()
+```
+
+### win > 1
+If rolling windows is required(`win > 1`), all `inputs` data will be wrapped into 
+`spectre.parallel.Rolling`
+
+This is just an unfolded `tensor` data, but because the data is very large after unfolded, 
+the rolling class automatically splits the data into multiple small portions. You need to use 
+the `agg` method to operating `tensor`.
+```python
+class OvernightReturn(CustomFactor):
+    inputs = [OHLCV.open, OHLCV.close]
+    win = 2
+
+    def compute(self, opens: parallel.Rolling, closes: parallel.Rolling) -> torch.Tensor:
+        ret = opens.last() / closes.first() - 1
+        return ret
+```
+Where `Rolling.first()` is just a helper method for `rolling.agg(lambda x: x[:, :, 0])`, 
+where `x[:, :, 0]` return the first element of rolling window. The first dimension of `x` is the 
+asset, the second dimension is each tick, and the third dimension is the price date containing 
+the tick price and historical price with `win` length, and `Rolling.agg` runs on 
+all the portions and combines them.
+
+`Rolling.agg` can carry multiple `Rolling` objects, such as
+```python
+weighted_mean = lambda _close, _volume: (_close * _volume).sum(dim=2) / _volume.sum(dim=2)
+close.agg(weighted_mean, volume)
+```
 
 ### Using Pandas Series
+
+For performance, spectre's tensor data is a flattened matrix which grouped by assets, 
+there is no DataFrame's index information.
+If you need index, or not familiar with pytorch, here is a another way:
+
 ```python
 class YourFactor(CustomFactor):
 
