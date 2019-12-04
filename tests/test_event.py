@@ -1,5 +1,8 @@
 import unittest
 import spectre
+from os.path import dirname
+
+data_dir = dirname(__file__) + '/data/'
 
 
 class TestTradingEvent(unittest.TestCase):
@@ -30,7 +33,7 @@ class TestTradingEvent(unittest.TestCase):
                 pass
 
             def test(self):
-                self.fire_event_type(spectre.trading.event.EveryBarData)
+                self.fire_event(spectre.trading.event.EveryBarData)
 
         rcv = TestEventReceiver()
 
@@ -48,5 +51,3 @@ class TestTradingEvent(unittest.TestCase):
         evt_mgr.run()
         self.assertEqual(2, rcv.fired)
 
-    def test_simulation_event_manager(self):
-        pass

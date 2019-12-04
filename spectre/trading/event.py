@@ -41,7 +41,10 @@ class CalendarEvent(Event):
         self.trigger_time = 0
 
     def on_schedule(self, evt_mgr):
-        self.calendar = evt_mgr.calendar
+        try:
+            self.calendar = evt_mgr.calendar
+        except AttributeError:
+            pass
 
     def calculate_range(self):
         self.trigger_time = self.calendar.events[self.event_name].first() + self.offset
@@ -79,8 +82,8 @@ class EventReceiver:
     def stop_event_manager(self):
         self._event_manager.stop()
 
-    def fire_event_type(self, evt_type: Type[Event]):
-        self._event_manager.fire_event_type(evt_type)
+    def fire_event(self, evt_type: Type[Event]):
+        self._event_manager.fire_event(evt_type)
 
     def on_subscribe(self):
         raise NotImplementedError("abstractmethod")
@@ -109,7 +112,7 @@ class EventManager:
         self._subscribers[receiver].append(event)
         event.on_schedule(self)
 
-    def fire_event_type(self, evt_type: Type[Event]):
+    def fire_event(self, evt_type: Type[Event]):
         for r, events in self._subscribers.items():
             for evt in events:
                 if isinstance(evt, evt_type):
@@ -135,44 +138,8 @@ class EventManager:
 # ----------------------------------------------------------------
 
 
-class SimulationEventManager(EventManager):
-    @classmethod
-    def _get_most_granular(cls, data):
-        freq = {k: min(v.index.levels[0][1:]-v.index.levels[0][:-1]) for k, v in data.items()}
-        return data[min(freq, key=freq.get)]
-
-    def fire_get_updated_factor(self, start, end):
-        for r in self._subscribers:
-            data = r.create_data(start, end)
-            if isinstance(data, dict):
-                main = self._get_most_granular(data)
-                main = main[start:end]
-            else:
-                main = data
-            ticks = main.index.get_level_values(0).unique()
-            for t in ticks:
-                # todo 判断如果是市场开门，fire 开门事件， 注意baseblotter也要注册关门事件，关门了交易就报错
-                # 如果open offset>=9 就是after，不然就是before
-
-                r.midnight_before_market_open()
-                r.before_market_open()
-                r.market_open()
-
-                r.handle_factor({k: v[:t]for k, v in data.items()})
-
-                r.before_market_close()
-                r.market_close()
-                # 每tick运行完后，记录时间，然后当天new_order存到每个时间的表里
-
-    def run(self, start, end):
-        self.fire_get_updated_factor(start, end)
-
-
-# ----------------------------------------------------------------
-
-
 # class MarketEventManager(EventManager):
-# holiday calendar can found at https://iextrading.com/trading/
+# us holiday calendar can found at https://iextrading.com/trading/
 #     def __init__(self, calendar: MarketCalendar) -> None:
 #         self.calendar = calendar
 
