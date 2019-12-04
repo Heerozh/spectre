@@ -373,6 +373,25 @@ class TestFactorLib(unittest.TestCase):
         expected = pd.qcut(data[1], 5, labels=False) + 1
         assert_array_equal(result[-1], expected)
 
+    def test_engine_cross_factor(self):
+        loader = spectre.factors.CsvDirLoader(
+            data_dir + '/daily/', ohlcv=('uOpen', 'uHigh', 'uLow', 'uClose', 'uVolume'),
+            index_col='date', parse_dates=True,
+        )
+        engine = spectre.factors.FactorEngine(loader)
+        engine2 = spectre.factors.FactorEngine(loader)
+        f = spectre.factors.MA(5)
+        universe = spectre.factors.OHLCV.volume.top(1)
+        engine.add(f, 'f')
+        engine.add(universe, 'mask')
+        engine2.add(f, 'f')
+        engine2.set_filter(universe)
+
+        result = engine.run("2019-01-01", "2019-01-15")
+        result2 = engine2.run("2019-01-01", "2019-01-15")
+
+        assert_array_equal(result.f[result['mask']], result2.f)
+
     @unittest.skipUnless(os.getenv('COVERAGE_RUNNING'), "too slow, run manually")
     def test_full_run(self):
         loader = spectre.factors.QuandlLoader(
