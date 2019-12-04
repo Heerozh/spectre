@@ -15,7 +15,7 @@ class ParallelGroupBy:
     def __init__(self, keys: torch.Tensor):
         n = keys.shape[0]
         # sort by key (keep key in GPU device)
-        relative_key = keys + torch.arange(0, n, device=keys.device).double() / n
+        relative_key = keys + torch.linspace(0, 0.9, n, dtype=torch.double, device=keys.device)
         sorted_keys, sorted_indices = torch.sort(relative_key)
         sorted_keys, sorted_indices = sorted_keys.int(), sorted_indices.cpu()
         # get group boundary
