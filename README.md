@@ -1,12 +1,12 @@
 [![Coverage Status](https://coveralls.io/repos/github/Heerozh/spectre/badge.svg?branch=master)](https://coveralls.io/github/Heerozh/spectre?branch=master)
 
-Progress: 5/10  🔳🔳🔳🔳🔳⬜⬜⬜⬜⬜\
+Progress: 6/10  🔳🔳🔳🔳🔳🔳⬜⬜⬜⬜\
 ~~5/10: CUDA support~~\
 6/10: Dividends/Splits\
-7/10: Back-test architecture\
-8/10: Portfolio\
-9/10: Transaction\
-10/10: Back-test\
+~~7/10: Back-test architecture~~\
+8/10: Event Systems\
+9/10: Blotter\
+10/10: Back-test Results\
 ~~11/10: Factor Return Analysis~~
 
 # ||spectre
