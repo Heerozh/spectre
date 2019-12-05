@@ -19,7 +19,7 @@ class TestTradingAlgorithm(unittest.TestCase):
             _test = []
             _seq = 0
 
-            def create_data(self, start, end):
+            def run_engine(self, start, end):
                 engine = spectre.factors.FactorEngine(loader)
                 f = spectre.factors.MA(5)
                 engine.add(f, 'f')
@@ -34,8 +34,13 @@ class TestTradingAlgorithm(unittest.TestCase):
                 self.schedule(spectre.trading.event.MarketClose(self.test_before_close, -1000))
                 self.schedule(spectre.trading.event.MarketClose(self.test_close, 1000))
 
+            def _run_engine(self):
+                self._data = self.run_engine(None, None)
+
             def on_subscribe(self):
-                pass
+                self.schedule(spectre.trading.event.EveryBarData(
+                   self._run_engine
+                ))
 
             def test_every_bar(self, data):
                 self._seq += 1
@@ -81,16 +86,16 @@ class TestTradingAlgorithm(unittest.TestCase):
                 engine.add(ma5, 'ma5')
                 engine.set_filter(ma5.top(5))
 
-                self.schedule(spectre.trading.event.EveryBarData(self.rebalance))
+                self.schedule_rebalance(spectre.trading.event.EveryBarData(self.rebalance))
 
                 self.blotter.set_commission()
                 self.blotter.set_slippage()
 
             def rebalance(self, data):
                 weight = data.ma5 / data.ma5.sum()
-                self.order_to_percent(data.index, weight)
+                self.order_target_percent(data.index, weight)
 
-            def analyze(self):
+            def terminate(self):
                 pass
 
         loader = spectre.factors.CsvDirLoader(
@@ -100,13 +105,13 @@ class TestTradingAlgorithm(unittest.TestCase):
         )
         blotter = spectre.trading.SimulationBlotter()
         evt_mgr = spectre.trading.SimulationEventManager()
-        alg = OneEngineAlg(blotter, loader)
+        alg = OneEngineAlg(blotter, main=loader)
         evt_mgr.subscribe(alg)
-        evt_mgr.run()
+        evt_mgr.run("2019-01-01", "2019-01-15")
 
     def test_two_engine_algorithm(self):
         class TwoEngineAlg(spectre.trading.CustomAlgorithm):
-            def initialize(self, blotter):
+            def initialize(self):
                 engine_5mins = self.get_factor_engine('5mins')
                 engine_daily = self.get_factor_engine('daily')
 
@@ -115,8 +120,7 @@ class TestTradingAlgorithm(unittest.TestCase):
                 engine_daily.add(ma5, 'ma5')
                 engine_5mins.add(ma20, 'ma20')
 
-                # 现在的问题是如何结合多种不同时间线的数据源， factor是个追求效率没有算时间的功能，所以还是多个factor?
-                self.schedule(spectre.trading.event.EveryBarData(self.rebalance))
+                self.schedule_rebalance(spectre.trading.event.EveryBarData(self.rebalance))
 
                 self.blotter.set_commission()
                 self.blotter.set_slippage()
@@ -125,8 +129,19 @@ class TestTradingAlgorithm(unittest.TestCase):
                 mask = data['5mins'].ma20 > data['daily'].ma5
                 assets = data['5mins'][mask].index
                 weight = assets.ma20 / assets.ma20.sum()
-                self.order_to_percent(assets, weight)
+                self.order_target_percent(assets, weight)
 
-            def analyze(self):
+            def terminate(self):
                 pass
+
+        loader = spectre.factors.CsvDirLoader(
+            data_dir + '/daily/', 'AAPL',
+            ohlcv=('uOpen', 'uHigh', 'uLow', 'uClose', 'uVolume'),
+            index_col='date', parse_dates=True,
+        )
+        blotter = spectre.trading.SimulationBlotter()
+        evt_mgr = spectre.trading.SimulationEventManager()
+        alg = TwoEngineAlg(blotter, main=loader)
+        evt_mgr.subscribe(alg)
+        evt_mgr.run()
 

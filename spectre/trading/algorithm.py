@@ -11,7 +11,7 @@ from ..factors import FactorEngine
 from ..factors import DataLoader
 
 
-class BaseAlgorithm(EventReceiver, ABC):
+class CustomAlgorithm(EventReceiver, ABC):
     """
     Base class for custom trading algorithm.
     """
@@ -21,7 +21,7 @@ class BaseAlgorithm(EventReceiver, ABC):
         :param data_sources: key is data_source_name, value is dataloader
         """
         super().__init__()
-        if data_sources:
+        if not data_sources:
             raise ValueError("At least one data source.")
 
         self._data = None
@@ -40,25 +40,25 @@ class BaseAlgorithm(EventReceiver, ABC):
     def schedule_rebalance(self, event: Event):
         """Can only be called in initialize()"""
         origin_callback = event.callback
-        event.callback = lambda x: origin_callback(self._data)
+        event.callback = lambda: origin_callback(self._data)
         self.schedule(event)
 
-    def create_data(self, start, end):
+    def run_engine(self, start, end):
         if len(self._engines) == 1:
             name = next(iter(self._engines))
-            return self._engines[name].run_last(start, end)
+            return self._engines[name].run(start, end)
         else:
-            return {name: engine.run_last(start, end) for name, engine in self._engines.items()}
+            return {name: engine.run(start, end) for name, engine in self._engines.items()}
 
-    def _data_updated(self):
-        self._data = self.create_data(None, None)
+    def _run_engine(self):
+        self._data = self.run_engine(None, None)
 
     def on_subscribe(self):
         # schedule first, so it will run before rebalance
-        self.schedule(EveryBarData(self._data_updated))
+        self.schedule(EveryBarData(self._run_engine))
 
-    def analyze(self):
-        pass
+    def initialize(self):
+        raise NotImplementedError("abstractmethod")
 
 
 # ----------------------------------------------------------------
@@ -66,6 +66,7 @@ class BaseAlgorithm(EventReceiver, ABC):
 
 class SimulationEventManager(EventManager):
     _last_day = None
+    _last_date = None
 
     @classmethod
     def _get_most_granular(cls, data):
@@ -105,7 +106,8 @@ class SimulationEventManager(EventManager):
 
         for r, events in self._subscribers.items():
             # get factor data from algorithm
-            data = r.create_data(start, end)
+            data = r.run_engine(start, end)
+            r.run_engine = lambda x, y: self._last_date
             if isinstance(data, dict):
                 main = self._get_most_granular(data)
                 main = main[start:end]
@@ -114,15 +116,15 @@ class SimulationEventManager(EventManager):
             # loop factor data
             self._last_day = None
             ticks = main.index.get_level_values(0).unique()
-            for now in ticks:
+            for today in ticks:
                 if self._stop:
                     break
-                self.fire_market_event(now, events)
+                self.fire_market_event(today, events)
 
                 if isinstance(data, dict):
-                    r._data = {k: v[:now] for k, v in data.items()}
+                    self._last_date = {k: v[:today] for k, v in data.items()}
                 else:
-                    r._data = data[:now]
+                    self._last_date = data[:today]
                 self.fire_event(EveryBarData)
 
                 # todo 每tick运行完后，记录时间，然后当天new_order存到每个时间的表里
@@ -130,5 +132,6 @@ class SimulationEventManager(EventManager):
             self.fire_before_event(events, MarketClose)
             self.fire_after_event(events, MarketClose)
 
-
+        for r, events in self._subscribers.items():
+            r.terminate()
 

@@ -89,7 +89,10 @@ class EventReceiver:
         raise NotImplementedError("abstractmethod")
 
     def initialize(self):
-        raise NotImplementedError("abstractmethod")
+        pass
+
+    def terminate(self):
+        pass
 
 
 class EventManager:
@@ -134,11 +137,15 @@ class EventManager:
                     if event.should_trigger():
                         event.callback()
 
+        for r, events in self._subscribers.items():
+            r.terminate()
+
 
 # ----------------------------------------------------------------
 
 
 # class MarketEventManager(EventManager):
+# I haven't started trading yet, so no plans to write live trading code
 # us holiday calendar can found at https://iextrading.com/trading/
 #     def __init__(self, calendar: MarketCalendar) -> None:
 #         self.calendar = calendar

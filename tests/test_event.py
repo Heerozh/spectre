@@ -14,6 +14,9 @@ class TestTradingEvent(unittest.TestCase):
             def initialize(self):
                 self.schedule(spectre.trading.event.EveryBarData(self.test_every_bar))
 
+            def terminate(self):
+                pass
+
             def on_subscribe(self):
                 self.schedule(spectre.trading.event.Always(self.test_always))
 
@@ -30,6 +33,9 @@ class TestTradingEvent(unittest.TestCase):
                 self.schedule(spectre.trading.event.Always(self.test))
 
             def on_subscribe(self):
+                pass
+
+            def terminate(self):
                 pass
 
             def test(self):
