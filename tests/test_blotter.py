@@ -30,12 +30,28 @@ class TestBlotter(unittest.TestCase):
         pf.process_dividends('AAPL', 2.0)
         pf.process_dividends('MSFT', 2.0)
 
-        self.assertEqual(pf.positions, {'AAPL': 10, 'MSFT': 5, 'cash': 7030})
-        assert_array_equal(pf.get_history_positions().values,
-                           [[10000, nan, nan],
+        self.assertEqual({'AAPL': 10, 'MSFT': 5, 'cash': 7030}, pf.positions)
+        assert_array_equal([[10000, nan, nan],
                             [5000, 20, -25],
                             [5000, 10, -25],
-                            [7030, 10, 5]])
+                            [7030, 10, 5]], pf.get_history_positions().values)
+        self.assertEqual(7030+15+10, pf.value(lambda x: x == 'AAPL' and 1.5 or 2))
+        self.assertEqual(25/7055, pf.leverage(lambda x: x == 'AAPL' and 1.5 or 2))
+
+        pf.set_date("2019-01-06")
+        pf.update_cash(-6830)
+        pf.update('AAPL', -100)
+        pf.update('MSFT', 50)
+        self.assertEqual(200, pf.cash)
+        self.assertEqual(200+-135+110, pf.value(lambda x: x == 'AAPL' and 1.5 or 2))
+        self.assertEqual(245/175, pf.leverage(lambda x: x == 'AAPL' and 1.5 or 2))
+
+        pf.set_date("2019-01-07")
+        pf.update_cash(-200)
+        pf.update('AAPL', 400)
+        pf.update('MSFT', 50)
+        pf.update_cash(-337.5)
+        self.assertEqual(2, pf.leverage(lambda x: x == 'AAPL' and 1.5 or 2))
 
     def test_blotter(self):
         pass
