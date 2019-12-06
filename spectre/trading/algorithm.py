@@ -4,9 +4,10 @@
 @license: Apache 2.0
 @email: heeroz@gmail.com
 """
+import pandas as pd
 from abc import ABC
 from .event import *
-from .blotter import BaseBlotter
+from .blotter import BaseBlotter, SimulationBlotter
 from ..factors import FactorEngine
 from ..factors import DataLoader
 
@@ -40,7 +41,16 @@ class CustomAlgorithm(EventReceiver, ABC):
     def schedule_rebalance(self, event: Event):
         """Can only be called in initialize()"""
         origin_callback = event.callback
-        event.callback = lambda: origin_callback(self._data)
+
+        def _rebalance_callback(_):
+            if isinstance(self._data, dict):
+                last = {k: v.loc[v.index.get_level_values(0)[-1]]
+                        for k, v in self._data.items()}
+            else:
+                last_dt = self._data.index.get_level_values(0)[-1]
+                last = self._data.loc[last_dt]
+            origin_callback(last, self._data)
+        event.callback = _rebalance_callback
         self.schedule(event)
 
     def run_engine(self, start, end):
@@ -50,7 +60,7 @@ class CustomAlgorithm(EventReceiver, ABC):
         else:
             return {name: engine.run(start, end) for name, engine in self._engines.items()}
 
-    def _run_engine(self):
+    def _run_engine(self, event_source=None):
         self._data = self.run_engine(None, None)
 
     def on_subscribe(self):
@@ -73,64 +83,74 @@ class SimulationEventManager(EventManager):
         freq = {k: min(v.index.levels[0][1:]-v.index.levels[0][:-1]) for k, v in data.items()}
         return data[min(freq, key=freq.get)]
 
-    @classmethod
-    def fire_before_event(cls, events, event_type):
-        for event in events:
-            if isinstance(event, event_type):
-                if event.offset < 0:
-                    event.callback()
+    def fire_before_event(self, event_type):
+        for _, events in self._subscribers.items():
+            for event in events:
+                if isinstance(event, event_type):
+                    if event.offset < 0:
+                        event.callback()
 
-    @classmethod
-    def fire_after_event(cls, events, event_type):
-        for event in events:
-            if isinstance(event, event_type):
-                if event.offset >= 0:
-                    event.callback()
+    def fire_after_event(self, event_type):
+        for _, events in self._subscribers.items():
+            for event in events:
+                if isinstance(event, event_type):
+                    if event.offset >= 0:
+                        event.callback()
 
-    def fire_market_event(self, now, events):
+    def check_date_change(self, now, alg):
         # if new day
         if now.day != self._last_day:
             if self._last_day is not None:
-                self.fire_before_event(events, MarketClose)
-                self.fire_after_event(events, MarketClose)
-            self.fire_before_event(events, MarketOpen)
-            self.fire_after_event(events, MarketOpen)
+                alg.blotter.set_price('close')
+                self.fire_before_event(MarketClose)
+                self.fire_after_event(MarketClose)
+            alg.blotter.set_datetime(now)
+            self.fire_before_event(MarketOpen)
+            alg.blotter.set_price('open')
+            self.fire_after_event(MarketOpen)
             self._last_day = now.day
 
     def run(self, start, end):
+        start, end = pd.to_datetime(start, utc=True), pd.to_datetime(end, utc=True)
+
         if not self._subscribers:
             raise ValueError("At least one subscriber.")
 
         for r, events in self._subscribers.items():
             r.initialize()
 
-        for r, events in self._subscribers.items():
+        for alg in self._subscribers:
+            if not isinstance(alg, CustomAlgorithm):
+                continue
+            if not isinstance(alg.blotter, SimulationBlotter):
+                raise ValueError('SimulationEventManager only supports SimulationBlotter.')
+            alg.blotter.clear()
             # get factor data from algorithm
-            data = r.run_engine(start, end)
-            r.run_engine = lambda x, y: self._last_date
+            data = alg.run_engine(start, end)
+            alg.run_engine = lambda x, y: self._last_date
             if isinstance(data, dict):
                 main = self._get_most_granular(data)
-                main = main[start:end]
+                main = main.loc[start:end]
             else:
                 main = data
             # loop factor data
             self._last_day = None
             ticks = main.index.get_level_values(0).unique()
-            for today in ticks:
+            for dt in ticks:
                 if self._stop:
                     break
-                self.fire_market_event(today, events)
+                self.check_date_change(dt, alg)
 
                 if isinstance(data, dict):
-                    self._last_date = {k: v[:today] for k, v in data.items()}
+                    self._last_date = {k: v[:dt] for k, v in data.items()}
                 else:
-                    self._last_date = data[:today]
-                self.fire_event(EveryBarData)
+                    self._last_date = data[:dt]
+                self.fire_event(self, EveryBarData)
 
                 # todo 每tick运行完后，记录时间，然后当天new_order存到每个时间的表里
 
-            self.fire_before_event(events, MarketClose)
-            self.fire_after_event(events, MarketClose)
+            self.fire_before_event(MarketClose)
+            self.fire_after_event(MarketClose)
 
         for r, events in self._subscribers.items():
             r.terminate()

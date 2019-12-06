@@ -14,10 +14,13 @@ class TestTradingAlgorithm(unittest.TestCase):
             index_col='date', parse_dates=True,
         )
 
-        class TestEventReceiver(spectre.trading.EventReceiver):
+        class TestAlg(spectre.trading.CustomAlgorithm):
             _data = None
             _test = []
             _seq = 0
+
+            def __init__(self):
+                self.blotter = spectre.trading.SimulationBlotter(loader)
 
             def run_engine(self, start, end):
                 engine = spectre.factors.FactorEngine(loader)
@@ -27,14 +30,14 @@ class TestTradingAlgorithm(unittest.TestCase):
 
             def initialize(self):
                 self.schedule(spectre.trading.event.EveryBarData(
-                    lambda: self.test_every_bar(self._data)
+                    lambda x: self.test_every_bar(self._data)
                 ))
                 self.schedule(spectre.trading.event.MarketOpen(self.test_before_open, -1000))
                 self.schedule(spectre.trading.event.MarketOpen(self.test_open, 0))
                 self.schedule(spectre.trading.event.MarketClose(self.test_before_close, -1000))
                 self.schedule(spectre.trading.event.MarketClose(self.test_close, 1000))
 
-            def _run_engine(self):
+            def _run_engine(self, source):
                 self._data = self.run_engine(None, None)
 
             def on_subscribe(self):
@@ -68,7 +71,7 @@ class TestTradingAlgorithm(unittest.TestCase):
                 assert self._seq == 5
                 self._seq = 0
 
-        rcv = TestEventReceiver()
+        rcv = TestAlg()
 
         evt_mgr = spectre.trading.SimulationEventManager()
         evt_mgr.subscribe(rcv)
@@ -88,12 +91,14 @@ class TestTradingAlgorithm(unittest.TestCase):
 
                 self.schedule_rebalance(spectre.trading.event.EveryBarData(self.rebalance))
 
-                self.blotter.set_commission()
-                self.blotter.set_slippage()
+                self.blotter.set_commission(0, 0.005, 1)
+                self.blotter.set_slippage(0, 0.4)
 
-            def rebalance(self, data):
-                weight = data.ma5 / data.ma5.sum()
-                self.order_target_percent(data.index, weight)
+            def rebalance(self, data, history):
+                weights = data.ma5 / data.ma5.sum()
+                assets = data.index
+                for asset, weight in zip(assets, weights):
+                    self.blotter.order_target_percent(asset, weight)
 
             def terminate(self):
                 pass
@@ -103,33 +108,36 @@ class TestTradingAlgorithm(unittest.TestCase):
             ohlcv=('uOpen', 'uHigh', 'uLow', 'uClose', 'uVolume'),
             index_col='date', parse_dates=True,
         )
-        blotter = spectre.trading.SimulationBlotter()
+        blotter = spectre.trading.SimulationBlotter(loader)
         evt_mgr = spectre.trading.SimulationEventManager()
         alg = OneEngineAlg(blotter, main=loader)
         evt_mgr.subscribe(alg)
+        evt_mgr.subscribe(blotter)
         evt_mgr.run("2019-01-01", "2019-01-15")
 
     def test_two_engine_algorithm(self):
         class TwoEngineAlg(spectre.trading.CustomAlgorithm):
             def initialize(self):
-                engine_5mins = self.get_factor_engine('5mins')
-                engine_daily = self.get_factor_engine('daily')
+                engine_main = self.get_factor_engine('main')
+                engine_test = self.get_factor_engine('test')
 
                 ma5 = spectre.factors.MA(5)
                 ma20 = spectre.factors.MA(20)
-                engine_daily.add(ma5, 'ma5')
-                engine_5mins.add(ma20, 'ma20')
+                engine_main.add(ma5, 'ma5')
+                engine_test.add(ma20, 'ma20')
 
                 self.schedule_rebalance(spectre.trading.event.EveryBarData(self.rebalance))
 
-                self.blotter.set_commission()
-                self.blotter.set_slippage()
+                self.blotter.set_commission(0, 0.005, 1)
+                self.blotter.set_slippage(0, 0.4)
 
-            def rebalance(self, data):
-                mask = data['5mins'].ma20 > data['daily'].ma5
-                assets = data['5mins'][mask].index
-                weight = assets.ma20 / assets.ma20.sum()
-                self.order_target_percent(assets, weight)
+            def rebalance(self, data, history):
+                mask = data['test'].ma20 > data['main'].ma5
+                masked_test = data['test'][mask]
+                assets = masked_test.index
+                weights = masked_test.ma20 / masked_test.ma20.sum()
+                for asset, weight in zip(assets, weights):
+                    self.blotter.order_target_percent(asset, weight)
 
             def terminate(self):
                 pass
@@ -139,9 +147,10 @@ class TestTradingAlgorithm(unittest.TestCase):
             ohlcv=('uOpen', 'uHigh', 'uLow', 'uClose', 'uVolume'),
             index_col='date', parse_dates=True,
         )
-        blotter = spectre.trading.SimulationBlotter()
+        blotter = spectre.trading.SimulationBlotter(loader)
         evt_mgr = spectre.trading.SimulationEventManager()
-        alg = TwoEngineAlg(blotter, main=loader)
+        alg = TwoEngineAlg(blotter, main=loader, test=loader)
         evt_mgr.subscribe(alg)
-        evt_mgr.run()
+        evt_mgr.subscribe(blotter)
+        evt_mgr.run("2019-01-01", "2019-01-15")
 

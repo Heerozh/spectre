@@ -83,7 +83,7 @@ class EventReceiver:
         self._event_manager.stop()
 
     def fire_event(self, evt_type: Type[Event]):
-        self._event_manager.fire_event(evt_type)
+        self._event_manager.fire_event(self, evt_type)
 
     def on_subscribe(self):
         raise NotImplementedError("abstractmethod")
@@ -115,11 +115,11 @@ class EventManager:
         self._subscribers[receiver].append(event)
         event.on_schedule(self)
 
-    def fire_event(self, evt_type: Type[Event]):
+    def fire_event(self, source, evt_type: Type[Event]):
         for r, events in self._subscribers.items():
             for evt in events:
                 if isinstance(evt, evt_type):
-                    evt.callback()
+                    evt.callback(source)
 
     def stop(self):
         self._stop = True

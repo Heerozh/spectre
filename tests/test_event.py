@@ -23,7 +23,7 @@ class TestTradingEvent(unittest.TestCase):
             def test_always(self):
                 self.fired += 1
 
-            def test_every_bar(self):
+            def test_every_bar(self, source):
                 self.fired += 1
                 if self.fired == 2:
                     self.stop_event_manager()
