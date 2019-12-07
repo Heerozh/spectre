@@ -94,9 +94,9 @@ class BaseFactor:
         groupby={'name':group_id}
         """
         # for future optimization:
-        # assets = self._engine.get_dataframe().index.get_level_values(1)
+        # assets = self._engine.dataframe_().index.get_level_values(1)
         # keys = np.fromiter(map(lambda x: groupby[x], assets), dtype=np.int)
-        # keys = torch.tensor(keys, device=self._engine.get_device(), dtype=torch.int32)
+        # keys = torch.tensor(keys, device=self._engine.device, dtype=torch.int32)
         # factor.groupby = ParallelGroupBy(keys)
         factor = DemeanFactor(inputs=(self,))
         factor.groupby = groupby
@@ -251,7 +251,7 @@ class CustomFactor(BaseFactor):
         if self.win > 1:
             adj_multi = None
             if isinstance(upstream, DataFactor):
-                adj_multi = upstream.get_adjust_multi()
+                adj_multi = upstream.adjustment
             ret = Rolling(ret, self.win, adj_multi)
         # elif isinstance(upstream, DataFactor):
         #     # 不需要adjustment了，不rolling就是获取当前的数据直接出fct，就不用adj了
@@ -351,12 +351,6 @@ class FilterFactor(CustomFactor, ABC):
 
 
 class DataFactor(BaseFactor):
-    def get_adjust_multi(self):
-        return self._multi
-
-    def get_total_backward_(self) -> int:
-        return 0
-
     def __init__(self, inputs: Optional[Sequence[str]] = None,
                  is_data_after_market_close=True) -> None:
         super().__init__()
@@ -369,13 +363,20 @@ class DataFactor(BaseFactor):
         self._multi = None
         self.is_data_after_market_close = is_data_after_market_close
 
+    @property
+    def adjustment(self):
+        return self._multi
+
+    def get_total_backward_(self) -> int:
+        return 0
+
     def include_close_data(self) -> bool:
         return self.is_data_after_market_close
 
     def pre_compute_(self, engine, start, end) -> None:
         super().pre_compute_(engine, start, end)
         self._data = engine.get_tensor_groupby_asset_(self.inputs[0])
-        if len(self.inputs) > 1 and self.inputs[1] in engine.get_dataframe_():
+        if len(self.inputs) > 1 and self.inputs[1] in engine.dataframe_:
             self._multi = engine.get_tensor_groupby_asset_(self.inputs[1])
         else:
             self._multi = None
@@ -393,7 +394,7 @@ class AdjustedDataFactor(CustomFactor):
         self.parent = data
 
     def compute(self, data) -> torch.Tensor:
-        multi = self.parent.get_adjust_multi()
+        multi = self.parent.adjustment
         if multi is None:
             return data
         return data * multi / nanlast(multi, dim=1)[:, None]

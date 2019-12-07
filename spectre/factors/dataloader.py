@@ -17,7 +17,8 @@ class DataLoader:
         self._ohlcv = ohlcv
         self._calender = calender_assert
 
-    def get_ohlcv_names(self):
+    @property
+    def ohlcv(self):
         return self._ohlcv
 
     @classmethod
@@ -35,6 +36,11 @@ class DataLoader:
         time_cat = dict(zip(unique_date, range(len(unique_date))))
         cat = np.fromiter(map(lambda x: time_cat[x], date_index), dtype=np.int)
         df['time_cat_id'] = cat
+
+    @classmethod
+    def merge_dividends(cls, dividends, splits):
+        # todo
+        pass
 
     def load(self, start: pd.Timestamp, end: pd.Timestamp, backward: int) -> pd.DataFrame:
         """

@@ -30,13 +30,16 @@ class FactorEngine:
 
     # friend private:
 
-    def get_dataframe_(self):
+    @property
+    def dataframe_(self):
         return self._dataframe
 
-    def get_assetgroup_(self):
+    @property
+    def assetgroup_(self):
         return self._assetgroup
 
-    def get_timegroup_(self):
+    @property
+    def timegroup_(self):
         return self._timegroup
 
     def get_tensor_groupby_asset_(self, column) -> torch.Tensor:
@@ -121,7 +124,8 @@ class FactorEngine:
         self._filter = None
         self._device = torch.device('cpu')
 
-    def get_device(self):
+    @property
+    def device(self):
         return self._device
 
     def add(self,
@@ -185,11 +189,11 @@ class FactorEngine:
 
         start, end = pd.to_datetime(start, utc=True), pd.to_datetime(end, utc=True)
         # make columns to data factors.
-        OHLCV.open.inputs = (self._loader.get_ohlcv_names()[0], 'price_multi')
-        OHLCV.high.inputs = (self._loader.get_ohlcv_names()[1], 'price_multi')
-        OHLCV.low.inputs = (self._loader.get_ohlcv_names()[2], 'price_multi')
-        OHLCV.close.inputs = (self._loader.get_ohlcv_names()[3], 'price_multi')
-        OHLCV.volume.inputs = (self._loader.get_ohlcv_names()[4], 'vol_multi')
+        OHLCV.open.inputs = (self._loader.ohlcv[0], 'price_multi')
+        OHLCV.high.inputs = (self._loader.ohlcv[1], 'price_multi')
+        OHLCV.low.inputs = (self._loader.ohlcv[2], 'price_multi')
+        OHLCV.close.inputs = (self._loader.ohlcv[3], 'price_multi')
+        OHLCV.volume.inputs = (self._loader.ohlcv[4], 'vol_multi')
 
         # get factor
         filter_ = self._filter

@@ -77,8 +77,7 @@ class ExponentialWeightedMovingAverage(CustomFactor):
     def pre_compute_(self, engine, start, end) -> None:
         super().pre_compute_(engine, start, end)
         if not isinstance(self.weight, torch.Tensor):
-            self.weight = torch.tensor(self.weight, dtype=torch.float32,
-                                       device=engine.get_device())
+            self.weight = torch.tensor(self.weight, dtype=torch.float32, device=engine.device)
 
     def compute(self, data):
         weighted_mean = data.agg(lambda x: (x * self.weight).sum(dim=2))
