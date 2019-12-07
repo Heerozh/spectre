@@ -5,20 +5,43 @@
 @email: heeroz@gmail.com
 """
 import pandas as pd
-from numpy import nan
+import numpy as np
 from collections import namedtuple, defaultdict
 from .event import *
 
 
 class Portfolio:
     def __init__(self):
-        self.history = pd.DataFrame()
-        self.positions = defaultdict(int)
-        self.cash = 0
-        self.current_date = None
+        self._history = pd.DataFrame()
+        self._positions = defaultdict(int)
+        self._last_price = defaultdict(int)
+        self._cash = 0
+        self._current_date = None
+
+    @property
+    def history(self):
+        return self._history.fillna(method='ffill')
+
+    @property
+    def positions(self):
+        return self._positions
+
+    @property
+    def cash(self):
+        return self._cash
+
+    @property
+    def value(self):
+        values = [self._last_price[asset] * amount for asset, amount in self.positions.items()]
+        return sum(values) + self._cash
+
+    @property
+    def leverage(self):
+        values = [self._last_price[asset] * amount for asset, amount in self.positions.items()]
+        return sum(np.abs(values)) / (sum(values) + self._cash)
 
     def __repr__(self):
-        return "<Portfolio>:\n" + str(self.get_history_positions())
+        return "<Portfolio>:\n" + str(self.history)
 
     def clear(self):
         self.__init__()
@@ -27,42 +50,33 @@ class Portfolio:
         if isinstance(date, str):
             date = pd.Timestamp(date)
         date = date.normalize()
-        if self.current_date is not None and date < self.current_date:
+        if self._current_date is not None and date < self._current_date:
             raise ValueError('Cannot set a date less than the current date')
 
-        self.current_date = date
-
-    def get_history_positions(self):
-        return self.history.fillna(method='ffill')
+        self._current_date = date
 
     def update(self, asset, amount):
-        self.positions[asset] += amount
-        self.history.loc[self.current_date, asset] = self.positions[asset]
+        self._positions[asset] += amount
+        self._history.loc[self._current_date, asset] = self._positions[asset]
 
     def update_cash(self, amount):
-        self.cash += amount
-        self.positions['cash'] = self.cash
-        self.history.loc[self.current_date, 'cash'] = self.cash
+        self._cash += amount
+        self._history.loc[self._current_date, 'cash'] = self._cash
 
     def process_split(self, asset, ratio):
-        sp = self.positions[asset] * (ratio - 1)
+        sp = self._positions[asset] * (ratio - 1)
         self.update(asset, sp)
 
     def process_dividends(self, asset, ratio):
-        div = self.positions[asset] * ratio
+        div = self._positions[asset] * ratio
         self.update_cash(div)
 
-    def value(self, get_curr_price):
-        value = sum([get_curr_price(asset) * amount
-                     for asset, amount in self.positions.items()
-                     if asset != 'cash'])
-        return self.cash + value
-
-    def leverage(self, get_curr_price):
-        gross_exposure = [get_curr_price(asset) * abs(amount)
-                          for asset, amount in self.positions.items()
-                          if asset != 'cash']
-        return sum(gross_exposure) / self.value(get_curr_price)
+    def update_value(self, get_curr_price):
+        for asset, shares in self._positions.items():
+            price = get_curr_price(asset)
+            if price:
+                self._last_price[asset] = price
+        self._history.loc[self._current_date, 'value'] = self.value
 
 
 class CommissionModel:
@@ -87,15 +101,19 @@ class BaseBlotter:
 
     def __init__(self) -> None:
         super().__init__()
-        self.portfolio = Portfolio()
-        self.current_dt = None
+        self._portfolio = Portfolio()
+        self._current_dt = None
         self.commission = CommissionModel(0, 0, 0)
         self.slippage = CommissionModel(0, 0, 0)
         self.short_fee = CommissionModel(0, 0, 0)
 
+    @property
+    def positions(self):
+        return self._portfolio.positions
+
     def set_datetime(self, dt):
-        self.current_dt = dt
-        self.portfolio.set_date(dt)
+        self._current_dt = dt
+        self._portfolio.set_date(dt)
 
     def set_commission(self, percentage: float, per_share: float, minimum: float):
         """
@@ -145,8 +163,8 @@ class BaseBlotter:
         if not isinstance(asset, str):
             raise KeyError("`asset` must be a string")
 
-        amount = self.portfolio.value(self.get_price) * pct / self.get_price(asset)
-        held = self.portfolio.positions[asset]
+        amount = self._portfolio.value * pct / self.get_price(asset)
+        held = self.positions[asset]
         amount -= held
         return self._order(asset, int(amount))
 
@@ -154,16 +172,13 @@ class BaseBlotter:
         raise NotImplementedError("abstractmethod")
 
     def process_split(self, asset, ratio):
-        self.portfolio.process_split(asset, ratio)
+        self._portfolio.process_split(asset, ratio)
 
     def process_dividends(self, asset, ratio):
-        self.portfolio.process_dividends(asset, ratio)
+        self._portfolio.process_dividends(asset, ratio)
 
-    def get_portfolio(self):
-        return self.portfolio.positions
-
-    def get_positions(self):
-        return self.portfolio.get_history_positions()
+    def get_history_positions(self):
+        return self._portfolio.history
 
     def get_transactions(self):
         raise NotImplementedError("abstractmethod")
@@ -186,18 +201,16 @@ class SimulationBlotter(BaseBlotter, EventReceiver):
 
     def clear(self):
         self.orders = defaultdict(list)
-        self.portfolio.clear()
+        self._portfolio.clear()
 
     def set_price(self, name: str):
         if name == 'open':
-            self.price_col = self.dataloader.get_ohlcv_names()[0]
+            self.price_col = self.dataloader.ohlcv[0]
         else:
-            self.price_col = self.dataloader.get_ohlcv_names()[3]
+            self.price_col = self.dataloader.ohlcv[3]
 
     def get_price(self, asset: str):
-        df = self.dataloader.load(self.current_dt, self.current_dt, 0)
-        # todo 几个问题， 1是 get value时，没有的数据要用最后一个
-        # 其次这个重复调用的次数太多了，有点浪费，考虑让portfolio自己记录下？
+        df = self.dataloader.load(self._current_dt, self._current_dt, 0)
         if asset not in df.index.get_level_values(1):
             return None
         price = df.loc[(slice(None), asset), self.price_col]
@@ -207,15 +220,14 @@ class SimulationBlotter(BaseBlotter, EventReceiver):
         if not self.market_opened:
             raise RuntimeError('Out of market hours, or you did not subscribe this class '
                                'with SimulationEventManager')
-
         if amount == 0:
             return
 
         # get price and change
-        df = self.dataloader.load(self.current_dt, self.current_dt, 1)
+        df = self.dataloader.load(self._current_dt, self._current_dt, 1)
         df = df.loc[(slice(None), asset), :]
         price = df[self.price_col].iloc[-1]
-        close_col = self.dataloader.get_ohlcv_names()[3]
+        close_col = self.dataloader.ohlcv[3]
         previous_close = df[close_col].iloc[-1]
         change = price / previous_close - 1
         # Detecting whether transactions are possible
@@ -231,12 +243,12 @@ class SimulationBlotter(BaseBlotter, EventReceiver):
 
         # make order
         order = SimulationBlotter.Order(
-            self.current_dt, asset, amount, price, final_price, commission)
+            self._current_dt, asset, amount, price, final_price, commission)
         self.orders[asset].append(order)
 
         # update portfolio, pay cash
-        self.portfolio.update(asset, amount)
-        self.portfolio.update_cash(-amount * final_price + commission)
+        self._portfolio.update(asset, amount)
+        self._portfolio.update_cash(-amount * final_price + commission)
 
     def cancel_all_orders(self):
         # don't need
@@ -252,19 +264,23 @@ class SimulationBlotter(BaseBlotter, EventReceiver):
         self.cancel_all_orders()
         self.market_opened = False
 
-        df = self.dataloader.load(self.current_dt, self.current_dt, 0)
-        if 'ex-dividend' not in df.columns:
-            return
-        for asset, shares in self.portfolio.positions.items():
-            if shares == 0:
-                continue
-            row = df.loc[(slice(None), asset), :]
-            div = row['ex-dividend']
-            split = row['split_ratio']
-            if div != nan:
-                self.portfolio.process_dividends(asset, div)
-            if split != nan:
-                self.portfolio.process_split(asset, split)
+        # push dividend/split data to portfolio
+        df = self.dataloader.load(self._current_dt, self._current_dt, 0)
+        # todo maybe dataloader.get_ex_cols
+        if 'ex-dividend' in df.columns:
+            for asset, shares in self.positions.items():
+                if shares == 0:
+                    continue
+                row = df.loc[(slice(None), asset), :]
+                div = row['ex-dividend']
+                split = row['split_ratio']
+                if div != np.nan:
+                    self._portfolio.process_dividends(asset, div)
+                if split != np.nan:
+                    self._portfolio.process_split(asset, split)
+
+        # push close price to protfolio
+        self._portfolio.update_value(self.get_price)
 
     def on_subscribe(self):
         self.schedule(MarketOpen(self.market_open, -100000))  # 100ms ahead for system preparation

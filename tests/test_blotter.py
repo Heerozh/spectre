@@ -29,36 +29,41 @@ class TestBlotter(unittest.TestCase):
         pf.update_cash(2000)
         pf.process_dividends('AAPL', 2.0)
         pf.process_dividends('MSFT', 2.0)
+        pf.update_value(lambda x: x == 'AAPL' and 1.5 or 2)
 
-        self.assertEqual({'AAPL': 10, 'MSFT': 5, 'cash': 7030}, pf.positions)
-        assert_array_equal([[10000, nan, nan],
-                            [5000, 20, -25],
-                            [5000, 10, -25],
-                            [7030, 10, 5]], pf.get_history_positions().values)
+        self.assertEqual({'AAPL': 10, 'MSFT': 5}, pf.positions)
+        self.assertEqual(7030, pf.cash)
+        assert_array_equal([[10000, nan, nan, nan],
+                            [5000, 20, -25, nan],
+                            [5000, 10, -25, nan],
+                            [7030, 10, 5, 7055]], pf.history.values)
         self.assertEqual(str(pf),
                          """<Portfolio>:
-               cash  AAPL  MSFT
-2019-01-01  10000.0   NaN   NaN
-2019-01-03   5000.0  20.0 -25.0
-2019-01-04   5000.0  10.0 -25.0
-2019-01-05   7030.0  10.0   5.0""")
-        self.assertEqual(7030 + 15 + 10, pf.value(lambda x: x == 'AAPL' and 1.5 or 2))
-        self.assertEqual(25 / 7055, pf.leverage(lambda x: x == 'AAPL' and 1.5 or 2))
+               cash  AAPL  MSFT   value
+2019-01-01  10000.0   NaN   NaN     NaN
+2019-01-03   5000.0  20.0 -25.0     NaN
+2019-01-04   5000.0  10.0 -25.0     NaN
+2019-01-05   7030.0  10.0   5.0  7055.0""")
+        pf.update_value(lambda x: x == 'AAPL' and 1.5 or 2)
+        self.assertEqual(7030 + 15 + 10, pf.value)
+        self.assertEqual(25 / 7055, pf.leverage)
 
         pf.set_date("2019-01-06")
         pf.update_cash(-6830)
         pf.update('AAPL', -100)
         pf.update('MSFT', 50)
         self.assertEqual(200, pf.cash)
-        self.assertEqual(200 + -135 + 110, pf.value(lambda x: x == 'AAPL' and 1.5 or 2))
-        self.assertEqual(245 / 175, pf.leverage(lambda x: x == 'AAPL' and 1.5 or 2))
+        pf.update_value(lambda x: x == 'AAPL' and 1.5 or 2)
+        self.assertEqual(200 + -135 + 110, pf.value)
+        self.assertEqual(245 / 175, pf.leverage)
 
         pf.set_date("2019-01-07")
         pf.update_cash(-200)
         pf.update('AAPL', 400)
         pf.update('MSFT', 50)
         pf.update_cash(-337.5)
-        self.assertEqual(2, pf.leverage(lambda x: x == 'AAPL' and 1.5 or 2))
+        pf.update_value(lambda x: None)
+        self.assertEqual(2, pf.leverage)
 
     def test_blotter(self):
         pass
