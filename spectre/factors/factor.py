@@ -251,7 +251,7 @@ class CustomFactor(BaseFactor):
         if self.win > 1:
             adj_multi = None
             if isinstance(upstream, DataFactor):
-                adj_multi = upstream.adjustment
+                adj_multi = upstream.adjustments
             ret = Rolling(ret, self.win, adj_multi)
         # elif isinstance(upstream, DataFactor):
         #     # 不需要adjustment了，不rolling就是获取当前的数据直接出fct，就不用adj了
@@ -358,13 +358,13 @@ class DataFactor(BaseFactor):
             self.inputs = inputs
         assert (3 > len(self.inputs) > 0), \
             "DataFactor's `inputs` can only contains one data column and corresponding " \
-            "adjustment column"
+            "adjustments column"
         self._data = None
         self._multi = None
         self.is_data_after_market_close = is_data_after_market_close
 
     @property
-    def adjustment(self):
+    def adjustments(self):
         return self._multi
 
     def get_total_backward_(self) -> int:
@@ -394,7 +394,7 @@ class AdjustedDataFactor(CustomFactor):
         self.parent = data
 
     def compute(self, data) -> torch.Tensor:
-        multi = self.parent.adjustment
+        multi = self.parent.adjustments
         if multi is None:
             return data
         return data * multi / nanlast(multi, dim=1)[:, None]

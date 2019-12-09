@@ -119,16 +119,16 @@ class Rolling:
 
         if _adjustment is not None:
             rolling_adj = Rolling(_adjustment, win)
-            self.adjustment = rolling_adj.values
+            self.adjustments = rolling_adj.values
             self.adjustment_last = rolling_adj.last_nonnan()[:, :, None]
         else:
-            self.adjustment = None
+            self.adjustments = None
             self.adjustment_last = None
 
     def adjusted(self, s=None, e=None) -> torch.Tensor:
         """this will contiguous tensor consume lot of memory, limit e-s size"""
-        if self.adjustment is not None:
-            return self.values[s:e] * self.adjustment[s:e] / self.adjustment_last[s:e]
+        if self.adjustments is not None:
+            return self.values[s:e] * self.adjustments[s:e] / self.adjustment_last[s:e]
         else:
             return self.values[s:e]
 

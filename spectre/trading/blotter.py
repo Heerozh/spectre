@@ -279,7 +279,7 @@ class SimulationBlotter(BaseBlotter, EventReceiver):
                 if split != np.nan:
                     self._portfolio.process_split(asset, split)
 
-        # push close price to protfolio
+        # push close price to portfolio
         self._portfolio.update_value(self.get_price)
 
     def on_subscribe(self):
