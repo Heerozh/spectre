@@ -1,12 +1,12 @@
 [![Coverage Status](https://coveralls.io/repos/github/Heerozh/spectre/badge.svg?branch=master)](https://coveralls.io/github/Heerozh/spectre?branch=master)
 
-Progress: 6/10  🔳🔳🔳🔳🔳🔳⬜⬜⬜⬜\
+Progress: 7/10  🔳🔳🔳🔳🔳🔳🔳⬜⬜⬜\
 ~~5/10: CUDA support~~\
-6/10: Dividends/Splits\
+~~6/10: Dividends/Splits\~~
 ~~7/10: Back-test architecture~~\
 8/10: Event Systems\
 9/10: Blotter\
-10/10: Back-test Results\
+10/10: Back-test Analysis\
 ~~11/10: Factor Return Analysis~~
 
 # ||spectre
@@ -35,7 +35,7 @@ Dependencies:
 
 ```bash
 conda install pytorch torchvision cudatoolkit=10.1 -c pytorch
-conda install pytables pandas
+conda install pyarrow pandas
 ```
 
 ## Benchmarks
@@ -71,7 +71,7 @@ from spectre import factors
 loader = factors.CsvDirLoader(
     './tests/data/daily/',  # Contains fake dataset: AAPL.csv MSFT.csv
     ohlcv=('uOpen', 'uHigh', 'uLow', 'uClose', 'uVolume'),
-    index_col='date', parse_dates=True,
+    prices_index='date', parse_dates=True,
 )
 engine = factors.FactorEngine(loader)
 engine.to_cuda()
@@ -85,25 +85,37 @@ df
 |                         |         |        ma5|	 close|
 |-------------------------|---------|-----------|---------|
 |**date**                 |**asset**|           |	      |
-|2019-01-11 00:00:00+00:00|     AAPL|    154.254|	153.69|
+|2019-01-14 00:00:00+00:00|     AAPL|    154.254|	153.69|
 |                         |     MSFT|        NaN|	103.20|
-|2019-01-14 00:00:00+00:00|     AAPL|    155.854|	157.00|
+|2019-01-15 00:00:00+00:00|     AAPL|    155.854|	157.00|
 |                         |     MSFT|    104.202|	103.39|
-|2019-01-15 00:00:00+00:00|     AAPL|    156.932|	156.94|
-|                         |     MSFT|    105.332|	108.85|
+
 
 #### Factor Analysis
 
+First use `ArrowLoader` to ingest the data in order to improve performance. \
+`ArrowLoader` can ingest any `DataLoader` including `CsvDirLoader`.
+
 ```python
 from spectre import factors
-loader = factors.QuandlLoader('WIKI_PRICES.zip')
+# WIKI_PRICES.zip can be found at: 
+# https://www.quandl.com/api/v3/datatables/WIKI/PRICES.csv?qopts.export=true&api_key=[yourapi_key]
+factors.ArrowLoader.ingest(source=factors.QuandlLoader('WIKI_PRICES.zip'),
+                           save_to='wiki_prices.feather')
+```
+
+Then use the ingested data:
+
+```python
+from spectre import factors
+loader = factors.ArrowLoader('wiki_prices.feather')
 engine = factors.FactorEngine(loader)
 universe = factors.AverageDollarVolume(win=120).top(500)
 engine.set_filter( universe )
 
 f1 = -(factors.MA(5)-factors.MA(10)-factors.MA(30))
-f2 = -factors.BBANDS(win=5)
-f2 = f2.filter(f2 < 0.5)
+bb = -factors.BBANDS(win=5)
+f2 = bb.filter(bb < 0.5)
 
 engine.add( f1.rank(mask=universe).zscore(), 'ma_cross' )
 engine.add( f2.rank(mask=universe).zscore(), 'bb' )

@@ -187,7 +187,7 @@ class ArrowLoader(DataLoader):
         if not force and (source.last_modified <= cls._last_modified(save_to)):
             warnings.warn("You called `ingest()`, but `source` seems unchanged, "
                           "no ingestion required. Set `force=True` to re-ingest.",
-                          ResourceWarning)
+                          RuntimeWarning)
             return
 
         df = source.test_load()
