@@ -11,7 +11,7 @@ class TestTradingAlgorithm(unittest.TestCase):
     def test_simulation_event_manager(self):
         loader = spectre.factors.CsvDirLoader(
             data_dir + '/daily/', ohlcv=('uOpen', 'uHigh', 'uLow', 'uClose', 'uVolume'),
-            index_col='date', parse_dates=True,
+            prices_index='date', parse_dates=True,
         )
 
         class TestAlg(spectre.trading.CustomAlgorithm):
@@ -77,9 +77,9 @@ class TestTradingAlgorithm(unittest.TestCase):
         evt_mgr.subscribe(rcv)
         evt_mgr.run("2019-01-01", "2019-01-15")
 
-        self.assertEquals(rcv._test[0], pd.Timestamp("2019-01-03", tz='UTC'))
-        self.assertEquals(rcv._test[1], pd.Timestamp("2019-01-04", tz='UTC'))
-        self.assertEquals(rcv._test[-1], pd.Timestamp("2019-01-11", tz='UTC'))
+        self.assertEqual(rcv._test[0], pd.Timestamp("2019-01-03", tz='UTC'))
+        self.assertEqual(rcv._test[1], pd.Timestamp("2019-01-04", tz='UTC'))
+        self.assertEqual(rcv._test[-1], pd.Timestamp("2019-01-11", tz='UTC'))
 
     def test_one_engine_algorithm(self):
         class OneEngineAlg(spectre.trading.CustomAlgorithm):
@@ -104,9 +104,9 @@ class TestTradingAlgorithm(unittest.TestCase):
                 pass
 
         loader = spectre.factors.CsvDirLoader(
-            data_dir + '/daily/', 'AAPL',
+            data_dir + '/daily/', calender_asset='AAPL',
             ohlcv=('uOpen', 'uHigh', 'uLow', 'uClose', 'uVolume'),
-            index_col='date', parse_dates=True,
+            prices_index='date', parse_dates=True,
         )
         blotter = spectre.trading.SimulationBlotter(loader)
         evt_mgr = spectre.trading.SimulationEventManager()
@@ -143,9 +143,9 @@ class TestTradingAlgorithm(unittest.TestCase):
                 pass
 
         loader = spectre.factors.CsvDirLoader(
-            data_dir + '/daily/', 'AAPL',
+            data_dir + '/daily/', calender_asset='AAPL',
             ohlcv=('uOpen', 'uHigh', 'uLow', 'uClose', 'uVolume'),
-            index_col='date', parse_dates=True,
+            prices_index='date', parse_dates=True,
         )
         blotter = spectre.trading.SimulationBlotter(loader)
         evt_mgr = spectre.trading.SimulationEventManager()

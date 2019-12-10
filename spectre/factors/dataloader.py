@@ -111,7 +111,10 @@ class DataLoader:
         raise NotImplementedError("abstractmethod")
 
     def test_load(self):
-        """ basic test for the format returned by _load() """
+        """
+        Basic test for the format returned by _load(),
+        If you write your own Loader, call this method at your test case.
+        """
         df = self._load()
 
         assert df.index.names == ['date', 'asset'], \
@@ -132,6 +135,10 @@ class DataLoader:
                 "Adjustments columns `{}` not found.".format(self.adjustments)
             assert all(x in df for x in self.adjustment_multipliers), \
                 "Adjustment multipliers columns `{}` not found.".format(self.adjustment_multipliers)
+            assert not any(df[self.adjustments[0]].isna()), \
+                "There is nan value in ex-dividend column, should be filled with 0."
+            assert not any(df[self.adjustments[1]].isna()), \
+                "There is nan value in split_ratio column, should be filled with 1."
 
         return df
 
@@ -319,9 +326,11 @@ class CsvDirLoader(DataLoader):
 
             dfs = {k: _agg_duplicated(v) for k, v in dfs.items()}
             div = pd.concat(dfs, sort=False)
+            div = div.reindex(df.index)
+            div = div.fillna(0)
             div.name = self._adjustments[0]
             # div = df.rename_axis(['asset', 'date'])
-            df = pd.concat([df, div.reindex(df.index)], axis=1)
+            df = pd.concat([df, div], axis=1)
 
         if self._splits_path is not None:
             dfs = self._walk_dir(self._splits_path, self._splits_index)
@@ -335,8 +344,10 @@ class CsvDirLoader(DataLoader):
 
             dfs = {k: _drop_na_and_duplicated(v) for k, v in dfs.items()}
             splits = pd.concat(dfs, sort=False)
+            splits = splits.reindex(df.index)
+            splits = splits.fillna(1)
             splits.name = self._adjustments[1]
-            df = pd.concat([df, splits.reindex(df.index)], axis=1)
+            df = pd.concat([df, splits], axis=1)
 
         df = df.swaplevel(0, 1).sort_index(level=0)
 

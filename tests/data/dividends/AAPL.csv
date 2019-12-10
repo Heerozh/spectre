@@ -1,0 +1,21 @@
+exDate,paymentDate,recordDate,declaredDate,amount,flag,currency,description,frequency,date
+2015-02-05,2015-02-12,2015-02-09,2015-01-27,0.47,Cash,USD,Ordinary Shares,quarterly,2019-12-07
+2015-05-07,2015-05-14,2015-05-11,2015-04-27,0.52,Cash,USD,Ordinary Shares,quarterly,2019-12-07
+2015-08-06,2015-08-13,2015-08-10,2015-07-21,0.52,Cash,USD,Ordinary Shares,quarterly,2019-12-07
+2015-11-05,2015-11-12,2015-11-09,2015-10-27,0.52,Cash,USD,Ordinary Shares,quarterly,2019-12-07
+2016-02-04,2016-02-11,2016-02-08,2016-01-26,0.52,Cash,USD,Ordinary Shares,quarterly,2019-12-07
+2016-05-05,2016-05-12,2016-05-09,2016-04-26,0.57,Cash,USD,Ordinary Shares,quarterly,2019-12-07
+2016-08-04,2016-08-11,2016-08-08,2016-07-26,0.57,Cash,USD,Ordinary Shares,quarterly,2019-12-07
+2016-11-03,2016-11-10,2016-11-07,2016-10-25,0.57,Cash,USD,Ordinary Shares,quarterly,2019-12-07
+2017-02-09,2017-02-16,2017-02-13,2017-01-31,0.57,Cash,USD,Ordinary Shares,quarterly,2019-12-07
+2017-05-11,2017-05-18,2017-05-15,2017-05-02,0.63,Cash,USD,Ordinary Shares,quarterly,2019-12-07
+2017-08-10,2017-08-17,2017-08-14,2017-08-01,0.63,Cash,USD,Ordinary Shares,quarterly,2019-12-07
+2017-11-10,2017-11-16,2017-11-13,2017-11-02,0.63,Cash,USD,Ordinary Shares,quarterly,2019-12-07
+2018-02-09,2018-02-15,2018-02-12,2018-02-01,0.63,Cash,USD,Ordinary Shares,quarterly,2019-12-07
+2018-05-11,2018-05-17,2018-05-14,2018-05-01,0.73,Cash,USD,Ordinary Shares,quarterly,2019-12-07
+2018-08-10,2018-08-16,2018-08-13,2018-07-31,0.73,Cash,USD,Ordinary Shares,quarterly,2019-12-07
+2018-11-08,2018-11-15,2018-11-12,2018-11-01,0.73,Cash,USD,Ordinary Shares,quarterly,2019-12-07
+2019-02-08,2019-02-14,2019-02-11,2019-01-29,0.73,Cash,USD,Ordinary Shares,quarterly,2019-12-07
+2019-05-10,2019-05-16,2019-05-13,2019-04-30,0.77,Cash,USD,Ordinary Shares,quarterly,2019-12-07
+2019-08-09,2019-08-15,2019-08-12,2019-07-30,0.77,Cash,USD,Ordinary Shares,quarterly,2019-12-07
+2019-11-07,2019-11-14,2019-11-11,2019-10-30,0.77,Cash,USD,Ordinary Shares,quarterly,2019-12-07

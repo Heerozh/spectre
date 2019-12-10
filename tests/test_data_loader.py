@@ -17,18 +17,13 @@ class TestDataLoaderLib(unittest.TestCase):
     def test_required_parameters(self):
         loader = spectre.factors.CsvDirLoader(data_dir + '/daily/')
         self.assertRaises(AssertionError, loader.load, '2019-01-01', '2019-01-15', 0)
-        loader = spectre.factors.CsvDirLoader(data_dir + '/daily/', index_col='date', )
+        loader = spectre.factors.CsvDirLoader(data_dir + '/daily/', prices_index='date', )
         self.assertRaises(AssertionError, loader.load, '2019-01-01', '2019-01-15', 0)
 
     def test_csv_loader_value(self):
         loader = spectre.factors.CsvDirLoader(
-            data_dir + '/daily/', 'AAPL', index_col='date', parse_dates=True, )
-        # test cache
-        start, end = pd.Timestamp('2015-01-01', tz='UTC'), pd.Timestamp('2019-01-15', tz='UTC')
-        self.assertIsNone(loader._load_from_cache(start, end, 0))
+            data_dir + '/daily/', calender_asset='AAPL', prices_index='date', parse_dates=True, )
         start, end = pd.Timestamp('2019-01-01', tz='UTC'), pd.Timestamp('2019-01-15', tz='UTC')
-        df = loader.load(start, end, 0)
-        self.assertIsNotNone(loader._load_from_cache(start, end, 0))
 
         # test backward
         df = loader.load(start, end, 11)
@@ -45,17 +40,11 @@ class TestDataLoaderLib(unittest.TestCase):
         df = loader.load(start, end, 0)
         self._assertDFFirstLastEqual(df.loc[(slice(None), 'MSFT'), :], 'close', 104.5, 104.5)
 
-        assert df.index.is_lexsorted(), \
-            "In the df returned by DateLoader, the index must be sorted, " \
-            "try using df.sort_index(level=0, inplace=True)"
-        assert str(df.index.levels[0].tzinfo) == 'UTC', \
-            "In the df returned by DateLoader, the date index must be UTC timezone."
-        assert df.index.levels[-1].ordered, \
-            "In the df returned by DateLoader, the asset index must ordered categorical."
+        loader.test_load()
 
     def test_csv_split_loader_value(self):
         loader = spectre.factors.CsvDirLoader(
-            data_dir + '/5mins/', split_by_year=True, index_col='Date', parse_dates=True, )
+            data_dir + '/5mins/', prices_by_year=True, prices_index='Date', parse_dates=True, )
         start = pd.Timestamp('2019-01-02 14:30:00', tz='UTC')
         end = pd.Timestamp('2019-01-15', tz='UTC')
         loader.load(start, end, 0)
@@ -66,24 +55,39 @@ class TestDataLoaderLib(unittest.TestCase):
         self._assertDFFirstLastEqual(df.loc[(slice(None), 'AAPL'), :], 'Open', 157.45, 155.17)
         self._assertDFFirstLastEqual(df.loc[(slice(None), 'MSFT'), :], 'Open', 101.44, 99.55)
 
-        assert df.index.is_lexsorted(), \
-            "In the df returned by DateLoader, the index must be sorted, " \
-            "try using df.sort_index(level=0, inplace=True)"
-        assert str(df.index.levels[0].tzinfo) == 'UTC', \
-            "In the df returned by DateLoader, the date index must be UTC timezone."
-        assert df.index.levels[-1].ordered, \
-            "In the df returned by DateLoader, the asset index must ordered categorical."
+        loader.test_load()
+
+    def test_csv_div_split(self):
+        start, end = pd.Timestamp('2019-01-02', tz='UTC'), pd.Timestamp('2019-01-15', tz='UTC')
+        loader = spectre.factors.CsvDirLoader(
+            prices_path=data_dir + '/daily/', earliest_date=start,
+            dividends_path=data_dir + '/dividends/', splits_path=data_dir + '/splits/',
+            ohlcv=('uOpen', 'uHigh', 'uLow', 'uClose', 'uVolume'), adjustments=('amount', 'ratio'),
+            prices_index='date', dividends_index='exDate', splits_index='exDate',
+            parse_dates=True, )
+        loader.test_load()
+
+        df = loader.load(start, end, 0)
+
+        # test value
+        self.assertAlmostEqual(df.loc[('2019-01-11', 'MSFT'), 'ex-dividend'].values[-1], 0.57)
 
     @unittest.skipUnless(os.getenv('COVERAGE_RUNNING'), "too slow, run manually")
     def test_QuandlLoader(self):
+        quandl_path = data_dir + '../../../historical_data/us/prices/quandl/'
         try:
-            os.remove(
-                data_dir + '../../../historical_data/us/prices/quandl/WIKI_PRICES.zip.cache.hdf')
+            os.remove(quandl_path + 'wiki_prices.feather')
+            os.remove(quandl_path + 'wiki_prices.feather.meta')
         except FileNotFoundError:
             pass
 
-        loader = spectre.factors.QuandlLoader(
-            data_dir + '../../../historical_data/us/prices/quandl/WIKI_PRICES.zip')
+        spectre.factors.ArrowLoader.ingest(
+            spectre.factors.QuandlLoader(quandl_path + 'WIKI_PRICES.zip'),
+            quandl_path + 'wiki_prices.feather'
+        )
+
+        loader = spectre.factors.ArrowLoader(quandl_path + 'wiki_prices.feather')
+
         spectre.parallel.Rolling._split_multi = 80
         engine = spectre.factors.FactorEngine(loader)
         engine.add(spectre.factors.MA(100), 'ma')

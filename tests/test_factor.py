@@ -13,9 +13,9 @@ class TestFactorLib(unittest.TestCase):
 
     def test_factors(self):
         loader = spectre.factors.CsvDirLoader(
-            data_dir + '/daily/', 'AAPL',
+            data_dir + '/daily/', calender_asset='AAPL',
             ohlcv=('uOpen', 'uHigh', 'uLow', 'uClose', 'uVolume'),
-            index_col='date', parse_dates=True,
+            prices_index='date', parse_dates=True,
         )
         engine = spectre.factors.FactorEngine(loader)
         total_rows = 10
@@ -254,7 +254,7 @@ class TestFactorLib(unittest.TestCase):
     def test_filter_factor(self):
         loader = spectre.factors.CsvDirLoader(
             data_dir + 'daily/', ohlcv=('uOpen', 'uHigh', 'uLow', 'uClose', 'uVolume'),
-            index_col='date', parse_dates=True,
+            prices_index='date', parse_dates=True,
         )
         engine = spectre.factors.FactorEngine(loader)
         universe = spectre.factors.OHLCV.volume.top(1)
@@ -270,8 +270,9 @@ class TestFactorLib(unittest.TestCase):
         import talib
         total_rows = 10
         loader = spectre.factors.CsvDirLoader(
-            data_dir + '/daily/', 'AAPL', ohlcv=('uOpen', 'uHigh', 'uLow', 'uClose', 'uVolume'),
-            index_col='date', parse_dates=True,
+            data_dir + '/daily/', calender_asset='AAPL',
+            ohlcv=('uOpen', 'uHigh', 'uLow', 'uClose', 'uVolume'),
+            prices_index='date', parse_dates=True,
         )
         # get filtered ma5
         engine = spectre.factors.FactorEngine(loader)
@@ -299,7 +300,7 @@ class TestFactorLib(unittest.TestCase):
     def test_cuda(self):
         loader = spectre.factors.CsvDirLoader(
             data_dir + '/daily/', ohlcv=('uOpen', 'uHigh', 'uLow', 'uClose', 'uVolume'),
-            index_col='date', parse_dates=True,
+            prices_index='date', parse_dates=True,
         )
         engine = spectre.factors.FactorEngine(loader)
         engine.to_cuda()
@@ -376,7 +377,7 @@ class TestFactorLib(unittest.TestCase):
     def test_engine_cross_factor(self):
         loader = spectre.factors.CsvDirLoader(
             data_dir + '/daily/', ohlcv=('uOpen', 'uHigh', 'uLow', 'uClose', 'uVolume'),
-            index_col='date', parse_dates=True,
+            prices_index='date', parse_dates=True,
         )
         engine = spectre.factors.FactorEngine(loader)
         engine2 = spectre.factors.FactorEngine(loader)
@@ -394,8 +395,8 @@ class TestFactorLib(unittest.TestCase):
 
     @unittest.skipUnless(os.getenv('COVERAGE_RUNNING'), "too slow, run manually")
     def test_full_run(self):
-        loader = spectre.factors.QuandlLoader(
-            data_dir + '../../../historical_data/us/prices/quandl/WIKI_PRICES.zip')
+        quandl_path = data_dir + '../../../historical_data/us/prices/quandl/'
+        loader = spectre.factors.ArrowLoader(quandl_path + 'wiki_prices.feather')
         engine = spectre.factors.FactorEngine(loader)
 
         engine.to_cuda()

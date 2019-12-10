@@ -12,7 +12,7 @@ class TestDataFactorLib(unittest.TestCase):
         loader = spectre.factors.CsvDirLoader(
             data_dir + '/daily/',
             ohlcv=('uOpen', 'uHigh', 'uLow', 'uClose', 'uVolume'),
-            index_col='date', parse_dates=True,
+            prices_index='date', parse_dates=True,
         )
         engine = spectre.factors.FactorEngine(loader)
         engine.add(spectre.factors.OHLCV.volume, 'CpVol')
