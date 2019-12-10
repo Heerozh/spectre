@@ -27,7 +27,7 @@ class BaseFactor:
     def __mul__(self, other):
         return MulFactor(inputs=(self, other))
 
-    def __div__(self, other):
+    def __truediv__(self, other):
         return DivFactor(inputs=(self, other))
 
     # __mod__

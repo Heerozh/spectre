@@ -393,6 +393,61 @@ class TestFactorLib(unittest.TestCase):
 
         assert_array_equal(result.f[result['mask']], result2.f)
 
+    def test_ops(self):
+        loader = spectre.factors.CsvDirLoader(
+            data_dir + '/daily/', ohlcv=('uOpen', 'uHigh', 'uLow', 'uClose', 'uVolume'),
+            prices_index='date', parse_dates=True,
+        )
+        engine = spectre.factors.FactorEngine(loader)
+        f = spectre.factors.OHLCV.close
+        f2 = f**2
+        engine.add(f, 'f')
+        engine.add(f2, 'f^2')
+        engine.add(-f, '-f')
+        engine.add(f+f2, 'f+f2')
+        engine.add(f-f2, 'f-f2')
+        engine.add(f*f2, 'f*f2')
+        engine.add(f/f2, 'f/f2')
+
+        engine.add(f>f2, 'f>f2')
+        engine.add(f<f2, 'f<f2')
+        engine.add(f>=f2, 'f>=f2')
+        engine.add(f<=f2, 'f<=f2')
+        engine.add(f==f2, 'f==f2')
+        engine.add(f!=f2, 'f!=f2')
+
+        t = spectre.factors.OHLCV.volume.top(1)
+        b = spectre.factors.OHLCV.volume.bottom(1)
+        engine.add(t, 't')
+        engine.add(t & b, 't&b')
+        engine.add(t | b, 't|b')
+        engine.add(~t, '~t')
+
+        result = engine.run("2019-01-01", "2019-01-05")
+        print(result['t'])
+
+        f = np.array([158.61, 101.30, 145.23, 102.28, 104.39])
+        f2 = f**2
+        assert_array_equal(result['f^2'], f2)
+        assert_array_equal(result['-f'], -f)
+        assert_array_equal(result['f+f2'], f+f2)
+        assert_array_equal(result['f-f2'], f-f2)
+        assert_array_equal(result['f*f2'], f*f2)
+        assert_array_equal(result['f/f2'], f/f2)
+
+        assert_array_equal(result['f>f2'], f>f2)
+        assert_array_equal(result['f<f2'], f<f2)
+        assert_array_equal(result['f>=f2'], f>=f2)
+        assert_array_equal(result['f<=f2'], f<=f2)
+        assert_array_equal(result['f==f2'], f==f2)
+        assert_array_equal(result['f!=f2'], f!=f2)
+
+        t = np.array([False, True, True, False, False])
+        b = ~t
+        assert_array_equal(result['t&b'], t&b)
+        assert_array_equal(result['t|b'], t|b)
+        assert_array_equal(result['~t'], b)
+
     @unittest.skipUnless(os.getenv('COVERAGE_RUNNING'), "too slow, run manually")
     def test_full_run(self):
         quandl_path = data_dir + '../../../historical_data/us/prices/quandl/'
