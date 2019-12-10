@@ -91,12 +91,13 @@ class FactorEngine:
         # Get data
         self._dataframe = self._loader.load(start, end, max_backward)
 
+        # asset group
         cat = self._dataframe.index.get_level_values(1).codes
         keys = torch.tensor(cat, device=self._device, dtype=torch.int32)
         self._assetgroup = ParallelGroupBy(keys)
 
         # time group prepare
-        cat = self._dataframe.time_cat_id.values
+        cat = self._dataframe[self._loader.time_category].values
         keys = torch.tensor(cat, device=self._device, dtype=torch.int32)
         self._timegroup = ParallelGroupBy(keys)
 
@@ -189,11 +190,11 @@ class FactorEngine:
 
         start, end = pd.to_datetime(start, utc=True), pd.to_datetime(end, utc=True)
         # make columns to data factors.
-        OHLCV.open.inputs = (self._loader.ohlcv[0], 'price_multi')
-        OHLCV.high.inputs = (self._loader.ohlcv[1], 'price_multi')
-        OHLCV.low.inputs = (self._loader.ohlcv[2], 'price_multi')
-        OHLCV.close.inputs = (self._loader.ohlcv[3], 'price_multi')
-        OHLCV.volume.inputs = (self._loader.ohlcv[4], 'vol_multi')
+        OHLCV.open.inputs = (self._loader.ohlcv[0], self._loader.adjustment_multipliers[0])
+        OHLCV.high.inputs = (self._loader.ohlcv[1], self._loader.adjustment_multipliers[0])
+        OHLCV.low.inputs = (self._loader.ohlcv[2], self._loader.adjustment_multipliers[0])
+        OHLCV.close.inputs = (self._loader.ohlcv[3], self._loader.adjustment_multipliers[0])
+        OHLCV.volume.inputs = (self._loader.ohlcv[4], self._loader.adjustment_multipliers[1])
 
         # get factor
         filter_ = self._filter

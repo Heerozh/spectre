@@ -1,5 +1,6 @@
 from .dataloader import (
     DataLoader,
+    ArrowLoader,
     CsvDirLoader,
     QuandlLoader,
 )

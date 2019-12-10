@@ -1,5 +1,5 @@
 python>=3.5
-pytables
+pyarrow
 numpy
 pandas>=0.22
 torch>=1.3
