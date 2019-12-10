@@ -45,7 +45,7 @@ My Machine：
 - DDR4 3800MHz
 - RTX 2080Ti Founders
 
-Running on Quandl 5 years, 3196 Assets, total 3,637,344 ticks.
+Running on Quandl 5 years, 3196 Assets, total 3,637,344 bars.
 
 |                |       spectre (CUDA)         |       spectre (CPU)        |       zipline         |
 |----------------|------------------------------|----------------------------|-----------------------|
@@ -150,7 +150,7 @@ al.tears.create_full_tear_sheet(clean_data)
 
 #### Differences with zipline:
 * spectre's `QuandlLoader` using float32 datatype for GPU performance.
-* For performance, spectre's arranges the data to be flattened by ticks without time 
+* For performance, spectre's arranges the data to be flattened by bars without time 
   information so may be differences such as `Return(win=10)` may actually be more than 10 days/time.
 * When encounter NaN, spectre returns NaN, zipline uses `nan*` so still give you a number.
 * If an asset has no data on the day, spectre will filter it out, no matter what value you return.
@@ -210,8 +210,17 @@ Use `torch.Tensor` to write parallel computing code.
 
 ### win = 1
 When `win = 1`, the `inputs` data is tensor type, the first dimension of data is the 
-asset, the second dimension is each tick price data.
+asset, the second dimension is each bar price data. Note that the bars are not aligned 
+across all assets, they are specific to each asset.
 
+        +-----------------------------------+
+        |            bar_t1    bar_t3       |
+        |               |         |         |
+        |               v         v         |
+        | asset 1--> [[1.1, 1.2, 1.3, ...], |
+        | asset 2-->  [  5,   6,   7, ...]] |
+        +-----------------------------------+
+Example of LogReturns:      
 ```python
 class LogReturns(CustomFactor):
     inputs = [Returns(OHLCV.close)]
@@ -239,9 +248,22 @@ class OvernightReturn(CustomFactor):
 ```
 Where `Rolling.first()` is just a helper method for `rolling.agg(lambda x: x[:, :, 0])`, 
 where `x[:, :, 0]` return the first element of rolling window. The first dimension of `x` is the 
-asset, the second dimension is each tick, and the third dimension is the price date containing 
-the tick price and historical price with `win` length, and `Rolling.agg` runs on 
+asset, the second dimension is each bar, and the third dimension is the price date containing 
+the bar price and historical price with `win` length, and `Rolling.agg` runs on 
 all the portions and combines them.
+
+        +------------------win=3-------------------+
+        |          history_t-2 curr_bar_value      |
+        |              |          |                |
+        |              v          v                |
+        | asset 1-->[[[nan, nan, 1.1],  <--bar_t1  |
+        |             [nan, 1.1, 1.2],  <--bar_t2  |
+        |             [1.1, 1.2, 1.3]], <--bar_t3  |
+        |                                          |
+        | asset 2--> [[nan, nan,   5],  <--bar_t1  |
+        |             [nan,   5,   6],  <--bar_t2  |
+        |             [  5,   6,   7]]] <--bar_t3  |
+        +------------------------------------------+
 
 `Rolling.agg` can carry multiple `Rolling` objects, such as
 ```python
