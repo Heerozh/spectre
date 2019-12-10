@@ -41,8 +41,9 @@ class DataLoader:
         raise NotImplementedError("abstractmethod")
 
     @classmethod
-    def _align_to(cls, df, index):
+    def _align_to(cls, df, calender_asset):
         """ helper method for align index """
+        index = df.loc[(slice(None), calender_asset), :].index.get_level_values(0)
         df = df[df.index.get_level_values(0).isin(index)]
         df.index = df.index.remove_unused_levels()
         return df
@@ -112,7 +113,7 @@ class DataLoader:
     def test_load(self):
         """ basic test for the format returned by _load() """
         df = self._load()
-        # todo add test to test
+
         assert df.index.names == ['date', 'asset'], \
             "df.index.names should be ['date', 'asset'] "
         assert not any(df.index.duplicated()), \
@@ -170,7 +171,6 @@ class ArrowLoader(DataLoader):
         else:
             return os.path.getmtime(filepath)
 
-    # add to test
     @property
     def last_modified(self) -> float:
         return self._last_modified(self._path)
@@ -226,10 +226,15 @@ class CsvDirLoader(DataLoader):
         :param splits_index: `index_col`for csv in splits_path.
         :param read_csv: Parameters for all csv when calling pd.read_csv.
         """
-        super().__init__(prices_path, ohlcv, adjustments)
+        if adjustments is None:
+            super().__init__(prices_path, ohlcv, None)
+        else:
+            super().__init__(prices_path, ohlcv, ('ex-dividend', 'split_ratio'))
+
         assert 'index_col' not in read_csv, \
             "`index_col` for which csv? Use `prices_index` and `dividends_index` and " \
             "`splits_index` instead."
+        self._adjustment_cols = adjustments
         self._prices_by_year = prices_by_year
         self._earliest_date = earliest_date
         self._dividends_path = dividends_path
@@ -271,12 +276,17 @@ class CsvDirLoader(DataLoader):
     def _walk_dir(self, csv_path, index_col):
         pattern = os.path.join(csv_path, '*.csv')
         files = glob.glob(pattern)
+        if len(files) == 0:
+            raise ValueError("There are no files is {}".format(csv_path))
 
         def symbol(file):
             return os.path.basename(file)[:-4].upper()
 
         def read_csv(file):
-            return pd.read_csv(file, index_col=index_col, **self._read_csv)[self._earliest_date:]
+            df = pd.read_csv(file, index_col=index_col, **self._read_csv)
+            if len(df.index.dropna()) == 0:
+                return None
+            return df[self._earliest_date:]
 
         dfs = {symbol(fn): read_csv(fn) for fn in files}
         return dfs
@@ -296,34 +306,36 @@ class CsvDirLoader(DataLoader):
 
         if self._dividends_path is not None:
             dfs = self._walk_dir(self._dividends_path, self._dividends_index)
-            ex_div_col = self._adjustments[0]
+            ex_div_col = self._adjustment_cols[0]
             div_index = self._dividends_index
 
             def _agg_duplicated(_df):
-                _df = _df.reset_index().drop_duplicates()
-                if ex_div_col not in _df:
+                if _df is None or ex_div_col not in _df:
                     return None
+                _df = _df.reset_index().drop_duplicates()
                 _df = _df.dropna(subset=[ex_div_col])
                 _df = _df.set_index(div_index)[ex_div_col]
                 return _df.groupby(level=0).agg('sum')
 
             dfs = {k: _agg_duplicated(v) for k, v in dfs.items()}
             div = pd.concat(dfs, sort=False)
+            div.name = self._adjustments[0]
             # div = df.rename_axis(['asset', 'date'])
             df = pd.concat([df, div.reindex(df.index)], axis=1)
 
         if self._splits_path is not None:
             dfs = self._walk_dir(self._splits_path, self._splits_index)
-            sp_rto_col = self._adjustments[1]
+            sp_rto_col = self._adjustment_cols[1]
 
             def _drop_na_and_duplicated(_df):
-                if sp_rto_col not in _df:
+                if _df is None or sp_rto_col not in _df:
                     return None
-                _df = _df.dropna(subset=[sp_rto_col])
+                _df = _df.dropna(subset=[sp_rto_col])[sp_rto_col]
                 return _df[~_df.index.duplicated(keep='last')]
 
             dfs = {k: _drop_na_and_duplicated(v) for k, v in dfs.items()}
             splits = pd.concat(dfs, sort=False)
+            splits.name = self._adjustments[1]
             df = pd.concat([df, splits.reindex(df.index)], axis=1)
 
         df = df.swaplevel(0, 1).sort_index(level=0)
@@ -333,9 +345,9 @@ class CsvDirLoader(DataLoader):
             # drop the data of the non-trading day by calender,
             # because there may be some one-line junk data in non-trading day,
             # causing extra row of nan to all others assets.
-            calender = df.loc[(slice(None), self._calender), :].index.get_level_values(0)
-            df = self._align_to(df, calender)
+            df = df = self._align_to(df, self._calender)
         return df
+
 
 class QuandlLoader(DataLoader):
     @property
@@ -371,7 +383,6 @@ class QuandlLoader(DataLoader):
         df.set_index(['date', 'ticker'], inplace=True)
         df = self._format(df)
         if self._calender:
-            calender = df.loc[(slice(None), self._calender), :].index.get_level_values(0)
-            df = self._align_to(df, calender)
+            df = self._align_to(df, self._calender)
 
         return df
