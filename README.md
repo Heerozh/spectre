@@ -2,7 +2,7 @@
 
 Progress: 7/10  🔳🔳🔳🔳🔳🔳🔳⬜⬜⬜\
 ~~5/10: CUDA support~~\
-~~6/10: Dividends/Splits\~~
+~~6/10: Dividends/Splits~~\
 ~~7/10: Back-test architecture~~\
 8/10: Event Systems\
 9/10: Blotter\
