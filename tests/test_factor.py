@@ -424,7 +424,6 @@ class TestFactorLib(unittest.TestCase):
         engine.add(~t, '~t')
 
         result = engine.run("2019-01-01", "2019-01-05")
-        print(result['t'])
 
         f = np.array([158.61, 101.30, 145.23, 102.28, 104.39])
         f2 = f**2

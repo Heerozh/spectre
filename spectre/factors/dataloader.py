@@ -303,7 +303,7 @@ class CsvDirLoader(DataLoader):
             dfs = self._walk_split_by_year_dir(self._path, self._prices_index)
         else:
             dfs = self._walk_dir(self._path, self._prices_index)
-        dfs = {k: v[~v.index.duplicated(keep='last')] for k, v in dfs.items()}
+        dfs = {k: v[~v.index.duplicated(keep='last')] for k, v in dfs.items() if v is not None}
         df = pd.concat(dfs, sort=False)
         df = df.rename_axis(['asset', 'date'])
 
