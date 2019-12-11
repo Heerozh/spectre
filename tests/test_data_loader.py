@@ -60,9 +60,10 @@ class TestDataLoaderLib(unittest.TestCase):
     def test_csv_div_split(self):
         start, end = pd.Timestamp('2019-01-02', tz='UTC'), pd.Timestamp('2019-01-15', tz='UTC')
         loader = spectre.factors.CsvDirLoader(
-            prices_path=data_dir + '/daily/', earliest_date=start,
+            prices_path=data_dir + '/daily/', earliest_date=start, calender_asset='AAPL',
             dividends_path=data_dir + '/dividends/', splits_path=data_dir + '/splits/',
             ohlcv=('uOpen', 'uHigh', 'uLow', 'uClose', 'uVolume'), adjustments=('amount', 'ratio'),
+            split_ratio_is_inverse=True,
             prices_index='date', dividends_index='exDate', splits_index='exDate',
             parse_dates=True, )
         loader.test_load()
@@ -71,6 +72,48 @@ class TestDataLoaderLib(unittest.TestCase):
 
         # test value
         self.assertAlmostEqual(df.loc[('2019-01-11', 'MSFT'), 'ex-dividend'].values[-1], 0.57)
+
+        # test adjustments in engine
+        engine = spectre.factors.FactorEngine(loader)
+        engine.add(spectre.factors.AdjustedDataFactor(spectre.factors.OHLCV.volume), 'vol')
+        engine.add(spectre.factors.AdjustedDataFactor(spectre.factors.OHLCV.open), 'open')
+        df = engine.run(start, end, delay_factor=False)
+
+        expected_msft_open = [1526.24849, 1548.329113, 1536.244448, 1541.16783, 1563.696033,
+                              1585.47827, 1569.750105, 104.9, 103.19]
+        expected_msft_vol = [2947962.0000, 3067160.6000, 2443784.2667, 2176777.6000,
+                             2190846.8000, 2018093.5333, 1908511.6000, 28720936.0000, 32882983.0000]
+        expected_aapl_open = [155.9200, 147.6300, 148.8400, 148.9000, 150.0000, 157.4400, 154.1000,
+                              155.7200, 155.1900, 150.8100]
+        expected_aapl_vol = [37932561, 92707401, 59457561, 56974905, 42839940, 45105063,
+                             35793075, 28065422, 33834032, 29426699]
+
+        assert_almost_equal(df.loc[(slice(None), 'MSFT'), 'open'], expected_msft_open, decimal=4)
+        assert_almost_equal(df.loc[(slice(None), 'AAPL'), 'open'], expected_aapl_open, decimal=4)
+        assert_almost_equal(df.loc[(slice(None), 'MSFT'), 'vol'], expected_msft_vol, decimal=0)
+        assert_almost_equal(df.loc[(slice(None), 'AAPL'), 'vol'], expected_aapl_vol, decimal=4)
+
+        # rolling adj test
+        result = []
+
+        class RollingAdjTest(spectre.factors.CustomFactor):
+            win = 10
+
+            def compute(self, data):
+                print(data)
+                result.append(data.agg(lambda x: x[:, -1]))
+                return data.last()
+
+        engine = spectre.factors.FactorEngine(loader)
+        engine.add(RollingAdjTest(inputs=[spectre.factors.OHLCV.volume]), 'vol')
+        engine.add(RollingAdjTest(inputs=[spectre.factors.OHLCV.open]), 'open')
+        engine.run(end, end, delay_factor=False)
+
+        assert_almost_equal(result[0][0], expected_aapl_vol, decimal=4)
+        assert_almost_equal(result[0][1], expected_msft_vol+[np.nan], decimal=0)
+        assert_almost_equal(result[1][0], expected_aapl_open, decimal=4)
+        assert_almost_equal(result[1][1], expected_msft_open+[np.nan], decimal=4)
+
 
     @unittest.skipUnless(os.getenv('COVERAGE_RUNNING'), "too slow, run manually")
     def test_QuandlLoader(self):

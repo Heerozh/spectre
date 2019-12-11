@@ -266,18 +266,21 @@ class SimulationBlotter(BaseBlotter, EventReceiver):
 
         # push dividend/split data to portfolio
         df = self.dataloader.load(self._current_dt, self._current_dt, 0)
-        # todo maybe dataloader.get_ex_cols
-        if 'ex-dividend' in df.columns:
+        if self.dataloader.adjustments is not None:
+            div_col = self.dataloader.adjustments[0]
+            sp_col = self.dataloader.adjustments[1]
             for asset, shares in self.positions.items():
                 if shares == 0:
                     continue
                 row = df.loc[(slice(None), asset), :]
-                div = row['ex-dividend']
-                split = row['split_ratio']
-                if div != np.nan:
-                    self._portfolio.process_dividends(asset, div)
-                if split != np.nan:
-                    self._portfolio.process_split(asset, split)
+                if div_col in df.columns:
+                    div = row[div_col]
+                    if div != np.nan:
+                        self._portfolio.process_dividends(asset, div)
+                if sp_col in df.columns:
+                    split = row[sp_col]
+                    if split != np.nan:
+                        self._portfolio.process_split(asset, split)
 
         # push close price to portfolio
         self._portfolio.update_value(self.get_price)

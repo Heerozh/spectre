@@ -48,7 +48,7 @@ class DataLoader:
         df.index = df.index.remove_unused_levels()
         return df
 
-    def _format(self, df) -> pd.DataFrame:
+    def _format(self, df, split_ratio_is_inverse=False) -> pd.DataFrame:
         """
         Format the data as we want it. df index must be in order [datetime, asset_name]
         * change index name to ['date', 'asset']
@@ -83,6 +83,8 @@ class DataLoader:
             close_col = self.ohlcv[3]
             price_multi_col = self.adjustment_multipliers[0]
             vol_multi_col = self.adjustment_multipliers[1]
+            if split_ratio_is_inverse:
+                df[spr_col] = 1 / df[spr_col]
 
             # move ex-div up 1 row
             groupby = df.groupby(level=1)
@@ -209,6 +211,7 @@ class CsvDirLoader(DataLoader):
     def __init__(self, prices_path: str, prices_by_year=False, earliest_date: pd.Timestamp = None,
                  dividends_path=None, splits_path=None, calender_asset: str = None,
                  ohlcv=('open', 'high', 'low', 'close', 'volume'), adjustments=None,
+                 split_ratio_is_inverse=False,
                  prices_index='date', dividends_index='exDate', splits_index='exDate', **read_csv):
         """
         Load data from csv dir
@@ -228,6 +231,8 @@ class CsvDirLoader(DataLoader):
             for clean up non-trading time data.
         :param ohlcv: Required, OHLCV column names.
         :param adjustments: Optional, `dividend amount` and `splits ratio` column names.
+        :param split_ratio_is_inverse: If calculated by to/from, set to True.
+            For example, 3-for-1 split, to/form=0.333...
         :param prices_index: `index_col`for csv in prices_path
         :param dividends_index: `index_col`for csv in dividends_path.
         :param splits_index: `index_col`for csv in splits_path.
@@ -242,6 +247,7 @@ class CsvDirLoader(DataLoader):
             "`index_col` for which csv? Use `prices_index` and `dividends_index` and " \
             "`splits_index` instead."
         self._adjustment_cols = adjustments
+        self._split_ratio_is_inverse = split_ratio_is_inverse
         self._prices_by_year = prices_by_year
         self._earliest_date = earliest_date
         self._dividends_path = dividends_path
@@ -351,7 +357,7 @@ class CsvDirLoader(DataLoader):
 
         df = df.swaplevel(0, 1).sort_index(level=0)
 
-        df = self._format(df)
+        df = self._format(df, self._split_ratio_is_inverse)
         if self._calender:
             # drop the data of the non-trading day by calender,
             # because there may be some one-line junk data in non-trading day,
