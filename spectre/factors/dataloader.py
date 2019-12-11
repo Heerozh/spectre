@@ -216,23 +216,26 @@ class CsvDirLoader(DataLoader):
         """
         Load data from csv dir
         :param prices_path: prices csv folder, structured as one csv per stock.
-            When encountering duplicate `date`, Loader will keep the last, drop others.
+            When encountering duplicate `prices_index`, Loader will keep the last, drop others.
         :param prices_by_year: If price file name like 'spy_2017.csv', set this to True
         :param earliest_date: Data before this date will not be read, save memory
         :param dividends_path: dividends csv folder, structured as one csv per stock.
-            About duplicate data, loader will first drop the exact same rows, and then for
-            the same `ex-date` but different 'dividend amount' data, loader will sum them up.
-            If `dividends_path` not set, the data is considered to be included in the prices csv.
+            For duplicate data, loader will first drop the exact same rows, and then for the same
+            `dividends_index` but different 'dividend amount' rows, loader will sum them up.
+            If `dividends_path` not set, the `adjustments[0]` column is considered to be included
+            in the prices csv.
         :param splits_path: splits csv folder, structured as one csv per stock,
-            When encountering duplicate `ex-date`, Loader will use the last non-NaN 'split ratio',
-            drop others.
-            If `splits_path` not set, the data is considered to be included in the prices csv.
-        :param calender_asset: asset name as trading calendar, like 'SPY',
-            for clean up non-trading time data.
-        :param ohlcv: Required, OHLCV column names.
+            When encountering duplicate `splits_index`, Loader will use the last non-NaN 'split
+            ratio', drop others.
+            If `splits_path` not set, the `adjustments[1]` column is considered to be included
+            in the prices csv.
+        :param calender_asset: asset name as trading calendar, like 'SPY', for clean up non-trading
+            time data.
+        :param ohlcv: Required, OHLCV column names. When you don't need to use `adjustments` and
+            `factors.OHLCV`, you can set this to None.
         :param adjustments: Optional, `dividend amount` and `splits ratio` column names.
-        :param split_ratio_is_inverse: If calculated by to/from, set to True.
-            For example, 3-for-1 split, to/form=0.333...
+        :param split_ratio_is_inverse: If split ratio calculated by to/from, set to True.
+            For example, 3-for-1 split, to/form will be 0.333...
         :param prices_index: `index_col`for csv in prices_path
         :param dividends_index: `index_col`for csv in dividends_path.
         :param splits_index: `index_col`for csv in splits_path.

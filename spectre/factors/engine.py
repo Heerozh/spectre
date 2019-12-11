@@ -190,11 +190,12 @@ class FactorEngine:
 
         start, end = pd.to_datetime(start, utc=True), pd.to_datetime(end, utc=True)
         # make columns to data factors.
-        OHLCV.open.inputs = (self._loader.ohlcv[0], self._loader.adjustment_multipliers[0])
-        OHLCV.high.inputs = (self._loader.ohlcv[1], self._loader.adjustment_multipliers[0])
-        OHLCV.low.inputs = (self._loader.ohlcv[2], self._loader.adjustment_multipliers[0])
-        OHLCV.close.inputs = (self._loader.ohlcv[3], self._loader.adjustment_multipliers[0])
-        OHLCV.volume.inputs = (self._loader.ohlcv[4], self._loader.adjustment_multipliers[1])
+        if self._loader.ohlcv is not None:
+            OHLCV.open.inputs = (self._loader.ohlcv[0], self._loader.adjustment_multipliers[0])
+            OHLCV.high.inputs = (self._loader.ohlcv[1], self._loader.adjustment_multipliers[0])
+            OHLCV.low.inputs = (self._loader.ohlcv[2], self._loader.adjustment_multipliers[0])
+            OHLCV.close.inputs = (self._loader.ohlcv[3], self._loader.adjustment_multipliers[0])
+            OHLCV.volume.inputs = (self._loader.ohlcv[4], self._loader.adjustment_multipliers[1])
 
         # get factor
         filter_ = self._filter

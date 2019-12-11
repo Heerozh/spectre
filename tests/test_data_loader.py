@@ -100,7 +100,6 @@ class TestDataLoaderLib(unittest.TestCase):
             win = 10
 
             def compute(self, data):
-                print(data)
                 result.append(data.agg(lambda x: x[:, -1]))
                 return data.last()
 
@@ -113,6 +112,17 @@ class TestDataLoaderLib(unittest.TestCase):
         assert_almost_equal(result[0][1], expected_msft_vol+[np.nan], decimal=0)
         assert_almost_equal(result[1][0], expected_aapl_open, decimal=4)
         assert_almost_equal(result[1][1], expected_msft_open+[np.nan], decimal=4)
+
+    def test_no_ohlcv(self):
+        start, end = pd.Timestamp('2019-01-02', tz='UTC'), pd.Timestamp('2019-01-15', tz='UTC')
+        loader = spectre.factors.CsvDirLoader(
+            prices_path=data_dir + '/daily/', earliest_date=start, calender_asset='AAPL',
+            ohlcv=None, adjustments=None,
+            prices_index='date',
+            parse_dates=True, )
+        engine = spectre.factors.FactorEngine(loader)
+        engine.add(spectre.factors.DataFactor(inputs=['uOpen']), 'open')
+        df = engine.run(start, end, delay_factor=False)
 
 
     @unittest.skipUnless(os.getenv('COVERAGE_RUNNING'), "too slow, run manually")
