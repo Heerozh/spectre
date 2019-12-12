@@ -56,12 +56,14 @@ class Portfolio:
         self._current_date = date
 
     def update(self, asset, amount):
+        assert self._current_date is not None
         self._positions[asset] += amount
         self._history.loc[self._current_date, asset] = self._positions[asset]
 
     def update_cash(self, amount):
         self._cash += amount
-        self._history.loc[self._current_date, 'cash'] = self._cash
+        if self._current_date is not None:
+            self._history.loc[self._current_date, 'cash'] = self._cash
 
     def process_split(self, asset, ratio):
         sp = self._positions[asset] * (ratio - 1)
@@ -111,7 +113,11 @@ class BaseBlotter:
     def positions(self):
         return self._portfolio.positions
 
-    def set_datetime(self, dt):
+    @property
+    def portfolio(self):
+        return self._portfolio
+
+    def set_datetime(self, dt: pd.Timestamp) -> None:
         self._current_dt = dt
         self._portfolio.set_date(dt)
 
@@ -163,7 +169,7 @@ class BaseBlotter:
         if not isinstance(asset, str):
             raise KeyError("`asset` must be a string")
 
-        amount = self._portfolio.value * pct / self.get_price(asset)
+        amount = int((self._portfolio.value * pct) / self.get_price(asset))
         held = self.positions[asset]
         amount -= held
         return self._order(asset, int(amount))
@@ -187,7 +193,7 @@ class BaseBlotter:
 class SimulationBlotter(BaseBlotter, EventReceiver):
     Order = namedtuple("Order", ['date', 'asset', 'amount', 'price', 'final_price', 'commission'])
 
-    def __init__(self, dataloader, daily_curb=None):
+    def __init__(self, dataloader, cash=100000, daily_curb=None):
         """
         :param dataloader: dataloader for get prices
         :param daily_curb: How many fluctuations to prohibit trading, in return.
@@ -198,6 +204,7 @@ class SimulationBlotter(BaseBlotter, EventReceiver):
         self.dataloader = dataloader
         self.daily_curb = daily_curb
         self.orders = defaultdict(list)
+        self._portfolio.update_cash(cash)
 
     def clear(self):
         self.orders = defaultdict(list)
@@ -238,7 +245,7 @@ class SimulationBlotter(BaseBlotter, EventReceiver):
         commission = self.commission.calculate(price, amount)
         if amount < 0:
             commission += self.short_fee.calculate(price, amount)
-        slippage = self.slippage.calculate(price, amount)
+        slippage = self.slippage.calculate(price, 1)
         final_price = price + slippage
 
         # make order
@@ -255,7 +262,13 @@ class SimulationBlotter(BaseBlotter, EventReceiver):
         pass
 
     def get_transactions(self):
-        pass
+        data = []
+        for asset, orders in self.orders.items():
+            for o in orders:
+                data.append(dict(date=o.date, amount=o.amount, price=o.final_price, symbol=o.asset))
+        ret = pd.DataFrame(data)
+        ret = ret.set_index('date')
+        return ret
 
     def market_open(self):
         self.market_opened = True
