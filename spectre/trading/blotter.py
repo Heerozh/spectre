@@ -41,7 +41,7 @@ class Portfolio:
         return sum(np.abs(values)) / (sum(values) + self._cash)
 
     def __repr__(self):
-        return "<Portfolio>:\n" + str(self.history)
+        return "<Portfolio>" + str(self.history)[11:]
 
     def clear(self):
         self.__init__()
@@ -55,10 +55,12 @@ class Portfolio:
 
         self._current_date = date
 
-    def update(self, asset, amount):
+    def update(self, asset, amount, execution_price):
         assert self._current_date is not None
         self._positions[asset] += amount
         self._history.loc[self._current_date, asset] = self._positions[asset]
+        if execution_price is not None:  # update last price for correct portfolio value
+            self._last_price[asset] = execution_price
 
     def update_cash(self, amount):
         self._cash += amount
@@ -67,7 +69,7 @@ class Portfolio:
 
     def process_split(self, asset, inverse_ratio: float):
         sp = self._positions[asset] * (inverse_ratio - 1)
-        self.update(asset, sp)
+        self.update(asset, sp, None)
 
     def process_dividends(self, asset, ratio):
         div = self._positions[asset] * ratio
@@ -194,7 +196,8 @@ class BaseBlotter:
 
 
 class SimulationBlotter(BaseBlotter, EventReceiver):
-    Order = namedtuple("Order", ['date', 'asset', 'amount', 'price', 'final_price', 'commission'])
+    Order = namedtuple("Order", ['date', 'asset', 'amount', 'price',
+                                 'execution_price', 'commission'])
 
     def __init__(self, dataloader, cash=100000, daily_curb=None):
         """
@@ -207,15 +210,18 @@ class SimulationBlotter(BaseBlotter, EventReceiver):
         self.dataloader = dataloader
         self.daily_curb = daily_curb
         self.orders = defaultdict(list)
+        self.initial_cash = cash
         self._portfolio.update_cash(cash)
         self.prices = dataloader.load(None, None, 0)
 
     def __repr__(self):
-        return self.get_transactions().__repr__()
+        return '<Transactions>' + str(self.get_transactions())[14:] + \
+               '\n' + str(self.portfolio)
 
     def clear(self):
         self.orders = defaultdict(list)
         self._portfolio.clear()
+        self._portfolio.update_cash(self.initial_cash)
 
     def set_datetime(self, dt: pd.Timestamp) -> None:
         if self._current_dt is not None:
@@ -273,18 +279,18 @@ class SimulationBlotter(BaseBlotter, EventReceiver):
         slippage = self.slippage.calculate(price, 1)
         if amount < 0:
             commission += self.short_fee.calculate(price, amount)
-            final_price = price - slippage
+            execution_price = price - slippage
         else:
-            final_price = price + slippage
+            execution_price = price + slippage
 
         # make order
         order = SimulationBlotter.Order(
-            self._current_dt, asset, amount, price, final_price, commission)
+            self._current_dt, asset, amount, price, execution_price, commission)
         self.orders[asset].append(order)
 
         # update portfolio, pay cash
-        self._portfolio.update(asset, amount)
-        self._portfolio.update_cash(-amount * final_price - commission)
+        self._portfolio.update(asset, amount, execution_price)
+        self._portfolio.update_cash(-amount * execution_price - commission)
 
     def cancel_all_orders(self):
         # don't need
@@ -295,9 +301,10 @@ class SimulationBlotter(BaseBlotter, EventReceiver):
         for asset, orders in self.orders.items():
             for o in orders:
                 data.append(dict(date=o.date, amount=o.amount, price=o.price, symbol=o.asset,
-                                 final_price=o.final_price, commission=o.commission))
-        ret = pd.DataFrame(data)
-        ret = ret.set_index('date')
+                                 execution_price=o.execution_price, commission=o.commission))
+        ret = pd.DataFrame(data, columns=['date', 'symbol', 'amount', 'price',
+                                          'execution_price', 'commission'])
+        ret = ret.set_index('date').sort_index()
         return ret
 
     def market_open(self):
