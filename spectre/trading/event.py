@@ -85,13 +85,10 @@ class EventReceiver:
     def fire_event(self, evt_type: Type[Event]):
         self._event_manager.fire_event(self, evt_type)
 
-    def on_subscribe(self):
-        raise NotImplementedError("abstractmethod")
-
-    def initialize(self):
+    def on_run(self):
         pass
 
-    def terminate(self):
+    def on_end_of_run(self):
         pass
 
 
@@ -104,7 +101,6 @@ class EventManager:
         assert receiver not in self._subscribers, 'Duplicate subscribe'
         self._subscribers[receiver] = []
         receiver._event_manager = self
-        receiver.on_subscribe()
 
     def unsubscribe(self, receiver: EventReceiver):
         assert receiver in self._subscribers, 'Subscriber not exists'
@@ -129,7 +125,10 @@ class EventManager:
             raise ValueError("At least one subscriber.")
 
         for r, events in self._subscribers.items():
-            r.initialize()
+            # clear scheduled events
+            events.clear()
+            r.on_run()
+
         while not self._stop:
             time.sleep(0.001)
             for r, events in self._subscribers.items():
@@ -137,8 +136,8 @@ class EventManager:
                     if event.should_trigger():
                         event.callback()
 
-        for r, events in self._subscribers.items():
-            r.terminate()
+        for r in self._subscribers.keys():
+            r.on_end_of_run()
 
 
 # ----------------------------------------------------------------

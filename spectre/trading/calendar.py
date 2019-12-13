@@ -38,6 +38,8 @@ class Calendar:
         }
 
     def set_as_holiday(self, date):
+        # 要考虑下calendar设错的情况，比如下单到关闭还没成交的话，订单都默认会取消的，
+        # 下个日期重新算就是了，加个测试用例
         return self.remove_events(date)
 
     def next(self, event_name):

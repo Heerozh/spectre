@@ -14,13 +14,18 @@ class TestTradingAlgorithm(unittest.TestCase):
             prices_index='date', parse_dates=True,
         )
 
-        class TestAlg(spectre.trading.CustomAlgorithm):
+        class MockTestAlg(spectre.trading.CustomAlgorithm):
             _data = None
-            _test = []
+            # test the elapsed time is correct
+            _bar_dates = []
+            # test if the sequence of events per day is correct
             _seq = 0
 
             def __init__(self):
                 self.blotter = spectre.trading.SimulationBlotter(loader)
+
+            def clear(self):
+                pass
 
             def run_engine(self, start, end):
                 engine = spectre.factors.FactorEngine(loader)
@@ -40,17 +45,18 @@ class TestTradingAlgorithm(unittest.TestCase):
             def _run_engine(self, source):
                 self._data = self.run_engine(None, None)
 
-            def on_subscribe(self):
+            def on_run(self):
                 self.schedule(spectre.trading.event.EveryBarData(
                    self._run_engine
                 ))
+                self.initialize()
 
             def test_every_bar(self, data):
                 self._seq += 1
                 assert self._seq == 3
 
                 today = data.index.get_level_values(0)[-1]
-                self._test.append(data.index.get_level_values(0)[-1])
+                self._bar_dates.append(data.index.get_level_values(0)[-1])
                 if today > pd.Timestamp("2019-01-10", tz='UTC'):
                     self.stop_event_manager()
 
@@ -71,15 +77,16 @@ class TestTradingAlgorithm(unittest.TestCase):
                 assert self._seq == 5
                 self._seq = 0
 
-        rcv = TestAlg()
+        rcv = MockTestAlg()
 
         evt_mgr = spectre.trading.SimulationEventManager()
         evt_mgr.subscribe(rcv)
         evt_mgr.run("2019-01-01", "2019-01-15")
 
-        self.assertEqual(rcv._test[0], pd.Timestamp("2019-01-03", tz='UTC'))
-        self.assertEqual(rcv._test[1], pd.Timestamp("2019-01-04", tz='UTC'))
-        self.assertEqual(rcv._test[-1], pd.Timestamp("2019-01-11", tz='UTC'))
+        self.assertEqual(rcv._bar_dates[0], pd.Timestamp("2019-01-03", tz='UTC'))
+        self.assertEqual(rcv._bar_dates[1], pd.Timestamp("2019-01-04", tz='UTC'))
+        # test stop event is correct
+        self.assertEqual(rcv._bar_dates[-1], pd.Timestamp("2019-01-11", tz='UTC'))
 
     def test_one_engine_algorithm(self):
         class OneEngineAlg(spectre.trading.CustomAlgorithm):
@@ -91,8 +98,8 @@ class TestTradingAlgorithm(unittest.TestCase):
 
                 self.schedule_rebalance(spectre.trading.event.EveryBarData(self.rebalance))
 
-                self.blotter.set_commission(0, 0.005, 1)
-                self.blotter.set_slippage(0, 0.4)
+                self.blotter.set_commission(0, 0, 0)
+                self.blotter.set_slippage(0, 0)
 
             def rebalance(self, data, history):
                 weights = data.ma5 / data.ma5.sum()
@@ -113,7 +120,10 @@ class TestTradingAlgorithm(unittest.TestCase):
         alg = OneEngineAlg(blotter, main=loader)
         evt_mgr.subscribe(alg)
         evt_mgr.subscribe(blotter)
-        evt_mgr.run("2019-01-01", "2019-01-15")
+        evt_mgr.run("2019-01-11", "2019-01-15")
+
+        print(blotter)
+        # 测试几点，数据是否正确，然后延后factor值是否对，用excel算一下，测试分红等
 
     def test_two_engine_algorithm(self):
         class TwoEngineAlg(spectre.trading.CustomAlgorithm):
@@ -152,5 +162,9 @@ class TestTradingAlgorithm(unittest.TestCase):
         alg = TwoEngineAlg(blotter, main=loader, test=loader)
         evt_mgr.subscribe(alg)
         evt_mgr.subscribe(blotter)
-        evt_mgr.run("2019-01-01", "2019-01-15")
+        evt_mgr.run("2019-01-10", "2019-01-15")
+        print(blotter)
+
+        evt_mgr.run("2019-01-10", "2019-01-15")
+        print(blotter)
 

@@ -337,6 +337,6 @@ class SimulationBlotter(BaseBlotter, EventReceiver):
         # push close price to portfolio
         self._portfolio.update_value(self.get_price)
 
-    def on_subscribe(self):
+    def on_run(self):
         self.schedule(MarketOpen(self.market_open, -100000))  # 100ms ahead for system preparation
         self.schedule(MarketClose(self.market_close))

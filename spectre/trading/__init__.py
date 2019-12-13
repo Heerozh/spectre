@@ -87,7 +87,7 @@ spectre.run_backtest(loader, MyAlg, '2018-01-01', '2019-01-01')
 ----------------
 class YourBrokerAPI:
     class LiveDataLoader(EventReceiver, DataLoader):
-        def on_subscribe():
+        def on_run():
             self.schedule(event.Always(read_data))
         def read_data(self):
             api.asio.read()

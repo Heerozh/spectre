@@ -11,14 +11,9 @@ class TestTradingEvent(unittest.TestCase):
         class TestEventReceiver(spectre.trading.EventReceiver):
             fired = 0
 
-            def initialize(self):
-                self.schedule(spectre.trading.event.EveryBarData(self.test_every_bar))
-
-            def terminate(self):
-                pass
-
-            def on_subscribe(self):
+            def on_run(self):
                 self.schedule(spectre.trading.event.Always(self.test_always))
+                self.schedule(spectre.trading.event.EveryBarData(self.test_every_bar))
 
             def test_always(self):
                 self.fired += 1
@@ -29,14 +24,8 @@ class TestTradingEvent(unittest.TestCase):
                     self.stop_event_manager()
 
         class StopFirer(spectre.trading.EventReceiver):
-            def initialize(self):
+            def on_run(self):
                 self.schedule(spectre.trading.event.Always(self.test))
-
-            def on_subscribe(self):
-                pass
-
-            def terminate(self):
-                pass
 
             def test(self):
                 self.fire_event(spectre.trading.event.EveryBarData)

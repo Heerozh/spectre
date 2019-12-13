@@ -29,6 +29,10 @@ class CustomAlgorithm(EventReceiver, ABC):
         self._engines = {name: FactorEngine(loader) for name, loader in data_sources.items()}
         self.blotter = blotter
 
+    def clear(self):
+        for engine in self._engines.values():
+            engine.clear()
+
     def get_factor_engine(self, name: str = None):
         if name is None:
             name = next(iter(self._engines))
@@ -63,12 +67,19 @@ class CustomAlgorithm(EventReceiver, ABC):
     def _run_engine(self, event_source=None):
         self._data = self.run_engine(None, None)
 
-    def on_subscribe(self):
+    def on_run(self):
         # schedule first, so it will run before rebalance
         self.schedule(EveryBarData(self._run_engine))
+        self.initialize()
+
+    def on_end_of_run(self):
+        self.terminate()
 
     def initialize(self):
         raise NotImplementedError("abstractmethod")
+
+    def terminate(self):
+        pass
 
 
 # ----------------------------------------------------------------
@@ -117,7 +128,11 @@ class SimulationEventManager(EventManager):
             raise ValueError("At least one subscriber.")
 
         for r, events in self._subscribers.items():
-            r.initialize()
+            # clear scheduled events
+            events.clear()
+            if isinstance(r, CustomAlgorithm):
+                r.clear()
+            r.on_run()
 
         for alg in self._subscribers:
             if not isinstance(alg, CustomAlgorithm):
@@ -152,6 +167,6 @@ class SimulationEventManager(EventManager):
             self.fire_before_event(MarketClose)
             self.fire_after_event(MarketClose)
 
-        for r, events in self._subscribers.items():
-            r.terminate()
+        for r in self._subscribers.keys():
+            r.on_end_of_run()
 
