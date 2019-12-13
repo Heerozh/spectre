@@ -30,7 +30,8 @@ def plot_quantile_and_cumulative_returns(factor_data, mean_ret):
 
     x = quantiles
     factors = mean_ret.columns.levels[0]
-    periods = mean_ret.columns.levels[1]
+    periods = list(mean_ret.columns.levels[1])
+    periods.sort(key=lambda cn: int(cn[:-1]))
     rows = math.ceil(len(factors))
     cols = 2
 
