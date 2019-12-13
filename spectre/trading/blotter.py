@@ -65,8 +65,8 @@ class Portfolio:
         if self._current_date is not None:
             self._history.loc[self._current_date, 'cash'] = self._cash
 
-    def process_split(self, asset, ratio):
-        sp = self._positions[asset] * (ratio - 1)
+    def process_split(self, asset, inverse_ratio: float):
+        sp = self._positions[asset] * (inverse_ratio - 1)
         self.update(asset, sp)
 
     def process_dividends(self, asset, ratio):
@@ -169,7 +169,10 @@ class BaseBlotter:
         if not isinstance(asset, str):
             raise KeyError("`asset` must be a string")
 
-        amount = int((self._portfolio.value * pct) / self.get_price(asset))
+        price = self.get_price(asset)
+        if price is None:
+            raise KeyError("`asset` is not tradable today.")
+        amount = int((self._portfolio.value * pct) / price)
         held = self.positions[asset]
         amount -= held
         return self._order(asset, int(amount))
@@ -205,10 +208,26 @@ class SimulationBlotter(BaseBlotter, EventReceiver):
         self.daily_curb = daily_curb
         self.orders = defaultdict(list)
         self._portfolio.update_cash(cash)
+        self.prices = dataloader.load(None, None, 0)
+
+    def __repr__(self):
+        return self.get_transactions().__repr__()
 
     def clear(self):
         self.orders = defaultdict(list)
         self._portfolio.clear()
+
+    def set_datetime(self, dt: pd.Timestamp) -> None:
+        if self._current_dt is not None:
+            # make up events for skipped dates
+            for day in pd.bdate_range(self._current_dt, dt):
+                if day == self._current_dt or day == dt:
+                    continue
+                super().set_datetime(day)
+                self.market_open()
+                self.market_close()
+
+        super().set_datetime(dt)
 
     def set_price(self, name: str):
         if name == 'open':
@@ -217,36 +236,46 @@ class SimulationBlotter(BaseBlotter, EventReceiver):
             self.price_col = self.dataloader.ohlcv[3]
 
     def get_price(self, asset: str):
-        df = self.dataloader.load(self._current_dt, self._current_dt, 0)
-        if asset not in df.index.get_level_values(1):
+        rowid = (self._current_dt, asset)
+        if rowid not in self.prices.index:
             return None
-        price = df.loc[(slice(None), asset), self.price_col]
-        return price.values[-1]
+        price = self.prices.loc[rowid, self.price_col]
+        return price
 
     def _order(self, asset, amount):
         if not self.market_opened:
             raise RuntimeError('Out of market hours, or you did not subscribe this class '
                                'with SimulationEventManager')
+        if abs(amount) > self.max_shares:
+            raise OverflowError('Cannot order more than ±%d shares'.format(self.max_shares))
+
         if amount == 0:
             return
 
         # get price and change
-        df = self.dataloader.load(self._current_dt, self._current_dt, 1)
-        df = df.loc[(slice(None), asset), :]
-        price = df[self.price_col].iloc[-1]
-        close_col = self.dataloader.ohlcv[3]
-        previous_close = df[close_col].iloc[-1]
-        change = price / previous_close - 1
-        # Detecting whether transactions are possible
-        if self.daily_curb is not None and abs(change) > self.daily_curb:
-            return
+        price = self.get_price(asset)
+        if price is None:
+            raise KeyError("`asset` is not tradable today.")
+
+        if self.daily_curb is not None:
+            df = self.prices.loc[(slice(None, self._current_dt), asset), :]
+            if df.shape[0] < 2:
+                return
+            close_col = self.dataloader.ohlcv[3]
+            previous_close = df[close_col].iloc[-2]
+            change = price / previous_close - 1
+            # Detecting whether transactions are possible
+            if abs(change) > self.daily_curb:
+                return
 
         # commission, slippage
         commission = self.commission.calculate(price, amount)
+        slippage = self.slippage.calculate(price, 1)
         if amount < 0:
             commission += self.short_fee.calculate(price, amount)
-        slippage = self.slippage.calculate(price, 1)
-        final_price = price + slippage
+            final_price = price - slippage
+        else:
+            final_price = price + slippage
 
         # make order
         order = SimulationBlotter.Order(
@@ -255,7 +284,7 @@ class SimulationBlotter(BaseBlotter, EventReceiver):
 
         # update portfolio, pay cash
         self._portfolio.update(asset, amount)
-        self._portfolio.update_cash(-amount * final_price + commission)
+        self._portfolio.update_cash(-amount * final_price - commission)
 
     def cancel_all_orders(self):
         # don't need
@@ -265,7 +294,8 @@ class SimulationBlotter(BaseBlotter, EventReceiver):
         data = []
         for asset, orders in self.orders.items():
             for o in orders:
-                data.append(dict(date=o.date, amount=o.amount, price=o.final_price, symbol=o.asset))
+                data.append(dict(date=o.date, amount=o.amount, price=o.price, symbol=o.asset,
+                                 final_price=o.final_price, commission=o.commission))
         ret = pd.DataFrame(data)
         ret = ret.set_index('date')
         return ret
@@ -278,22 +308,24 @@ class SimulationBlotter(BaseBlotter, EventReceiver):
         self.market_opened = False
 
         # push dividend/split data to portfolio
-        df = self.dataloader.load(self._current_dt, self._current_dt, 0)
         if self.dataloader.adjustments is not None:
             div_col = self.dataloader.adjustments[0]
             sp_col = self.dataloader.adjustments[1]
             for asset, shares in self.positions.items():
                 if shares == 0:
                     continue
-                row = df.loc[(slice(None), asset), :]
-                if div_col in df.columns:
+                rowid = (self._current_dt, asset)
+                if rowid not in self.prices.index:
+                    continue
+                row = self.prices.loc[rowid, :]
+                if div_col in self.prices.columns:
                     div = row[div_col]
-                    if div != np.nan:
+                    if div != np.nan and div != 0:
                         self._portfolio.process_dividends(asset, div)
-                if sp_col in df.columns:
+                if sp_col in self.prices.columns:
                     split = row[sp_col]
-                    if split != np.nan:
-                        self._portfolio.process_split(asset, split)
+                    if split != np.nan and split != 1:
+                        self._portfolio.process_split(asset, 1 / split)
 
         # push close price to portfolio
         self._portfolio.update_value(self.get_price)

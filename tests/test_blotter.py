@@ -66,4 +66,81 @@ class TestBlotter(unittest.TestCase):
         self.assertEqual(2, pf.leverage)
 
     def test_blotter(self):
-        pass
+        loader = spectre.factors.CsvDirLoader(
+            data_dir + '/daily/', ohlcv=('uOpen', 'uHigh', 'uLow', 'uClose', 'uVolume'),
+            dividends_path=data_dir + '/dividends/', splits_path=data_dir + '/splits/',
+            adjustments=('amount', 'ratio'), split_ratio_is_inverse=True,
+            prices_index='date', dividends_index='exDate', splits_index='exDate', parse_dates=True,
+        )
+        blotter = spectre.trading.SimulationBlotter(loader, cash=200000)
+        blotter.set_commission(0, 0.005, 1)
+        blotter.set_slippage(0.005, 0.4)
+
+        # t+0
+        date = pd.Timestamp("2019-01-02", tz='UTC')
+        blotter.set_datetime(date)
+        blotter.market_open()
+        blotter.set_price("open")
+        blotter.order_target_percent('AAPL', 0.3)
+        blotter.set_price("close")
+        blotter.order_target_percent('AAPL', 0)
+        blotter.market_close()
+
+        # check transactions
+        expected = pd.DataFrame([[384, 155.92, 'AAPL', 157.09960, 1.92],
+                                 [-384, 158.61, 'AAPL', 157.41695, 1.92]],
+                                columns=['amount', 'price', 'symbol', 'final_price', 'commission'],
+                                index=[date, date])
+        expected.index.name = 'date'
+        pd.testing.assert_frame_equal(expected, blotter.get_transactions())
+
+        value = 200000 - 157.0996 * 384 - 1.92 + 157.41695 * 384 - 1.92
+        expected = pd.DataFrame([[0.0,  value,  value]],
+                                columns=['AAPL', 'cash', 'value'],
+                                index=[date])
+        pd.testing.assert_frame_equal(expected, blotter.get_history_positions())
+
+        # no data day
+        date = pd.Timestamp("2019-01-10", tz='UTC')
+        blotter.set_datetime(date)
+        blotter.market_open()
+        blotter.set_price("close")
+        self.assertRaisesRegex(KeyError, '.*tradable.*', blotter.order_target_percent, 'MSFT', 0.5)
+        # test curb
+        blotter.daily_curb = 0.01
+        blotter.order('AAPL', 1)
+        self.assertEqual(0, blotter.positions['AAPL'])
+        blotter.daily_curb = 0.033
+        blotter.order('AAPL', 1)
+        self.assertEqual(1, blotter.positions['AAPL'])
+        blotter.order('AAPL', -1)
+        blotter.market_close()
+        blotter.daily_curb = None
+        cash = blotter.portfolio.cash
+
+        # overnight neutralized portfolio
+        date = pd.Timestamp("2019-01-11", tz='UTC')
+        blotter.set_datetime(date)
+        blotter.market_open()
+        blotter.set_price("close")
+        blotter.order_target_percent('AAPL', -0.5)
+        blotter.order_target_percent('MSFT', 0.5)
+        blotter.market_close()
+
+        # test 01-11 div
+        div = 0.46 + 0.11
+        cash = cash + 651 * 152.52155 - 3.255 - 942 * 104.116 - 4.71 + div * 942
+        self.assertAlmostEqual(cash, blotter.portfolio.cash)
+
+        # test 01-14 splits, use 01-15 to test jump a day
+        date = pd.Timestamp("2019-01-15", tz='UTC')
+        blotter.set_datetime(date)
+        blotter.market_open()
+        blotter.market_close()
+        self.assertEqual(942*15, blotter.positions['MSFT'])
+        # test over night value
+        value = cash - 651*156.94 + 942*15 * 108.85
+        expected = pd.DataFrame([[-651.0,  cash, value, 942*15]],
+                                columns=['AAPL', 'cash', 'value', 'MSFT'],
+                                index=[date])
+        pd.testing.assert_series_equal(expected.iloc[-1], blotter.get_history_positions().iloc[-1])

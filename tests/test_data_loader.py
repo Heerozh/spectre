@@ -124,7 +124,6 @@ class TestDataLoaderLib(unittest.TestCase):
         engine.add(spectre.factors.DataFactor(inputs=['uOpen']), 'open')
         df = engine.run(start, end, delay_factor=False)
 
-
     @unittest.skipUnless(os.getenv('COVERAGE_RUNNING'), "too slow, run manually")
     def test_QuandlLoader(self):
         quandl_path = data_dir + '../../../historical_data/us/prices/quandl/'

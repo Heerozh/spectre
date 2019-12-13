@@ -4,6 +4,7 @@
 @license: Apache 2.0
 @email: heeroz@gmail.com
 """
+from typing import Optional
 import pandas as pd
 import numpy as np
 import os
@@ -144,10 +145,17 @@ class DataLoader:
 
         return df
 
-    def load(self, start: pd.Timestamp, end: pd.Timestamp, backward: int) -> pd.DataFrame:
+    def load(self, start: Optional[pd.Timestamp], end: Optional[pd.Timestamp],
+             backward: int) -> pd.DataFrame:
         df = self._load()
 
         index = df.index.levels[0]
+
+        if start is None:
+            start = index[0]
+        if end is None:
+            end = index[-1]
+
         if index[0] > start:
             raise ValueError("`start` time cannot less than earliest time of data: {}."
                              .format(index[0]))
@@ -216,7 +224,8 @@ class CsvDirLoader(DataLoader):
         """
         Load data from csv dir
         :param prices_path: prices csv folder, structured as one csv per stock.
-            When encountering duplicate `prices_index`, Loader will keep the last, drop others.
+            When encountering duplicate indexes data in `prices_index`, Loader will keep the last,
+            drop others.
         :param prices_by_year: If price file name like 'spy_2017.csv', set this to True
         :param earliest_date: Data before this date will not be read, save memory
         :param dividends_path: dividends csv folder, structured as one csv per stock.
@@ -225,8 +234,8 @@ class CsvDirLoader(DataLoader):
             If `dividends_path` not set, the `adjustments[0]` column is considered to be included
             in the prices csv.
         :param splits_path: splits csv folder, structured as one csv per stock,
-            When encountering duplicate `splits_index`, Loader will use the last non-NaN 'split
-            ratio', drop others.
+            When encountering duplicate indexes data in `splits_index`, Loader will use the last
+            non-NaN 'split ratio', drop others.
             If `splits_path` not set, the `adjustments[1]` column is considered to be included
             in the prices csv.
         :param calender_asset: asset name as trading calendar, like 'SPY', for clean up non-trading
