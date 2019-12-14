@@ -3,6 +3,7 @@ import spectre
 import pandas as pd
 from os.path import dirname
 from numpy import nan
+from numpy.testing import assert_array_equal
 
 data_dir = dirname(__file__) + '/data/'
 
@@ -160,9 +161,9 @@ class TestTradingAlgorithm(unittest.TestCase):
                 engine_test = self.get_factor_engine('test')
 
                 ma5 = spectre.factors.MA(5)
-                ma20 = spectre.factors.MA(20)
+                ma4 = spectre.factors.MA(4)
                 engine_main.add(ma5, 'ma5')
-                engine_test.add(ma20, 'ma20')
+                engine_test.add(ma4, 'ma4')
 
                 self.schedule_rebalance(spectre.trading.event.MarketClose(
                     self.rebalance, offset_ns=-10000))
@@ -171,10 +172,10 @@ class TestTradingAlgorithm(unittest.TestCase):
                 self.blotter.set_slippage(0, 0.4)
 
             def rebalance(self, data, history):
-                mask = data['test'].ma20 > data['main'].ma5
+                mask = data['test'].ma4 > data['main'].ma5
                 masked_test = data['test'][mask]
                 assets = masked_test.index
-                weights = masked_test.ma20 / masked_test.ma20.sum()
+                weights = masked_test.ma4 / masked_test.ma4.sum()
                 for asset, weight in zip(assets, weights):
                     self.blotter.order_target_percent(asset, weight)
 
@@ -200,6 +201,8 @@ class TestTradingAlgorithm(unittest.TestCase):
 
         # test two result should be the same.
         self.assertEqual(first_run, str(blotter))
+        assert_array_equal(['AAPL', 'AAPL', 'MSFT', 'AAPL'],
+                           blotter.get_transactions().symbol.values)
 
     def test_with_zipline(self):
         # todo

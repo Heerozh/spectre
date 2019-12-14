@@ -129,3 +129,12 @@ from .blotter import (
     BaseBlotter,
     SimulationBlotter
 )
+
+
+def run_backtest(loader: 'DataLoader', alg_type: 'Type[CustomAlgorithm]', start, end):
+    _blotter = SimulationBlotter(loader)
+    evt_mgr = SimulationEventManager()
+    alg = alg_type(_blotter, main=loader)
+    evt_mgr.subscribe(_blotter)
+    evt_mgr.subscribe(alg)
+    return evt_mgr.run(start, end)

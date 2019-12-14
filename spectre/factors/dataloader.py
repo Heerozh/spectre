@@ -175,11 +175,13 @@ class DataLoader:
 class ArrowLoader(DataLoader):
     """ Read from persistent data. """
 
-    def __init__(self, path: str = None) -> None:
+    def __init__(self, path: str = None, keep_in_memory: bool=True) -> None:
         cols = pd.read_feather(path + '.meta')
         ohlcv = cols.ohlcv.values
         adjustments = cols.adjustments.values[:2]
         super().__init__(path, ohlcv, adjustments)
+        self.keep_in_memory = keep_in_memory
+        self._cache = None
 
     @classmethod
     def _last_modified(cls, filepath) -> float:
@@ -210,8 +212,14 @@ class ArrowLoader(DataLoader):
         meta.to_feather(save_to + '.meta')
 
     def _load(self) -> pd.DataFrame:
+        if self._cache is not None:
+            return self._cache
+
         df = pd.read_feather(self._path)
         df.set_index(['date', 'asset'], inplace=True)
+
+        if self.keep_in_memory:
+            self._cache = df
         return df
 
 
