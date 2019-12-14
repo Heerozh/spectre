@@ -10,7 +10,7 @@ from typing import Type
 
 class Event:
     def __init__(self, callback) -> None:
-        self.callback = callback
+        self.callback = callback  # Callable[[Object], None]
 
     def on_schedule(self, evt_mgr):
         pass
@@ -134,7 +134,7 @@ class EventManager:
             for r, events in self._subscribers.items():
                 for event in events:
                     if event.should_trigger():
-                        event.callback()
+                        event.callback(self)
 
         for r in self._subscribers.keys():
             r.on_end_of_run()

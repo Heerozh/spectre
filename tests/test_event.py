@@ -15,7 +15,7 @@ class TestTradingEvent(unittest.TestCase):
                 self.schedule(spectre.trading.event.Always(self.test_always))
                 self.schedule(spectre.trading.event.EveryBarData(self.test_every_bar))
 
-            def test_always(self):
+            def test_always(self, source):
                 self.fired += 1
 
             def test_every_bar(self, source):
@@ -27,7 +27,7 @@ class TestTradingEvent(unittest.TestCase):
             def on_run(self):
                 self.schedule(spectre.trading.event.Always(self.test))
 
-            def test(self):
+            def test(self, source):
                 self.fire_event(spectre.trading.event.EveryBarData)
 
         rcv = TestEventReceiver()
