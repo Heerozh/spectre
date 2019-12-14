@@ -63,7 +63,6 @@ class TestDataLoaderLib(unittest.TestCase):
             prices_path=data_dir + '/daily/', earliest_date=start, calender_asset='AAPL',
             dividends_path=data_dir + '/dividends/', splits_path=data_dir + '/splits/',
             ohlcv=('uOpen', 'uHigh', 'uLow', 'uClose', 'uVolume'), adjustments=('amount', 'ratio'),
-            split_ratio_is_inverse=True,
             prices_index='date', dividends_index='exDate', splits_index='exDate',
             parse_dates=True, )
         loader.test_load()

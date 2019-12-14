@@ -117,7 +117,7 @@ class TestTradingAlgorithm(unittest.TestCase):
             data_dir + '/daily/', calender_asset='AAPL',
             ohlcv=('uOpen', 'uHigh', 'uLow', 'uClose', 'uVolume'),
             dividends_path=data_dir + '/dividends/', splits_path=data_dir + '/splits/',
-            adjustments=('amount', 'ratio'), split_ratio_is_inverse=True,
+            adjustments=('amount', 'ratio'),
             prices_index='date', dividends_index='exDate', splits_index='exDate', parse_dates=True,
         )
         blotter = spectre.trading.SimulationBlotter(loader)
@@ -184,18 +184,22 @@ class TestTradingAlgorithm(unittest.TestCase):
         loader = spectre.factors.CsvDirLoader(
             data_dir + '/daily/', calender_asset='AAPL',
             ohlcv=('uOpen', 'uHigh', 'uLow', 'uClose', 'uVolume'),
-            prices_index='date', parse_dates=True,
+            dividends_path=data_dir + '/dividends/', splits_path=data_dir + '/splits/',
+            adjustments=('amount', 'ratio'),
+            prices_index='date', dividends_index='exDate', splits_index='exDate', parse_dates=True,
         )
         blotter = spectre.trading.SimulationBlotter(loader)
         evt_mgr = spectre.trading.SimulationEventManager()
         alg = TwoEngineAlg(blotter, main=loader, test=loader)
         evt_mgr.subscribe(alg)
         evt_mgr.subscribe(blotter)
-        evt_mgr.run("2019-01-10", "2019-01-15")
-        print(blotter)
 
         evt_mgr.run("2019-01-10", "2019-01-15")
-        print(blotter)
+        first_run = str(blotter)
+        evt_mgr.run("2019-01-10", "2019-01-15")
+
+        # test two result should be the same.
+        self.assertEqual(first_run, str(blotter))
 
     def test_with_zipline(self):
         # todo

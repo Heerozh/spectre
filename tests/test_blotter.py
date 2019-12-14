@@ -75,7 +75,7 @@ class TestBlotter(unittest.TestCase):
         loader = spectre.factors.CsvDirLoader(
             data_dir + '/daily/', ohlcv=('uOpen', 'uHigh', 'uLow', 'uClose', 'uVolume'),
             dividends_path=data_dir + '/dividends/', splits_path=data_dir + '/splits/',
-            adjustments=('amount', 'ratio'), split_ratio_is_inverse=True,
+            adjustments=('amount', 'ratio'),
             prices_index='date', dividends_index='exDate', splits_index='exDate', parse_dates=True,
         )
         blotter = spectre.trading.SimulationBlotter(loader, cash=200000)
@@ -161,3 +161,4 @@ class TestBlotter(unittest.TestCase):
                                      ('value', 'cash')]),
                                 index=[date])
         pd.testing.assert_series_equal(expected.iloc[-1], blotter.get_history_positions().iloc[-1])
+        print(blotter)

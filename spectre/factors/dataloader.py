@@ -96,10 +96,10 @@ class DataLoader:
             sp_rto.loc[groupby.apply(last)] = 1
 
             # generate dividend multipliers
-            price_multi = (1 - ex_div / df[close_col]) * (1 / sp_rto)
+            price_multi = (1 - ex_div / df[close_col]) * sp_rto
             price_multi = price_multi[::-1].groupby(level=1).cumprod()[::-1]
             df[price_multi_col] = price_multi.astype(np.float32)
-            vol_multi = sp_rto[::-1].groupby(level=1).cumprod()[::-1]
+            vol_multi = (1 / sp_rto)[::-1].groupby(level=1).cumprod()[::-1]
             df[vol_multi_col] = vol_multi.astype(np.float32)
 
         return df
@@ -244,7 +244,7 @@ class CsvDirLoader(DataLoader):
             `factors.OHLCV`, you can set this to None.
         :param adjustments: Optional, `dividend amount` and `splits ratio` column names.
         :param split_ratio_is_inverse: If split ratio calculated by to/from, set to True.
-            For example, 3-for-1 split, to/form will be 0.333...
+            For example, 2-for-1 split, to/form = 2, 1-for-15 Reverse Split, to/form = 0.6666...
         :param prices_index: `index_col`for csv in prices_path
         :param dividends_index: `index_col`for csv in dividends_path.
         :param splits_index: `index_col`for csv in splits_path.
@@ -410,7 +410,7 @@ class QuandlLoader(DataLoader):
                                  })
 
         df.set_index(['date', 'ticker'], inplace=True)
-        df = self._format(df)
+        df = self._format(df, split_ratio_is_inverse=True)
         if self._calender:
             df = self._align_to(df, self._calender)
 
