@@ -2,6 +2,7 @@ import unittest
 import spectre
 import pandas as pd
 from os.path import dirname
+from numpy import nan
 
 data_dir = dirname(__file__) + '/data/'
 
@@ -13,6 +14,7 @@ class TestTradingAlgorithm(unittest.TestCase):
             data_dir + '/daily/', ohlcv=('uOpen', 'uHigh', 'uLow', 'uClose', 'uVolume'),
             prices_index='date', parse_dates=True,
         )
+        parent = self
 
         class MockTestAlg(spectre.trading.CustomAlgorithm):
             _data = None
@@ -53,28 +55,28 @@ class TestTradingAlgorithm(unittest.TestCase):
 
             def test_every_bar(self, data):
                 self._seq += 1
-                assert self._seq == 3
+                parent.assertEqual(1, self._seq)
 
                 today = data.index.get_level_values(0)[-1]
                 self._bar_dates.append(data.index.get_level_values(0)[-1])
                 if today > pd.Timestamp("2019-01-10", tz='UTC'):
                     self.stop_event_manager()
 
-            def test_before_open(self):
+            def test_before_open(self, source):
                 self._seq += 1
-                assert self._seq == 1
+                parent.assertEqual(2, self._seq)
 
-            def test_open(self):
+            def test_open(self, source):
                 self._seq += 1
-                assert self._seq == 2
+                parent.assertEqual(3, self._seq)
 
-            def test_before_close(self):
+            def test_before_close(self, source):
                 self._seq += 1
-                assert self._seq == 4
+                parent.assertEqual(4, self._seq)
 
-            def test_close(self):
+            def test_close(self, source):
                 self._seq += 1
-                assert self._seq == 5
+                parent.assertEqual(5, self._seq)
                 self._seq = 0
 
         rcv = MockTestAlg()
@@ -96,8 +98,9 @@ class TestTradingAlgorithm(unittest.TestCase):
                 engine.add(ma5, 'ma5')
                 engine.set_filter(ma5.top(5))
 
-                self.schedule_rebalance(spectre.trading.event.EveryBarData(self.rebalance))
+                self.schedule_rebalance(spectre.trading.event.MarketOpen(self.rebalance))
 
+                self.blotter.long_ony = True
                 self.blotter.set_commission(0, 0, 0)
                 self.blotter.set_slippage(0, 0)
 
@@ -113,7 +116,9 @@ class TestTradingAlgorithm(unittest.TestCase):
         loader = spectre.factors.CsvDirLoader(
             data_dir + '/daily/', calender_asset='AAPL',
             ohlcv=('uOpen', 'uHigh', 'uLow', 'uClose', 'uVolume'),
-            prices_index='date', parse_dates=True,
+            dividends_path=data_dir + '/dividends/', splits_path=data_dir + '/splits/',
+            adjustments=('amount', 'ratio'), split_ratio_is_inverse=True,
+            prices_index='date', dividends_index='exDate', splits_index='exDate', parse_dates=True,
         )
         blotter = spectre.trading.SimulationBlotter(loader)
         evt_mgr = spectre.trading.SimulationEventManager()
@@ -122,8 +127,31 @@ class TestTradingAlgorithm(unittest.TestCase):
         evt_mgr.subscribe(blotter)
         evt_mgr.run("2019-01-11", "2019-01-15")
 
-        print(blotter)
-        # 测试几点，数据是否正确，然后延后factor值是否对，用excel算一下，测试分红等
+        # test factor delay, order correct
+        # --- day1 ---
+        aapl_amount1 = int(1e5/155.19)
+        aapl_cost1 = aapl_amount1*155.19
+        cash1 = 1e5-aapl_cost1
+        aapl_value_eod1 = aapl_amount1 * 157
+        # --- day2 ---
+        aapl_weight2 = 155.854 / (155.854+1268.466)
+        msft_weight2 = 1268.466 / (155.854+1268.466)
+        value_bod2 = aapl_amount1 * 150.81 + cash1
+        aapl_amount2 = aapl_weight2 * value_bod2 / 150.81
+        aapl_amount2 = aapl_amount1 + int(aapl_amount2 - aapl_amount1) + 0.0
+        aapl_value2 = aapl_amount2 * 156.94
+        msft_amount2 = int(msft_weight2 * value_bod2 / 103.19)
+        msft_value2 = msft_amount2 * 108.85
+        cash2 = 1e5-aapl_cost1 + (aapl_amount1-aapl_amount2) * 150.81 - msft_amount2 * 103.19
+        expected = pd.DataFrame([[aapl_amount1,  nan,  aapl_value_eod1, nan, cash1],
+                                 [aapl_amount2,  msft_amount2, aapl_value2, msft_value2, cash2]],
+                                columns=pd.MultiIndex.from_tuples(
+                                    [('amount', 'AAPL'), ('amount', 'MSFT'),
+                                     ('value', 'AAPL'), ('value', 'MSFT'),
+                                     ('value', 'cash')]),
+                                index=[pd.Timestamp("2019-01-14", tz='UTC'),
+                                       pd.Timestamp("2019-01-15", tz='UTC')])
+        pd.testing.assert_frame_equal(expected, blotter.get_history_positions())
 
     def test_two_engine_algorithm(self):
         class TwoEngineAlg(spectre.trading.CustomAlgorithm):
@@ -136,7 +164,8 @@ class TestTradingAlgorithm(unittest.TestCase):
                 engine_main.add(ma5, 'ma5')
                 engine_test.add(ma20, 'ma20')
 
-                self.schedule_rebalance(spectre.trading.event.EveryBarData(self.rebalance))
+                self.schedule_rebalance(spectre.trading.event.MarketClose(
+                    self.rebalance, offset_ns=-10000))
 
                 self.blotter.set_commission(0, 0.005, 1)
                 self.blotter.set_slippage(0, 0.4)
@@ -168,3 +197,6 @@ class TestTradingAlgorithm(unittest.TestCase):
         evt_mgr.run("2019-01-10", "2019-01-15")
         print(blotter)
 
+    def test_with_zipline(self):
+        # todo
+        pass

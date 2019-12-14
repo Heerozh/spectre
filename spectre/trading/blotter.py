@@ -113,6 +113,7 @@ class BaseBlotter:
         self.commission = CommissionModel(0, 0, 0)
         self.slippage = CommissionModel(0, 0, 0)
         self.short_fee = CommissionModel(0, 0, 0)
+        self.long_only = False
 
     @property
     def positions(self):
@@ -173,11 +174,13 @@ class BaseBlotter:
     def order_target_percent(self, asset: str, pct: float):
         if not isinstance(asset, str):
             raise KeyError("`asset` must be a string")
+        if self.long_only and pct < 0:
+            raise ValueError("Long only blotter, `pct` must greater than 0.")
 
         price = self.get_price(asset)
         if price is None:
             raise KeyError("`asset` is not tradable today.")
-        amount = int((self._portfolio.value * pct) / price)
+        amount = (self._portfolio.value * pct) / price
         held = self.positions[asset]
         amount -= held
         return self._order(asset, int(amount))
@@ -233,8 +236,8 @@ class SimulationBlotter(BaseBlotter, EventReceiver):
                 if day == self._current_dt or day == dt:
                     continue
                 super().set_datetime(day)
-                self.market_open()
-                self.market_close()
+                self.market_open(self)
+                self.market_close(self)
 
         super().set_datetime(dt)
 
@@ -261,11 +264,16 @@ class SimulationBlotter(BaseBlotter, EventReceiver):
         if amount == 0:
             return
 
+        if self.long_only and (amount + self.positions[asset]) < 0:
+            raise ValueError("Long only blotter, order amount {}, opened {}.".format(
+                amount, self.positions[asset]))
+
         # get price and change
         price = self.get_price(asset)
         if price is None:
             raise KeyError("`asset` is not tradable today.")
 
+        # trading curb for daily return
         if self.daily_curb is not None:
             df = self.prices.loc[(slice(None, self._current_dt), asset), :]
             if df.shape[0] < 2:
@@ -310,10 +318,13 @@ class SimulationBlotter(BaseBlotter, EventReceiver):
         ret = ret.set_index('date').sort_index()
         return ret
 
-    def market_open(self):
+    def update_portfolio_value(self):
+        self._portfolio.update_value(self.get_price)
+
+    def market_open(self, _):
         self.market_opened = True
 
-    def market_close(self):
+    def market_close(self, _):
         self.cancel_all_orders()
         self.market_opened = False
 
@@ -337,9 +348,6 @@ class SimulationBlotter(BaseBlotter, EventReceiver):
                     if split != np.nan and split != 1:
                         self._portfolio.process_split(asset, 1 / split)
 
-        # push close price to portfolio
-        self._portfolio.update_value(self.get_price)
-
     def on_run(self):
-        self.schedule(MarketOpen(self.market_open, -100000))  # 100ms ahead for system preparation
+        self.schedule(MarketOpen(self.market_open, -1))  # -1 for grab priority
         self.schedule(MarketClose(self.market_close))

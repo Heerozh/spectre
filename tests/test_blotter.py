@@ -2,7 +2,6 @@ import unittest
 import spectre
 import pandas as pd
 from os.path import dirname
-from numpy.testing import assert_almost_equal, assert_array_equal
 from numpy import nan
 
 data_dir = dirname(__file__) + '/data/'
@@ -86,13 +85,14 @@ class TestBlotter(unittest.TestCase):
         # t+0 and double purchase
         date = pd.Timestamp("2019-01-02", tz='UTC')
         blotter.set_datetime(date)
-        blotter.market_open()
+        blotter.market_open(self)
         blotter.set_price("open")
         blotter.order_target_percent('AAPL', 0.3)
         blotter.order_target_percent('AAPL', 0.3)
         blotter.set_price("close")
         blotter.order_target_percent('AAPL', 0)
-        blotter.market_close()
+        blotter.market_close(self)
+        blotter.update_portfolio_value()
 
         # check transactions
         expected = pd.DataFrame([['AAPL', 384, 155.92, 157.09960, 1.92],
@@ -115,7 +115,7 @@ class TestBlotter(unittest.TestCase):
         # no data day
         date = pd.Timestamp("2019-01-10", tz='UTC')
         blotter.set_datetime(date)
-        blotter.market_open()
+        blotter.market_open(self)
         blotter.set_price("close")
         self.assertRaisesRegex(KeyError, '.*tradable.*', blotter.order_target_percent, 'MSFT', 0.5)
         # test curb
@@ -126,18 +126,20 @@ class TestBlotter(unittest.TestCase):
         blotter.order('AAPL', 1)
         self.assertEqual(1, blotter.positions['AAPL'])
         blotter.order('AAPL', -1)
-        blotter.market_close()
+        blotter.market_close(self)
+        blotter.update_portfolio_value()
         blotter.daily_curb = None
         cash = blotter.portfolio.cash
 
         # overnight neutralized portfolio
         date = pd.Timestamp("2019-01-11", tz='UTC')
         blotter.set_datetime(date)
-        blotter.market_open()
+        blotter.market_open(self)
         blotter.set_price("close")
         blotter.order_target_percent('AAPL', -0.5)
         blotter.order_target_percent('MSFT', 0.5)
-        blotter.market_close()
+        blotter.market_close(self)
+        blotter.update_portfolio_value()
 
         # test 01-11 div
         div = 0.46 + 0.11
@@ -147,11 +149,11 @@ class TestBlotter(unittest.TestCase):
         # test 01-14 splits, use 01-15 to test jump a day
         date = pd.Timestamp("2019-01-15", tz='UTC')
         blotter.set_datetime(date)
-        blotter.market_open()
-        blotter.market_close()
+        blotter.market_open(self)
+        blotter.market_close(self)
+        blotter.update_portfolio_value()
         self.assertEqual(969*15, blotter.positions['MSFT'])
         # test over night value
-        print(blotter)
         expected = pd.DataFrame([[-651.0, 969*15, -651*156.94, 969*15 * 108.85, cash]],
                                 columns=pd.MultiIndex.from_tuples(
                                     [('amount', 'AAPL'), ('amount', 'MSFT'),

@@ -86,8 +86,7 @@ class CustomAlgorithm(EventReceiver, ABC):
 
 
 class SimulationEventManager(EventManager):
-    _last_day = None
-    _last_date = None
+    _last_data = None
 
     @classmethod
     def _get_most_granular(cls, data):
@@ -99,27 +98,26 @@ class SimulationEventManager(EventManager):
             for event in events:
                 if isinstance(event, event_type):
                     if event.offset < 0:
-                        event.callback()
+                        event.callback(self)
 
     def fire_after_event(self, event_type):
         for _, events in self._subscribers.items():
             for event in events:
                 if isinstance(event, event_type):
                     if event.offset >= 0:
-                        event.callback()
+                        event.callback(self)
 
-    def check_date_change(self, now, alg):
-        # if new day
-        if now.day != self._last_day:
-            if self._last_day is not None:
-                alg.blotter.set_price('close')
-                self.fire_before_event(MarketClose)
-                self.fire_after_event(MarketClose)
-            alg.blotter.set_datetime(now)
-            self.fire_before_event(MarketOpen)
-            alg.blotter.set_price('open')
-            self.fire_after_event(MarketOpen)
-            self._last_day = now.day
+    def fire_market_open(self, alg):
+        self.fire_before_event(MarketOpen)
+        alg.blotter.set_price('open')
+        alg.blotter.update_portfolio_value()
+        self.fire_after_event(MarketOpen)
+
+    def fire_market_close(self, alg):
+        alg.blotter.set_price('close')
+        alg.blotter.update_portfolio_value()
+        self.fire_before_event(MarketClose)
+        self.fire_after_event(MarketClose)
 
     def run(self, start, end):
         start, end = pd.to_datetime(start, utc=True), pd.to_datetime(end, utc=True)
@@ -142,30 +140,44 @@ class SimulationEventManager(EventManager):
             alg.blotter.clear()
             # get factor data from algorithm
             data = alg.run_engine(start, end)
-            alg.run_engine = lambda x, y: self._last_date
+            alg.run_engine = lambda x, y: self._last_data
             if isinstance(data, dict):
                 main = self._get_most_granular(data)
                 main = main.loc[start:end]
             else:
                 main = data
             # loop factor data
-            self._last_day = None
+            last_day = None
             ticks = main.index.get_level_values(0).unique()
             for dt in ticks:
                 if self._stop:
                     break
-                self.check_date_change(dt, alg)
-
+                # prepare data
                 if isinstance(data, dict):
-                    self._last_date = {k: v[:dt] for k, v in data.items()}
+                    self._last_data = {k: v[:dt] for k, v in data.items()}
                 else:
-                    self._last_date = data[:dt]
-                self.fire_event(self, EveryBarData)
+                    self._last_data = data[:dt]
 
-                # todo 每tick运行完后，记录时间，然后当天new_order存到每个时间的表里
+                # if date changed
+                if dt.day != last_day:
+                    if last_day is not None:
+                        self.fire_market_close(alg)
+                    alg.blotter.set_datetime(dt)
 
-            self.fire_before_event(MarketClose)
-            self.fire_after_event(MarketClose)
+                # fire daily data event
+                if dt.hour == 0:
+                    self.fire_event(self, EveryBarData)
+
+                # fire open event
+                if dt.day != last_day:
+                    self.fire_market_open(alg)
+                    last_day = dt.day
+
+                # fire intraday data event
+                if dt.hour != 0:
+                    self.fire_event(self, EveryBarData)
+
+            self.fire_market_close(alg)
 
         for r in self._subscribers.keys():
             r.on_end_of_run()
