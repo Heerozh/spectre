@@ -49,7 +49,7 @@ trigger->+fire close+--->+rebalance+--->+Blotter+----+
                 Pseudo-code for back-test and live
                 ----------------------------------
 
-class MyAlg(trading.BaseAlgorithm):
+class MyAlg(trading.CustomAlgorithm):
     def initialize(self):
         engine = self.get_factor_engine()
         factor = ....
@@ -67,17 +67,17 @@ class MyAlg(trading.BaseAlgorithm):
 
         record(...)
 
-    def analyze(self):
+    def terminate(self):
         plot()
-        return anything
 
 # Back-test
 -----------------
 loader = spectre.factors.CsvDirLoader(...)
-blotter = spectre.trading.SimulationBlotter()
+blotter = spectre.trading.SimulationBlotter(loader)
 evt_mgr = spectre.trading.SimulationEventManager()
 alg = MyAlg(blotter, man=loader)
 evt_mgr.subscribe(alg)
+evt_mgr.subscribe(blotter)
 evt_mgr.run('2018-01-01', '2019-01-01')
 
 ## Or the helper function:

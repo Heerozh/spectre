@@ -12,7 +12,7 @@ from .event import *
 
 class Portfolio:
     def __init__(self):
-        self._history = pd.DataFrame()
+        self._history = pd.DataFrame(columns=pd.MultiIndex.from_arrays([[], []]))
         self._positions = defaultdict(int)
         self._last_price = defaultdict(int)
         self._cash = 0
@@ -20,6 +20,7 @@ class Portfolio:
 
     @property
     def history(self):
+        self._history.sort_index(axis=1, inplace=True)
         return self._history.fillna(method='ffill')
 
     @property
@@ -55,17 +56,19 @@ class Portfolio:
 
         self._current_date = date
 
-    def update(self, asset, amount, execution_price):
+    def update(self, asset, amount, fill_price):
         assert self._current_date is not None
         self._positions[asset] += amount
-        self._history.loc[self._current_date, asset] = self._positions[asset]
-        if execution_price is not None:  # update last price for correct portfolio value
-            self._last_price[asset] = execution_price
+        self._history.loc[self._current_date, ('amount', asset)] = self._positions[asset]
+        if fill_price is not None:  # update last price for correct portfolio value
+            self._last_price[asset] = fill_price
+            self._history.loc[self._current_date, ('value', asset)] = \
+                self._positions[asset] * fill_price
 
     def update_cash(self, amount):
         self._cash += amount
         if self._current_date is not None:
-            self._history.loc[self._current_date, 'cash'] = self._cash
+            self._history.loc[self._current_date, ('value', 'cash')] = self._cash
 
     def process_split(self, asset, inverse_ratio: float):
         sp = self._positions[asset] * (inverse_ratio - 1)
@@ -80,7 +83,7 @@ class Portfolio:
             price = get_curr_price(asset)
             if price:
                 self._last_price[asset] = price
-        self._history.loc[self._current_date, 'value'] = self.value
+                self._history.loc[self._current_date, ('value', asset)] = shares * price
 
 
 class CommissionModel:
@@ -197,7 +200,7 @@ class BaseBlotter:
 
 class SimulationBlotter(BaseBlotter, EventReceiver):
     Order = namedtuple("Order", ['date', 'asset', 'amount', 'price',
-                                 'execution_price', 'commission'])
+                                 'fill_price', 'commission'])
 
     def __init__(self, dataloader, cash=100000, daily_curb=None):
         """
@@ -279,18 +282,18 @@ class SimulationBlotter(BaseBlotter, EventReceiver):
         slippage = self.slippage.calculate(price, 1)
         if amount < 0:
             commission += self.short_fee.calculate(price, amount)
-            execution_price = price - slippage
+            fill_price = price - slippage
         else:
-            execution_price = price + slippage
+            fill_price = price + slippage
 
         # make order
         order = SimulationBlotter.Order(
-            self._current_dt, asset, amount, price, execution_price, commission)
+            self._current_dt, asset, amount, price, fill_price, commission)
         self.orders[asset].append(order)
 
         # update portfolio, pay cash
-        self._portfolio.update(asset, amount, execution_price)
-        self._portfolio.update_cash(-amount * execution_price - commission)
+        self._portfolio.update(asset, amount, fill_price)
+        self._portfolio.update_cash(-amount * fill_price - commission)
 
     def cancel_all_orders(self):
         # don't need
@@ -301,9 +304,9 @@ class SimulationBlotter(BaseBlotter, EventReceiver):
         for asset, orders in self.orders.items():
             for o in orders:
                 data.append(dict(date=o.date, amount=o.amount, price=o.price, symbol=o.asset,
-                                 execution_price=o.execution_price, commission=o.commission))
+                                 fill_price=o.fill_price, commission=o.commission))
         ret = pd.DataFrame(data, columns=['date', 'symbol', 'amount', 'price',
-                                          'execution_price', 'commission'])
+                                          'fill_price', 'commission'])
         ret = ret.set_index('date').sort_index()
         return ret
 
