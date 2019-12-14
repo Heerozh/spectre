@@ -18,7 +18,7 @@ class TestBlotter(unittest.TestCase):
         pf.update('AAPL', 10, None)
         pf.update('MSFT', -25, None)
         pf.update_cash(-5000)
-        pf.process_split('AAPL', 2.0)
+        pf.process_split('AAPL', 2.0, None)
 
         pf.set_date("2019-01-04")
         pf.update('AAPL', -10, None)
@@ -162,4 +162,3 @@ class TestBlotter(unittest.TestCase):
                                      ('value', 'cash')]),
                                 index=[date])
         pd.testing.assert_series_equal(expected.iloc[-1], blotter.get_history_positions().iloc[-1])
-        print(blotter)
