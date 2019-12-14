@@ -152,9 +152,10 @@ class TestBlotter(unittest.TestCase):
         blotter.market_open(self)
         blotter.market_close(self)
         blotter.update_portfolio_value()
-        self.assertEqual(969*15, blotter.positions['MSFT'])
+        self.assertEqual(int(969/15), blotter.positions['MSFT'])
+        cash += (969 - int(969/15)*15) * 103.39  # remaining split to cash
         # test over night value
-        expected = pd.DataFrame([[-651.0, 969*15, -651*156.94, 969*15 * 108.85, cash]],
+        expected = pd.DataFrame([[-651.0, int(969/15), -651*156.94, int(969/15) * 108.85, cash]],
                                 columns=pd.MultiIndex.from_tuples(
                                     [('amount', 'AAPL'), ('amount', 'MSFT'),
                                      ('value', 'AAPL'), ('value', 'MSFT'),

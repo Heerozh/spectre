@@ -70,9 +70,14 @@ class Portfolio:
         if self._current_date is not None:
             self._history.loc[self._current_date, ('value', 'cash')] = self._cash
 
-    def process_split(self, asset, inverse_ratio: float):
-        sp = self._positions[asset] * (inverse_ratio - 1)
-        self.update(asset, sp, None)
+    def process_split(self, asset, inverse_ratio: float, last_price):
+        sp = self._positions[asset] * inverse_ratio
+        if inverse_ratio < 1:  # reverse split remaining to cash
+            remaining = int(self._positions[asset] - int(sp) / inverse_ratio)  # for more precise
+            if remaining != 0:
+                self.update_cash(remaining * last_price)
+        change = int(sp) - self._positions[asset]
+        self.update(asset, change, None)
 
     def process_dividends(self, asset, ratio):
         div = self._positions[asset] * ratio
@@ -188,8 +193,8 @@ class BaseBlotter:
     def cancel_all_orders(self):
         raise NotImplementedError("abstractmethod")
 
-    def process_split(self, asset, ratio):
-        self._portfolio.process_split(asset, ratio)
+    def process_split(self, asset, ratio, last_price):
+        self._portfolio.process_split(asset, ratio, last_price)
 
     def process_dividends(self, asset, ratio):
         self._portfolio.process_dividends(asset, ratio)
@@ -332,6 +337,7 @@ class SimulationBlotter(BaseBlotter, EventReceiver):
         if self.dataloader.adjustments is not None:
             div_col = self.dataloader.adjustments[0]
             sp_col = self.dataloader.adjustments[1]
+            close_col = self.dataloader.ohlcv[3]
             for asset, shares in self.positions.items():
                 if shares == 0:
                     continue
@@ -346,7 +352,7 @@ class SimulationBlotter(BaseBlotter, EventReceiver):
                 if sp_col in self.prices.columns:
                     split = row[sp_col]
                     if split != np.nan and split != 1:
-                        self._portfolio.process_split(asset, 1 / split)
+                        self._portfolio.process_split(asset, 1 / split, row[close_col])
 
     def on_run(self):
         self.schedule(MarketOpen(self.market_open, -1))  # -1 for grab priority
