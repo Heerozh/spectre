@@ -130,24 +130,24 @@ class TestTradingAlgorithm(unittest.TestCase):
 
         # test factor delay, order correct
         # --- day1 ---
-        aapl_amount1 = int(1e5/155.19)
-        aapl_cost1 = aapl_amount1*155.19
+        aapl_shares1 = int(1e5/155.19)
+        aapl_cost1 = aapl_shares1*155.19
         cash1 = 1e5-aapl_cost1
-        aapl_value_eod1 = aapl_amount1 * 157
+        aapl_value_eod1 = aapl_shares1 * 157
         # --- day2 ---
         aapl_weight2 = 155.854 / (155.854+1268.466)
         msft_weight2 = 1268.466 / (155.854+1268.466)
-        value_bod2 = aapl_amount1 * 150.81 + cash1
-        aapl_amount2 = aapl_weight2 * value_bod2 / 150.81
-        aapl_amount2 = aapl_amount1 + int(aapl_amount2 - aapl_amount1)
-        aapl_value2 = aapl_amount2 * 156.94
-        msft_amount2 = int(msft_weight2 * value_bod2 / 103.19)
-        msft_value2 = msft_amount2 * 108.85
-        cash2 = 1e5-aapl_cost1 + (aapl_amount1-aapl_amount2) * 150.81 - msft_amount2 * 103.19
-        expected = pd.DataFrame([[aapl_amount1,  nan,  aapl_value_eod1, nan, cash1],
-                                 [aapl_amount2,  msft_amount2, aapl_value2, msft_value2, cash2]],
+        value_bod2 = aapl_shares1 * 150.81 + cash1
+        aapl_shares2 = aapl_weight2 * value_bod2 / 150.81
+        aapl_shares2 = aapl_shares1 + int(aapl_shares2 - aapl_shares1)
+        aapl_value2 = aapl_shares2 * 156.94
+        msft_shares2 = int(msft_weight2 * value_bod2 / 103.19)
+        msft_value2 = msft_shares2 * 108.85
+        cash2 = 1e5-aapl_cost1 + (aapl_shares1-aapl_shares2) * 150.81 - msft_shares2 * 103.19
+        expected = pd.DataFrame([[aapl_shares1,  nan,  aapl_value_eod1, nan, cash1],
+                                 [aapl_shares2,  msft_shares2, aapl_value2, msft_value2, cash2]],
                                 columns=pd.MultiIndex.from_tuples(
-                                    [('amount', 'AAPL'), ('amount', 'MSFT'),
+                                    [('shares', 'AAPL'), ('shares', 'MSFT'),
                                      ('value', 'AAPL'), ('value', 'MSFT'),
                                      ('value', 'cash')]),
                                 index=[pd.Timestamp("2019-01-14", tz='UTC'),

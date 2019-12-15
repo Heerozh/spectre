@@ -13,7 +13,7 @@ from .event import *
 class Portfolio:
     def __init__(self):
         self._history = []
-        self._positions = defaultdict(int)
+        self._positions = dict()
         self._last_price = defaultdict(lambda: np.nan)
         self._cash = 0
         self._current_date = None
@@ -38,13 +38,15 @@ class Portfolio:
     def value(self):
         if self._value_cache is not None:
             return self._value_cache
-        values = [self._last_price[asset] * amount for asset, amount in self.positions.items()]
+        values = [self._last_price[asset] * shares
+                  for asset, shares in self.positions.items() if shares != 0]
         self._value_cache = sum(values) + self._cash
         return self._value_cache
 
     @property
     def leverage(self):
-        values = [self._last_price[asset] * amount for asset, amount in self.positions.items()]
+        values = [self._last_price[asset] * shares
+                  for asset, shares in self.positions.items() if shares != 0]
         return sum(np.abs(values)) / (sum(values) + self._cash)
 
     def __repr__(self):
@@ -53,10 +55,16 @@ class Portfolio:
     def clear(self):
         self.__init__()
 
+    def shares(self, asset):
+        try:
+            return self._positions[asset]
+        except KeyError:
+            return 0
+
     def _get_today_record(self):
         record = {('index', ''): self._current_date, ('value', 'cash'): self._cash}
         for asset, shares in self._positions.items():
-            record[('amount', asset)] = shares
+            record[('shares', asset)] = shares
             record[('value', asset)] = shares * self._last_price[asset]
         return record
 
@@ -76,7 +84,7 @@ class Portfolio:
     def update(self, asset, amount, fill_price):
         assert self._current_date is not None
         self._value_cache = None
-        self._positions[asset] += amount
+        self._positions[asset] = self.shares(asset) + amount
         if fill_price is not None:  # update last price for correct portfolio value
             self._last_price[asset] = fill_price
         if self._positions[asset] == 0:
@@ -202,8 +210,8 @@ class BaseBlotter:
         if price is None:
             raise KeyError("`asset` is not tradable today.")
         amount = (self._portfolio.value * pct) / price
-        held = self.positions[asset]
-        amount -= held
+        opened = self._portfolio.shares(asset)
+        amount -= opened
         return self._order(asset, int(amount))
 
     def cancel_all_orders(self):
@@ -294,9 +302,10 @@ class SimulationBlotter(BaseBlotter, EventReceiver):
         if amount == 0:
             return
 
-        if self.long_only and (amount + self.positions[asset]) < 0:
+        opened = self._portfolio.shares(asset)
+        if self.long_only and (amount + opened) < 0:
             raise ValueError("Long only blotter, order amount {}, opened {}.".format(
-                amount, self.positions[asset]))
+                amount, opened))
 
         # get price and change
         price = self.get_price(asset)

@@ -37,7 +37,7 @@ class TestBlotter(unittest.TestCase):
                                  [10., -25, nan, nan, 5000.],
                                  [10., 5, 15, 10, 7030.]],
                                 columns=pd.MultiIndex.from_tuples(
-                                    [('amount', 'AAPL'), ('amount', 'MSFT'),
+                                    [('shares', 'AAPL'), ('shares', 'MSFT'),
                                      ('value', 'AAPL'), ('value', 'MSFT'),
                                      ('value', 'cash')]),
                                 index=pd.DatetimeIndex(["2019-01-01", "2019-01-03",
@@ -46,7 +46,7 @@ class TestBlotter(unittest.TestCase):
         print(pf.history)
         pd.testing.assert_frame_equal(expected, pf.history)
         self.assertEqual(str(pf),
-                         """<Portfolio>amount       value               
+                         """<Portfolio>shares       value               
              AAPL  MSFT  AAPL  MSFT     cash
 index                                       
 2019-01-01    NaN   NaN   NaN   NaN  10000.0
@@ -123,7 +123,8 @@ index
         # test curb
         blotter.daily_curb = 0.01
         blotter.order('AAPL', 1)
-        self.assertEqual(0, blotter.positions['AAPL'])
+        self.assertEqual(0, blotter.portfolio.shares('AAPL'))
+        self.assertEqual(False, 'AAPL' in blotter.positions)
         blotter.daily_curb = 0.033
         blotter.order('AAPL', 1)
         self.assertEqual(1, blotter.positions['AAPL'])
@@ -159,7 +160,7 @@ index
         # test over night value
         expected = pd.DataFrame([[-651.0, int(969/15), -651*156.94, int(969/15) * 108.85, cash]],
                                 columns=pd.MultiIndex.from_tuples(
-                                    [('amount', 'AAPL'), ('amount', 'MSFT'),
+                                    [('shares', 'AAPL'), ('shares', 'MSFT'),
                                      ('value', 'AAPL'), ('value', 'MSFT'),
                                      ('value', 'cash')]),
                                 index=[date])
