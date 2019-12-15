@@ -43,7 +43,6 @@ class TestBlotter(unittest.TestCase):
                                 index=pd.DatetimeIndex(["2019-01-01", "2019-01-03",
                                                         "2019-01-04", "2019-01-05"]))
         expected.index.name = 'index'
-        print(pf.history)
         pd.testing.assert_frame_equal(expected, pf.history)
         self.assertEqual(str(pf),
                          """<Portfolio>shares       value               
@@ -153,6 +152,7 @@ index
         date = pd.Timestamp("2019-01-15", tz='UTC')
         blotter.set_datetime(date)
         blotter.market_open(self)
+        blotter.set_price("close")
         blotter.market_close(self)
         blotter.update_portfolio_value()
         self.assertEqual(int(969/15), blotter.positions['MSFT'])

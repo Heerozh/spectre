@@ -164,8 +164,6 @@ class FactorEngine:
 
     def to_cuda(self) -> None:
         self._device = torch.device('cuda')
-        # Hot start cuda
-        torch.tensor([0], device=self._device, dtype=torch.int32)
         self._last_load = [None, None, None]
 
     def to_cpu(self) -> None:

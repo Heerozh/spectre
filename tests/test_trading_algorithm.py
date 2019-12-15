@@ -108,8 +108,7 @@ class TestTradingAlgorithm(unittest.TestCase):
             def rebalance(self, data, history):
                 weights = data.ma5 / data.ma5.sum()
                 assets = data.index
-                for asset, weight in zip(assets, weights):
-                    self.blotter.order_target_percent(asset, weight)
+                self.blotter.order_target_percent(assets, weights)
 
             def terminate(self):
                 pass
