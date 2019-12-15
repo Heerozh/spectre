@@ -139,7 +139,7 @@ class TestTradingAlgorithm(unittest.TestCase):
         msft_weight2 = 1268.466 / (155.854+1268.466)
         value_bod2 = aapl_amount1 * 150.81 + cash1
         aapl_amount2 = aapl_weight2 * value_bod2 / 150.81
-        aapl_amount2 = aapl_amount1 + int(aapl_amount2 - aapl_amount1) + 0.0
+        aapl_amount2 = aapl_amount1 + int(aapl_amount2 - aapl_amount1)
         aapl_value2 = aapl_amount2 * 156.94
         msft_amount2 = int(msft_weight2 * value_bod2 / 103.19)
         msft_value2 = msft_amount2 * 108.85
@@ -152,6 +152,7 @@ class TestTradingAlgorithm(unittest.TestCase):
                                      ('value', 'cash')]),
                                 index=[pd.Timestamp("2019-01-14", tz='UTC'),
                                        pd.Timestamp("2019-01-15", tz='UTC')])
+        expected.index.name = 'index'
         pd.testing.assert_frame_equal(expected, blotter.get_history_positions())
 
     def test_two_engine_algorithm(self):

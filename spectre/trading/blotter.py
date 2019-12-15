@@ -12,17 +12,19 @@ from .event import *
 
 class Portfolio:
     def __init__(self):
-        self._history = pd.DataFrame(columns=pd.MultiIndex.from_arrays([[], []]))
+        self._history = []
         self._positions = defaultdict(int)
-        self._last_price = defaultdict(int)
+        self._last_price = defaultdict(lambda: np.nan)
         self._cash = 0
         self._current_date = None
         self._value_cache = None
 
     @property
     def history(self):
-        self._history.sort_index(axis=1, inplace=True)
-        return self._history.fillna(method='ffill')
+        ret = pd.DataFrame(self._history + [self._get_today_record()])
+        ret.columns = pd.MultiIndex.from_tuples(ret.columns)
+        ret = ret.set_index('index').sort_index(axis=0).sort_index(axis=1)
+        return ret.fillna(method='ffill')
 
     @property
     def positions(self):
@@ -51,12 +53,23 @@ class Portfolio:
     def clear(self):
         self.__init__()
 
+    def _get_today_record(self):
+        record = {('index', ''): self._current_date, ('value', 'cash'): self._cash}
+        for asset, shares in self._positions.items():
+            record[('amount', asset)] = shares
+            record[('value', asset)] = shares * self._last_price[asset]
+        return record
+
     def set_date(self, date):
         if isinstance(date, str):
             date = pd.Timestamp(date)
         date = date.normalize()
-        if self._current_date is not None and date < self._current_date:
-            raise ValueError('Cannot set a date less than the current date')
+        if self._current_date is not None:
+            if date < self._current_date:
+                raise ValueError('Cannot set a date less than the current date')
+            elif date > self._current_date:
+                # today add to history
+                self._history.append(self._get_today_record())
 
         self._current_date = date
 
@@ -64,17 +77,14 @@ class Portfolio:
         assert self._current_date is not None
         self._value_cache = None
         self._positions[asset] += amount
-        self._history.loc[self._current_date, ('amount', asset)] = self._positions[asset]
         if fill_price is not None:  # update last price for correct portfolio value
             self._last_price[asset] = fill_price
-            self._history.loc[self._current_date, ('value', asset)] = \
-                self._positions[asset] * fill_price
+        if self._positions[asset] == 0:
+            del self._positions[asset]
 
     def update_cash(self, amount):
         self._value_cache = None
         self._cash += amount
-        if self._current_date is not None:
-            self._history.loc[self._current_date, ('value', 'cash')] = self._cash
 
     def process_split(self, asset, inverse_ratio: float, last_price):
         sp = self._positions[asset] * inverse_ratio
@@ -95,7 +105,6 @@ class Portfolio:
             price = get_curr_price(asset)
             if price:
                 self._last_price[asset] = price
-                self._history.loc[self._current_date, ('value', asset)] = shares * price
 
 
 class CommissionModel:
@@ -332,11 +341,11 @@ class SimulationBlotter(BaseBlotter, EventReceiver):
         data = []
         for asset, orders in self.orders.items():
             for o in orders:
-                data.append(dict(date=o.date, amount=o.amount, price=o.price, symbol=o.asset,
+                data.append(dict(index=o.date, amount=o.amount, price=o.price, symbol=o.asset,
                                  fill_price=o.fill_price, commission=o.commission))
-        ret = pd.DataFrame(data, columns=['date', 'symbol', 'amount', 'price',
+        ret = pd.DataFrame(data, columns=['index', 'symbol', 'amount', 'price',
                                           'fill_price', 'commission'])
-        ret = ret.set_index('date').sort_index()
+        ret = ret.set_index('index').sort_index()
         return ret
 
     def update_portfolio_value(self):

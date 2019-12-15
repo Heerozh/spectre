@@ -42,10 +42,13 @@ class TestBlotter(unittest.TestCase):
                                      ('value', 'cash')]),
                                 index=pd.DatetimeIndex(["2019-01-01", "2019-01-03",
                                                         "2019-01-04", "2019-01-05"]))
+        expected.index.name = 'index'
+        print(pf.history)
         pd.testing.assert_frame_equal(expected, pf.history)
         self.assertEqual(str(pf),
                          """<Portfolio>amount       value               
              AAPL  MSFT  AAPL  MSFT     cash
+index                                       
 2019-01-01    NaN   NaN   NaN   NaN  10000.0
 2019-01-03   20.0 -25.0   NaN   NaN   5000.0
 2019-01-04   10.0 -25.0   NaN   NaN   5000.0
@@ -100,16 +103,15 @@ class TestBlotter(unittest.TestCase):
                                 columns=['symbol', 'amount', 'price',
                                          'fill_price', 'commission'],
                                 index=[date, date])
-        expected.index.name = 'date'
+        expected.index.name = 'index'
         pd.testing.assert_frame_equal(expected, blotter.get_transactions())
 
         value = 200000 - 157.0996 * 384 - 1.92 + 157.41695 * 384 - 1.92
-        expected = pd.DataFrame([[0.0,  0.0,  value]],
+        expected = pd.DataFrame([[value]],
                                 columns=pd.MultiIndex.from_tuples(
-                                    [('amount', 'AAPL'),
-                                     ('value', 'AAPL'),
-                                     ('value', 'cash')]),
+                                    [('value', 'cash')]),
                                 index=[date])
+        expected.index.name = 'index'
         pd.testing.assert_frame_equal(expected, blotter.get_history_positions())
 
         # no data day
