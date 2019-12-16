@@ -24,7 +24,11 @@ class Portfolio:
         ret = pd.DataFrame(self._history + [self._get_today_record()])
         ret.columns = pd.MultiIndex.from_tuples(ret.columns)
         ret = ret.set_index('index').sort_index(axis=0).sort_index(axis=1)
-        return ret.fillna(method='ffill')
+        return ret
+
+    @property
+    def returns(self):
+        return self.history.value.sum(axis=1).pct_change()
 
     @property
     def positions(self):
@@ -253,6 +257,9 @@ class BaseBlotter:
     def get_history_positions(self):
         return self._portfolio.history
 
+    def get_returns(self):
+        return self._portfolio.returns
+
     def get_transactions(self):
         raise NotImplementedError("abstractmethod")
 
@@ -312,6 +319,9 @@ class SimulationBlotter(BaseBlotter, EventReceiver):
                 super().set_datetime(day)
                 self._update_time()
                 self.market_open(self)
+                if self._current_row:
+                    self._current_prices = self._current_row[self.dataloader.ohlcv[3]].to_dict()
+                    self.update_portfolio_value()
                 self.market_close(self)
         super().set_datetime(dt)
         self._update_time()

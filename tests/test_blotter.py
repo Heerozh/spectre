@@ -118,7 +118,7 @@ index
         blotter.set_datetime(date)
         blotter.market_open(self)
         blotter.set_price("close")
-        self.assertRaisesRegex(KeyError, '.*tradable.*', blotter.order_target_percent, 'MSFT', 0.5)
+        blotter.order_target_percent('MSFT', 0.5)
         # test curb
         blotter.daily_curb = 0.01
         blotter.order('AAPL', 1)
