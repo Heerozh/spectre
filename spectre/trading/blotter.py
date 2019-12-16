@@ -319,7 +319,7 @@ class SimulationBlotter(BaseBlotter, EventReceiver):
                 super().set_datetime(day)
                 self._update_time()
                 self.market_open(self)
-                if self._current_row:
+                if self._current_row is not None:
                     self._current_prices = self._current_row[self.dataloader.ohlcv[3]].to_dict()
                     self.update_portfolio_value()
                 self.market_close(self)

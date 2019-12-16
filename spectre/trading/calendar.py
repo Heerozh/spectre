@@ -1,3 +1,9 @@
+"""
+@author: Heerozh (Zhang Jianhao)
+@copyright: Copyright 2019, Heerozh. All rights reserved.
+@license: Apache 2.0
+@email: heeroz@gmail.com
+"""
 from collections import defaultdict
 from typing import Dict
 import pandas as pd

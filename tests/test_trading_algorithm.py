@@ -54,6 +54,9 @@ class TestTradingAlgorithm(unittest.TestCase):
                 ))
                 self.initialize()
 
+            def on_end_of_run(self):
+                pass
+
             def test_every_bar(self, data):
                 self._seq += 1
                 parent.assertEqual(1, self._seq)
@@ -110,7 +113,7 @@ class TestTradingAlgorithm(unittest.TestCase):
                 assets = data.index
                 self.blotter.order_target_percent(assets, weights)
 
-            def terminate(self):
+            def terminate(self, _):
                 pass
 
         loader = spectre.factors.CsvDirLoader(
@@ -177,7 +180,7 @@ class TestTradingAlgorithm(unittest.TestCase):
                 for asset, weight in zip(assets, weights):
                     self.blotter.order_target_percent(asset, weight)
 
-            def terminate(self):
+            def terminate(self, _):
                 pass
 
         loader = spectre.factors.CsvDirLoader(

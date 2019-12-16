@@ -12,6 +12,23 @@ from ..factors import FactorEngine
 from ..factors import DataLoader
 
 
+class Record:
+    def __init__(self):
+        self._records = []
+
+    def record(self, date, table):
+        if 'date' in table:
+            raise ValueError('`date` is reserved key for record.')
+        table['date'] = date
+        self._records.append(table)
+
+    def to_df(self):
+        ret = pd.DataFrame(self._records)
+        if ret.shape[0] > 0:
+            ret = ret.set_index('date').sort_index(axis=0)
+        return ret
+
+
 class CustomAlgorithm(EventReceiver, ABC):
     """
     Base class for custom trading algorithm.
@@ -28,6 +45,8 @@ class CustomAlgorithm(EventReceiver, ABC):
         self._data = None
         self._engines = {name: FactorEngine(loader) for name, loader in data_sources.items()}
         self.blotter = blotter
+        self._records = Record()
+        self._current_dt = None
 
     def clear(self):
         for engine in self._engines.values():
@@ -41,6 +60,17 @@ class CustomAlgorithm(EventReceiver, ABC):
             raise KeyError("Data source '{0}' not found, please pass in the algorithm "
                            "initialization: `YourAlgorithm({0}=DataLoader())`".format(name))
         return self._engines[name]
+
+    def set_datetime(self, dt: pd.Timestamp) -> None:
+        self._current_dt = dt
+        self.blotter.set_datetime(dt)
+
+    @property
+    def current(self):
+        return self._current_dt
+
+    def record(self, **kwargs):
+        self._records.record(self._current_dt, kwargs)
 
     def schedule_rebalance(self, event: Event):
         """Can only be called in initialize()"""
@@ -73,12 +103,12 @@ class CustomAlgorithm(EventReceiver, ABC):
         self.initialize()
 
     def on_end_of_run(self):
-        self.terminate()
+        self.terminate(self._records.to_df())
 
     def initialize(self):
         raise NotImplementedError("abstractmethod")
 
-    def terminate(self):
+    def terminate(self, records: pd.DataFrame) -> None:
         pass
 
 
@@ -162,7 +192,7 @@ class SimulationEventManager(EventManager):
                 if dt.day != last_day:
                     if last_day is not None:
                         self.fire_market_close(alg)
-                    alg.blotter.set_datetime(dt)
+                    alg.set_datetime(dt)
 
                 # fire daily data event
                 if dt.hour == 0:
