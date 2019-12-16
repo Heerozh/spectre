@@ -209,7 +209,8 @@ class BaseBlotter:
 
     def order(self, asset: str, amount: int):
         if abs(amount) > self.max_shares:
-            raise OverflowError('Cannot order more than ±%d shares'.format(self.max_shares))
+            raise OverflowError('Cannot order more than ±{} shares: {}'.format(
+                self.max_shares, amount))
         if not isinstance(asset, str):
             raise KeyError("`asset` must be a string")
 
@@ -221,7 +222,10 @@ class BaseBlotter:
         for asset, pct in zip(assets, weights):
             if self.long_only and pct < 0:
                 raise ValueError("Long only blotter, `pct` must greater than 0.")
-            amount = (pf_value * pct) / prices[asset]
+            try:
+                amount = (pf_value * pct) / prices[asset]
+            except KeyError:
+                continue
             opened = self._portfolio.shares(asset)
             amount = int(amount - opened)
             if amount != 0:
@@ -237,7 +241,7 @@ class BaseBlotter:
 
         price = self.get_price(asset)
         if price is None:
-            raise KeyError("`asset` is not tradable today.")
+            return
         amount = (self._portfolio.value * pct) / price
         opened = self._portfolio.shares(asset)
         amount = int(amount - opened)
@@ -257,7 +261,7 @@ class SimulationBlotter(BaseBlotter, EventReceiver):
     Order = namedtuple("Order", ['date', 'asset', 'amount', 'price',
                                  'fill_price', 'commission'])
 
-    def __init__(self, dataloader, cash=100000, daily_curb=None):
+    def __init__(self, dataloader, capital_base=100000, daily_curb=None):
         """
         :param dataloader: dataloader for get prices
         :param daily_curb: How many fluctuations to prohibit trading, in return.
@@ -267,8 +271,8 @@ class SimulationBlotter(BaseBlotter, EventReceiver):
         self.dataloader = dataloader
         self.daily_curb = daily_curb
         self.orders = defaultdict(list)
-        self.initial_cash = cash
-        self._portfolio.update_cash(cash)
+        self.capital_base = capital_base
+        self._portfolio.update_cash(capital_base)
 
         df = dataloader.load(None, None, 0)
         self._data = df
@@ -290,7 +294,7 @@ class SimulationBlotter(BaseBlotter, EventReceiver):
     def clear(self):
         self.orders = defaultdict(list)
         self._portfolio.clear()
-        self._portfolio.update_cash(self.initial_cash)
+        self._portfolio.update_cash(self.capital_base)
 
     def _update_time(self) -> None:
         try:
@@ -340,7 +344,8 @@ class SimulationBlotter(BaseBlotter, EventReceiver):
             return
 
         if abs(amount) > self.max_shares:
-            raise OverflowError('Cannot order more than ±%d shares'.format(self.max_shares))
+            raise OverflowError('Cannot order more than ±{} shares: {}'.format(
+                self.max_shares, amount))
 
         opened = self._portfolio.shares(asset)
         if self.long_only and (amount + opened) < 0:

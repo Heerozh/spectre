@@ -80,7 +80,7 @@ index
             adjustments=('amount', 'ratio'),
             prices_index='date', dividends_index='exDate', splits_index='exDate', parse_dates=True,
         )
-        blotter = spectre.trading.SimulationBlotter(loader, cash=200000)
+        blotter = spectre.trading.SimulationBlotter(loader, capital_base=200000)
         blotter.set_commission(0, 0.005, 1)
         blotter.set_slippage(0.005, 0.4)
 

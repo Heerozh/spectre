@@ -120,12 +120,8 @@ class TestTradingAlgorithm(unittest.TestCase):
             adjustments=('amount', 'ratio'),
             prices_index='date', dividends_index='exDate', splits_index='exDate', parse_dates=True,
         )
-        blotter = spectre.trading.SimulationBlotter(loader)
-        evt_mgr = spectre.trading.SimulationEventManager()
-        alg = OneEngineAlg(blotter, main=loader)
-        evt_mgr.subscribe(alg)
-        evt_mgr.subscribe(blotter)
-        evt_mgr.run("2019-01-11", "2019-01-15")
+        rtn, txn, pos = spectre.trading.run_backtest(
+            loader, OneEngineAlg, "2019-01-11", "2019-01-15")
 
         # test factor delay, order correct
         # --- day1 ---
@@ -152,7 +148,9 @@ class TestTradingAlgorithm(unittest.TestCase):
                                 index=[pd.Timestamp("2019-01-14", tz='UTC'),
                                        pd.Timestamp("2019-01-15", tz='UTC')])
         expected.index.name = 'index'
-        pd.testing.assert_frame_equal(expected, blotter.get_history_positions())
+        pd.testing.assert_frame_equal(expected, pos)
+
+        # todo test rtn txn
 
     def test_two_engine_algorithm(self):
         class TwoEngineAlg(spectre.trading.CustomAlgorithm):
