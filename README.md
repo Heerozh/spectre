@@ -1,11 +1,11 @@
 [![Coverage Status](https://coveralls.io/repos/github/Heerozh/spectre/badge.svg?branch=master)](https://coveralls.io/github/Heerozh/spectre?branch=master)
 
-Progress: 7/10  🔳🔳🔳🔳🔳🔳🔳⬜⬜⬜\
+Progress: 8/10  🔳🔳🔳🔳🔳🔳🔳🔳⬜⬜\
 ~~5/10: CUDA support~~\
 ~~6/10: Dividends/Splits~~\
 ~~7/10: Back-test architecture~~\
-8/10: Event Systems\
-9/10: Blotter\
+~~8/10: Event/Blotter/Trading Algorithm~~\
+9/10: Optimization\
 10/10: Back-test Analysis\
 ~~11/10: Factor Return Analysis~~
 
@@ -16,9 +16,9 @@ spectre is a **GPU-accelerated Parallel** quantitative trading library, focused 
   * Fast, really fast, see below [Benchmarks](#benchmarks)
   * Pure python code, using PyTorch for parallelize. 
   * Low CUDA memory usage
+  * Compatible with `alphalens` and `pyfolio`
   * Python 3.7, pandas 0.25 recommended
 
-[Under construction]
 
 ## Status
 
@@ -28,7 +28,6 @@ In development.
 
 ```bash
 pip install git+git://github.com/Heerozh/spectre.git
-
 ```
 
 Dependencies: 
@@ -128,7 +127,7 @@ engine.to_cuda()
 
 ##### Compatible with alphalens
 
-The return value of `full_run` is compatible with alphalens:
+The return value of `full_run` is compatible with `alphalens`:
 ```python
 import alphalens as al
 ...
@@ -138,11 +137,63 @@ al.tears.create_full_tear_sheet(clean_data)
 ```
 
 
-###  Portfolio and Backtesting
+### Back-testing
 
-[Under construction]
+Back-testing uses FactorEngine's results as data, market events as triggers:
 
+```python
+from spectre import factors, trading
+class MyAlg(trading.CustomAlgorithm):
+    def initialize(self):
+        # setup engine
+        engine = self.get_factor_engine()
+        engine.to_cuda()
+        universe = factors.AverageDollarVolume(win=120).top(500)
+        engine.set_filter( universe )
+        # add your factors
+        f1 = -(factors.MA(5)-factors.MA(10)-factors.MA(30))
+        engine.add( f1.rank(mask=universe).zscore().to_weight(), 'ma_cross_weight' )
+        # schedule rebalance before market close
+        self.schedule_rebalance(trading.event.MarketClose(self.rebalance, offset_ns=-10000))
+        # simulation parameters
+        self.blotter.capital_base = 10000000
+        self.blotter.set_commission(percentage=0, per_share=0.005, minimum=1)
+        # self.blotter.set_slippage(percentage=0, per_share=0.4)
 
+    def rebalance(self, data: pd.DataFrame, history: pd.DataFrame):
+        # data is FactorEngine's results for current bar
+        self.blotter.order_target_percent(data.index, data.ma_cross_weight)
+
+        # closing asset position that are no longer in our universe.
+        # if some asset is delisted then those order will fail, the asset will remain in the 
+        # portfolio, the portfolio leverage will become a little higher.
+        removes = self.blotter.portfolio.positions.keys() - set(data.index)
+        self.blotter.order_target_percent(removes, [0] * len(removes))
+        # record data for debugging / plotting
+        self.record(nvda_weight=data.loc['NVDA', 'ma_cross_weight'],
+                    nvda_price=self.blotter.get_price('NVDA'))
+
+    def terminate(self, records):
+        # plotting the relationship between NVDA price and weight
+        ax1 = records.nvda_price.plot()
+        ax2 = ax1.twinx()
+        records.nvda_weight.plot(ax=ax2, style='g-', secondary_y=True)
+
+        # plotting result
+        self.plot()
+        
+loader = factors.ArrowLoader('wiki_prices.feather')
+%time ret, txn, pos = trading.run_backtest(loader, MyAlg, '2013-01-01', '2018-01-01')
+```
+
+The return value of `run_backtest` is compatible with `pyfolio`:
+```python
+import pyfolio as pf
+pf.create_full_tear_sheet(rtns, positions=pos, transactions=txn,
+                          live_start_date='2017-01-03', round_trips=True)
+```
+
+BTW, the same strategy took 18 minutes to backtest in zipline.
 
 ## API
 
@@ -151,15 +202,17 @@ al.tears.create_full_tear_sheet(clean_data)
 #### Differences with zipline:
 * spectre's `QuandlLoader` using float32 datatype for GPU performance.
 * For performance, spectre's arranges the data to be flattened by bars without time 
-  information so may be differences such as `Return(win=10)` may actually be more than 10 days/time.
+  information so may be differences, such as `Return(win=10)` may actually be more than 10 days
+  if some stock not open trading in period.
 * When encounter NaN, spectre returns NaN, zipline uses `nan*` so still give you a number.
 * If an asset has no data on the day, spectre will filter it out, no matter what value you return.
 
 
 #### Differences with common chart:
 * The data is re-adjusted every day, so the factor you got, like the MA, will be different 
-    from the stock chart software which only adjusted according to last day. 
-    If you want adjusted by last day, use like 'AdjustedDataFactor(OHLCV.close)' as input data. 
+  from the stock chart software which only adjusted according to last day. 
+  If you want adjusted by last day, use like 'AdjustedDataFactor(OHLCV.close)' as input data. 
+  This will speeds up a lot because it only needs to be adjusted once, but brings Look-Ahead Bias.
 
 
 ### Factor lists
