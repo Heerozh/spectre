@@ -27,7 +27,7 @@ In development.
 ## Installation
 
 ```bash
-pip install git+git://github.com/Heerozh/spectre.git
+pip install --no-deps git+git://github.com/Heerozh/spectre.git
 ```
 
 Dependencies: 
@@ -63,7 +63,6 @@ Running on Quandl 5 years, 3196 Assets, total 3,637,344 bars.
 
 ### Factor and FactorEngine
 
-#### Factor
 ```python
 from spectre import factors
 
@@ -90,7 +89,7 @@ df
 |                         |     MSFT|    104.202|	103.39|
 
 
-#### Factor Analysis
+### Factor Analysis
 
 First use `ArrowLoader` to ingest the data in order to improve performance. \
 `ArrowLoader` can ingest any `DataLoader` including `CsvDirLoader`.
@@ -125,7 +124,7 @@ engine.to_cuda()
 
 <img src="https://github.com/Heerozh/spectre/raw/media/full_run.png" width="811" height="600">
 
-##### Compatible with alphalens
+#### Compatible with alphalens
 
 The return value of `full_run` is compatible with `alphalens`:
 ```python
@@ -143,6 +142,9 @@ Back-testing uses FactorEngine's results as data, market events as triggers:
 
 ```python
 from spectre import factors, trading
+import pandas as pd
+
+
 class MyAlg(trading.CustomAlgorithm):
     def initialize(self):
         # setup engine
@@ -150,17 +152,20 @@ class MyAlg(trading.CustomAlgorithm):
         engine.to_cuda()
         universe = factors.AverageDollarVolume(win=120).top(500)
         engine.set_filter( universe )
+
         # add your factors
         f1 = -(factors.MA(5)-factors.MA(10)-factors.MA(30))
         engine.add( f1.rank(mask=universe).zscore().to_weight(), 'ma_cross_weight' )
+
         # schedule rebalance before market close
         self.schedule_rebalance(trading.event.MarketClose(self.rebalance, offset_ns=-10000))
+
         # simulation parameters
-        self.blotter.capital_base = 10000000
+        self.blotter.capital_base = 100000
         self.blotter.set_commission(percentage=0, per_share=0.005, minimum=1)
         # self.blotter.set_slippage(percentage=0, per_share=0.4)
 
-    def rebalance(self, data: pd.DataFrame, history: pd.DataFrame):
+    def rebalance(self, data: 'pd.DataFrame', history: 'pd.DataFrame'):
         # data is FactorEngine's results for current bar
         self.blotter.order_target_percent(data.index, data.ma_cross_weight)
 
@@ -169,18 +174,20 @@ class MyAlg(trading.CustomAlgorithm):
         # portfolio, the portfolio leverage will become a little higher.
         removes = self.blotter.portfolio.positions.keys() - set(data.index)
         self.blotter.order_target_percent(removes, [0] * len(removes))
+
         # record data for debugging / plotting
-        self.record(nvda_weight=data.loc['NVDA', 'ma_cross_weight'],
-                    nvda_price=self.blotter.get_price('NVDA'))
+        self.record(aapl_weight=data.loc['AAPL', 'ma_cross_weight'],
+                    aapl_price=self.blotter.get_price('AAPL'))
 
     def terminate(self, records):
-        # plotting the relationship between NVDA price and weight
-        ax1 = records.nvda_price.plot()
-        ax2 = ax1.twinx()
-        records.nvda_weight.plot(ax=ax2, style='g-', secondary_y=True)
+        # plotting results
+        spy = pd.read_csv('SPY.csv', index_col='date', parse_dates=True).close.pct_change()
+        self.plot(benchmark=spy)
 
-        # plotting result
-        self.plot()
+        # plotting the relationship between AAPL price and weight
+        ax1 = records.aapl_price.plot()
+        ax2 = ax1.twinx()
+        records.aapl_weight.plot(ax=ax2, style='g-', secondary_y=True)
         
 loader = factors.ArrowLoader('wiki_prices.feather')
 %time ret, txn, pos = trading.run_backtest(loader, MyAlg, '2013-01-01', '2018-01-01')
@@ -189,7 +196,7 @@ loader = factors.ArrowLoader('wiki_prices.feather')
 The return value of `run_backtest` is compatible with `pyfolio`:
 ```python
 import pyfolio as pf
-pf.create_full_tear_sheet(rtns, positions=pos, transactions=txn,
+pf.create_full_tear_sheet(ret, positions=pos, transactions=txn,
                           live_start_date='2017-01-03', round_trips=True)
 ```
 
