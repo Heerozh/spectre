@@ -122,7 +122,7 @@ engine.to_cuda()
 %time factor_data = engine.full_run("2013-01-02", "2018-01-19", periods=(1,5,10,)) 
 ```
 
-<img src="https://github.com/Heerozh/spectre/raw/media/full_run.png" width="811" height="600">
+<img src="https://github.com/Heerozh/spectre/raw/media/full_run.png" width="800" height="600">
 
 #### Compatible with alphalens
 
@@ -155,7 +155,7 @@ class MyAlg(trading.CustomAlgorithm):
 
         # add your factors
         f1 = -(factors.MA(5)-factors.MA(10)-factors.MA(30))
-        engine.add( f1.rank(mask=universe).zscore().to_weight(), 'ma_cross_weight' )
+        engine.add( f1.rank(mask=universe).to_weight(), 'ma_cross_weight' )
 
         # schedule rebalance before market close
         self.schedule_rebalance(trading.event.MarketClose(self.rebalance, offset_ns=-10000))
@@ -192,6 +192,8 @@ class MyAlg(trading.CustomAlgorithm):
 loader = factors.ArrowLoader('wiki_prices.feather')
 %time ret, txn, pos = trading.run_backtest(loader, MyAlg, '2013-01-01', '2018-01-01')
 ```
+
+<img src="https://github.com/Heerozh/spectre/raw/media/backtest.png" width="800" height="630">
 
 The return value of `run_backtest` is compatible with `pyfolio`:
 ```python
