@@ -1,0 +1,68 @@
+"""
+@author: Heerozh (Zhang Jianhao)
+@copyright: Copyright 2019, Heerozh. All rights reserved.
+@license: Apache 2.0
+@email: heeroz@gmail.com
+"""
+import numpy as np
+import pandas as pd
+
+
+def drawdown(cumulative_returns):
+    max_ret = cumulative_returns.cummax()
+    dd = cumulative_returns / max_ret - 1
+    dd_group = 0
+
+    def drawdown_split(x):
+        nonlocal dd_group
+        if dd[x] == 0:
+            dd_group += 1
+        return dd_group
+
+    dd_duration = dd.groupby(drawdown_split).cumcount()
+    return dd, dd_duration
+
+
+def sharpe_ratio(daily_returns: pd.Series, annual_risk_free_rate):
+    risk_adj_ret = daily_returns - [annual_risk_free_rate/252] * len(daily_returns)
+    annual_factor = np.sqrt(252)
+    return annual_factor * risk_adj_ret.mean() / risk_adj_ret.std(ddof=1)
+
+
+def plot_cumulative_returns(returns, benchmark, annual_risk_free_rate):
+    import plotly.graph_objects as go
+
+    fig = go.Figure()
+
+    cum_ret = (returns + 1).cumprod()
+    fig.add_trace(go.Scatter(x=cum_ret.index, y=cum_ret.values * 100 - 100, name='portfolio',
+                             hovertemplate='<b>Date</b>:%{x}<br><b>Return</b>: %{y:.3f}%'))
+
+    if benchmark is not None:
+        cum_bench = (benchmark + 1).cumprod()
+        fig.add_trace(go.Scatter(x=cum_bench.index, y=cum_bench.values * 100 - 100,
+                                 name='benchmark', line=dict(width=0.5)))
+
+    fig.add_shape(go.layout.Shape(
+        type="rect", xref="x", yref="paper", opacity=0.5, line_width=0,
+        fillcolor="LightGoldenrodYellow", layer="below",
+        y0=0, y1=1, x0=cum_ret.idxmax(), x1=cum_ret[cum_ret.idxmax():].idxmin(),
+    ))
+
+    sr = sharpe_ratio(returns, annual_risk_free_rate)
+    dd, ddd = drawdown(cum_ret)
+    mdd = abs(dd.min())
+    mdd_dur = ddd.max()
+
+    ann = go.layout.Annotation(
+        x=0.01, y=0.98, xref="paper", yref="paper",
+        showarrow=False, borderwidth=1, bordercolor='black', align='left',
+        text="<b>SharpeRatio:</b>     {:.3f}<br><b>MaxDrawDown:</b> {:.2f}%, {} Days".format(
+            sr, mdd * 100, mdd_dur
+        ),
+    )
+
+    fig.update_layout(height=400, annotations=[ann], margin={'t': 50})
+    fig.update_xaxes(tickformat='%Y-%m-%d')
+    fig.update_yaxes(title_text='cumulative return', ticksuffix='%')
+    fig.show()

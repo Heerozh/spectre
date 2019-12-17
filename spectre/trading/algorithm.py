@@ -4,9 +4,10 @@
 @license: Apache 2.0
 @email: heeroz@gmail.com
 """
-import pandas as pd
 from abc import ABC
-from .event import *
+import pandas as pd
+from .event import Event, EventReceiver, EventManager, EveryBarData, MarketOpen, MarketClose
+from .metric import plot_cumulative_returns
 from .blotter import BaseBlotter, SimulationBlotter
 from ..factors import FactorEngine
 from ..factors import DataLoader
@@ -71,6 +72,15 @@ class CustomAlgorithm(EventReceiver, ABC):
 
     def record(self, **kwargs):
         self._records.record(self._current_dt, kwargs)
+
+    def plot(self, annual_risk_free_rate=0.04, benchmark: pd.Series = None) -> None:
+        returns = self.blotter.get_returns()
+
+        bench = None
+        if benchmark is not None:
+            bench = benchmark.loc[returns.index[0]:returns.index[-1]]
+
+        plot_cumulative_returns(returns, bench, annual_risk_free_rate)
 
     def schedule_rebalance(self, event: Event):
         """Can only be called in initialize()"""
@@ -211,4 +221,3 @@ class SimulationEventManager(EventManager):
 
         for r in self._subscribers.keys():
             r.on_end_of_run()
-
