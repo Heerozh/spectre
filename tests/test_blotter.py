@@ -18,7 +18,7 @@ class TestBlotter(unittest.TestCase):
         pf.update('AAPL', 10, None)
         pf.update('MSFT', -25, None)
         pf.update_cash(-5000)
-        pf.process_split('AAPL', 2.0, None)
+        pf.process_split('AAPL', 2.0, 3)
 
         pf.set_date("2019-01-04")
         pf.update('AAPL', -10, None)
@@ -33,9 +33,9 @@ class TestBlotter(unittest.TestCase):
         self.assertEqual({'AAPL': 10, 'MSFT': 5}, pf.positions)
         self.assertEqual(7030, pf.cash)
         expected = pd.DataFrame([[nan, nan, nan, nan, 10000.],
-                                 [20., -25, nan, nan, 5000.],
-                                 [10., -25, nan, nan, 5000.],
-                                 [10., 5, 15, 10, 7030.]],
+                                 [20., -25,  30, nan, 5000.],
+                                 [10., -25,  15, nan, 5000.],
+                                 [10.,   5,  15,  10, 7030.]],
                                 columns=pd.MultiIndex.from_tuples(
                                     [('shares', 'AAPL'), ('shares', 'MSFT'),
                                      ('value', 'AAPL'), ('value', 'MSFT'),
@@ -49,8 +49,8 @@ class TestBlotter(unittest.TestCase):
              AAPL  MSFT  AAPL  MSFT     cash
 index                                       
 2019-01-01    NaN   NaN   NaN   NaN  10000.0
-2019-01-03   20.0 -25.0   NaN   NaN   5000.0
-2019-01-04   10.0 -25.0   NaN   NaN   5000.0
+2019-01-03   20.0 -25.0  30.0   NaN   5000.0
+2019-01-04   10.0 -25.0  15.0   NaN   5000.0
 2019-01-05   10.0   5.0  15.0  10.0   7030.0""")
         pf.update_value(lambda x: x == 'AAPL' and 1.5 or 2)
         self.assertEqual(7030 + 15 + 10, pf.value)
@@ -113,6 +113,18 @@ index
         expected.index.name = 'index'
         pd.testing.assert_frame_equal(expected, blotter.get_history_positions())
 
+        # test on 01-09, 01-11 div
+        date = pd.Timestamp("2019-01-09", tz='UTC')
+        blotter.set_datetime(date)
+        blotter.market_open(self)
+        blotter.set_price("close")
+        blotter.order('MSFT', 2)
+        cash = blotter.portfolio.cash
+        blotter.market_close(self)
+        blotter.update_portfolio_value()
+        div = 0.46 + 0.11
+        self.assertAlmostEqual(cash + div * 2, blotter.portfolio.cash)
+
         # no data day
         date = pd.Timestamp("2019-01-10", tz='UTC')
         blotter.set_datetime(date)
@@ -143,20 +155,20 @@ index
         blotter.market_close(self)
         blotter.update_portfolio_value()
 
-        # test 01-11 div
-        div = 0.46 + 0.11
-        cash = cash + 651 * 152.52155 - 3.255 - 969 * 104.116 - 4.845 + div * 969
+        # test on 01-11, 01-14 split
+        self.assertEqual(int(969 / 15), blotter.positions['MSFT'])
+        cash = cash + 651 * 152.52155 - 3.255 - 967 * 104.116 - 4.835
+        cash += (969 - int(969 / 15) * 15) * 103.2  # remaining split to cash
         self.assertAlmostEqual(cash, blotter.portfolio.cash)
 
-        # test 01-14 splits, use 01-15 to test jump a day
+        #
         date = pd.Timestamp("2019-01-15", tz='UTC')
         blotter.set_datetime(date)
         blotter.market_open(self)
         blotter.set_price("close")
         blotter.market_close(self)
         blotter.update_portfolio_value()
-        self.assertEqual(int(969/15), blotter.positions['MSFT'])
-        cash += (969 - int(969/15)*15) * 103.39  # remaining split to cash
+
         # test over night value
         expected = pd.DataFrame([[-651.0, int(969/15), -651*156.94, int(969/15) * 108.85, cash]],
                                 columns=pd.MultiIndex.from_tuples(

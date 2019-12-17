@@ -95,6 +95,9 @@ class DataLoader:
             sp_rto = groupby[spr_col].shift(-1)
             sp_rto.loc[groupby.apply(last)] = 1
 
+            df[div_col] = ex_div
+            df[spr_col] = sp_rto
+
             # generate dividend multipliers
             price_multi = (1 - ex_div / df[close_col]) * sp_rto
             price_multi = price_multi[::-1].groupby(level=1).cumprod()[::-1]
@@ -418,6 +421,7 @@ class QuandlLoader(DataLoader):
                                  })
 
         df.set_index(['date', 'ticker'], inplace=True)
+        df.split_ratio.loc[("2001-09-12", 'GMT')] = 1  # fix nan
         df = self._format(df, split_ratio_is_inverse=True)
         if self._calender:
             df = self._align_to(df, self._calender)

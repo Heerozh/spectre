@@ -65,6 +65,7 @@ class MarketClose(CalendarEvent):
     def __init__(self, callback, offset_ns=0) -> None:
         super().__init__('close', callback, offset_ns)
 
+
 # ----------------------------------------------------------------
 
 

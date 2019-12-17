@@ -104,6 +104,7 @@ class Portfolio:
             remaining = int(self._positions[asset] - int(sp) / inverse_ratio)  # for more precise
             if remaining != 0:
                 self.update_cash(remaining * last_price)
+        self._last_price[asset] = last_price / inverse_ratio
         change = int(sp) - self._positions[asset]
         self.update(asset, change, None)
 
