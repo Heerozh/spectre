@@ -153,8 +153,6 @@ class TestTradingAlgorithm(unittest.TestCase):
         expected.index.name = 'index'
         pd.testing.assert_frame_equal(expected, pos)
 
-        # todo test rtn txn
-
     def test_two_engine_algorithm(self):
         class TwoEngineAlg(spectre.trading.CustomAlgorithm):
             def initialize(self):
