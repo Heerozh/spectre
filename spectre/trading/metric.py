@@ -61,7 +61,6 @@ def plot_cumulative_returns(returns, positions, transactions, benchmark, annual_
     to = to.rolling(resample).mean()[::resample]
     fig.add_trace(go.Bar(x=to.index, y=to.values, opacity=0.2, name='turnover'),
                   secondary_y=True)
-    # fig.update_yaxes(range=[0, to.median()], secondary_y=True)
 
     sr = sharpe_ratio(returns, annual_risk_free_rate)
     dd, ddd = drawdown(cum_ret)
@@ -78,5 +77,6 @@ def plot_cumulative_returns(returns, positions, transactions, benchmark, annual_
 
     fig.update_layout(height=400, annotations=[ann], margin={'t': 50})
     fig.update_xaxes(tickformat='%Y-%m-%d')
-    fig.update_yaxes(title_text='cumulative return', ticksuffix='%')
+    fig.update_yaxes(title_text='cumulative return', ticksuffix='%', secondary_y=False)
+    fig.update_yaxes(title_text='turnover', secondary_y=True)
     fig.show()
