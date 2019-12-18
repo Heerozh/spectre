@@ -6,6 +6,7 @@
 """
 from abc import ABC
 import pandas as pd
+from collections import namedtuple
 from .event import Event, EventReceiver, EventManager, EveryBarData, MarketOpen, MarketClose
 from .metric import plot_cumulative_returns
 from .blotter import BaseBlotter, SimulationBlotter
@@ -31,6 +32,7 @@ class Record:
 
 
 class CustomAlgorithm(EventReceiver, ABC):
+    Results = namedtuple('Results', ['returns', 'positions', 'transactions'])
     """
     Base class for custom trading algorithm.
     """
@@ -48,6 +50,7 @@ class CustomAlgorithm(EventReceiver, ABC):
         self.blotter = blotter
         self._records = Record()
         self._current_dt = None
+        self._results = CustomAlgorithm.Results(None, None, None)
 
     def clear(self):
         for engine in self._engines.values():
@@ -70,19 +73,21 @@ class CustomAlgorithm(EventReceiver, ABC):
     def current(self):
         return self._current_dt
 
+    @property
+    def results(self):
+        return self._results
+
     def record(self, **kwargs):
         self._records.record(self._current_dt, kwargs)
 
     def plot(self, annual_risk_free_rate=0.04, benchmark: pd.Series = None) -> None:
-        returns = self.blotter.get_returns()
-        positions = self.blotter.get_historical_positions()
-        transactions = self.blotter.get_transactions()
+        returns = self._results.returns
 
         bench = None
         if benchmark is not None:
             bench = benchmark.loc[returns.index[0]:returns.index[-1]]
 
-        plot_cumulative_returns(returns, positions, transactions,
+        plot_cumulative_returns(returns, self._results.positions,  self._results.transactions,
                                 bench, annual_risk_free_rate)
 
     def schedule_rebalance(self, event: Event):
@@ -116,6 +121,10 @@ class CustomAlgorithm(EventReceiver, ABC):
         self.initialize()
 
     def on_end_of_run(self):
+        self._results = CustomAlgorithm.Results(
+            returns=self.blotter.get_returns(),
+            positions=self.blotter.get_historical_positions(),
+            transactions=self.blotter.get_transactions())
         self.terminate(self._records.to_df())
 
     def initialize(self):

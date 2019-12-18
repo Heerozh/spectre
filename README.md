@@ -175,7 +175,7 @@ class MyAlg(trading.CustomAlgorithm):
         records.aapl_weight.plot(ax=ax2, style='g-', secondary_y=True)
         
 loader = factors.ArrowLoader('wiki_prices.feather')
-%time ret, txn, pos = trading.run_backtest(loader, MyAlg, '2013-01-01', '2018-01-01')
+%time results = trading.run_backtest(loader, MyAlg, '2013-01-01', '2018-01-01')
 ```
 
 <img src="https://github.com/Heerozh/spectre/raw/media/backtest.png" width="800" height="630">
@@ -183,7 +183,7 @@ loader = factors.ArrowLoader('wiki_prices.feather')
 The return value of `run_backtest` is compatible with `pyfolio`:
 ```python
 import pyfolio as pf
-pf.create_full_tear_sheet(ret, positions=pos, transactions=txn,
+pf.create_full_tear_sheet(results.returns, positions=results.positions, transactions=results.transactions,
                           live_start_date='2017-01-03', round_trips=True)
 ```
 

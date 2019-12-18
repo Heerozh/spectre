@@ -145,4 +145,4 @@ def run_backtest(loader: 'DataLoader', alg_type: 'Type[CustomAlgorithm]', start,
     evt_mgr.subscribe(alg)
     evt_mgr.run(start, end)
 
-    return _blotter.get_returns(), _blotter.get_transactions(), _blotter.get_historical_positions()
+    return alg.results

@@ -123,7 +123,7 @@ class TestTradingAlgorithm(unittest.TestCase):
             adjustments=('amount', 'ratio'),
             prices_index='date', dividends_index='exDate', splits_index='exDate', parse_dates=True,
         )
-        rtn, txn, pos = spectre.trading.run_backtest(
+        results = spectre.trading.run_backtest(
             loader, OneEngineAlg, "2019-01-11", "2019-01-15")
 
         # test factor delay, order correct
@@ -151,7 +151,7 @@ class TestTradingAlgorithm(unittest.TestCase):
                                 index=[pd.Timestamp("2019-01-14", tz='UTC'),
                                        pd.Timestamp("2019-01-15", tz='UTC')])
         expected.index.name = 'index'
-        pd.testing.assert_frame_equal(expected, pos)
+        pd.testing.assert_frame_equal(expected, results.positions)
 
     def test_two_engine_algorithm(self):
         class TwoEngineAlg(spectre.trading.CustomAlgorithm):
