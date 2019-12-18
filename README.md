@@ -1,14 +1,5 @@
 [![Coverage Status](https://coveralls.io/repos/github/Heerozh/spectre/badge.svg?branch=master)](https://coveralls.io/github/Heerozh/spectre?branch=master)
 
-Progress: 8/10  🔳🔳🔳🔳🔳🔳🔳🔳⬜⬜\
-~~5/10: CUDA support~~\
-~~6/10: Dividends/Splits~~\
-~~7/10: Back-test architecture~~\
-~~8/10: Event/Blotter/Trading Algorithm~~\
-9/10: Optimization\
-10/10: Back-test Analysis\
-~~11/10: Factor Return Analysis~~
-
 # ||spectre
 
 spectre is a **GPU-accelerated Parallel** quantitative trading library, focused on **performance**.
@@ -19,10 +10,6 @@ spectre is a **GPU-accelerated Parallel** quantitative trading library, focused 
   * Compatible with `alphalens` and `pyfolio`
   * Python 3.7, pandas 0.25 recommended
 
-
-## Status
-
-In development.
 
 ## Installation
 
@@ -55,8 +42,6 @@ Running on Quandl 5 years, 3196 Assets, total 3,637,344 bars.
 
 * The CUDA memory used in the spectre benchmark is 1.3G, returned by cuda.max_memory_allocated().
 * Benchmarks exclude the initial run (no copy data to VRAM, about saving 300ms).
-
-
 
 
 ## Quick Start
@@ -161,7 +146,7 @@ class MyAlg(trading.CustomAlgorithm):
         self.schedule_rebalance(trading.event.MarketClose(self.rebalance, offset_ns=-10000))
 
         # simulation parameters
-        self.blotter.capital_base = 100000
+        self.blotter.capital_base = 10000000
         self.blotter.set_commission(percentage=0, per_share=0.005, minimum=1)
         # self.blotter.set_slippage(percentage=0, per_share=0.4)
 
@@ -171,7 +156,7 @@ class MyAlg(trading.CustomAlgorithm):
 
         # closing asset position that are no longer in our universe.
         # if some asset is delisted then those order will fail, the asset will remain in the 
-        # portfolio, the portfolio leverage will become a little higher.
+        # portfolio, the portfolio leverage will become a little higher than it actually is.
         removes = self.blotter.portfolio.positions.keys() - set(data.index)
         self.blotter.order_target_percent(removes, [0] * len(removes))
 
@@ -179,7 +164,7 @@ class MyAlg(trading.CustomAlgorithm):
         self.record(aapl_weight=data.loc['AAPL', 'ma_cross_weight'],
                     aapl_price=self.blotter.get_price('AAPL'))
 
-    def terminate(self, records):
+    def terminate(self, records: 'pd.DataFrame'):
         # plotting results
         spy = pd.read_csv('SPY.csv', index_col='date', parse_dates=True).close.pct_change()
         self.plot(benchmark=spy)
