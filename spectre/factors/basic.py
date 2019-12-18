@@ -84,10 +84,10 @@ class ExponentialWeightedMovingAverage(CustomFactor):
         if self.adjust:
             return weighted_mean
         else:
-            shift = data.last().roll(self.win - 1, dims=1)
-            shift[:, 0:self.win - 1] = 0
+            shifted = data.last().roll(self.win - 1, dims=1)
+            shifted[:, 0:self.win - 1] = 0
             alpha = self.alpha
-            return alpha * weighted_mean + (shift * (1 - alpha) ** self.win)
+            return alpha * weighted_mean + (shifted * (1 - alpha) ** self.win)
 
 
 class AverageDollarVolume(CustomFactor):

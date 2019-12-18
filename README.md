@@ -183,8 +183,8 @@ loader = factors.ArrowLoader('wiki_prices.feather')
 The return value of `run_backtest` is compatible with `pyfolio`:
 ```python
 import pyfolio as pf
-pf.create_full_tear_sheet(results.returns, positions=results.positions, transactions=results.transactions,
-                          live_start_date='2017-01-03', round_trips=True)
+pf.create_full_tear_sheet(results.returns, positions=results.positions.value, transactions=results.transactions,
+                          live_start_date='2017-01-03')
 ```
 
 BTW, the same strategy took 18 minutes to backtest in zipline.

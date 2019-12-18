@@ -78,5 +78,5 @@ def plot_cumulative_returns(returns, positions, transactions, benchmark, annual_
     fig.update_layout(height=400, annotations=[ann], margin={'t': 50})
     fig.update_xaxes(tickformat='%Y-%m-%d')
     fig.update_yaxes(title_text='cumulative return', ticksuffix='%', secondary_y=False)
-    fig.update_yaxes(title_text='turnover', secondary_y=True)
+    fig.update_yaxes(title_text='turnover', ticksuffix='%', secondary_y=True)
     fig.show()
