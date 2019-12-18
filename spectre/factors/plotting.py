@@ -33,7 +33,6 @@ def plot_quantile_and_cumulative_returns(factor_data, mean_ret):
     periods = list(mean_ret.columns.levels[1])
     periods.sort(key=lambda cn: int(cn[:-1]))
     rows = math.ceil(len(factors))
-    cols = 2
 
     colors = dict(zip(periods, cycle(DEFAULT_COLORS)))
     quantile_styles = {
@@ -51,7 +50,6 @@ def plot_quantile_and_cumulative_returns(factor_data, mean_ret):
         for period in periods
     }
 
-    fig = go.Figure()
     fig = subplots.make_subplots(
         rows=rows, cols=2,
         vertical_spacing=0.03,

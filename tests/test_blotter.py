@@ -111,7 +111,7 @@ index
                                     [('value', 'cash')]),
                                 index=[date])
         expected.index.name = 'index'
-        pd.testing.assert_frame_equal(expected, blotter.get_history_positions())
+        pd.testing.assert_frame_equal(expected, blotter.get_historical_positions())
 
         # test on 01-09, 01-11 div
         date = pd.Timestamp("2019-01-09", tz='UTC')
@@ -176,4 +176,4 @@ index
                                      ('value', 'AAPL'), ('value', 'MSFT'),
                                      ('value', 'cash')]),
                                 index=[date])
-        pd.testing.assert_series_equal(expected.iloc[-1], blotter.get_history_positions().iloc[-1])
+        pd.testing.assert_series_equal(expected.iloc[-1], blotter.get_historical_positions().iloc[-1])

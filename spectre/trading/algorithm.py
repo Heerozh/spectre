@@ -75,12 +75,15 @@ class CustomAlgorithm(EventReceiver, ABC):
 
     def plot(self, annual_risk_free_rate=0.04, benchmark: pd.Series = None) -> None:
         returns = self.blotter.get_returns()
+        positions = self.blotter.get_historical_positions()
+        transactions = self.blotter.get_transactions()
 
         bench = None
         if benchmark is not None:
             bench = benchmark.loc[returns.index[0]:returns.index[-1]]
 
-        plot_cumulative_returns(returns, bench, annual_risk_free_rate)
+        plot_cumulative_returns(returns, positions, transactions,
+                                bench, annual_risk_free_rate)
 
     def schedule_rebalance(self, event: Event):
         """Can only be called in initialize()"""

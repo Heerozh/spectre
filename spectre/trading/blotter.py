@@ -255,7 +255,7 @@ class BaseBlotter:
     def cancel_all_orders(self):
         raise NotImplementedError("abstractmethod")
 
-    def get_history_positions(self):
+    def get_historical_positions(self):
         return self._portfolio.history
 
     def get_returns(self):

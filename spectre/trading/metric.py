@@ -29,10 +29,17 @@ def sharpe_ratio(daily_returns: pd.Series, annual_risk_free_rate):
     return annual_factor * risk_adj_ret.mean() / risk_adj_ret.std(ddof=1)
 
 
-def plot_cumulative_returns(returns, benchmark, annual_risk_free_rate):
-    import plotly.graph_objects as go
+def turnover(positions, transactions):
+    value_trades = (transactions.amount * transactions.fill_price).abs()
+    value_trades = value_trades.groupby(level=0).sum()
+    return value_trades / positions.value.sum(axis=1)
 
-    fig = go.Figure()
+
+def plot_cumulative_returns(returns, positions, transactions, benchmark, annual_risk_free_rate):
+    import plotly.graph_objects as go
+    import plotly.subplots as subplots
+
+    fig = subplots.make_subplots(specs=[[{"secondary_y": True}]])
 
     cum_ret = (returns + 1).cumprod()
     fig.add_trace(go.Scatter(x=cum_ret.index, y=cum_ret.values * 100 - 100, name='portfolio',
@@ -48,6 +55,13 @@ def plot_cumulative_returns(returns, benchmark, annual_risk_free_rate):
         fillcolor="LightGoldenrodYellow", layer="below",
         y0=0, y1=1, x0=cum_ret.idxmax(), x1=cum_ret[cum_ret.idxmax():].idxmin(),
     ))
+
+    to = turnover(positions, transactions) * 100
+    resample = int(len(to) / 126)
+    to = to.rolling(resample).mean()[::resample]
+    fig.add_trace(go.Bar(x=to.index, y=to.values, opacity=0.2, name='turnover'),
+                  secondary_y=True)
+    # fig.update_yaxes(range=[0, to.median()], secondary_y=True)
 
     sr = sharpe_ratio(returns, annual_risk_free_rate)
     dd, ddd = drawdown(cum_ret)

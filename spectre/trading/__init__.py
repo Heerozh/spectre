@@ -129,6 +129,12 @@ from .blotter import (
     BaseBlotter,
     SimulationBlotter
 )
+from .metric import (
+    drawdown,
+    sharpe_ratio,
+    turnover,
+    plot_cumulative_returns
+)
 
 
 def run_backtest(loader: 'DataLoader', alg_type: 'Type[CustomAlgorithm]', start, end):
@@ -139,4 +145,4 @@ def run_backtest(loader: 'DataLoader', alg_type: 'Type[CustomAlgorithm]', start,
     evt_mgr.subscribe(alg)
     evt_mgr.run(start, end)
 
-    return _blotter.get_returns(), _blotter.get_transactions(), _blotter.get_history_positions()
+    return _blotter.get_returns(), _blotter.get_transactions(), _blotter.get_historical_positions()
