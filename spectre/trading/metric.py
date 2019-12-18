@@ -58,7 +58,7 @@ def plot_cumulative_returns(returns, positions, transactions, benchmark, annual_
 
     to = turnover(positions, transactions) * 100
     resample = int(len(to) / 126)
-    to = to.rolling(resample).mean()[::resample]
+    to = to.fillna(0).rolling(resample).mean()[::resample]
     fig.add_trace(go.Bar(x=to.index, y=to.values, opacity=0.2, name='turnover'),
                   secondary_y=True)
 
