@@ -170,10 +170,12 @@ index
         blotter.update_portfolio_value()
 
         # test over night value
-        expected = pd.DataFrame([[-651.0, int(969/15), -651*156.94, int(969/15) * 108.85, cash]],
-                                columns=pd.MultiIndex.from_tuples(
-                                    [('shares', 'AAPL'), ('shares', 'MSFT'),
-                                     ('value', 'AAPL'), ('value', 'MSFT'),
-                                     ('value', 'cash')]),
-                                index=[date])
-        pd.testing.assert_series_equal(expected.iloc[-1], blotter.get_historical_positions().iloc[-1])
+        expected = pd.DataFrame(
+            [[-651.0, int(969 / 15), -651 * 156.94, int(969 / 15) * 108.85, cash]],
+            columns=pd.MultiIndex.from_tuples(
+                [('shares', 'AAPL'), ('shares', 'MSFT'),
+                 ('value', 'AAPL'), ('value', 'MSFT'),
+                 ('value', 'cash')]),
+            index=[date])
+        pd.testing.assert_series_equal(expected.iloc[-1],
+                                       blotter.get_historical_positions().iloc[-1])

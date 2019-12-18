@@ -203,6 +203,15 @@ class TestTradingAlgorithm(unittest.TestCase):
         assert_array_equal(['AAPL', 'AAPL', 'MSFT', 'AAPL'],
                            blotter.get_transactions().symbol.values)
 
-    def test_with_zipline(self):
-        # todo
-        pass
+    def test_record(self):
+        recorder = spectre.trading.CustomAlgorithm(None, main=None)._recorder
+        recorder.record("2019-01-10", dict(a=1, b=2))
+        recorder.record("2019-01-11", dict(a=2, b=3, c=4))
+        df = recorder.to_df()
+        expected = pd.DataFrame([[1, 2, nan],
+                                 [2, 3, 4]],
+                                columns=['a', 'b', 'c'],
+                                index=["2019-01-10",
+                                       "2019-01-11"])
+        expected.index.name = 'date'
+        pd.testing.assert_frame_equal(expected, df)

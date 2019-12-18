@@ -14,7 +14,7 @@ from ..factors import FactorEngine
 from ..factors import DataLoader
 
 
-class Record:
+class Recorder:
     def __init__(self):
         self._records = []
 
@@ -48,7 +48,7 @@ class CustomAlgorithm(EventReceiver, ABC):
         self._data = None
         self._engines = {name: FactorEngine(loader) for name, loader in data_sources.items()}
         self.blotter = blotter
-        self._records = Record()
+        self._recorder = Recorder()
         self._current_dt = None
         self._results = CustomAlgorithm.Results(None, None, None)
 
@@ -78,7 +78,7 @@ class CustomAlgorithm(EventReceiver, ABC):
         return self._results
 
     def record(self, **kwargs):
-        self._records.record(self._current_dt, kwargs)
+        self._recorder.record(self._current_dt, kwargs)
 
     def plot(self, annual_risk_free_rate=0.04, benchmark: pd.Series = None) -> None:
         returns = self._results.returns
@@ -125,7 +125,7 @@ class CustomAlgorithm(EventReceiver, ABC):
             returns=self.blotter.get_returns(),
             positions=self.blotter.get_historical_positions(),
             transactions=self.blotter.get_transactions())
-        self.terminate(self._records.to_df())
+        self.terminate(self._recorder.to_df())
 
     def initialize(self):
         raise NotImplementedError("abstractmethod")
