@@ -212,7 +212,13 @@ class CustomFactor(BaseFactor):
         if self.inputs:
             backward = max([up.get_total_backward_() for up in self.inputs
                             if isinstance(up, BaseFactor)] or (0,))
-        return backward + self.win - 1
+        backward = backward + self.win - 1
+
+        if self._mask:
+            mask_backward = self._mask.get_total_backward_()
+            return max(mask_backward, backward)
+        else:
+            return backward
 
     def include_close_data(self) -> bool:
         ret = super().include_close_data()

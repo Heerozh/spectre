@@ -15,18 +15,21 @@ class TestCustomFactorLib(unittest.TestCase):
         a = spectre.factors.CustomFactor(win=2)
         b = spectre.factors.CustomFactor(win=3, inputs=(a,))
         c = spectre.factors.CustomFactor(win=3, inputs=(b,))
-        self.assertEqual(c.get_total_backward_(), 5)
+        self.assertEqual(5, c.get_total_backward_())
+        m = spectre.factors.CustomFactor(win=10)
+        c.set_mask(m)
+        self.assertEqual(9, c.get_total_backward_())
 
         a1 = spectre.factors.CustomFactor(win=10)
         a2 = spectre.factors.CustomFactor(win=5)
         b1 = spectre.factors.CustomFactor(win=20, inputs=(a1, a2))
         b2 = spectre.factors.CustomFactor(win=100, inputs=(a2,))
         c1 = spectre.factors.CustomFactor(win=100, inputs=(b1,))
-        self.assertEqual(a1.get_total_backward_(), 9)
-        self.assertEqual(a2.get_total_backward_(), 4)
-        self.assertEqual(b1.get_total_backward_(), 28)
-        self.assertEqual(b2.get_total_backward_(), 103)
-        self.assertEqual(c1.get_total_backward_(), 127)
+        self.assertEqual(9, a1.get_total_backward_())
+        self.assertEqual(4, a2.get_total_backward_())
+        self.assertEqual(28, b1.get_total_backward_())
+        self.assertEqual(103, b2.get_total_backward_())
+        self.assertEqual(127, c1.get_total_backward_())
 
         # test inheritance
         loader = spectre.factors.CsvDirLoader(
@@ -65,6 +68,6 @@ class TestCustomFactorLib(unittest.TestCase):
 
         engine.add(TestFactor2(), 'test2')
         df = engine.run('2019-01-11', '2019-01-15', delay_factor=False)
-        self.assertEqual(test_f1._cache_hit, 1)
-        assert_array_equal(df['test1'].values, [0, 3, 1, 4, 2, 5])
-        assert_array_equal(df['test2'].values, [0, 3, 1, 7, 3, 12])
+        self.assertEqual(1, test_f1._cache_hit)
+        assert_array_equal([0, 3, 1, 4, 2, 5], df['test1'].values)
+        assert_array_equal([0, 3, 1, 7, 3, 12], df['test2'].values)
