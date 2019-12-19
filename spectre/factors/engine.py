@@ -258,13 +258,22 @@ class FactorEngine:
         """
         Get the price data for Factor Return Analysis.
         :param start: same as run
-        :param end: should long than factor end time, for forward returns calculations.
+        :param end: should be longer than the `end` time of `run`, for forward returns calculations.
         :param prices: prices data factor. If you traded at the opening, you should set it
                        to OHLCV.open.
         """
         factors_backup = self._factors
-        filter_backup = self._filter
         self._factors = {'price': AdjustedDataFactor(prices)}
+
+        # get ticker s first
+        assets = None
+        if self._filter is not None:
+            with warnings.catch_warnings():
+                warnings.simplefilter("ignore")
+                assets_ret = self.run(start, end, delay_factor=False)
+            assets = assets_ret.index.get_level_values(1).unique()
+
+        filter_backup = self._filter
         self._filter = None
         with warnings.catch_warnings():
             warnings.simplefilter("ignore")
@@ -272,7 +281,10 @@ class FactorEngine:
         self._factors = factors_backup
         self._filter = filter_backup
 
-        return ret['price'].unstack(level=[1])
+        ret = ret['price'].unstack(level=[1])
+        if assets is not None:
+            ret = ret[assets]
+        return ret
 
     def full_run(self, start, end, trade_at='close', periods=(1, 4, 9),
                  quantiles=5, filter_zscore=20, preview=True
