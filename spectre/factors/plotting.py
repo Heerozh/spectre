@@ -34,26 +34,30 @@ def plot_quantile_and_cumulative_returns(factor_data, mean_ret):
     periods.sort(key=lambda cn: int(cn[:-1]))
     rows = math.ceil(len(factors))
 
-    colors = dict(zip(periods, cycle(DEFAULT_COLORS)))
+    colors = dict(zip(periods + ['to'], cycle(DEFAULT_COLORS)))
     quantile_styles = {
         period: {'name': period, 'legendgroup': period,
                  'hovertemplate': '<b>Quantile</b>:%{x}<br>'
-                                  '<b>Return</b>: %{y:.3f}%±%{error_y.array:.3f}%',
+                                  '<b>Return</b>: %{y:.2f}bps ±%{error_y.array:.2f}bps',
                  'marker': {'color': colors[period]}}
         for period in periods
     }
     cumulative_styles = {
         period: {'name': period, 'mode': 'lines', 'legendgroup': period, 'showlegend': False,
                  'hovertemplate': '<b>Date</b>:%{x}<br>'
-                                  '<b>Return</b>: %{y:.3f}x',
+                                  '<b>Return</b>: %{y:.3f}%',
                  'marker': {'color': colors[period]}}
         for period in periods
     }
+    turnover_styles = {'opacity': 0.2, 'name': 'turnover', 'legendgroup': 'turnover',
+                       'marker': {'color': colors['to']}}
 
+    specs = [[{}, {"secondary_y": True}]] * rows
     fig = subplots.make_subplots(
         rows=rows, cols=2,
         vertical_spacing=0.03,
         horizontal_spacing=0.06,
+        specs=specs,
         subplot_titles=['Quantile Return', 'Portfolio cumulative returns'],
     )
 
@@ -63,26 +67,37 @@ def plot_quantile_and_cumulative_returns(factor_data, mean_ret):
         weighted = factor_data['Returns'].multiply(factor_data[weight_col], axis=0)
         factor_return = weighted.groupby(level='date').sum()
         for j, period in enumerate(periods):
-            y = mean_ret.loc[:, (factor, period, 'mean')] * 100
-            err_y = mean_ret.loc[:, (factor, period, 'sem')] * 100
+            y = mean_ret.loc[:, (factor, period, 'mean')] * 10000
+            err_y = mean_ret.loc[:, (factor, period, 'sem')] * 10000
             fig.add_trace(go.Bar(
                 x=x, y=y, error_y=dict(type='data', array=err_y, thickness=0.2),
                 **quantile_styles[period]
             ), row=row, col=1)
             quantile_styles[period]['showlegend'] = False
-            fig.update_xaxes(type="category", row=row, col=1)
-            fig.update_yaxes(title_text=factor, row=row, col=1, ticksuffix='%')
 
             cum_ret = factor_return[period].resample('b' + period).mean().dropna()
-            cum_ret = (cum_ret + 1).cumprod()
+            cum_ret = (cum_ret + 1).cumprod() * 100 - 100
             fig.add_trace(go.Scatter(
                 x=cum_ret.index, y=cum_ret.values,  **cumulative_styles[period]
             ), row=row, col=2)
 
-            fig.add_shape(go.layout.Shape(
-                type="line", line=dict(width=1),
-                y0=1, y1=1, x0=cum_ret.index[0], x1=cum_ret.index[-1],
-            ), row=row, col=2)
+        fig.update_xaxes(type="category", row=row, col=1)
+        fig.update_yaxes(title_text=factor, row=row, col=1)
+
+        fig.add_shape(go.layout.Shape(
+            type="line", line=dict(width=1),
+            y0=1, y1=1, x0=factor_return.index[0], x1=factor_return.index[-1],
+        ), row=row, col=2)
+
+        weight_diff = factor_data[weight_col].unstack(level=[1]).diff()
+        to = weight_diff.abs().sum(axis=1)*100
+        resample = int(len(to) / 64)
+        to = to.fillna(0).rolling(resample).mean()[::resample]
+        fig.add_trace(go.Bar(x=to.index, y=to.values, **turnover_styles),
+                      secondary_y=True, row=row, col=2)
+        turnover_styles['showlegend'] = False
+
+        fig.update_yaxes(row=row, col=2, ticksuffix='%')
 
     fig.update_layout(height=300 * rows, barmode='group', bargap=0.5, margin={'t': 50})
     fig.show()
