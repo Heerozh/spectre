@@ -34,50 +34,47 @@ class FactorEngine:
     def dataframe_(self):
         return self._dataframe
 
-    @property
-    def assetgroup_(self):
-        return self._assetgroup
+    def get_group_(self, group_name):
+        return self._groups[group_name]
 
-    @property
-    def timegroup_(self):
-        return self._timegroup
-
-    def get_tensor_groupby_asset_(self, column) -> torch.Tensor:
+    def column_to_tensor_(self, data_column) -> torch.Tensor:
         # cache data with column prevent double copying
-        if column in self._column_cache:
-            return self._column_cache[column]
+        if data_column in self._column_cache:
+            return self._column_cache[data_column]
 
-        series = self._dataframe[column]
+        series = self._dataframe[data_column]
         data = torch.from_numpy(series.values).pin_memory().to(self._device, non_blocking=True)
-        data = self._assetgroup.split(data)
-        self._column_cache[column] = data
+        self._column_cache[data_column] = data
         return data
 
-    def create_tensor(self, dtype, values, nan_values) -> torch.Tensor:
-        return self._assetgroup.create(dtype, values, nan_values)
+    def column_to_parallel_groupby_(self, group_column: str, as_group_name=None):
+        if as_group_name is None:
+            as_group_name = group_column
+        if as_group_name in self._groups:
+            return
 
-    def regroup_by_asset_(self, data: Union[torch.Tensor, pd.Series]) -> torch.Tensor:
+        series = self._dataframe[group_column]
+        if series.dtype.name == 'category':
+            cat = series.cat.codes
+        else:
+            cat = series.values
+        keys = torch.tensor(cat, device=self._device, dtype=torch.int32)
+        self._groups[as_group_name] = ParallelGroupBy(keys)
+
+    def create_tensor(self, group: str, dtype, values, nan_values) -> torch.Tensor:
+        return self._groups[group].create(dtype, values, nan_values)
+
+    def revert_(self, data: torch.Tensor, group: str, factor_name: str) -> torch.Tensor:
+        return self._groups[group].revert(data, factor_name)
+
+    def revert_to_series_(self, data: torch.Tensor, group: str, factor_name: str) -> pd.Series:
+        return pd.Series(self.revert_(data, group, factor_name), index=self._dataframe.index)
+
+    def group_by_(self, data: Union[torch.Tensor, pd.Series], group: str) -> torch.Tensor:
         if isinstance(data, pd.Series):
             data = torch.tensor(data.values, device=self._device)
-        else:
-            data = self._timegroup.revert(data, 'regroup_by_asset_')
-        data = self._assetgroup.split(data)
+        data = self._groups[group].split(data)
         return data
-
-    def regroup_by_time_(self, data: Union[torch.Tensor, pd.Series]) -> torch.Tensor:
-        if isinstance(data, pd.Series):
-            data = torch.tensor(data.values, device=self._device)
-        else:
-            data = self._assetgroup.revert(data, 'regroup_by_time_')
-        data = self._timegroup.split(data)
-        return data
-
-    def revert_to_series_(self, data: torch.Tensor, is_timegroup: bool) -> pd.Series:
-        if is_timegroup:
-            ret = self._timegroup.revert(data)
-        else:
-            ret = self._assetgroup.revert(data)
-        return pd.Series(ret, index=self._dataframe.index)
 
     # private:
 
@@ -87,6 +84,7 @@ class FactorEngine:
         if start == self._last_load[0] and end == self._last_load[1] \
                 and max_backward <= self._last_load[2]:
             return
+        self._groups = dict()
 
         # Get data
         self._dataframe = self._loader.load(start, end, max_backward)
@@ -94,33 +92,26 @@ class FactorEngine:
         # asset group
         cat = self._dataframe.index.get_level_values(1).codes
         keys = torch.tensor(cat, device=self._device, dtype=torch.int32)
-        self._assetgroup = ParallelGroupBy(keys)
+        self._groups['asset'] = ParallelGroupBy(keys)
 
         # time group prepare
-        cat = self._dataframe[self._loader.time_category].values
-        keys = torch.tensor(cat, device=self._device, dtype=torch.int32)
-        self._timegroup = ParallelGroupBy(keys)
+        self.column_to_parallel_groupby_(self._loader.time_category, 'date')
 
         self._column_cache = {}
         self._last_load = [start, end, max_backward]
 
-    def _compute_and_revert(self, f: BaseFactor, name) -> Union[np.array, pd.Series]:
-        """Returning pd.Series will cause very poor performance, please avoid it at 99% costs"""
+    def _compute_and_revert(self, f: BaseFactor, name) -> torch.Tensor:
         data = f.compute_(None)
-        if f.is_timegroup:
-            return self._timegroup.revert(data, name)
-        else:
-            return self._assetgroup.revert(data, name)
+        return self._groups[f.groupby].revert(data, name)
 
     # public:
 
     def __init__(self, loader: DataLoader) -> None:
         self._loader = loader
         self._dataframe = None
-        self._assetgroup = None
+        self._groups = dict()
         self._last_load = [None, None, None]
         self._column_cache = {}
-        self._timegroup = None
         self._factors = {}
         self._filter = None
         self._device = torch.device('cpu')
@@ -158,6 +149,7 @@ class FactorEngine:
     def clear(self):
         self.remove_all_factors()
         self.set_filter(None)
+        self._groups = dict()
 
     def remove_all_factors(self) -> None:
         self._factors = {}

@@ -12,8 +12,8 @@ from ..parallel import nansum, nanmean, nanstd, nanlast, Rolling
 
 
 class BaseFactor:
-    """ Basic factor class, only helper methods, not dealing with dependencies """
-    is_timegroup = False  # indicates inputs and return value of this factor are grouped by time
+    """ Basic factor class, only helper methods """
+    groupby = 'asset'  # indicates inputs and return value of this factor are grouped by what
     _engine = None
 
     # --------------- overload ops ---------------
@@ -88,10 +88,12 @@ class BaseFactor:
         factor.set_mask(mask)
         return factor
 
-    def demean(self, groupby=None, mask: 'BaseFactor' = None):
+    def demean(self, groupby: Union[str, dict] = None, mask: 'BaseFactor' = None):
         """
-        This method will interrupt the parallelism of cuda, please use it at the last few step.
-        groupby={'name':group_id}
+        Set `groupby` to the name of a column, like 'sector'.
+        `groupby` also can be a dictionary like groupby={'name':group_id}, but it will interrupt
+        the parallelism of cuda, it is recommended to add group key to the Dataloader as a column,
+        or use it only in the last step.
         """
         # for future optimization:
         # assets = self._engine.dataframe_().index.get_level_values(1)
@@ -99,7 +101,12 @@ class BaseFactor:
         # keys = torch.tensor(keys, device=self._engine.device, dtype=torch.int32)
         # factor.groupby = ParallelGroupBy(keys)
         factor = DemeanFactor(inputs=(self,))
-        factor.groupby = groupby
+        if isinstance(groupby, str):
+            factor.groupby = groupby
+        elif isinstance(groupby, dict):
+            factor.group_dict = groupby
+        elif groupby is not None:
+            raise ValueError()
         factor.set_mask(mask)
         return factor
 
@@ -129,28 +136,18 @@ class BaseFactor:
 
     # --------------- main methods ---------------
 
-    def _regroup_by_time(self, data):
-        return self._engine.regroup_by_time_(data)
-
-    def _regroup_by_asset(self, data):
-        return self._engine.regroup_by_asset_(data)
-
     def _regroup_by_other(self, factor, factor_out):
-        if factor.is_timegroup and not self.is_timegroup:
-            return self._regroup_by_asset(factor_out)
-        elif not factor.is_timegroup and self.is_timegroup:
-            return self._regroup_by_time(factor_out)
+        if factor.groupby != self.groupby:
+            ret = self._engine.revert_(factor_out, factor.groupby, type(factor).__name__)
+            return self._regroup(ret)
         else:
             return factor_out
 
     def _regroup(self, data):
-        if self.is_timegroup:
-            return self._engine.regroup_by_time_(data)
-        else:
-            return self._engine.regroup_by_asset_(data)
+        return self._engine.group_by_(data, self.groupby)
 
     def _revert_to_series(self, data):
-        return self._engine.revert_to_series_(data, self.is_timegroup)
+        return self._engine.revert_to_series_(data, self.groupby, type(self).__name__)
 
     def get_total_backward_(self) -> int:
         raise NotImplementedError("abstractmethod")
@@ -158,8 +155,9 @@ class BaseFactor:
     def include_close_data(self) -> bool:
         return False
 
-    def pre_compute_(self, engine, start, end) -> None:
+    def pre_compute_(self, engine: 'FactorEngine', start, end) -> None:
         self._engine = engine
+        engine.column_to_parallel_groupby_(self.groupby)
 
     def compute_(self, stream: Union[torch.cuda.Stream, None]) -> torch.Tensor:
         raise NotImplementedError("abstractmethod")
@@ -246,7 +244,7 @@ class CustomFactor(BaseFactor):
             self._mask.pre_compute_(engine, start, end)
 
     def _format_input(self, upstream, upstream_out, mask_factor, mask_out):
-        # If input is timegroup and self not, convert to asset group
+        # If input.groupby not equal self.groupby, convert it
         ret = self._regroup_by_other(upstream, upstream_out)
 
         if mask_out is not None:
@@ -310,8 +308,8 @@ class CustomFactor(BaseFactor):
         Unlike zipline, here calculate all data at once. Does not guarantee Look-Ahead Bias.
 
         `inputs` Data structure:
-        For parallel, the data structure is designed for optimal performance and fixed.
-        * Groupby asset(default):
+        For parallel, the data structure is designed for optimal performance.
+        * Groupby `asset`(default):
             set N = individual asset tick count, Max = Max tick count of all asset
             win = 1:
                 | asset id | price(t+0) | ... | price(t+N) | price(t+N+1) | ... | price(t+Max) |
@@ -330,7 +328,7 @@ class CustomFactor(BaseFactor):
                 |          | N            | xxx.xx     | ... | 234.56       |
                 If this table too big, it will split to multiple tables and call the callback
                 function separately.
-        * Groupby time(set `is_timegroup = True`):
+        * Groupby `date` or others (set `groupby = 'date'`):
             set N = asset count, Max = Max asset count in all time
                 | time id  | price(t+0) | ... | price(t+N) | price(t+N+1) | ... | price(t+Max) |
                 |----------|------------|-----|------------|--------------|-----|--------------|
@@ -379,11 +377,13 @@ class DataFactor(BaseFactor):
     def include_close_data(self) -> bool:
         return self.is_data_after_market_close
 
-    def pre_compute_(self, engine, start, end) -> None:
+    def pre_compute_(self, engine: 'FactorEngine', start, end) -> None:
         super().pre_compute_(engine, start, end)
-        self._data = engine.get_tensor_groupby_asset_(self.inputs[0])
+        self._data = engine.column_to_tensor_(self.inputs[0])
+        self._data = engine.group_by_(self._data, self.groupby)
         if len(self.inputs) > 1 and self.inputs[1] in engine.dataframe_:
-            self._multi = engine.get_tensor_groupby_asset_(self.inputs[1])
+            self._multi = engine.column_to_tensor_(self.inputs[1])
+            self._multi = engine.group_by_(self._multi, self.groupby)
         else:
             self._multi = None
 
@@ -407,8 +407,8 @@ class AdjustedDataFactor(CustomFactor):
 
 
 class TimeGroupFactor(CustomFactor, ABC):
-    """Class that inputs and return value is grouped by time"""
-    is_timegroup = True
+    """Class that inputs and return value is grouped by datetime"""
+    groupby = 'date'
     win = 1
 
     def __init__(self, win: Optional[int] = None, inputs: Optional[Sequence[BaseFactor]] = None):
@@ -472,16 +472,12 @@ class RankFactor(TimeGroupFactor):
 
 
 class DemeanFactor(TimeGroupFactor):
-    groupby = None
+    group_dict = None
 
-    # todo 可以iex ref-data/sectors 先获取行业列表，然后Collections获取股票？
     def compute(self, data: torch.Tensor) -> torch.Tensor:
-        """Recommended to set groupby, otherwise you only need use rank."""
-        if self.groupby:
-            # If we use torch here, we must first group by time, then group each line by sectors,
-            # the efficiency is low, so use pandas directly.
+        if self.group_dict is not None:
             s = self._revert_to_series(data)
-            g = s.groupby([self.groupby, 'date'], level=1)
+            g = s.groupby([self.group_dict, 'date'], level=1)
             ret = g.transform(lambda x: x - x.mean())
             return self._regroup(ret)
         else:
