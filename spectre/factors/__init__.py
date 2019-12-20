@@ -19,6 +19,10 @@ from .factor import (
     QuantileFactor,
 )
 
+from .filter import (
+    StaticAssets,
+)
+
 from .basic import (
     Returns,
     LogReturns,

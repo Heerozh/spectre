@@ -91,9 +91,9 @@ class BaseFactor:
     def demean(self, groupby: Union[str, dict] = None, mask: 'BaseFactor' = None):
         """
         Set `groupby` to the name of a column, like 'sector'.
-        `groupby` also can be a dictionary like groupby={'name':group_id}, but it will interrupt
-        the parallelism of cuda, it is recommended to add group key to the Dataloader as a column,
-        or use it only in the last step.
+        `groupby` also can be a dictionary like groupby={'name': group_id}, `group_id` must > 0
+        dict groupby will interrupt the parallelism of cuda, it is recommended to add group key to
+        the Dataloader as a column, or use it only in the last step.
         """
         # for future optimization:
         # assets = self._engine.dataframe_().index.get_level_values(1)
@@ -477,7 +477,9 @@ class DemeanFactor(TimeGroupFactor):
     def compute(self, data: torch.Tensor) -> torch.Tensor:
         if self.group_dict is not None:
             s = self._revert_to_series(data)
-            g = s.groupby([self.group_dict, 'date'], level=1)
+            d = dict.fromkeys(s.index.levels[1], -1)
+            d.update(self.group_dict)
+            g = s.groupby([d, 'date'], level=1)
             ret = g.transform(lambda x: x - x.mean())
             return self._regroup(ret)
         else:
@@ -528,6 +530,7 @@ class ToWeightFactor(TimeGroupFactor):
     def compute(self, data: torch.Tensor) -> torch.Tensor:
         demean = data - nanmean(data)[:, None]
         return demean / nansum(demean.abs(), dim=1)[:, None]
+
 
 # --------------- op factors ---------------
 

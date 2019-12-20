@@ -68,13 +68,20 @@ class FactorEngine:
         return self._groups[group].revert(data, factor_name)
 
     def revert_to_series_(self, data: torch.Tensor, group: str, factor_name: str) -> pd.Series:
-        return pd.Series(self.revert_(data, group, factor_name), index=self._dataframe.index)
+        array = self.revert_(data, group, factor_name).cpu()
+        return pd.Series(array, index=self._dataframe.index)
 
     def group_by_(self, data: Union[torch.Tensor, pd.Series], group: str) -> torch.Tensor:
-        if isinstance(data, pd.Series):
+        if isinstance(data, torch.Tensor):
+            return self._groups[group].split(data)
+        elif isinstance(data, pd.Series):
             data = torch.tensor(data.values, device=self._device)
-        data = self._groups[group].split(data)
-        return data
+            return self._groups[group].split(data)
+        elif isinstance(data, np.ndarray):
+            data = torch.tensor(data, device=self._device)
+            return self._groups[group].split(data)
+        else:
+            raise ValueError('Invalid data type, should be tensor or series.')
 
     # private:
 
