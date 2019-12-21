@@ -15,21 +15,21 @@ class TestCustomFactorLib(unittest.TestCase):
         a = spectre.factors.CustomFactor(win=2)
         b = spectre.factors.CustomFactor(win=3, inputs=(a,))
         c = spectre.factors.CustomFactor(win=3, inputs=(b,))
-        self.assertEqual(5, c.get_total_backward_())
+        self.assertEqual(5, c.get_total_backwards_())
         m = spectre.factors.CustomFactor(win=10)
         c.set_mask(m)
-        self.assertEqual(9, c.get_total_backward_())
+        self.assertEqual(9, c.get_total_backwards_())
 
         a1 = spectre.factors.CustomFactor(win=10)
         a2 = spectre.factors.CustomFactor(win=5)
         b1 = spectre.factors.CustomFactor(win=20, inputs=(a1, a2))
         b2 = spectre.factors.CustomFactor(win=100, inputs=(a2,))
         c1 = spectre.factors.CustomFactor(win=100, inputs=(b1,))
-        self.assertEqual(9, a1.get_total_backward_())
-        self.assertEqual(4, a2.get_total_backward_())
-        self.assertEqual(28, b1.get_total_backward_())
-        self.assertEqual(103, b2.get_total_backward_())
-        self.assertEqual(127, c1.get_total_backward_())
+        self.assertEqual(9, a1.get_total_backwards_())
+        self.assertEqual(4, a2.get_total_backwards_())
+        self.assertEqual(28, b1.get_total_backwards_())
+        self.assertEqual(103, b2.get_total_backwards_())
+        self.assertEqual(127, c1.get_total_backwards_())
 
         # test inheritance
         loader = spectre.factors.CsvDirLoader(

@@ -85,16 +85,16 @@ class FactorEngine:
 
     # private:
 
-    def _prepare_tensor(self, start, end, max_backward):
+    def _prepare_tensor(self, start, end, max_backwards):
         # Check cache, just in case, if use some ML techniques, engine may be called repeatedly
         # with same date range.
         if start == self._last_load[0] and end == self._last_load[1] \
-                and max_backward <= self._last_load[2]:
+                and max_backwards <= self._last_load[2]:
             return
         self._groups = dict()
 
         # Get data
-        self._dataframe = self._loader.load(start, end, max_backward)
+        self._dataframe = self._loader.load(start, end, max_backwards)
 
         # asset group
         cat = self._dataframe.index.get_level_values(1).codes
@@ -105,7 +105,7 @@ class FactorEngine:
         self.column_to_parallel_groupby_(self._loader.time_category, 'date')
 
         self._column_cache = {}
-        self._last_load = [start, end, max_backward]
+        self._last_load = [start, end, max_backwards]
 
     def _compute_and_revert(self, f: BaseFactor, name) -> torch.Tensor:
         data = f.compute_(None)
@@ -156,7 +156,6 @@ class FactorEngine:
     def clear(self):
         self.remove_all_factors()
         self.set_filter(None)
-        self._groups = dict()
 
     def remove_all_factors(self) -> None:
         self._factors = {}
@@ -200,12 +199,12 @@ class FactorEngine:
             filter_ = filter_.shift(1)
         factors = {c: delay_factor and f.shift(1) or f for c, f in self._factors.items()}
 
-        # Calculate data that requires backward in tree
-        max_backward = max([f.get_total_backward_() for f in factors.values()])
+        # Calculate data that requires backwards in tree
+        max_backwards = max([f.get_total_backwards_() for f in factors.values()])
         if filter_:
-            max_backward = max(max_backward, filter_.get_total_backward_())
+            max_backwards = max(max_backwards, filter_.get_total_backwards_())
         # Get data
-        self._prepare_tensor(start, end, max_backward)
+        self._prepare_tensor(start, end, max_backwards)
 
         # ready to compute
         if filter_:

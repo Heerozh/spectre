@@ -149,7 +149,7 @@ class DataLoader:
         return df
 
     def load(self, start: Optional[pd.Timestamp], end: Optional[pd.Timestamp],
-             backward: int) -> pd.DataFrame:
+             backwards: int) -> pd.DataFrame:
         df = self._load()
 
         index = df.index.levels[0]
@@ -167,7 +167,7 @@ class DataLoader:
                              .format(index[-1]))
 
         start_loc = index.get_loc(start, 'bfill')
-        backward_loc = max(start_loc - backward, 0)
+        backward_loc = max(start_loc - backwards, 0)
         end_loc = index.get_loc(end, 'ffill')
         assert end_loc >= start_loc, 'There is no data between `start` and `end` date.'
 

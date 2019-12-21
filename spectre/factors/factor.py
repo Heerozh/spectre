@@ -95,11 +95,6 @@ class BaseFactor:
         dict groupby will interrupt the parallelism of cuda, it is recommended to add group key to
         the Dataloader as a column, or use it only in the last step.
         """
-        # for future optimization:
-        # assets = self._engine.dataframe_().index.get_level_values(1)
-        # keys = np.fromiter(map(lambda x: groupby[x], assets), dtype=np.int)
-        # keys = torch.tensor(keys, device=self._engine.device, dtype=torch.int32)
-        # factor.groupby = ParallelGroupBy(keys)
         factor = DemeanFactor(inputs=(self,))
         if isinstance(groupby, str):
             factor.groupby = groupby
@@ -149,7 +144,7 @@ class BaseFactor:
     def _revert_to_series(self, data):
         return self._engine.revert_to_series_(data, self.groupby, type(self).__name__)
 
-    def get_total_backward_(self) -> int:
+    def get_total_backwards_(self) -> int:
         raise NotImplementedError("abstractmethod")
 
     def include_close_data(self) -> bool:
@@ -205,18 +200,18 @@ class CustomFactor(BaseFactor):
         """ Mask fill all **INPUT** data to NaN """
         self._mask = mask
 
-    def get_total_backward_(self) -> int:
-        backward = 0
+    def get_total_backwards_(self) -> int:
+        backwards = 0
         if self.inputs:
-            backward = max([up.get_total_backward_() for up in self.inputs
+            backwards = max([up.get_total_backwards_() for up in self.inputs
                             if isinstance(up, BaseFactor)] or (0,))
-        backward = backward + self.win - 1
+        backwards = backwards + self.win - 1
 
         if self._mask:
-            mask_backward = self._mask.get_total_backward_()
-            return max(mask_backward, backward)
+            mask_backward = self._mask.get_total_backwards_()
+            return max(mask_backward, backwards)
         else:
-            return backward
+            return backwards
 
     def include_close_data(self) -> bool:
         ret = super().include_close_data()
@@ -371,7 +366,7 @@ class DataFactor(BaseFactor):
     def adjustments(self):
         return self._multi
 
-    def get_total_backward_(self) -> int:
+    def get_total_backwards_(self) -> int:
         return 0
 
     def include_close_data(self) -> bool:
