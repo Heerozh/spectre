@@ -45,6 +45,7 @@ class CustomAlgorithm(EventReceiver, ABC):
         if not data_sources:
             raise ValueError("At least one data source.")
 
+        self._history_window = pd.DateOffset(0)
         self._data = None
         self._engines = {name: FactorEngine(loader) for name, loader in data_sources.items()}
         self.blotter = blotter
@@ -77,6 +78,9 @@ class CustomAlgorithm(EventReceiver, ABC):
     def results(self):
         return self._results
 
+    def history_window(self, date_offset: pd.DateOffset):
+        self._history_window = date_offset
+
     def record(self, **kwargs):
         self._recorder.record(self._current_dt, kwargs)
 
@@ -98,14 +102,22 @@ class CustomAlgorithm(EventReceiver, ABC):
             if isinstance(self._data, dict):
                 last = {k: v.loc[v.index.get_level_values(0)[-1]]
                         for k, v in self._data.items()}
+                history = {k: v.loc[(self._current_dt - self._history_window):]
+                           for k, v in self._data.items()}
             else:
                 last_dt = self._data.index.get_level_values(0)[-1]
                 last = self._data.loc[last_dt]
-            origin_callback(last, self._data)
+                history = self._data.loc[(self._current_dt - self._history_window):]
+            origin_callback(last, history)
         event.callback = _rebalance_callback
         self.schedule(event)
 
     def run_engine(self, start, end):
+        if start is None:
+            start = self._current_dt
+            end = self._current_dt
+        start = start - self._history_window
+
         if len(self._engines) == 1:
             name = next(iter(self._engines))
             return self._engines[name].run(start, end)
@@ -200,7 +212,7 @@ class SimulationEventManager(EventManager):
                 main = data
             # loop factor data
             last_day = None
-            ticks = main.index.get_level_values(0).unique()
+            ticks = main[start:].index.get_level_values(0).unique()
             for dt in ticks:
                 if self._stop:
                     break
