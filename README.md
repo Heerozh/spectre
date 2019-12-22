@@ -21,7 +21,7 @@ Dependencies:
 
 ```bash
 conda install pytorch torchvision cudatoolkit=10.1 -c pytorch
-conda install pyarrow pandas
+conda install pyarrow pandas tqdm plotly
 ```
 
 ## Benchmarks
@@ -98,7 +98,7 @@ engine.set_filter( universe )
 
 f1 = -(factors.MA(5)-factors.MA(10)-factors.MA(30))
 bb = -factors.BBANDS(win=5)
-f2 = bb.filter(bb < 0.5)
+f2 = bb.filter(bb < 0.5)  # p-hacking
 
 engine.add( f1.rank(mask=universe).zscore(), 'ma_cross' )
 engine.add( f2.rank(mask=universe).zscore(), 'bb' )
@@ -151,12 +151,9 @@ class MyAlg(trading.CustomAlgorithm):
         # self.blotter.set_slippage(percentage=0, per_share=0.4)
 
     def rebalance(self, data: 'pd.DataFrame', history: 'pd.DataFrame'):
-        # data is FactorEngine's results for current bar
         self.blotter.order_target_percent(data.index, data.ma_cross_weight)
 
         # closing asset position that are no longer in our universe.
-        # if some asset is delisted then those order will fail, the asset will remain in the 
-        # portfolio, the portfolio leverage will become a little higher than it actually is.
         removes = self.blotter.portfolio.positions.keys() - set(data.index)
         self.blotter.order_target_percent(removes, [0] * len(removes))
 
@@ -322,7 +319,7 @@ close.agg(weighted_mean, volume)
 
 For performance, spectre's tensor data is a flattened matrix which grouped by assets, 
 there is no DataFrame's index information.
-If you need index, or not familiar with pytorch, here is a another way:
+If you need index, or not familiar with PyTorch, here is a another way:
 
 ```python
 class YourFactor(CustomFactor):

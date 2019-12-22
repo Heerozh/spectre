@@ -189,6 +189,8 @@ class SimulationEventManager(EventManager):
         self.fire_after_event(MarketClose)
 
     def run(self, start, end):
+        from tqdm.auto import tqdm
+
         start, end = pd.to_datetime(start, utc=True), pd.to_datetime(end, utc=True)
 
         if not self._subscribers:
@@ -218,7 +220,7 @@ class SimulationEventManager(EventManager):
             # loop factor data
             last_day = None
             ticks = main[start:].index.get_level_values(0).unique()
-            for dt in ticks:
+            for dt in tqdm(ticks):
                 if self._stop:
                     break
                 # prepare data
