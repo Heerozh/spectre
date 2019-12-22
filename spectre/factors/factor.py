@@ -111,9 +111,10 @@ class BaseFactor:
         factor.set_mask(mask)
         return factor
 
-    def to_weight(self, mask: 'BaseFactor' = None):
+    def to_weight(self, demean=True, mask: 'BaseFactor' = None):
         factor = ToWeightFactor(inputs=(self,))
         factor.set_mask(mask)
+        factor.demean = demean
         return factor
 
     def shift(self, periods=1):
@@ -522,9 +523,12 @@ class QuantileFactor(TimeGroupFactor):
 
 
 class ToWeightFactor(TimeGroupFactor):
+    demean = True
+
     def compute(self, data: torch.Tensor) -> torch.Tensor:
-        demean = data - nanmean(data)[:, None]
-        return demean / nansum(demean.abs(), dim=1)[:, None]
+        if self.demean:
+            data = data - nanmean(data)[:, None]
+        return data / nansum(data.abs(), dim=1)[:, None]
 
 
 # --------------- op factors ---------------

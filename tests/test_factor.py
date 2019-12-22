@@ -297,6 +297,13 @@ class TestFactorLib(unittest.TestCase):
         assert_almost_equal(result_aapl, expected_aapl)
         assert_almost_equal(result_msft, expected_msft)
 
+        aapl_filter = spectre.factors.StaticAssets(['AAPL'])
+        engine.remove_all_factors()
+        engine.set_filter(aapl_filter)
+        engine.add(spectre.factors.OHLCV.close, 'c')
+        df = engine.run('2018-01-01', '2019-01-15')
+        assert_array_equal(['AAPL'], df.index.get_level_values(1).unique())
+
     def test_cuda(self):
         loader = spectre.factors.CsvDirLoader(
             data_dir + '/daily/', ohlcv=('uOpen', 'uHigh', 'uLow', 'uClose', 'uVolume'),

@@ -11,6 +11,7 @@ import torch
 
 
 class StaticAssets(FilterFactor):
+    """Useful for remove specific outliers or debug some assets"""
     win = 1
     inputs = [OHLCV.open]
 
