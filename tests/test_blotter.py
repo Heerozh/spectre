@@ -92,7 +92,7 @@ index
         blotter.order_target_percent('AAPL', 0.3)
         blotter.order_target_percent('AAPL', 0.3)
         blotter.set_price("close")
-        blotter.order_target_percent('AAPL', 0)
+        blotter.order_target_percent('AAPL', 0.0)
         blotter.market_close(self)
         blotter.update_portfolio_value()
 
