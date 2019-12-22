@@ -92,7 +92,8 @@ def plot_quantile_and_cumulative_returns(factor_data, mean_ret):
         weight_diff = factor_data[weight_col].unstack(level=[1]).diff()
         to = weight_diff.abs().sum(axis=1) * 100
         resample = int(len(to) / 64)
-        to = to.fillna(0).rolling(resample).mean()[::resample]
+        if resample > 0:
+            to = to.fillna(0).rolling(resample).mean()[::resample]
         fig.add_trace(go.Bar(x=to.index, y=to.values, **turnover_styles),
                       secondary_y=True, row=row, col=2)
         turnover_styles['showlegend'] = False

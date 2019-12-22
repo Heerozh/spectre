@@ -241,6 +241,8 @@ class BaseBlotter:
             return self.batch_order_target_percent(asset, pct)
         elif not isinstance(asset, str):
             raise KeyError("`asset` must be a string")
+        elif not isinstance(pct, float):
+            raise KeyError("`pct` must be float")
         if self.long_only and pct < 0:
             raise ValueError("Long only blotter, `pct` must greater than 0.")
 

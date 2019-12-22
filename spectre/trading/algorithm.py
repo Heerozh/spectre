@@ -57,6 +57,11 @@ class CustomAlgorithm(EventReceiver, ABC):
         for engine in self._engines.values():
             engine.clear()
 
+    def create_factor_engine(self, name: str, like: FactorEngine):
+        assert name not in self._engines
+        self._engines[name] = FactorEngine(like.loader_)
+        return self._engines[name]
+
     def get_factor_engine(self, name: str = None):
         if name is None:
             name = next(iter(self._engines))

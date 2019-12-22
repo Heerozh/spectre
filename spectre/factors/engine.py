@@ -34,6 +34,10 @@ class FactorEngine:
     def dataframe_(self):
         return self._dataframe
 
+    @property
+    def loader_(self):
+        return self._loader
+
     def get_group_(self, group_name):
         return self._groups[group_name]
 
