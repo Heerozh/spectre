@@ -24,7 +24,7 @@ def drawdown(cumulative_returns):
 
 
 def sharpe_ratio(daily_returns: pd.Series, annual_risk_free_rate):
-    risk_adj_ret = daily_returns - [annual_risk_free_rate/252] * len(daily_returns)
+    risk_adj_ret = daily_returns - annual_risk_free_rate/252
     annual_factor = np.sqrt(252)
     return annual_factor * risk_adj_ret.mean() / risk_adj_ret.std(ddof=1)
 
@@ -35,7 +35,13 @@ def turnover(positions, transactions):
     return value_trades / positions.value.sum(axis=1)
 
 
-def plot_cumulative_returns(returns, positions, transactions, benchmark, annual_risk_free_rate):
+def annual_volatility(daily_returns: pd.Series):
+    volatility = 2 * daily_returns.std(ddof=1)
+    annual_factor = np.sqrt(252)
+    return annual_factor * volatility
+
+
+def plot_cumulative_returns(returns, positions, transactions, benchmark, annual_risk_free):
     import plotly.graph_objects as go
     import plotly.subplots as subplots
 
@@ -63,17 +69,23 @@ def plot_cumulative_returns(returns, positions, transactions, benchmark, annual_
     fig.add_trace(go.Bar(x=to.index, y=to.values, opacity=0.2, name='turnover'),
                   secondary_y=True)
 
-    sr = sharpe_ratio(returns, annual_risk_free_rate)
+    sr = sharpe_ratio(returns, annual_risk_free)
+    bench_sr = sharpe_ratio(benchmark, annual_risk_free)
     dd, ddd = drawdown(cum_ret)
     mdd = abs(dd.min())
     mdd_dur = ddd.max()
 
+    vol = annual_volatility(returns) * 100
+    bench_vol = annual_volatility(benchmark) * 100
+
     ann = go.layout.Annotation(
         x=0.01, y=0.98, xref="paper", yref="paper",
         showarrow=False, borderwidth=1, bordercolor='black', align='left',
-        text="<b>SharpeRatio:</b>     {:.3f}<br><b>MaxDrawDown:</b> {:.2f}%, {} Days".format(
-            sr, mdd * 100, mdd_dur
-        ),
+        text="<b>Overall</b> (portfolio/benchmark)<br>"
+             "SharpeRatio:      {:.3f}/{:.3f}<br>"
+             "MaxDrawDown:  {:.2f}%, {} Days<br>"
+             "AnnualVolatility: {:.2f}%/{:.2f}%</b>"
+            .format(sr, bench_sr, mdd * 100, mdd_dur, vol, bench_vol),
     )
 
     fig.update_layout(height=400, annotations=[ann], margin={'t': 50})

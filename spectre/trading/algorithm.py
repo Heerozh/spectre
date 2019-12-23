@@ -83,13 +83,14 @@ class CustomAlgorithm(EventReceiver, ABC):
     def results(self):
         return self._results
 
-    def history_window(self, date_offset: pd.DateOffset):
+    def set_history_window(self, date_offset: pd.DateOffset):
+        """Set the length of historical data passed in each rebalance"""
         self._history_window = date_offset
 
     def record(self, **kwargs):
         self._recorder.record(self._current_dt, kwargs)
 
-    def plot(self, annual_risk_free_rate=0.04, benchmark: pd.Series = None) -> None:
+    def plot(self, annual_risk_free=0.04, benchmark: pd.Series = None) -> None:
         returns = self._results.returns
 
         bench = None
@@ -97,7 +98,7 @@ class CustomAlgorithm(EventReceiver, ABC):
             bench = benchmark.loc[returns.index[0]:returns.index[-1]]
 
         plot_cumulative_returns(returns, self._results.positions,  self._results.transactions,
-                                bench, annual_risk_free_rate)
+                                bench, annual_risk_free)
 
     def schedule_rebalance(self, event: Event):
         """Can only be called in initialize()"""
