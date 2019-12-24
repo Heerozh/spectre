@@ -133,6 +133,7 @@ from .metric import (
     drawdown,
     sharpe_ratio,
     turnover,
+    annual_volatility,
     plot_cumulative_returns
 )
 

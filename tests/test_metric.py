@@ -17,9 +17,11 @@ class TestMetric(unittest.TestCase):
         self.assertAlmostEqual(2.5492371, spectre.trading.sharpe_ratio(ret, 0.04))
 
         dd, ddu = spectre.trading.drawdown((ret+1).cumprod())
+        vol = spectre.trading.annual_volatility(ret)
 
         self.assertAlmostEqual(0.0102891, dd.abs().max())
         self.assertAlmostEqual(5, ddu.max())
+        self.assertAlmostEqual(0.110841, vol)
 
         txn = pd.DataFrame([['AAPL', 384, 155.92, 157.09960, 1.92],
                             ['AAPL', -384, 158.61, 157.41695, 1.92]],

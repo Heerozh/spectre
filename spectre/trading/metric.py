@@ -36,7 +36,7 @@ def turnover(positions, transactions):
 
 
 def annual_volatility(daily_returns: pd.Series):
-    volatility = 2 * daily_returns.std(ddof=1)
+    volatility = daily_returns.std(ddof=1)
     annual_factor = np.sqrt(252)
     return annual_factor * volatility
 
