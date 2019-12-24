@@ -9,6 +9,13 @@ from os.path import dirname
 data_dir = dirname(__file__) + '/data/'
 
 
+class TestMultiProcessing(spectre.factors.CPUParallelFactor):
+
+    @staticmethod
+    def mp_compute(a, b) -> np.array:
+        return (a * b).mean(axis=0).values
+
+
 class TestFactorLib(unittest.TestCase):
 
     def test_factors(self):
@@ -453,6 +460,44 @@ class TestFactorLib(unittest.TestCase):
         assert_array_equal(result['t&b'], t&b)
         assert_array_equal(result['t|b'], t|b)
         assert_array_equal(result['~t'], b)
+
+    def test_multiprocess(self):
+        loader = spectre.factors.CsvDirLoader(
+            data_dir + '/daily/', ohlcv=('uOpen', 'uHigh', 'uLow', 'uClose', 'uVolume'),
+            prices_index='date', parse_dates=True,
+        )
+        engine = spectre.factors.FactorEngine(loader)
+        engine.to_cuda()
+
+        self.assertRaises(ValueError, TestMultiProcessing,
+                          inputs=[spectre.factors.OHLCV.open])
+
+        engine.add(TestMultiProcessing(
+            win=10,
+            core=3,
+            inputs=[spectre.factors.AdjustedDataFactor(spectre.factors.OHLCV.open),
+                    spectre.factors.AdjustedDataFactor(spectre.factors.OHLCV.close)],
+            multiprocess=True
+        ), 'f')
+        engine.add(spectre.factors.MA(
+            win=10,
+            inputs=[spectre.factors.AdjustedDataFactor(spectre.factors.OHLCV.open) *
+                    spectre.factors.AdjustedDataFactor(spectre.factors.OHLCV.close)],
+        ), 'f2')
+        result = engine.run("2018-12-25", "2019-01-05")
+        assert_almost_equal(result.f.values, result.f2.values)
+        # test one row
+        engine.run("2019-01-05", "2019-01-05")
+
+        # test nested window
+        engine.clear()
+        engine.add(TestMultiProcessing(
+            win=10,
+            core=3,
+            inputs=[spectre.factors.MA(3), spectre.factors.MA(4)],
+            multiprocess=False
+        ), 'f')
+        engine.run("2019-01-05", "2019-01-05")
 
     @unittest.skipUnless(os.getenv('COVERAGE_RUNNING'), "too slow, run manually")
     def test_full_run(self):

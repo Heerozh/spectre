@@ -23,6 +23,10 @@ from .filter import (
     StaticAssets,
 )
 
+from .multiprocessing import (
+    CPUParallelFactor
+)
+
 from .basic import (
     Returns,
     LogReturns,
