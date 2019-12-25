@@ -32,6 +32,9 @@ class CPUParallelFactor(CustomFactor):
     """
     Use CPU multi-process/thread instead of GPU to process each window of data.
     Useful when your calculations can only be done in the CPU.
+
+    The performance of this method is not so ideal, definitely not as fast as
+    using the vectorization library directly.
     """
 
     def __init__(self, win: Optional[int] = None, inputs: Optional[Sequence[BaseFactor]] = None,

@@ -267,7 +267,7 @@ class CsvDirLoader(DataLoader):
             super().__init__(prices_path, ohlcv, ('ex-dividend', 'split_ratio'))
 
         assert 'index_col' not in read_csv, \
-            "`index_col` for which csv? Use `prices_index` and `dividends_index` and " \
+            "`index_col` cannot be used here. Use `prices_index` and `dividends_index` and " \
             "`splits_index` instead."
         self._adjustment_cols = adjustments
         self._split_ratio_is_inverse = split_ratio_is_inverse
@@ -285,6 +285,8 @@ class CsvDirLoader(DataLoader):
     def last_modified(self) -> float:
         pattern = os.path.join(self._path, '*.csv')
         files = glob.glob(pattern)
+        if len(files) == 0:
+            raise ValueError("Dir '{}' does not contains any csv files.".format(self._path))
         return max([os.path.getmtime(fn) for fn in files])
 
     def _walk_split_by_year_dir(self, csv_path, index_col):
@@ -304,6 +306,13 @@ class CsvDirLoader(DataLoader):
         def multi_read_csv(file_list):
             df = pd.concat([pd.read_csv(_fn, index_col=index_col, **self._read_csv)
                             for _fn in file_list])
+            if not isinstance(df.index, pd.DatetimeIndex):
+                raise ValueError(
+                    "df must index by datetime, set correct `read_csv`, "
+                    "for example index_col='date', parse_dates=True. "
+                    "For mixed-timezone like daylight saving time, "
+                    "set date_parser=lambda col: pd.to_datetime(col, utc=True)")
+
             return df[~df.index.duplicated(keep='last')]
 
         dfs = {symbol: multi_read_csv(file_list) for symbol, file_list in assets.items()}
@@ -322,6 +331,12 @@ class CsvDirLoader(DataLoader):
             df = pd.read_csv(file, index_col=index_col, **self._read_csv)
             if len(df.index.dropna()) == 0:
                 return None
+            if not isinstance(df.index, pd.DatetimeIndex):
+                raise ValueError(
+                    "df must index by datetime, set correct `read_csv`, "
+                    "for example index_col='date', parse_dates=True. "
+                    "For mixed-timezone like daylight saving time, "
+                    "set date_parser=lambda col: pd.to_datetime(col, utc=True)")
             return df[self._earliest_date:]
 
         dfs = {symbol(fn): read_csv(fn) for fn in files}
@@ -335,10 +350,6 @@ class CsvDirLoader(DataLoader):
         dfs = {k: v[~v.index.duplicated(keep='last')] for k, v in dfs.items() if v is not None}
         df = pd.concat(dfs, sort=False)
         df = df.rename_axis(['asset', 'date'])
-
-        assert isinstance(df.index.levels[1], pd.DatetimeIndex), \
-            "data must index by datetime, set correct `read_csv`, " \
-            "for example index_col='date', parse_dates=True"
 
         if self._dividends_path is not None:
             dfs = self._walk_dir(self._dividends_path, self._dividends_index)

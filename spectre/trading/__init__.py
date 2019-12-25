@@ -81,7 +81,7 @@ evt_mgr.subscribe(blotter)
 evt_mgr.run('2018-01-01', '2019-01-01')
 
 ## Or the helper function:
-spectre.run_backtest(loader, MyAlg, '2018-01-01', '2019-01-01')
+spectre.trading.run_backtest(loader, MyAlg, '2018-01-01', '2019-01-01')
 
 # Live
 ----------------
