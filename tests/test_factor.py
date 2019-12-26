@@ -253,8 +253,24 @@ class TestFactorLib(unittest.TestCase):
         engine.add(f2, 'f2')
         engine.add(fa, 'fa')
         engine.add(fb, 'fb')
+
+        for f in engine._factors.values():
+            f.pre_compute_(engine, '2019-01-11', '2019-01-15')
+        self.assertEqual(4, f2._ref_count)
+
+        # reset _ref_count change caused by test above
+        def reset(_f):
+            _f._ref_count = 0
+            if _f.inputs:
+                for upstream in _f.inputs:
+                    if isinstance(upstream, spectre.factors.BaseFactor):
+                        reset(upstream)
+
+        for f in engine._factors.values():
+            reset(f)
+
         result = engine.run('2019-01-01', '2019-01-15')
-        self.assertEqual(f2._cache_hit, 3)
+        self.assertEqual(0, f2._ref_count)
 
         # test cuda result eq cup
 
@@ -406,6 +422,36 @@ class TestFactorLib(unittest.TestCase):
         result2 = engine2.run("2019-01-01", "2019-01-15")
 
         assert_array_equal(result.f[result['mask']], result2.f)
+
+    def test_ref_count(self):
+        loader = spectre.factors.CsvDirLoader(
+            data_dir + '/daily/', ohlcv=('uOpen', 'uHigh', 'uLow', 'uClose', 'uVolume'),
+            prices_index='date', parse_dates=True,
+        )
+        engine = spectre.factors.FactorEngine(loader)
+        t = spectre.factors.OHLCV.volume.top(1)
+        b = spectre.factors.OHLCV.volume.bottom(1)
+        engine.add(t, 't')
+        engine.add(t & b, 't&b')
+        engine.add(t | b, 't|b')
+        engine.add(~t, '~t')
+        engine.run("2019-01-01", "2019-01-05")
+
+        def test_count(k):
+            if isinstance(k, spectre.factors.CustomFactor):
+                if k._ref_count != 0:
+                    print(k, k._ref_count)
+                    raise ValueError("k._ref_count != 0")
+                if k._mask is not None:
+                    test_count(k._mask)
+
+            if k.inputs:
+                for upstream in k.inputs:
+                    if isinstance(upstream, spectre.factors.BaseFactor):
+                        test_count(upstream)
+
+        for _, k in engine._factors.items():
+            test_count(k)
 
     def test_ops(self):
         loader = spectre.factors.CsvDirLoader(

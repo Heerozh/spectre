@@ -112,7 +112,10 @@ class FactorEngine:
         self._last_load = [start, end, max_backwards]
 
     def _compute_and_revert(self, f: BaseFactor, name) -> torch.Tensor:
-        data = f.compute_(None)
+        stream = None
+        if self._device.type == 'cuda':
+            stream = torch.cuda.current_stream()
+        data = f.compute_(stream)
         return self._groups[f.groupby].revert(data, name)
 
     # public:
@@ -216,31 +219,15 @@ class FactorEngine:
         for f in factors.values():
             f.pre_compute_(self, start, end)
 
-        # if cuda, parallel compute filter and sync
-        if filter_ and self._device.type == 'cuda':
-            stream = torch.cuda.Stream(device=self._device)
-            filter_.compute_(stream)
-            torch.cuda.synchronize(device=self._device)
-
-        # pre compute no shift filter for mask
-        if self._filter:
-            filter_.compute_(None)
-
-        # if cuda, parallel compute factors and sync
-        if self._device.type == 'cuda':
-            stream = torch.cuda.Stream(device=self._device)
-            for col, fct in factors.items():
-                fct.compute_(stream)
-            torch.cuda.synchronize(device=self._device)
-
-        # compute factors from cpu or read cache
-        ret = pd.DataFrame(index=self._dataframe.index.copy())
-        ret = ret.assign(**{c: self._compute_and_revert(f, c).cpu().numpy()
-                            for c, f in factors.items()})
-
-        # Remove filter False rows
+        # schedule possible gpu work first
+        results = {col: self._compute_and_revert(fct, col) for col, fct in factors.items()}
+        shift_mask = None
         if filter_:
             shift_mask = self._compute_and_revert(filter_, 'filter')
+        # do cpu work and synchronize will automatically done by torch
+        ret = pd.DataFrame(index=self._dataframe.index.copy())
+        ret = ret.assign(**{col: t.cpu().numpy() for col, t in results.items()})
+        if filter_:
             ret = ret[shift_mask.cpu().numpy()]
 
         index = ret.index.levels[0]
@@ -250,7 +237,10 @@ class FactorEngine:
         return ret.loc[index[start]:]
 
     def get_factors_raw_value(self):
-        return {c: f.compute_(None) for c, f in self._factors.items()}
+        stream = None
+        if self._device.type == 'cuda':
+            stream = torch.cuda.current_stream()
+        return {c: f.compute_(stream) for c, f in self._factors.items()}
 
     def get_price_matrix(self,
                          start: Union[str, pd.Timestamp],

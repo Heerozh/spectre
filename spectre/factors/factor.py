@@ -175,7 +175,7 @@ class CustomFactor(BaseFactor):
 
     # internal member variables
     _cache = None
-    _cache_hit = 0
+    _ref_count = 0
     _cache_stream = None
     _mask = None
 
@@ -229,8 +229,11 @@ class CustomFactor(BaseFactor):
         """
         super().pre_compute_(engine, start, end)
         self._cache = None
-        self._cache_hit = 0
         self._cache_stream = None
+
+        self._ref_count += 1
+        if self._ref_count > 1:  # already pre_compute_ed, skip child
+            return
         if self.inputs:
             for upstream in self.inputs:
                 if isinstance(upstream, BaseFactor):
@@ -258,17 +261,24 @@ class CustomFactor(BaseFactor):
         return ret
 
     def compute_(self, down_stream: Union[torch.cuda.Stream, None]) -> torch.Tensor:
+        # return cached result
+        self._ref_count -= 1
+        assert self._ref_count >= 0
         if self._cache is not None:
-            self._cache_hit += 1
             if down_stream:
                 down_stream.wait_event(self._cache_stream.record_event())
-            return self._cache
+            ret = self._cache
+            if self._ref_count == 0:
+                self._cache = None
+                self._cache_stream = None
+            return ret
 
         # create self stream
         self_stream = None
         if down_stream:
             self_stream = torch.cuda.Stream(device=down_stream.device)
-            self._cache_stream = self_stream
+            if self._ref_count > 0:
+                self._cache_stream = self_stream
 
         # Calculate mask
         mask_out = None
@@ -295,7 +305,9 @@ class CustomFactor(BaseFactor):
             down_stream.wait_event(self_stream.record_event())
         else:
             out = self.compute(*inputs)
-        self._cache = out
+
+        if self._ref_count > 0:
+            self._cache = out
         return out
 
     def compute(self, *inputs: Sequence[torch.Tensor]) -> torch.Tensor:

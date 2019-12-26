@@ -67,7 +67,14 @@ class TestCustomFactorLib(unittest.TestCase):
                                engine.add, TestFactor(), 'test1')
 
         engine.add(TestFactor2(), 'test2')
+
+        for f in engine._factors.values():
+            f.pre_compute_(engine, '2019-01-11', '2019-01-15')
+        self.assertEqual(2, test_f1._ref_count)
+        for f in engine._factors.values():
+            f._ref_count = 0
+
         df = engine.run('2019-01-11', '2019-01-15', delay_factor=False)
-        self.assertEqual(1, test_f1._cache_hit)
+        self.assertEqual(0, test_f1._ref_count)
         assert_array_equal([0, 3, 1, 4, 2, 5], df['test1'].values)
         assert_array_equal([0, 3, 1, 7, 3, 12], df['test2'].values)

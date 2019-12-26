@@ -5,7 +5,7 @@
 spectre is a **GPU-accelerated Parallel** quantitative trading library, focused on **performance**.
 
   * Fast, really fast, see below [Benchmarks](#benchmarks)
-  * Pure python code, using PyTorch for parallelize. 
+  * Pure python code, based on PyTorch, so it can integrate DL model very smoothly.
   * Low CUDA memory usage
   * Compatible with `alphalens` and `pyfolio`
   * Python 3.7, pandas 0.25 recommended
@@ -17,7 +17,7 @@ spectre is a **GPU-accelerated Parallel** quantitative trading library, focused 
 pip install --no-deps git+git://github.com/Heerozh/spectre.git
 ```
 
-Dependencies: 
+Dependencies:
 
 ```bash
 conda install pytorch torchvision cudatoolkit=10.1 -c pytorch
@@ -35,12 +35,12 @@ Running on Quandl 5 years, 3196 Assets, total 3,637,344 bars.
 
 |                |       spectre (CUDA)         |       spectre (CPU)        |       zipline         |
 |----------------|------------------------------|----------------------------|-----------------------|
-|SMA(100)        | 87.4 ms ± 745 µs (**34.1x**) | 2.68 s ± 36.1 ms (1.11x)   | 2.98 s ± 14.4 ms (1x) |
-|EMA(50) win=200 | 144 ms ± 1.14 ms (**52.8x**) | 4.37 s ± 46.4 ms (1.74x)   | 7.6 s ± 15.4 ms (1x) |
-|(MACD+RSI+STOCHF).rank.zscore | 375 ms ± 65.4 ms (**38.1x**) | 6.01 s ± 28.1 (2.38x)   | 14.3 s ± 277 ms (1x) |
+|SMA(100)        | 86.7 ms ± 876 µs (**34.4x**) | 2.68 s ± 36.1 ms (1.11x)   | 2.98 s ± 14.4 ms (1x) |
+|EMA(50) win=200 | 144 ms ± 942 µs (**52.8x**)  | 4.37 s ± 46.4 ms (1.74x)   | 7.6 s ± 15.4 ms (1x) |
+|(MACD+RSI+STOCHF).rank.zscore | 328 ms ± 74.5 ms ms (**43.6x**) | 6.01 s ± 28.1 (2.38x)   | 14.3 s ± 277 ms (1x) |
 
 
-* The CUDA memory used in the spectre benchmark is 1.3G, returned by cuda.max_memory_allocated().
+* The CUDA memory used in the spectre benchmark is 0.7G, returned by cuda.max_memory_allocated().
 * Benchmarks exclude the initial run (no copy data to VRAM, about saving 300ms).
 
 
@@ -81,7 +81,7 @@ First use `ArrowLoader` to ingest the data in order to improve performance. \
 
 ```python
 from spectre import factors
-# WIKI_PRICES.zip can be found at: 
+# WIKI_PRICES.zip can be found at:
 # https://www.quandl.com/api/v3/datatables/WIKI/PRICES.csv?qopts.export=true&api_key=[yourapi_key]
 factors.ArrowLoader.ingest(source=factors.QuandlLoader('WIKI_PRICES.zip'),
                            save_to='wiki_prices.feather')
@@ -104,7 +104,7 @@ engine.add( f1.rank(mask=universe).zscore(), 'ma_cross' )
 engine.add( f2.rank(mask=universe).zscore(), 'bb' )
 
 engine.to_cuda()
-%time factor_data = engine.full_run("2013-01-02", "2018-01-19", periods=(1,5,10,)) 
+%time factor_data = engine.full_run("2013-01-02", "2018-01-19", periods=(1,5,10,))
 ```
 
 <img src="https://github.com/Heerozh/spectre/raw/media/full_run.png" width="800" height="600">
@@ -115,7 +115,7 @@ The return value of `full_run` is compatible with `alphalens`:
 ```python
 import alphalens as al
 ...
-factor_data = engine.full_run("2013-01-02", "2018-01-19") 
+factor_data = engine.full_run("2013-01-02", "2018-01-19")
 clean_data = factor_data[['factor_name', 'Returns']].droplevel(0, axis=1)
 al.tears.create_full_tear_sheet(clean_data)
 ```
@@ -170,7 +170,7 @@ class MyAlg(trading.CustomAlgorithm):
         ax1 = records.aapl_price.plot()
         ax2 = ax1.twinx()
         records.aapl_weight.plot(ax=ax2, style='g-', secondary_y=True)
-        
+
 loader = factors.ArrowLoader('wiki_prices.feather')
 %time results = trading.run_backtest(loader, MyAlg, '2013-01-01', '2018-01-01')
 ```
@@ -192,7 +192,7 @@ BTW, the same strategy took 18 minutes to backtest in zipline.
 
 #### Differences with zipline:
 * spectre's `QuandlLoader` using float32 datatype for GPU performance.
-* For performance, spectre's arranges the data to be flattened by bars without time 
+* For performance, spectre's arranges the data to be flattened by bars without time
   information so may be differences, such as `Return(win=10)` may actually be more than 10 days
   if some stock not open trading in period.
 * When encounter NaN, spectre returns NaN, zipline uses `nan*` so still give you a number.
@@ -200,9 +200,9 @@ BTW, the same strategy took 18 minutes to backtest in zipline.
 
 
 #### Differences with common chart:
-* The data is re-adjusted every day, so the factor you got, like the MA, will be different 
-  from the stock chart software which only adjusted according to last day. 
-  If you want adjusted by last day, use like 'AdjustedDataFactor(OHLCV.close)' as input data. 
+* The data is re-adjusted every day, so the factor you got, like the MA, will be different
+  from the stock chart software which only adjusted according to last day.
+  If you want adjusted by last day, use like 'AdjustedDataFactor(OHLCV.close)' as input data.
   This will speeds up a lot because it only needs to be adjusted once, but brings Look-Ahead Bias.
 
 
@@ -253,8 +253,8 @@ Inherit from `CustomFactor`, write `compute` function.
 Use `torch.Tensor` to write parallel computing code.
 
 ### win = 1
-When `win = 1`, the `inputs` data is tensor type, the first dimension of data is the 
-asset, the second dimension is each bar price data. Note that the bars are not aligned 
+When `win = 1`, the `inputs` data is tensor type, the first dimension of data is the
+asset, the second dimension is each bar price data. Note that the bars are not aligned
 across all assets, they are specific to each asset.
 
         +-----------------------------------+
@@ -264,7 +264,7 @@ across all assets, they are specific to each asset.
         | asset 1--> [[1.1, 1.2, 1.3, ...], |
         | asset 2-->  [  5,   6,   7, ...]] |
         +-----------------------------------+
-Example of LogReturns:      
+Example of LogReturns:
 ```python
 class LogReturns(CustomFactor):
     inputs = [Returns(OHLCV.close)]
@@ -275,11 +275,11 @@ class LogReturns(CustomFactor):
 ```
 
 ### win > 1
-If rolling windows is required(`win > 1`), all `inputs` data will be wrapped into 
+If rolling windows is required(`win > 1`), all `inputs` data will be wrapped into
 `spectre.parallel.Rolling`
 
-This is just an unfolded `tensor` data, but because the data is very large after unfolded, 
-the rolling class automatically splits the data into multiple small portions. You need to use 
+This is just an unfolded `tensor` data, but because the data is very large after unfolded,
+the rolling class automatically splits the data into multiple small portions. You need to use
 the `agg` method to operating `tensor`.
 ```python
 class OvernightReturn(CustomFactor):
@@ -290,10 +290,10 @@ class OvernightReturn(CustomFactor):
         ret = opens.last() / closes.first() - 1
         return ret
 ```
-Where `Rolling.first()` is just a helper method for `rolling.agg(lambda x: x[:, :, 0])`, 
-where `x[:, :, 0]` return the first element of rolling window. The first dimension of `x` is the 
-asset, the second dimension is each bar, and the third dimension is the price date containing 
-the bar price and historical price with `win` length, and `Rolling.agg` runs on 
+Where `Rolling.first()` is just a helper method for `rolling.agg(lambda x: x[:, :, 0])`,
+where `x[:, :, 0]` return the first element of rolling window. The first dimension of `x` is the
+asset, the second dimension is each bar, and the third dimension is the price date containing
+the bar price and historical price with `win` length, and `Rolling.agg` runs on
 all the portions and combines them.
 
         +------------------win=3-------------------+
@@ -317,7 +317,7 @@ close.agg(weighted_mean, volume)
 
 ### Using Pandas Series
 
-For performance, spectre's tensor data is a flattened matrix which grouped by assets, 
+For performance, spectre's tensor data is a flattened matrix which grouped by assets,
 there is no DataFrame's index information.
 If you need index, or not familiar with PyTorch, here is a another way:
 
@@ -333,7 +333,7 @@ class YourFactor(CustomFactor):
 ```
 This method is completely non-parallel and inefficient, but easy to write.
 
-# Copyright 
+# Copyright
 Copyright (C) 2019-2020, by Zhang Jianhao (heeroz@gmail.com), All rights reserved.
 
 ------------

@@ -16,9 +16,11 @@ class TestDataLoaderLib(unittest.TestCase):
 
     def test_required_parameters(self):
         loader = spectre.factors.CsvDirLoader(data_dir + '/daily/')
-        self.assertRaises(AssertionError, loader.load, '2019-01-01', '2019-01-15', 0)
+        self.assertRaisesRegex(ValueError, "df must index by datetime.*",
+                               loader.load, '2019-01-01', '2019-01-15', 0)
         loader = spectre.factors.CsvDirLoader(data_dir + '/daily/', prices_index='date', )
-        self.assertRaises(AssertionError, loader.load, '2019-01-01', '2019-01-15', 0)
+        self.assertRaisesRegex(ValueError, "df must index by datetime.*",
+                               loader.load, '2019-01-01', '2019-01-15', 0)
 
     def test_csv_loader_value(self):
         loader = spectre.factors.CsvDirLoader(

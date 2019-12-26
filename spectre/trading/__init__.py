@@ -139,7 +139,7 @@ from .metric import (
 
 
 def run_backtest(loader: 'DataLoader', alg_type: 'Type[CustomAlgorithm]', start, end):
-    # force python to free memory, else will encountering cuda out of memory
+    # force python to free memory, else may be encountering cuda out of memory
     import gc
     gc.collect()
 
