@@ -213,6 +213,12 @@ class FactorEngine:
         # Get data
         self._prepare_tensor(start, end, max_backwards)
 
+        # clean up before start / may be keyboard interrupt
+        if filter_:
+            filter_.clean_up_()
+        for f in factors.values():
+            f.clean_up_()
+
         # ready to compute
         if filter_:
             filter_.pre_compute_(self, start, end)
@@ -229,6 +235,12 @@ class FactorEngine:
         ret = ret.assign(**{col: t.cpu().numpy() for col, t in results.items()})
         if filter_:
             ret = ret[shift_mask.cpu().numpy()]
+
+        # do clean up again
+        if filter_:
+            filter_.clean_up_()
+        for f in factors.values():
+            f.clean_up_()
 
         index = ret.index.levels[0]
         start = index.get_loc(start, 'bfill')

@@ -155,6 +155,9 @@ class BaseFactor:
         self._engine = engine
         engine.column_to_parallel_groupby_(self.groupby)
 
+    def clean_up_(self) -> None:
+        self._engine = None
+
     def compute_(self, stream: Union[torch.cuda.Stream, None]) -> torch.Tensor:
         raise NotImplementedError("abstractmethod")
 
@@ -222,6 +225,20 @@ class CustomFactor(BaseFactor):
                     up_ret = upstream.include_close_data()
                     ret = max(ret, up_ret)
         return ret
+
+    def clean_up_(self) -> None:
+        super().clean_up_()
+        self._cache = None
+        self._cache_stream = None
+        self._ref_count = 0
+
+        if self.inputs:
+            for upstream in self.inputs:
+                if isinstance(upstream, BaseFactor):
+                    upstream.clean_up_()
+
+        if self._mask is not None:
+            self._mask.clean_up_()
 
     def pre_compute_(self, engine, start, end) -> None:
         """
@@ -394,6 +411,11 @@ class DataFactor(BaseFactor):
             self._multi = engine.group_by_(self._multi, self.groupby)
         else:
             self._multi = None
+
+    def clean_up_(self) -> None:
+        super().clean_up_()
+        self._data = None
+        self._multi = None
 
     def compute_(self, stream: Union[torch.cuda.Stream, None]) -> torch.Tensor:
         return self._data

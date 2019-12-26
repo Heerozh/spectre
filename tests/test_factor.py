@@ -545,6 +545,28 @@ class TestFactorLib(unittest.TestCase):
         ), 'f')
         engine.run("2019-01-05", "2019-01-05")
 
+    def test_memory_leak(self):
+        quandl_path = data_dir + '../../../historical_data/us/prices/quandl/'
+        loader = spectre.factors.ArrowLoader(quandl_path + 'wiki_prices.feather')
+        engine = spectre.factors.FactorEngine(loader)
+
+        engine.to_cuda()
+        universe = spectre.factors.AverageDollarVolume(win=252).top(500)
+        engine.set_filter(universe)
+
+        df_prices = engine.get_price_matrix('2014-01-02', '2014-01-12')
+        loader = None
+        universe = None
+        df_prices = None
+        engine = None
+
+        import gc
+        import torch
+        gc.collect(2)
+        gc.collect(2)
+        torch.cuda.empty_cache()
+        self.assertEqual(0, torch.cuda.memory_allocated())
+
     @unittest.skipUnless(os.getenv('COVERAGE_RUNNING'), "too slow, run manually")
     def test_full_run(self):
         quandl_path = data_dir + '../../../historical_data/us/prices/quandl/'
