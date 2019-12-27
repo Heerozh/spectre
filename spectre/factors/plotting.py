@@ -5,7 +5,7 @@
 @email: heeroz@gmail.com
 """
 import math
-from itertools import cycle
+from itertools import cycle, islice
 import sys
 
 DEFAULT_COLORS = [
@@ -103,4 +103,92 @@ def plot_quantile_and_cumulative_returns(factor_data, mean_ret):
         fig.update_yaxes(row=row, col=2, secondary_y=False, matches='y2')
 
     fig.update_layout(height=300 * rows, barmode='group', bargap=0.5, margin={'t': 50})
+    fig.show()
+
+
+def plot_factor_diagram(factor):
+    import plotly.graph_objects as go
+    from .factor import BaseFactor, CustomFactor, DataFactor
+
+    color = [
+        "rgba(31, 119, 180, 0.8)", "rgba(255, 127, 14, 0.8)", "rgba(44, 160, 44, 0.8)",
+        "rgba(214, 39, 40, 0.8)", "rgba(148, 103, 189, 0.8)", "rgba(140, 86, 75, 0.8)",
+        "rgba(227, 119, 194, 0.8)", "rgba(127, 127, 127, 0.8)", "rgba(188, 189, 34, 0.8)",
+        "rgba(23, 190, 207, 0.8)", "rgba(31, 119, 180, 0.8)", "rgba(255, 127, 14, 0.8)",
+        "rgba(44, 160, 44, 0.8)", "rgba(214, 39, 40, 0.8)", "rgba(148, 103, 189, 0.8)",
+        "rgba(140, 86, 75, 0.8)", "rgba(227, 119, 194, 0.8)", "rgba(127, 127, 127, 0.8)",
+        "rgba(188, 189, 34, 0.8)", "rgba(23, 190, 207, 0.8)", "rgba(31, 119, 180, 0.8)",
+        "rgba(255, 127, 14, 0.8)", "rgba(44, 160, 44, 0.8)", "rgba(214, 39, 40, 0.8)",
+        "rgba(148, 103, 189, 0.8)", "rgba(140, 86, 75, 0.8)", "rgba(227, 119, 194, 0.8)",
+        "rgba(127, 127, 127, 0.8)", "rgba(188, 189, 34, 0.8)", "rgba(23, 190, 207, 0.8)",
+        "rgba(31, 119, 180, 0.8)", "rgba(255, 127, 14, 0.8)", "rgba(44, 160, 44, 0.8)",
+        "rgba(214, 39, 40, 0.8)", "rgba(148, 103, 189, 0.8)", "magenta",
+        "rgba(227, 119, 194, 0.8)", "rgba(127, 127, 127, 0.8)", "rgba(188, 189, 34, 0.8)",
+        "rgba(23, 190, 207, 0.8)", "rgba(31, 119, 180, 0.8)", "rgba(255, 127, 14, 0.8)",
+        "rgba(44, 160, 44, 0.8)", "rgba(214, 39, 40, 0.8)", "rgba(148, 103, 189, 0.8)",
+        "rgba(140, 86, 75, 0.8)", "rgba(227, 119, 194, 0.8)", "rgba(127, 127, 127, 0.8)"
+    ]
+
+    factor_id = dict()
+    label = []
+    source = []
+    target = []
+    value = []
+    line_label = []
+
+    def add_node(this, parent_label_id, parent_label):
+        class_id = id(this)
+
+        if class_id in factor_id:
+            this_label_id = factor_id[class_id]
+        else:
+            this_label_id = len(label)
+            if isinstance(this, DataFactor):
+                label.append(this.inputs[0])
+            else:
+                label.append(type(this).__name__)
+
+        if parent_label_id is not None:
+            source.append(parent_label_id)
+            target.append(this_label_id)
+            if isinstance(this, CustomFactor):
+                value.append(this.win)
+            else:
+                value.append(1)
+            line_label.append(parent_label)
+
+        if class_id in factor_id:
+            return
+
+        factor_id[class_id] = this_label_id
+        if isinstance(this, CustomFactor):
+            if this.inputs:
+                for upstream in this.inputs:
+                    if isinstance(upstream, BaseFactor):
+                        add_node(upstream, this_label_id, 'inputs')
+
+            if this._mask is not None:
+                add_node(this._mask, this_label_id, 'mask')
+
+    add_node(factor, None, None)
+
+    fig = go.Figure(data=[go.Sankey(
+        valueformat=".0f",
+        valuesuffix="win",
+        node=dict(
+            pad=15,
+            thickness=15,
+            line=dict(color="black", width=0.5),
+            label=label,
+            color=list(islice(cycle(color), len(label)))
+        ),
+        # Add links
+        link=dict(
+            source=source,
+            target=target,
+            value=value,
+            label=line_label
+        ))])
+
+    fig.update_layout(title_text="Factor Diagram")
     fig.show()

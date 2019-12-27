@@ -9,6 +9,7 @@ from typing import Optional, Sequence, Union
 import numpy as np
 import torch
 from ..parallel import nansum, nanmean, nanstd, nanlast, Rolling
+from .plotting import plot_factor_diagram
 
 
 class BaseFactor:
@@ -225,6 +226,9 @@ class CustomFactor(BaseFactor):
                     up_ret = upstream.include_close_data()
                     ret = max(ret, up_ret)
         return ret
+
+    def show_graph(self):
+        plot_factor_diagram(self)
 
     def clean_up_(self) -> None:
         super().clean_up_()
