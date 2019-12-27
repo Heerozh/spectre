@@ -291,7 +291,7 @@ class FactorEngine:
         return ret
 
     def full_run(self, start, end, trade_at='close', periods=(1, 4, 9),
-                 quantiles=5, filter_zscore=20, preview=True
+                 quantiles=5, filter_zscore=20, demean=True, preview=True
                  ) -> Tuple[pd.DataFrame, pd.DataFrame]:
         """
         Return this:
@@ -313,6 +313,7 @@ class FactorEngine:
         :param periods: forward return periods
         :param quantiles: number of quantile
         :param filter_zscore: drop extreme factor return, for stability of the analysis.
+        :param demean: Whether the factor is converted into a hedged weight: sum(weight) = 0
         :param preview: display a preview chart of the result
         """
         factors = self._factors.copy()
@@ -322,7 +323,7 @@ class FactorEngine:
         # add quantile factor of all factors
         for c, f in factors.items():
             self.add(f.quantile(quantiles, mask=universe), c + '_q_')
-            self.add(f.to_weight(mask=universe), c + '_w_')
+            self.add(f.to_weight(mask=universe, demean=demean), c + '_w_')
             column_names[c] = (c, 'factor')
             column_names[c + '_q_'] = (c, 'factor_quantile')
             column_names[c + '_w_'] = (c, 'factor_weight')
@@ -336,7 +337,7 @@ class FactorEngine:
             shift = 0
         from .basic import Returns
         for n in periods:
-            # Different: returns here diff by tick, which alphalens diff by time
+            # Different: returns here diff by bar, which alphalens diff by time
             ret = Returns(win=n + 1, inputs=inputs).shift(-n + shift)
             mask = universe
             if filter_zscore is not None:
