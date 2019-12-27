@@ -11,7 +11,7 @@ spectre is a **GPU-accelerated Parallel** quantitative trading library, focused 
   * Python 3.7, pandas 0.25 recommended
 
 
-## Installation
+# Installation
 
 ```bash
 pip install --no-deps git+git://github.com/Heerozh/spectre.git
@@ -24,7 +24,7 @@ conda install pytorch torchvision cudatoolkit=10.1 -c pytorch
 conda install pyarrow pandas tqdm plotly
 ```
 
-## Benchmarks
+# Benchmarks
 
 My Machine：
 - i9-7900X @ 3.30GHz, 20 Cores
@@ -44,9 +44,9 @@ Running on Quandl 5 years, 3196 Assets, total 3,637,344 bars.
 * Benchmarks exclude the initial run (no copy data to VRAM, about saving 300ms).
 
 
-## Quick Start
+# Quick Start
 
-### Factor and FactorEngine
+## Factor and FactorEngine
 
 ```python
 from spectre import factors
@@ -74,7 +74,7 @@ df
 |                         |     MSFT|    104.202|	103.39|
 
 
-### Factor Analysis
+## Factor Analysis
 
 First use `ArrowLoader` to ingest the data in order to improve performance. \
 `ArrowLoader` can ingest any `DataLoader` including `CsvDirLoader`.
@@ -96,20 +96,31 @@ engine = factors.FactorEngine(loader)
 universe = factors.AverageDollarVolume(win=120).top(500)
 engine.set_filter( universe )
 
-f1 = -(factors.MA(5)-factors.MA(10)-factors.MA(30))
-bb = -factors.BBANDS(win=5)
-f2 = bb.filter(bb < 0.5)  # p-hacking
+ma_cross = -(factors.MA(5)-factors.MA(10)-factors.MA(30))
+bb_cross = -factors.BBANDS(win=5)
+bb_cross = bb_cross.filter(bb_cross < 0.5)  # p-hacking
 
-engine.add( f1.rank(mask=universe).zscore(), 'ma_cross' )
-engine.add( f2.rank(mask=universe).zscore(), 'bb' )
+ma_cross_factor = ma_cross.rank(mask=universe).zscore()
+bb_cross_factor = bb_cross.rank(mask=universe).zscore()
+
+engine.add( ma_cross_factor, 'ma_cross' )
+engine.add( bb_cross_factor, 'bb_cross' )
 
 engine.to_cuda()
-%time factor_data = engine.full_run("2013-01-02", "2018-01-19", periods=(1,5,10,))
+%time factor_data, mean_return = engine.full_run("2013-01-02", "2018-01-19", periods=(1,5,10,))
 ```
 
 <img src="https://github.com/Heerozh/spectre/raw/media/full_run.png" width="800" height="600">
 
-#### Compatible with alphalens
+You can also view your factor structure graphically:
+
+```python
+bb_cross_factor.show_graph()
+```
+
+<img src="https://github.com/Heerozh/spectre/raw/media/factor_diagram.png" width="800" height="360">
+
+### Compatible with alphalens
 
 The return value of `full_run` is compatible with `alphalens`:
 ```python
@@ -121,7 +132,7 @@ al.tears.create_full_tear_sheet(clean_data)
 ```
 
 
-### Back-testing
+## Back-testing
 
 Back-testing uses FactorEngine's results as data, market events as triggers:
 
@@ -186,11 +197,11 @@ pf.create_full_tear_sheet(results.returns, positions=results.positions.value, tr
 
 BTW, the same strategy took 18 minutes to backtest in zipline.
 
-## API
+# API
 
-### Note
+## Note
 
-#### Differences with zipline:
+### Differences with zipline:
 * spectre's `QuandlLoader` using float32 datatype for GPU performance.
 * For performance, spectre's arranges the data to be flattened by bars without time
   information so may be differences, such as `Return(win=10)` may actually be more than 10 days
@@ -199,14 +210,107 @@ BTW, the same strategy took 18 minutes to backtest in zipline.
 * If an asset has no data on the day, spectre will filter it out, no matter what value you return.
 
 
-#### Differences with common chart:
+### Differences with common chart:
 * The data is re-adjusted every day, so the factor you got, like the MA, will be different
   from the stock chart software which only adjusted according to last day.
   If you want adjusted by last day, use like 'AdjustedDataFactor(OHLCV.close)' as input data.
   This will speeds up a lot because it only needs to be adjusted once, but brings Look-Ahead Bias.
 
+## Dataloader
 
-### Factor lists
+### CsvDirLoader
+`loader = CsvDirLoader(prices_path: str, prices_by_year=False, earliest_date: pd.Timestamp = None,
+              dividends_path=None, splits_path=None, calender_asset: str = None,
+              ohlcv=('open', 'high', 'low', 'close', 'volume'), adjustments=None,
+              split_ratio_is_inverse=False,
+              prices_index='date', dividends_index='exDate', splits_index='exDate', **read_csv)`
+
+Read CSV files in the directory, each file represents an asset.
+
+Reading csv is very slow, so you also need to use [ArrowLoader](#arrowloader)
+
+**prices_path:** prices csv folder. When encountering duplicate indexes data in `prices_index`, 
+    Loader will keep the last, drop others.\
+**prices_index:** `index_col`for csv in `prices_path`\
+**prices_by_year:** If price file name like 'spy_2017.csv', set this to True\
+**ohlcv:** Required, OHLCV column names. When you don't need to use `adjustments` and
+    `factors.OHLCV`, you can set this to None.\
+**adjustments:** Optional, list, `dividend amount` and `splits ratio` column names.\
+**dividends_path:** dividends csv folder, structured as one csv per asset.
+    For duplicate data, loader will first drop the exact same rows, and then for the same
+    `dividends_index` but different 'dividend amount(`adjustments[0]`)' rows, loader will sum them up.
+    If `dividends_path` not set, the `adjustments[0]` column is considered to be included
+    in the prices csv.\
+**dividends_index:** `index_col`for csv in `dividends_path`.\    
+**splits_path:** splits csv folder, structured as one csv per asset.
+    When encountering duplicate indexes data in `splits_index`, Loader will use the last
+    non-NaN 'split ratio', drop others.
+    If `splits_path` not set, the `adjustments[1]` column is considered to be included
+    in the prices csv.\
+**splits_index:** `index_col`for csv in `splits_path`.\
+**split_ratio_is_inverse:** If split ratio calculated by to/from, set to True.
+    For example, 2-for-1 split, to/form = 2, 1-for-15 Reverse Split, to/form = 0.6666...\
+**earliest_date:** Data before this date will not be read, save memory\
+**calender_asset:** asset name as trading calendar, like 'SPY', for clean up non-trading
+    time data.\
+**\*\*read_csv:** Parameters for all csv when calling `pd.read_csv`.
+ `parse_dates` or `date_parser` is required.
+
+### ArrowLoader
+
+Can ingest data from other DataLoader into a feather file, speed up reading speed a lot.
+
+**Ingest**
+`ArrowLoader.ingest(source=CsvDirLoader(...), save_to='filename.feather')`
+
+**Read**
+`loader = ArrowLoader(feather_file_path)`
+
+### QuandlLoader
+
+**no longer updated**
+
+`loader = QuandlLoader(wiki_zipfile_path)`
+
+### How to write your own DataLoader
+
+Inherit from `DataLoader`, overriding the `_load` method, read data into a large `DataFrame`, 
+index is `MultiIndex ['date', 'asset']`, where date is `Datetime` type, `asset` is `string` type, 
+and then call `self._format(df, split_ratio_is_inverse)` to format the data. 
+Also call `test_load` in your test case to do basic format testing.
+
+For example, suppose you have a csv file that contains data for all assets:
+```python
+class YourLoader(DataLoader):
+    @property
+    def last_modified(self) -> float:
+        return os.path.getmtime(self._path)
+
+    def __init__(self, file: str, calender_asset='SPY') -> None:
+        super().__init__(file,
+                         ohlcv=('open', 'high', 'low', 'close', 'volume'),
+                         adjustments=('ex-dividend', 'split_ratio'))
+        self._calender = calender_asset
+
+    def _load(self) -> pd.DataFrame:
+        df = pd.read_csv(self._path, parse_dates=['date'],
+                         usecols=['asset', 'date', 'open', 'high', 'low', 'close',
+                                  'volume', 'ex-dividend', 'split_ratio', ],
+                         dtype={
+                             'open': np.float32, 'high': np.float32, 'low': np.float32,
+                             'close': np.float32, 'volume': np.float64,
+                             'ex-dividend': np.float64, 'split_ratio': np.float64
+                         })
+
+        df.set_index(['date', 'asset'], inplace=True)
+        df = self._format(df, split_ratio_is_inverse=True)
+        if self._calender:
+            df = self._align_to(df, self._calender)
+
+        return df
+```
+
+## Factor lists
 
 ```python
 # All technical factors passed comparison test with TA-Lib
@@ -228,22 +332,25 @@ RollingHigh = MAX(win=5, inputs=[OHLCV.close])
 RollingLow = MIN(win=5, inputs=[OHLCV.close])
 ```
 
-### Factors Common Methods
+## Factors Common Methods
 
 ```python
 # Standardization
 new_factor = factor.rank()
-new_factor = factor.demean(groupby=dict)
+new_factor = factor.demean(groupby: 'dict or column_name'=None)
 new_factor = factor.zscore()
+new_factor = factor.to_weight(demean=True)  # return a weight that sum(abs(weight)) = 1
 
 # Quick computation
 new_factor = factor1 + factor1
 
 # To filter (Comparison operator):
-new_filter = factor1 < factor2
+new_filter = (factor1 < factor2) | (factor1 > 0)
 # Rank filter
 new_filter = factor.top(n)
 new_filter = factor.bottom(n)
+# StaticAssets
+new_filter = StaticAssets({'AAPL', 'MSFT'})
 ```
 
 ## How to write your own factor
@@ -332,6 +439,33 @@ class YourFactor(CustomFactor):
         return self._regroup(pd_series)
 ```
 This method is completely non-parallel and inefficient, but easy to write.
+
+## Back-testing
+
+### CustomAlgorithm
+
+`alg.set_history_window(offset: pd.DateOffset=None)`
+
+Set the length of historical data passed to each `rebalance` call.
+Default: pass all available historical data, So only one row on the first day.
+
+`alg.record(**kwargs)`
+
+Record the data and pass it when calling `terminate`, use `column = value` format.
+
+`alg.plot(annual_risk_free=0.04, benchmark: Union[pd.Series, str] = None)`
+
+Plot a simple portfolio cumulative return chart.
+
+`alg.schedule_rebalance(self, event: Event)`
+
+Schedule rebalance to be called when an event occurs.
+Events are: `MarketOpen`, `MarketClose`, `EveryBarData`,
+For example:
+```python
+alg.schedule_rebalance(trading.event.MarketClose(self.any_function))
+```
+
 
 # Copyright
 Copyright (C) 2019-2020, by Zhang Jianhao (heeroz@gmail.com), All rights reserved.
