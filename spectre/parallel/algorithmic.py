@@ -141,7 +141,8 @@ class Rolling:
         and finally aggregate them into a whole.
         """
         assert all(r.win == self.win for r in others), '`others` must have same `win` with `self`'
-        seq = [op(self.adjusted(s, e), *[r.adjusted(s, e) for r in others]) for s, e in self.split]
+        seq = [op(self.adjusted(s, e), *[r.adjusted(s, e) for r in others]).contiguous()
+               for s, e in self.split]
         return torch.cat(seq)
 
     def loc(self, i):
