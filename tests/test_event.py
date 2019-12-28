@@ -15,10 +15,10 @@ class TestTradingEvent(unittest.TestCase):
                 self.schedule(spectre.trading.event.Always(self.test_always))
                 self.schedule(spectre.trading.event.EveryBarData(self.test_every_bar))
 
-            def test_always(self, source):
+            def test_always(self, _):
                 self.fired += 1
 
-            def test_every_bar(self, source):
+            def test_every_bar(self, _):
                 self.fired += 1
                 if self.fired == 2:
                     self.stop_event_manager()
@@ -27,7 +27,7 @@ class TestTradingEvent(unittest.TestCase):
             def on_run(self):
                 self.schedule(spectre.trading.event.Always(self.test))
 
-            def test(self, source):
+            def test(self, _):
                 self.fire_event(spectre.trading.event.EveryBarData)
 
         rcv = TestEventReceiver()
@@ -45,4 +45,3 @@ class TestTradingEvent(unittest.TestCase):
 
         evt_mgr.run()
         self.assertEqual(2, rcv.fired)
-

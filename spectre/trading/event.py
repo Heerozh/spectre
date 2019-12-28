@@ -149,9 +149,3 @@ class EventManager:
 # us holiday calendar can found at https://iextrading.com/trading/
 #     def __init__(self, calendar: MarketCalendar) -> None:
 #         self.calendar = calendar
-
-
-
-
-
-

@@ -119,4 +119,3 @@ BBANDS = NormalizedBollingerBands
 MACD = MovingAverageConvergenceDivergenceSignal
 TRANGE = TrueRange
 STOCHF = FastStochasticOscillator
-

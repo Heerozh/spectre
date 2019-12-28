@@ -123,7 +123,7 @@ class TestDataLoaderLib(unittest.TestCase):
             parse_dates=True, )
         engine = spectre.factors.FactorEngine(loader)
         engine.add(spectre.factors.DataFactor(inputs=['uOpen']), 'open')
-        df = engine.run(start, end, delay_factor=False)
+        engine.run(start, end, delay_factor=False)
 
     @unittest.skipUnless(os.getenv('COVERAGE_RUNNING'), "too slow, run manually")
     def test_QuandlLoader(self):
@@ -154,6 +154,6 @@ class TestDataLoaderLib(unittest.TestCase):
                             [[86.087988, 3.602880, 7.364000, 31.428209, 27.605950]], decimal=4)
 
         # test last line bug
-        df = engine.run("2016-12-15", "2017-01-02")
+        engine.run("2016-12-15", "2017-01-02")
         df = engine._dataframe.loc[(slice('2016-12-15', '2017-12-15'), 'STJ'), :]
         assert df.price_multi.values[-1] == 1

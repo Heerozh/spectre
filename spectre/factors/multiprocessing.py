@@ -117,4 +117,3 @@ class CPUParallelFactor(CustomFactor):
         You should return an np.array of length `input.shape[1]`
         """
         raise NotImplementedError("abstractmethod")
-

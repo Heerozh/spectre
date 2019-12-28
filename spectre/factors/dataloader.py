@@ -178,7 +178,7 @@ class DataLoader:
 class ArrowLoader(DataLoader):
     """ Read from persistent data. """
 
-    def __init__(self, path: str = None, keep_in_memory: bool=True) -> None:
+    def __init__(self, path: str = None, keep_in_memory: bool = True) -> None:
         cols = pd.read_feather(path + '.meta')
         ohlcv = cols.ohlcv.values
         adjustments = cols.adjustments.values[:2]
@@ -334,7 +334,7 @@ class CsvDirLoader(DataLoader):
             if not isinstance(df.index, pd.DatetimeIndex):
                 raise ValueError(
                     "df must index by datetime, set correct `read_csv`, "
-                    "for example index_col='date', parse_dates=True. "
+                    "for example parse_dates=True. "
                     "For mixed-timezone like daylight saving time, "
                     "set date_parser=lambda col: pd.to_datetime(col, utc=True)")
             return df[self._earliest_date:]
@@ -396,7 +396,7 @@ class CsvDirLoader(DataLoader):
             # drop the data of the non-trading day by calender,
             # because there may be some one-line junk data in non-trading day,
             # causing extra row of nan to all others assets.
-            df = df = self._align_to(df, self._calender)
+            df = self._align_to(df, self._calender)
         return df
 
 

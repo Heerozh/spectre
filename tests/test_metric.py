@@ -1,7 +1,6 @@
 import unittest
 import spectre
 import pandas as pd
-from os.path import dirname
 from numpy import nan
 from numpy.testing import assert_almost_equal
 

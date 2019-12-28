@@ -616,5 +616,3 @@ class TestFactorLib(unittest.TestCase):
                             al_mean['10D'].values, decimal=3)
         assert_almost_equal(mean_return[('ma_cross', '10D', 'sem')].values,
                             al_std['10D'].values, decimal=3)
-
-
