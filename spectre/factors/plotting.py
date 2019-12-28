@@ -136,7 +136,7 @@ def plot_factor_diagram(factor):
     value = []
     line_label = []
 
-    def add_node(this, parent_label_id, parent_label):
+    def add_node(this, parent_label_id, parent_label, parent_win):
         class_id = id(this)
 
         if class_id in factor_id:
@@ -151,26 +151,28 @@ def plot_factor_diagram(factor):
         if parent_label_id is not None:
             source.append(parent_label_id)
             target.append(this_label_id)
-            if isinstance(this, CustomFactor):
-                value.append(this.win)
-            else:
-                value.append(1)
+            value.append(parent_win)
             line_label.append(parent_label)
 
         if class_id in factor_id:
             return
+
+        if isinstance(this, CustomFactor):
+            this_win = this.win
+        else:
+            this_win = 1
 
         factor_id[class_id] = this_label_id
         if isinstance(this, CustomFactor):
             if this.inputs:
                 for upstream in this.inputs:
                     if isinstance(upstream, BaseFactor):
-                        add_node(upstream, this_label_id, 'inputs')
+                        add_node(upstream, this_label_id, 'inputs', this_win)
 
             if this._mask is not None:
-                add_node(this._mask, this_label_id, 'mask')
+                add_node(this._mask, this_label_id, 'mask', this_win)
 
-    add_node(factor, None, None)
+    add_node(factor, None, None, None)
 
     fig = go.Figure(data=[go.Sankey(
         valueformat=".0f",
