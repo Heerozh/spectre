@@ -112,6 +112,8 @@ engine.to_cuda()
 
 <img src="https://github.com/Heerozh/spectre/raw/media/full_run.png" width="800" height="600">
 
+### Diagram
+
 You can also view your factor structure graphically:
 
 ```python
@@ -120,13 +122,19 @@ bb_cross_factor.show_graph()
 
 <img src="https://github.com/Heerozh/spectre/raw/media/factor_diagram.png" width="800" height="360">
 
+The thickness of the line represents the length of the Rolling Window, kind of like "bandwidth".
+
+The engine performs multiple inputs calculations simultaneously, the two branch paths 
+of the orange RankFactor in the diagram above will be calculated simultaneously, the same goes for 
+NormalizedBollingerBands.
+
 ### Compatible with alphalens
 
 The return value of `full_run` is compatible with `alphalens`:
 ```python
 import alphalens as al
 ...
-factor_data = engine.full_run("2013-01-02", "2018-01-19")
+factor_data, _ = engine.full_run("2013-01-02", "2018-01-19")
 clean_data = factor_data[['factor_name', 'Returns']].droplevel(0, axis=1)
 al.tears.create_full_tear_sheet(clean_data)
 ```
@@ -187,6 +195,8 @@ loader = factors.ArrowLoader('wiki_prices.feather')
 ```
 
 <img src="https://github.com/Heerozh/spectre/raw/media/backtest.png" width="800" height="630">
+
+It awful but you get the idea.
 
 The return value of `run_backtest` is compatible with `pyfolio`:
 ```python
@@ -442,29 +452,102 @@ This method is completely non-parallel and inefficient, but easy to write.
 
 ## Back-testing
 
-### CustomAlgorithm
+### CustomAlgorithm.initialize
+
+`alg.initialize(self)` **Callback**
+
+Called when back-testing starts, You need use `get_factor_engine` to add factors here 
+and `schedule_rebalance`.
+
+
+### CustomAlgorithm.terminate
+
+`alg.terminate(self, records: pd.DataFrame)` **Callback**
+
+Called when back-testing ends.
+
+
+### CustomAlgorithm.rebalance
+
+`rebalance(self, data: pd.DataFrame, history: pd.DataFrame)` **Callback**
+
+The function name is not necessarily 'rebalance', it can be specified in `schedule_rebalance`.
+
+`data` is the factor data of last bar.
+
+
+### CustomAlgorithm.set_history_window
 
 `alg.set_history_window(offset: pd.DateOffset=None)`
+**context:** *initialize*
 
 Set the length of historical data passed to each `rebalance` call.
-Default: pass all available historical data, So only one row on the first day.
+Default: pass all available historical data, so there will be no historical data on the first day, 
+one historical row on the next day, and so on.
 
-`alg.record(**kwargs)`
 
-Record the data and pass it when calling `terminate`, use `column = value` format.
-
-`alg.plot(annual_risk_free=0.04, benchmark: Union[pd.Series, str] = None)`
-
-Plot a simple portfolio cumulative return chart.
+### CustomAlgorithm.schedule_rebalance
 
 `alg.schedule_rebalance(self, event: Event)`
+**context:** *initialize*
 
-Schedule rebalance to be called when an event occurs.
+Schedule `rebalance` to be called when an event occurs.
 Events are: `MarketOpen`, `MarketClose`, `EveryBarData`,
 For example:
 ```python
 alg.schedule_rebalance(trading.event.MarketClose(self.any_function))
 ```
+
+
+### CustomAlgorithm.results
+
+`alg.results`
+**context:** *terminate*
+
+Get back test results, same as the return value of [trading.run_backtest](#trading.run_backtest)
+
+
+### CustomAlgorithm.plot
+
+`alg.plot(annual_risk_free=0.04, benchmark: Union[pd.Series, str] = None)`
+**context:** *terminate*
+
+Plot a simple portfolio cumulative return chart.
+
+### CustomAlgorithm.current
+
+`alg.current`
+**context:** *rebalance callback*
+
+return current datetime
+
+
+### CustomAlgorithm.record
+
+`alg.record(**kwargs)`
+**context:** *rebalance callback*
+
+Record the data and pass all when calling `terminate`, use `column = value` format.
+
+### blotter.order_target_percent
+
+`alg.blotter.order_target_percent(asset: Union[str, Iterable], pct: Union[float, Iterable])` 
+**context:** *rebalance callback*
+
+Buy stocks with a value equivalent to a percentage of net value of portfolio.
+
+### trading.run_backtest
+
+`results = trading.run_backtest(loader: DataLoader, alg_type: Type[CustomAlgorithm], start, end)`
+
+Run backtest, return value is namedtuple:
+
+**results.returns:** returns of each time period
+
+**results.positions:** positions of each time period
+
+**results.transactions:** transactions of each time period
+
 
 
 # Copyright
