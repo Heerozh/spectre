@@ -4,6 +4,9 @@ from .dataloader import (
     CsvDirLoader,
     QuandlLoader,
 )
+from .yahoo import (
+    YahooDownloader,
+)
 
 from .engine import (
     FactorEngine,

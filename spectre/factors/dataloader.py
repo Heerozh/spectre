@@ -182,6 +182,8 @@ class ArrowLoader(DataLoader):
         cols = pd.read_feather(path + '.meta')
         ohlcv = cols.ohlcv.values
         adjustments = cols.adjustments.values[:2]
+        if adjustments[0] is None:
+            adjustments = None
         super().__init__(path, ohlcv, adjustments)
         self.keep_in_memory = keep_in_memory
         self._cache = None
@@ -230,7 +232,7 @@ class CsvDirLoader(DataLoader):
     def __init__(self, prices_path: str, prices_by_year=False, earliest_date: pd.Timestamp = None,
                  dividends_path=None, splits_path=None, calender_asset: str = None,
                  ohlcv=('open', 'high', 'low', 'close', 'volume'), adjustments=None,
-                 split_ratio_is_inverse=False,
+                 split_ratio_is_inverse=False, split_ratio_is_fraction=False,
                  prices_index='date', dividends_index='exDate', splits_index='exDate', **read_csv):
         """
         Load data from csv dir
@@ -256,6 +258,7 @@ class CsvDirLoader(DataLoader):
         :param adjustments: Optional, `dividend amount` and `splits ratio` column names.
         :param split_ratio_is_inverse: If split ratio calculated by to/from, set to True.
             For example, 2-for-1 split, to/form = 2, 1-for-15 Reverse Split, to/form = 0.6666...
+        :param split_ratio_is_fraction: If split ratio in csv is fraction string, set to True.
         :param prices_index: `index_col`for csv in prices_path
         :param dividends_index: `index_col`for csv in dividends_path.
         :param splits_index: `index_col`for csv in splits_path.
@@ -271,6 +274,7 @@ class CsvDirLoader(DataLoader):
             "`splits_index` instead."
         self._adjustment_cols = adjustments
         self._split_ratio_is_inverse = split_ratio_is_inverse
+        self._split_ratio_is_fraction = split_ratio_is_fraction
         self._prices_by_year = prices_by_year
         self._earliest_date = earliest_date
         self._dividends_path = dividends_path
@@ -384,6 +388,16 @@ class CsvDirLoader(DataLoader):
 
             dfs = {k: _drop_na_and_duplicated(v) for k, v in dfs.items()}
             splits = pd.concat(dfs, sort=False)
+            if self._split_ratio_is_fraction:
+                from fractions import Fraction
+
+                def fraction_2_float(x):
+                    try:
+                        return float(Fraction(x))
+                    except (ValueError, ZeroDivisionError):
+                        return np.nan
+
+                splits = splits.apply(fraction_2_float)
             splits = splits.reindex(df.index)
             splits = splits.fillna(1)
             splits.name = self._adjustments[1]
