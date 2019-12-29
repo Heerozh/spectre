@@ -394,7 +394,7 @@ class LogReturns(CustomFactor):
 ```
 
 ### win > 1
-If rolling windows is required(`win > 1`), all `inputs` data will be wrapped into
+If rolling window is required(`win > 1`), all `inputs` data will be wrapped into
 `spectre.parallel.Rolling`
 
 This is just an unfolded `tensor` data, but because the data is very large after unfolded,

@@ -144,9 +144,7 @@ class CommissionModel:
     def calculate(self, price: float, shares: int):
         commission = price * abs(shares) * self.percentage
         commission += abs(shares) * self.per_share
-        if commission < self.minimum:
-            commission = self.minimum
-        return commission
+        return max(commission, self.minimum)
 
 
 class BaseBlotter:

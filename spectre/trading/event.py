@@ -145,7 +145,5 @@ class EventManager:
 
 
 # class MarketEventManager(EventManager):
-# I haven't started trading yet, so no plans to write live trading code
-# us holiday calendar can found at https://iextrading.com/trading/
 #     def __init__(self, calendar: MarketCalendar) -> None:
 #         self.calendar = calendar

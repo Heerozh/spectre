@@ -15,6 +15,7 @@ class Calendar:
     call build() first, get business day calendar.
     and manually add holiday by calling set_as_holiday().
     if open half-day, use remove_events() remove all events that day, and add_event() manually.
+    US holiday calendar can found at https://iextrading.com/trading/
     """
 
     def __init__(self, csv_file=None) -> None:
