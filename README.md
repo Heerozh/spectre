@@ -46,16 +46,25 @@ Running on Quandl 5 years, 3196 Assets, total 3,637,344 bars.
 
 # Quick Start
 
+## DataLoader
+
+First of all you need data, you can use [CsvDirLoader](#csvdirloader) read your own data.
+
+But spectre also has built-in Yahoo downloader (may fail due to yahoo changes), 
+makes it easy for you to get data.
+
+```python
+from spectre import factors
+factors.YahooDownloader.ingest(start_date="2001", save_to="./prices/yahoo", skip_exists=True)
+```
+
+That's it! You can use yahoo data now.
+
 ## Factor and FactorEngine
 
 ```python
 from spectre import factors
-
-loader = factors.CsvDirLoader(
-    './tests/data/daily/',  # Contains fake dataset: AAPL.csv MSFT.csv
-    ohlcv=('uOpen', 'uHigh', 'uLow', 'uClose', 'uVolume'),
-    prices_index='date', parse_dates=True,
-)
+loader = factors.ArrowLoader('./prices/yahoo/yahoo.feather')
 engine = factors.FactorEngine(loader)
 engine.to_cuda()
 engine.add(factors.SMA(5), 'ma5')
@@ -65,40 +74,35 @@ df
 ```
 
 
-|                         |         |        ma5|	 close|
-|-------------------------|---------|-----------|---------|
-|**date**                 |**asset**|           |	      |
-|2019-01-14 00:00:00+00:00|     AAPL|    154.254|	153.69|
-|                         |     MSFT|        NaN|	103.20|
-|2019-01-15 00:00:00+00:00|     AAPL|    155.854|	157.00|
-|                         |     MSFT|    104.202|	103.39|
+|                         |         |        ma5|	   close|
+|-------------------------|---------|-----------|-----------|
+|**date**                 |**asset**|           |	        |
+|2019-01-14 00:00:00+00:00|        A|  68.842003|  70.379997|
+|                         |     AAPL| 151.615997| 152.289993|
+|                         |      ABC|  75.835999|  76.559998|
+|                         |      ABT|  69.056000|  69.330002|
+|                         |     ADBE| 234.537994| 237.550003|
+|                      ...|      ...|        ...|	     ...|
+|2019-01-15 00:00:00+00:00|       UA|  17.629999|  17.879999|
+|                         |      KHC|  45.591999|  46.250000|
+|                         |     PYPL|  90.006004|  90.430000|
+|                         |      HPE|  14.078000|  14.160000|
+|                         |      FTV|  69.271996|  69.629997|
 
 
 ## Factor Analysis
 
-First use `ArrowLoader` to ingest the data in order to improve performance. \
-`ArrowLoader` can ingest any `DataLoader` including `CsvDirLoader`.
 
 ```python
 from spectre import factors
-# WIKI_PRICES.zip can be found at:
-# https://www.quandl.com/api/v3/datatables/WIKI/PRICES.csv?qopts.export=true&api_key=[yourapi_key]
-factors.ArrowLoader.ingest(source=factors.QuandlLoader('WIKI_PRICES.zip'),
-                           save_to='wiki_prices.feather')
-```
-
-Then use the ingested data:
-
-```python
-from spectre import factors
-loader = factors.ArrowLoader('wiki_prices.feather')
+loader = factors.ArrowLoader('./prices/yahoo/yahoo.feather')
 engine = factors.FactorEngine(loader)
-universe = factors.AverageDollarVolume(win=120).top(500)
+universe = factors.AverageDollarVolume(win=120).top(100)
 engine.set_filter( universe )
 
-ma_cross = -(factors.MA(5)-factors.MA(10)-factors.MA(30))
+ma_cross = (factors.MA(5)-factors.MA(10)-factors.MA(30))
 bb_cross = -factors.BBANDS(win=5)
-bb_cross = bb_cross.filter(bb_cross < 0.5)  # p-hacking
+bb_cross = bb_cross.filter(bb_cross < 0.7)  # p-hacking
 
 ma_cross_factor = ma_cross.rank(mask=universe).zscore()
 bb_cross_factor = bb_cross.rank(mask=universe).zscore()
@@ -154,43 +158,45 @@ class MyAlg(trading.CustomAlgorithm):
         # setup engine
         engine = self.get_factor_engine()
         engine.to_cuda()
-        universe = factors.AverageDollarVolume(win=120).top(500)
+        universe = factors.AverageDollarVolume(win=120).top(100)
         engine.set_filter( universe )
 
         # add your factors
-        f1 = -(factors.MA(5)-factors.MA(10)-factors.MA(30))
-        engine.add( f1.rank(mask=universe).to_weight(), 'ma_cross_weight' )
+        bb_cross = -factors.BBANDS(win=5)
+        bb_cross = bb_cross.filter(bb_cross < 0.7)  # p-hacking
+        bb_cross_factor = bb_cross.rank(mask=universe).zscore()
+        engine.add( bb_cross_factor.to_weight(), 'weight' )
 
         # schedule rebalance before market close
         self.schedule_rebalance(trading.event.MarketClose(self.rebalance, offset_ns=-10000))
 
         # simulation parameters
-        self.blotter.capital_base = 10000000
+        self.blotter.capital_base = 1000000
         self.blotter.set_commission(percentage=0, per_share=0.005, minimum=1)
         # self.blotter.set_slippage(percentage=0, per_share=0.4)
 
     def rebalance(self, data: 'pd.DataFrame', history: 'pd.DataFrame'):
-        self.blotter.order_target_percent(data.index, data.ma_cross_weight)
+        data = data.fillna(0)
+        self.blotter.order_target_percent(data.index, data.weight)
 
         # closing asset position that are no longer in our universe.
         removes = self.blotter.portfolio.positions.keys() - set(data.index)
         self.blotter.order_target_percent(removes, [0] * len(removes))
 
         # record data for debugging / plotting
-        self.record(aapl_weight=data.loc['AAPL', 'ma_cross_weight'],
+        self.record(aapl_weight=data.loc['AAPL', 'weight'],
                     aapl_price=self.blotter.get_price('AAPL'))
 
     def terminate(self, records: 'pd.DataFrame'):
         # plotting results
-        spy = pd.read_csv('SPY.csv', index_col='date', parse_dates=True).close.pct_change()
-        self.plot(benchmark=spy)
+        self.plot(benchmark='SPY')
 
         # plotting the relationship between AAPL price and weight
         ax1 = records.aapl_price.plot()
         ax2 = ax1.twinx()
         records.aapl_weight.plot(ax=ax2, style='g-', secondary_y=True)
 
-loader = factors.ArrowLoader('wiki_prices.feather')
+loader = factors.ArrowLoader('./prices/yahoo/yahoo.feather')
 %time results = trading.run_backtest(loader, MyAlg, '2013-01-01', '2018-01-01')
 ```
 
@@ -204,8 +210,6 @@ import pyfolio as pf
 pf.create_full_tear_sheet(results.returns, positions=results.positions.value, transactions=results.transactions,
                           live_start_date='2017-01-03')
 ```
-
-BTW, the same strategy took 18 minutes to backtest in zipline.
 
 # API
 
@@ -266,6 +270,21 @@ Reading csv is very slow, so you also need to use [ArrowLoader](#arrowloader)
 **\*\*read_csv:** Parameters for all csv when calling `pd.read_csv`.
  `parse_dates` or `date_parser` is required.
 
+Example for load [IEX](https://github.com/Heerozh/iex_fetcher) data:
+
+```python
+usecols = {'date', 'uOpen', 'uHigh', 'uLow', 'uClose', 'uVolume', 'exDate', 'amount', 'ratio'}
+csv_loader = factors.CsvDirLoader(
+    './iex/daily/', calender_asset='SPY', 
+    dividends_path='./iex/dividends/', 
+    splits_path='./iex/splits/',
+    ohlcv=('uOpen', 'uHigh', 'uLow', 'uClose', 'uVolume'), adjustments=('amount', 'ratio'),
+    prices_index='date', dividends_index='exDate', splits_index='exDate', 
+    parse_dates=True, usecols=lambda x: x in usecols,
+    dtype={'uOpen': np.float32, 'uHigh': np.float32, 'uLow': np.float32, 'uClose': np.float32, 
+           'uVolume': np.float64, 'amount': np.float64, 'ratio': np.float64})
+```
+
 ### ArrowLoader
 
 Can ingest data from other DataLoader into a feather file, speed up reading speed a lot.
@@ -282,7 +301,13 @@ Can ingest data from other DataLoader into a feather file, speed up reading spee
 
 **no longer updated**
 
-`loader = QuandlLoader(wiki_zipfile_path)`
+Download 'WIKI_PRICES.zip' (You need an account):
+https://www.quandl.com/api/v3/datatables/WIKI/PRICES.csv?qopts.export=true&api_key=[yourapi_key]
+
+```python
+factors.ArrowLoader.ingest(source=factors.QuandlLoader('WIKI_PRICES.zip'),
+                           save_to='wiki_prices.feather')
+```
 
 ### How to write your own DataLoader
 
