@@ -106,7 +106,7 @@ class CustomAlgorithm(EventReceiver, ABC):
 
     def plot(self, annual_risk_free=0.04, benchmark: Union[pd.Series, str] = None) -> None:
         returns = self._results.returns
-        if len(returns) <= 1:
+        if returns.shape[0] <= 1:
             print('plot failed: Insufficient data')
             return
 
