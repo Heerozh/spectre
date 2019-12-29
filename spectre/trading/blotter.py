@@ -214,8 +214,9 @@ class BaseBlotter:
 
     def order(self, asset: str, amount: int):
         if abs(amount) > self.max_shares:
-            raise OverflowError('Cannot order more than ±{} shares: {}'.format(
-                self.max_shares, amount))
+            raise OverflowError(
+                'Cannot order more than ±{} shares: {}, set `blotter.max_shares` value'
+                'to change this limit.'.format(self.max_shares, amount))
         if not isinstance(asset, str):
             raise KeyError("`asset` must be a string")
 
@@ -224,31 +225,37 @@ class BaseBlotter:
     def batch_order_target_percent(self, assets: Iterable, weights: Iterable):
         pf_value = self._portfolio.value
         prices = self.get_price(assets)
+        skipped = []
         for asset, pct in zip(assets, weights):
             if self.long_only and pct < 0:
                 raise ValueError("Long only blotter, `pct` must greater than 0.")
             try:
                 amount = (pf_value * pct) / prices[asset]
             except KeyError:
+                skipped.append([asset, self._portfolio.shares(asset)])
                 continue
             opened = self._portfolio.shares(asset)
             amount = int(amount - opened)
             if amount != 0:
                 self._order(asset, amount)
+        return skipped
 
     def order_target_percent(self, asset: Union[str, Iterable], pct: Union[float, Iterable]):
-        if isinstance(asset, Iterable) and isinstance(pct, Iterable):
-            return self.batch_order_target_percent(asset, pct)
+        if not isinstance(asset, str) and isinstance(asset, Iterable):
+            if isinstance(pct, Iterable):
+                return self.batch_order_target_percent(asset, pct)
+            else:
+                raise ValueError("`pct` must be a Iterable too")
         elif not isinstance(asset, str):
             raise KeyError("`asset` must be a string")
         elif not isinstance(pct, float):
-            raise KeyError("`pct` must be float")
+            raise ValueError("`pct` must be float")
         if self.long_only and pct < 0:
             raise ValueError("Long only blotter, `pct` must greater than 0.")
 
         price = self.get_price(asset)
         if price is None:
-            return
+            return False
         amount = (self._portfolio.value * pct) / price
         opened = self._portfolio.shares(asset)
         amount = int(amount - opened)
@@ -354,11 +361,12 @@ class SimulationBlotter(BaseBlotter, EventReceiver):
             raise RuntimeError('Out of market hours, or you did not subscribe this class '
                                'with SimulationEventManager')
         if amount == 0:
-            return
+            return False
 
         if abs(amount) > self.max_shares:
-            raise OverflowError('Cannot order more than ±{} shares: {}'.format(
-                self.max_shares, amount))
+            raise OverflowError(
+                'Cannot order more than ±{} shares: {}, set `blotter.max_shares` value '
+                'to change this limit.'.format(self.max_shares, amount))
 
         opened = self._portfolio.shares(asset)
         if self.long_only and (amount + opened) < 0:
@@ -374,13 +382,13 @@ class SimulationBlotter(BaseBlotter, EventReceiver):
         if self.daily_curb is not None:
             df = self._data.loc[(slice(None, self._current_dt), asset), :]
             if df.shape[0] < 2:
-                return
+                return False
             close_col = self.dataloader.ohlcv[3]
             previous_close = df[close_col].iloc[-2]
             change = price / previous_close - 1
             # Detecting whether transactions are possible
             if abs(change) > self.daily_curb:
-                return
+                return False
 
         # commission, slippage
         commission = self.commission.calculate(price, amount)
@@ -399,6 +407,7 @@ class SimulationBlotter(BaseBlotter, EventReceiver):
         # update portfolio, pay cash
         self._portfolio.update(asset, amount, fill_price)
         self._portfolio.update_cash(-amount * fill_price - commission)
+        return True
 
     def cancel_all_orders(self):
         # don't need
