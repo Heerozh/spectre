@@ -48,9 +48,9 @@ Running on Quandl 5 years, 3196 Assets, total 3,637,344 bars.
 
 ## DataLoader
 
-First of all you need data, you can use [CsvDirLoader](#csvdirloader) read your own data.
+First of all is data, you can use [CsvDirLoader](#csvdirloader) read your own csv.
 
-But spectre also has built-in Yahoo downloader (may fail due to yahoo changes), 
+But spectre also has built-in Yahoo downloader for sp500 components, 
 makes it easy for you to get data.
 
 ```python
@@ -285,6 +285,8 @@ csv_loader = factors.CsvDirLoader(
            'uVolume': np.float64, 'amount': np.float64, 'ratio': np.float64})
 ```
 
+If you are going to purchase IEX data, please use my [Referrals](https://iexcloud.io/s/62efba08) :)
+
 ### ArrowLoader
 
 Can ingest data from other DataLoader into a feather file, speed up reading speed a lot.
@@ -302,7 +304,7 @@ Can ingest data from other DataLoader into a feather file, speed up reading spee
 **no longer updated**
 
 Download 'WIKI_PRICES.zip' (You need an account):
-https://www.quandl.com/api/v3/datatables/WIKI/PRICES.csv?qopts.export=true&api_key=[yourapi_key]
+`https://www.quandl.com/api/v3/datatables/WIKI/PRICES.csv?qopts.export=true&api_key=[yourapi_key]`
 
 ```python
 factors.ArrowLoader.ingest(source=factors.QuandlLoader('WIKI_PRICES.zip'),
@@ -582,8 +584,8 @@ Current datetime, Read-Only.
 
 Help method for calling `engine.get_price_matrix`, `name` specifies which engine.
 
-Returns the historical asset price of `length`, adjusted and filtered by the current time.
-*Slow*
+Returns the historical asset prices, adjusted and filtered by the current time.
+**Slow**
 
 
 ### CustomAlgorithm.record
@@ -599,8 +601,8 @@ Record the data and pass all when calling `terminate`, use `column = value` form
 `alg.blotter.set_commission(percentage=0, per_share=0.005, minimum=1)`
 **context:** *initialize*
 
-percentage: percentage part, calculated by percentage * price * shares\
-per_share: calculated by per_share * shares
+percentage: percentage part, calculated by `percentage * price * shares`\
+per_share: calculated by `per_share * shares`\
 minimum: minimum commission if above sum does not exceed
 
 commission = max(percentage_part + per_share_part, minimum)
