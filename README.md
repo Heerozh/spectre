@@ -270,6 +270,8 @@ Reading csv is very slow, so you also need to use [ArrowLoader](#arrowloader)
 
 Can ingest data from other DataLoader into a feather file, speed up reading speed a lot.
 
+3GB data takes about 7 seconds on initial load.
+
 **Ingest**
 `ArrowLoader.ingest(source=CsvDirLoader(...), save_to='filename.feather')`
 
@@ -452,12 +454,15 @@ This method is completely non-parallel and inefficient, but easy to write.
 
 ## Back-testing
 
+The `CustomAlgorithm` currently does not supports live trading, but it design as switchable,
+will implement it in the future.
+
 ### CustomAlgorithm.initialize
 
 `alg.initialize(self)` **Callback**
 
-Called when back-testing starts, You need use `get_factor_engine` to add factors here 
-and `schedule_rebalance`.
+Called when back-testing starts, at least you need use `get_factor_engine` to add factors  
+and call `schedule_rebalance` here.
 
 
 ### CustomAlgorithm.terminate
@@ -467,13 +472,32 @@ and `schedule_rebalance`.
 Called when back-testing ends.
 
 
-### CustomAlgorithm.rebalance
+### rebalance callback
 
 `rebalance(self, data: pd.DataFrame, history: pd.DataFrame)` **Callback**
 
 The function name is not necessarily 'rebalance', it can be specified in `schedule_rebalance`.
 
-`data` is the factor data of last bar.
+`data` is the factors data of last bar.
+
+
+### CustomAlgorithm.get_factor_engine
+
+`alg.get_factor_engine(name: str = None)`
+**context:** *initialize, rebalance, terminate*
+
+Get the factor engine of this trading algorithm. But note that you can add factors or filter only 
+during `initialize`, otherwise it will cause unexpected effects.
+
+The algorithm has a default engine, `name` can be None.
+But if you created multiple engines using `create_factor_engine`, you need to specify which one.
+
+### CustomAlgorithm.create_factor_engine
+
+`alg.create_factor_engine(name: str, loader: DataLoader = None)`
+**context:** *initialize*
+
+Create another engine, generally used when you need different filter or different data sources.
 
 
 ### CustomAlgorithm.set_history_window
@@ -499,12 +523,20 @@ alg.schedule_rebalance(trading.event.MarketClose(self.any_function))
 ```
 
 
+### blotter.daily_curb
+
+`alg.blotter.daily_curb = float` 
+**context:** *initialize, rebalance*
+
+Limit on trading a specific asset if today to previous day return >= ±value.
+
+
 ### CustomAlgorithm.results
 
 `alg.results`
 **context:** *terminate*
 
-Get back test results, same as the return value of [trading.run_backtest](#trading.run_backtest)
+Get back-test results, same as the return value of [trading.run_backtest](#tradingrun_backtest)
 
 
 ### CustomAlgorithm.plot
@@ -512,29 +544,60 @@ Get back test results, same as the return value of [trading.run_backtest](#tradi
 `alg.plot(annual_risk_free=0.04, benchmark: Union[pd.Series, str] = None)`
 **context:** *terminate*
 
-Plot a simple portfolio cumulative return chart.
+Plot a simple portfolio cumulative return chart, `benchmark` can be `pd.Series` or an asset name 
+in the `loader` passed to backtest.
 
 ### CustomAlgorithm.current
 
 `alg.current`
-**context:** *rebalance callback*
+**context:** *rebalance*
 
 return current datetime
 
+### CustomAlgorithm.get_price_matrix
+
+`alg.get_price_matrix(length: pd.DateOffset, name: str = None, prices=OHLCV.close)`
+**context:** *rebalance*
+
+Help method for calling `engine.get_price_matrix`, `name` specifies which engine.
+
+Returns the historical asset price of `length`, adjusted by the current time, 
+and filtered by the current time (Unlike factors, which are adjusted and filtered every bar).
 
 ### CustomAlgorithm.record
 
 `alg.record(**kwargs)`
-**context:** *rebalance callback*
+**context:** *rebalance*
 
 Record the data and pass all when calling `terminate`, use `column = value` format.
+
 
 ### blotter.order_target_percent
 
 `alg.blotter.order_target_percent(asset: Union[str, Iterable], pct: Union[float, Iterable])` 
-**context:** *rebalance callback*
+**context:** *rebalance*
 
-Buy stocks with a value equivalent to a percentage of net value of portfolio.
+Order assets with a value equivalent to a percentage of net value of portfolio.
+Negative number means short.
+
+If `asset` is a list, The return value is a list of skipped assets, because there was no price data 
+(usually delisted), otherwise will return a Boolean.
+
+### blotter.order
+
+`alg.blotter.order(asset: str, amount: int)` 
+**context:** *rebalance*
+
+Order a certain amount of an asset. Negative number means short.
+
+If the asset cannot be traded, it will return False.
+
+### blotter.get_price
+
+`float = alg.blotter.get_price(asset: Union[str, Iterable])` 
+**context:** *rebalance*
+
+Get current price of assert. **Notice: Slow, use CustomAlgorithm.get_price_matrix**
 
 ### trading.run_backtest
 
