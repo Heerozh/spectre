@@ -277,8 +277,6 @@ class CustomFactor(BaseFactor):
             if isinstance(upstream, DataFactor):
                 adj_multi = upstream.adjustments
             ret = Rolling(ret, self.win, adj_multi)
-        # elif isinstance(upstream, DataFactor):
-        #     # 不需要adjustment了，不rolling就是获取当前的数据直接出fct，就不用adj了
         return ret
 
     def compute_(self, down_stream: Union[torch.cuda.Stream, None]) -> torch.Tensor:

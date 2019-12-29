@@ -94,7 +94,11 @@ def nanlast(data: torch.Tensor, dim=1) -> torch.Tensor:
     w = torch.linspace(0.1, 0, mask.shape[-1], dtype=torch.float, device=mask.device)
     mask = mask.float() + w
     last = mask.argmin(dim=dim)
-    return data.gather(dim, last.unsqueeze(-1)).squeeze()
+    ret = data.gather(dim, last.unsqueeze(-1)).squeeze()
+    if last.shape[0] == 1:
+        return ret[None, :]
+    else:
+        return ret
 
 
 class Rolling:
