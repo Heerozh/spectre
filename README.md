@@ -454,14 +454,16 @@ This method is completely non-parallel and inefficient, but easy to write.
 
 ## Back-testing
 
-The `CustomAlgorithm` currently does not supports live trading, but it design as switchable,
+Quick Starts contains easy-to-understand examples, please read first.
+
+The `CustomAlgorithm` currently does not supports live trading, but it designed as switchable,
 will implement it in the future.
 
 ### CustomAlgorithm.initialize
 
 `alg.initialize(self)` **Callback**
 
-Called when back-testing starts, at least you need use `get_factor_engine` to add factors  
+Called when back-testing starts, at least you need use `get_factor_engine` to add factors
 and call `schedule_rebalance` here.
 
 
@@ -477,8 +479,7 @@ Called when back-testing ends.
 `rebalance(self, data: pd.DataFrame, history: pd.DataFrame)` **Callback**
 
 The function name is not necessarily 'rebalance', it can be specified in `schedule_rebalance`.
-
-`data` is the factors data of last bar.
+`data` is the factors data of last bar, `history` please refer to `set_history_window`.
 
 
 ### CustomAlgorithm.get_factor_engine
@@ -492,12 +493,13 @@ during `initialize`, otherwise it will cause unexpected effects.
 The algorithm has a default engine, `name` can be None.
 But if you created multiple engines using `create_factor_engine`, you need to specify which one.
 
+
 ### CustomAlgorithm.create_factor_engine
 
 `alg.create_factor_engine(name: str, loader: DataLoader = None)`
 **context:** *initialize*
 
-Create another engine, generally used when you need different filter or different data sources.
+Create another engine, generally used when you need different data sources.
 
 
 ### CustomAlgorithm.set_history_window
@@ -523,14 +525,6 @@ alg.schedule_rebalance(trading.event.MarketClose(self.any_function))
 ```
 
 
-### blotter.daily_curb
-
-`alg.blotter.daily_curb = float` 
-**context:** *initialize, rebalance*
-
-Limit on trading a specific asset if today to previous day return >= ±value.
-
-
 ### CustomAlgorithm.results
 
 `alg.results`
@@ -547,12 +541,14 @@ Get back-test results, same as the return value of [trading.run_backtest](#tradi
 Plot a simple portfolio cumulative return chart, `benchmark` can be `pd.Series` or an asset name 
 in the `loader` passed to backtest.
 
+
 ### CustomAlgorithm.current
 
 `alg.current`
 **context:** *rebalance*
 
-return current datetime
+Current datetime, Read-Only.
+
 
 ### CustomAlgorithm.get_price_matrix
 
@@ -561,8 +557,9 @@ return current datetime
 
 Help method for calling `engine.get_price_matrix`, `name` specifies which engine.
 
-Returns the historical asset price of `length`, adjusted by the current time, 
-and filtered by the current time (Unlike factors, which are adjusted and filtered every bar).
+Returns the historical asset price of `length`, adjusted and filtered by the current time.
+*Slow*
+
 
 ### CustomAlgorithm.record
 
@@ -570,6 +567,42 @@ and filtered by the current time (Unlike factors, which are adjusted and filtere
 **context:** *rebalance*
 
 Record the data and pass all when calling `terminate`, use `column = value` format.
+
+
+### blotter.set_commission
+
+`alg.blotter.set_commission(percentage=0, per_share=0.005, minimum=1)`
+**context:** *initialize*
+
+percentage: percentage part, calculated by percentage * price * shares\
+per_share: calculated by per_share * shares
+minimum: minimum commission if above sum does not exceed
+
+commission = max(percentage_part + per_share_part, minimum)
+
+
+### blotter.set_slippage
+
+`alg.blotter.set_slippage(percentage=0, per_share=0.01)`
+**context:** *initialize, rebalance*
+
+Market impact add to the price.
+
+
+### blotter.set_short_fee
+
+`alg.blotter.set_short_fee(percentage=0)`
+**context:** *initialize*
+
+Set the transaction fees which only charged for sell orders.
+
+
+### blotter.daily_curb
+
+`alg.blotter.daily_curb = float` 
+**context:** *initialize, rebalance*
+
+Limit on trading a specific asset if today to previous day return >= ±value.
 
 
 ### blotter.order_target_percent
@@ -583,6 +616,7 @@ Negative number means short.
 If `asset` is a list, The return value is a list of skipped assets, because there was no price data 
 (usually delisted), otherwise will return a Boolean.
 
+
 ### blotter.order
 
 `alg.blotter.order(asset: str, amount: int)` 
@@ -592,12 +626,24 @@ Order a certain amount of an asset. Negative number means short.
 
 If the asset cannot be traded, it will return False.
 
+
 ### blotter.get_price
 
 `float = alg.blotter.get_price(asset: Union[str, Iterable])` 
 **context:** *rebalance*
 
-Get current price of assert. **Notice: Slow, use CustomAlgorithm.get_price_matrix**
+Get current price of assert. 
+*Notice: Batch calls are slow, You can add prices as factor to get the price,
+like: `engine.add(OHLCV.close, 'prices')`*
+
+
+### blotter.portfolio.positions
+
+`pos = alg.blotter.portfolio.positions`
+**context:** *rebalance, terminate*
+
+Get the current position, Read-only, Dict[asset, shares] type.
+
 
 ### trading.run_backtest
 
