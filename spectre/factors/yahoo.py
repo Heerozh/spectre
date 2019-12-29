@@ -18,15 +18,14 @@ class YahooDownloader:
     @classmethod
     def ingest(cls, start_date: datetime, save_to, skip_exists=True) -> None:
         """
-        Download all SPY stock from yahoo, Including dividends and split data.
+        Download all SP500 stock from yahoo.
         Yahoo will not like this, use carefully.
         """
         import requests
         import re
         from tqdm.auto import tqdm
 
-        print("Download all SPY stock from yahoo, Including dividends and split data."
-              "Yahoo will not like this, use carefully.")
+        print("Download all SP500 stock from yahoo. Yahoo will not like this, use carefully.")
 
         start_date = pd.to_datetime(start_date, utc=True)
 
