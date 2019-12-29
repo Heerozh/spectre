@@ -5,12 +5,13 @@
 @email: heeroz@gmail.com
 """
 from abc import ABC
+from typing import Union
 import pandas as pd
 from collections import namedtuple
 from .event import Event, EventReceiver, EventManager, EveryBarData, MarketOpen, MarketClose
 from .metric import plot_cumulative_returns
 from .blotter import BaseBlotter, SimulationBlotter
-from ..factors import FactorEngine
+from ..factors import FactorEngine, OHLCV
 from ..factors import DataLoader
 
 
@@ -57,9 +58,12 @@ class CustomAlgorithm(EventReceiver, ABC):
         for engine in self._engines.values():
             engine.clear()
 
-    def create_factor_engine(self, name: str, like: FactorEngine):
+    def create_factor_engine(self, name: str, loader: DataLoader = None):
         assert name not in self._engines
-        self._engines[name] = FactorEngine(like.loader_)
+        if loader is None:
+            def_name = next(iter(self._engines))
+            loader = self._engines[def_name].loader_
+        self._engines[name] = FactorEngine(loader)
         return self._engines[name]
 
     def get_factor_engine(self, name: str = None):
@@ -70,6 +74,16 @@ class CustomAlgorithm(EventReceiver, ABC):
             raise KeyError("Data source '{0}' not found, please pass in the algorithm "
                            "initialization: `YourAlgorithm({0}=DataLoader())`".format(name))
         return self._engines[name]
+
+    def get_price_matrix(self, length: pd.DateOffset, name: str = None, prices=OHLCV.close):
+        if name is None:
+            name = next(iter(self._engines))
+
+        if name not in self._engines:
+            raise KeyError("Data source '{0}' not found, please pass in the algorithm "
+                           "initialization: `YourAlgorithm({0}=DataLoader())`".format(name))
+        return self._engines[name].get_price_matrix(
+            self._current_dt - length, self._current_dt, prices=prices)
 
     def set_datetime(self, dt: pd.Timestamp) -> None:
         self._current_dt = dt
@@ -84,18 +98,27 @@ class CustomAlgorithm(EventReceiver, ABC):
         return self._results
 
     def set_history_window(self, date_offset: pd.DateOffset):
-        """Set the length of historical data passed in each rebalance"""
+        """Set the length of historical data passed to each `rebalance` call"""
         self._history_window = date_offset
 
     def record(self, **kwargs):
         self._recorder.record(self._current_dt, kwargs)
 
-    def plot(self, annual_risk_free=0.04, benchmark: pd.Series = None) -> None:
+    def plot(self, annual_risk_free=0.04, benchmark: Union[pd.Series, str] = None) -> None:
         returns = self._results.returns
+        if len(returns) <= 1:
+            print('plot failed: Insufficient data')
+            return
 
         bench = None
-        if benchmark is not None:
+        if isinstance(benchmark, pd.Series):
             bench = benchmark.loc[returns.index[0]:returns.index[-1]]
+        elif isinstance(benchmark, str):
+            engine = self.get_factor_engine()
+            close = engine.loader_.ohlcv[3]
+            df = engine.loader_.load(returns.index[0], returns.index[-1], 0)
+            bench = df.loc[(slice(None), benchmark), close]
+            bench = bench.droplevel(1, axis=0).pct_change()
 
         plot_cumulative_returns(returns, self._results.positions,  self._results.transactions,
                                 bench, annual_risk_free)
@@ -221,6 +244,8 @@ class SimulationEventManager(EventManager):
             # loop factor data
             last_day = None
             ticks = main[start:].index.get_level_values(0).unique()
+            if len(ticks) == 0:
+                raise ValueError("No data, please set `start`, `end` time correctly")
             for dt in tqdm(ticks):
                 if self._stop:
                     break
