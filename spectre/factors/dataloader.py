@@ -61,7 +61,7 @@ class DataLoader:
         df = df.rename_axis(['date', 'asset'])
         # speed up asset index search time
         df = df.reset_index()
-        asset_type = pd.api.types.CategoricalDtype(categories=pd.unique(df.asset), ordered=True)
+        asset_type = pd.api.types.CategoricalDtype(categories=pd.unique(df.asset).sort(), ordered=True)
         df.asset = df.asset.astype(asset_type)
         # format index and convert to utc timezone-aware
         df.set_index(['date', 'asset'], inplace=True)

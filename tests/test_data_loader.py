@@ -126,6 +126,20 @@ class TestDataLoaderLib(unittest.TestCase):
         engine.run(start, end, delay_factor=False)
 
     @unittest.skipUnless(os.getenv('COVERAGE_RUNNING'), "too slow, run manually")
+    def test_yahoo(self):
+        yahoo_path = data_dir + '/yahoo/'
+        try:
+            os.remove(yahoo_path + 'yahoo.feather')
+            os.remove(yahoo_path + 'yahoo.feather.meta')
+        except FileNotFoundError:
+            pass
+
+        spectre.factors.YahooDownloader.ingest("2011", yahoo_path, ['IBM', 'AAPL'])
+        loader = spectre.factors.ArrowLoader(yahoo_path + 'yahoo.feather')
+        df = loader._load()
+        self.assertEqual(['AAPL', 'IBM'], list(df.index.levels[1]))
+
+    @unittest.skipUnless(os.getenv('COVERAGE_RUNNING'), "too slow, run manually")
     def test_QuandlLoader(self):
         quandl_path = data_dir + '../../../historical_data/us/prices/quandl/'
         try:

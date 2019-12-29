@@ -16,24 +16,30 @@ from .dataloader import ArrowLoader, CsvDirLoader
 class YahooDownloader:
 
     @classmethod
-    def ingest(cls, start_date: datetime, save_to, skip_exists=True) -> None:
+    def ingest(cls, start_date: str, save_to: str, symbols: list = None, skip_exists=True) -> None:
         """
-        Download all SP500 stock from yahoo.
-        Yahoo will not like this, use carefully.
+        Download data from yahoo.
+        :param start_date:
+        :param save_to: path to folder
+        :param symbols: list of symbol to download. If is None, download SP500 components.
+        :param skip_exists: skip if file exists, useful for resume from interruption.
         """
         import requests
         import re
         from tqdm.auto import tqdm
 
-        print("Download all SP500 stock from yahoo. Yahoo will not like this, use carefully.")
+        print("Download prices from yahoo...")
 
         start_date = pd.to_datetime(start_date, utc=True)
 
-        etf = pd.read_html(requests.get(
-            'https://etfdailynews.com/etf/spy/', headers={'User-agent': 'Mozilla/5.0'}
-        ).text, attrs={'id': 'etfs-that-own'})
-        symbols = [x for x in etf[0].Symbol.values.tolist() if isinstance(x, str)]
-        symbols.extend(['SPY', 'QQQ'])
+        calender_asset = None
+        if symbols is None:
+            etf = pd.read_html(requests.get(
+                'https://etfdailynews.com/etf/spy/', headers={'User-agent': 'Mozilla/5.0'}
+            ).text, attrs={'id': 'etfs-that-own'})
+            symbols = [x for x in etf[0].Symbol.values.tolist() if isinstance(x, str)]
+            symbols.extend(['SPY', 'QQQ'])
+            calender_asset = 'SPY'
 
         session = requests.Session()
         page = session.get('https://finance.yahoo.com/quote/IBM/history?p=IBM')
@@ -94,7 +100,7 @@ class YahooDownloader:
 
         print('Converting...')
         loader = CsvDirLoader(
-            prices_dir, calender_asset='SPY',
+            prices_dir, calender_asset=calender_asset,
             # dividends_path=div_dir,
             # splits_path=sp_dir,
             ohlcv=('Open', 'High', 'Low', 'Close', 'Volume'),
