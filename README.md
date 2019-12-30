@@ -21,7 +21,7 @@ Dependencies:
 
 ```bash
 conda install pytorch torchvision cudatoolkit=10.1 -c pytorch
-conda install pyarrow pandas tqdm plotly
+conda install pyarrow pandas tqdm plotly requests
 ```
 
 # Benchmarks
@@ -50,21 +50,21 @@ Running on Quandl 5 years, 3196 Assets, total 3,637,344 bars.
 
 First of all is data, you can use [CsvDirLoader](#csvdirloader) read your own csv.
 
-But spectre also has built-in Yahoo downloader for sp500 components, 
+But spectre also has built-in Yahoo downloader, `symbols=None` will download all SP500 components, 
 makes it easy for you to get data.
 
 ```python
-from spectre import factors
-factors.YahooDownloader.ingest(start_date="2001", save_to="./prices/yahoo", skip_exists=True)
+from spectre.data import YahooDownloader
+YahooDownloader.ingest(start_date="2001", save_to="./prices/yahoo", symbols=None, skip_exists=True)
 ```
 
-That's it! You can use yahoo data now.
+That's it! You can use `spectre.data.ArrowLoader('./prices/yahoo/yahoo.feather')` load those data now.
 
 ## Factor and FactorEngine
 
 ```python
-from spectre import factors
-loader = factors.ArrowLoader('./prices/yahoo/yahoo.feather')
+from spectre import factors, data
+loader = data.ArrowLoader('./prices/yahoo/yahoo.feather')
 engine = factors.FactorEngine(loader)
 engine.to_cuda()
 engine.add(factors.SMA(5), 'ma5')
@@ -94,8 +94,8 @@ df
 
 
 ```python
-from spectre import factors
-loader = factors.ArrowLoader('./prices/yahoo/yahoo.feather')
+from spectre import factors, data
+loader = data.ArrowLoader('./prices/yahoo/yahoo.feather')
 engine = factors.FactorEngine(loader)
 universe = factors.AverageDollarVolume(win=120).top(100)
 engine.set_filter( universe )
@@ -149,7 +149,7 @@ al.tears.create_full_tear_sheet(clean_data)
 Back-testing uses FactorEngine's results as data, market events as triggers:
 
 ```python
-from spectre import factors, trading
+from spectre import factors, trading, data
 import pandas as pd
 
 
@@ -196,7 +196,7 @@ class MyAlg(trading.CustomAlgorithm):
         ax2 = ax1.twinx()
         records.aapl_weight.plot(ax=ax2, style='g-', secondary_y=True)
 
-loader = factors.ArrowLoader('./prices/yahoo/yahoo.feather')
+loader = data.ArrowLoader('./prices/yahoo/yahoo.feather')
 %time results = trading.run_backtest(loader, MyAlg, '2013-01-01', '2018-01-01')
 ```
 
@@ -233,7 +233,7 @@ pf.create_full_tear_sheet(results.returns, positions=results.positions.value, tr
 ## Dataloader
 
 ### CsvDirLoader
-`loader = CsvDirLoader(prices_path: str, prices_by_year=False, earliest_date: pd.Timestamp = None,
+`loader = spectre.data.CsvDirLoader(prices_path: str, prices_by_year=False, earliest_date: pd.Timestamp = None,
               dividends_path=None, splits_path=None, calender_asset: str = None,
               ohlcv=('open', 'high', 'low', 'close', 'volume'), adjustments=None,
               split_ratio_is_inverse=False,
@@ -274,7 +274,7 @@ Example for load [IEX](https://github.com/Heerozh/iex_fetcher) data:
 
 ```python
 usecols = {'date', 'uOpen', 'uHigh', 'uLow', 'uClose', 'uVolume', 'exDate', 'amount', 'ratio'}
-csv_loader = factors.CsvDirLoader(
+csv_loader = spectre.data.CsvDirLoader(
     './iex/daily/', calender_asset='SPY', 
     dividends_path='./iex/dividends/', 
     splits_path='./iex/splits/',
@@ -294,10 +294,10 @@ Can ingest data from other DataLoader into a feather file, speed up reading spee
 3GB data takes about 7 seconds on initial load.
 
 **Ingest**
-`ArrowLoader.ingest(source=CsvDirLoader(...), save_to='filename.feather')`
+`spectre.data.ArrowLoader.ingest(source=CsvDirLoader(...), save_to='filename.feather')`
 
 **Read**
-`loader = ArrowLoader(feather_file_path)`
+`loader = spectre.data.ArrowLoader(feather_file_path)`
 
 ### QuandlLoader
 
@@ -307,8 +307,9 @@ Download 'WIKI_PRICES.zip' (You need an account):
 `https://www.quandl.com/api/v3/datatables/WIKI/PRICES.csv?qopts.export=true&api_key=[yourapi_key]`
 
 ```python
-factors.ArrowLoader.ingest(source=factors.QuandlLoader('WIKI_PRICES.zip'),
-                           save_to='wiki_prices.feather')
+from spectre import data
+data.ArrowLoader.ingest(source=data.QuandlLoader('WIKI_PRICES.zip'),
+                        save_to='wiki_prices.feather')
 ```
 
 ### How to write your own DataLoader
@@ -320,7 +321,7 @@ Also call `test_load` in your test case to do basic format testing.
 
 For example, suppose you have a csv file that contains data for all assets:
 ```python
-class YourLoader(DataLoader):
+class YourLoader(spectre.data.DataLoader):
     @property
     def last_modified(self) -> float:
         return os.path.getmtime(self._path)
@@ -394,7 +395,7 @@ new_filter = StaticAssets({'AAPL', 'MSFT'})
 
 ## How to write your own factor
 
-Inherit from `CustomFactor`, write `compute` function.
+Inherit from `factors.CustomFactor`, write `compute` function.
 
 Use `torch.Tensor` to write parallel computing code.
 
@@ -412,8 +413,9 @@ across all assets, they are specific to each asset.
         +-----------------------------------+
 Example of LogReturns:
 ```python
-class LogReturns(CustomFactor):
-    inputs = [Returns(OHLCV.close)]
+from spectre import factors 
+class LogReturns(factors.CustomFactor):
+    inputs = [factors.Returns(factors.OHLCV.close)]
     win = 1
 
     def compute(self, change: torch.Tensor) -> torch.Tensor:
@@ -428,8 +430,9 @@ This is just an unfolded `tensor` data, but because the data is very large after
 the rolling class automatically splits the data into multiple small portions. You need to use
 the `agg` method to operating `tensor`.
 ```python
-class OvernightReturn(CustomFactor):
-    inputs = [OHLCV.open, OHLCV.close]
+from spectre import factors, parallel
+class OvernightReturn(factors.CustomFactor):
+    inputs = [factors.OHLCV.open, factors.OHLCV.close]
     win = 2
 
     def compute(self, opens: parallel.Rolling, closes: parallel.Rolling) -> torch.Tensor:
@@ -468,7 +471,8 @@ there is no DataFrame's index information.
 If you need index, or not familiar with PyTorch, here is a another way:
 
 ```python
-class YourFactor(CustomFactor):
+from spectre import factors
+class YourFactor(factors.CustomFactor):
 
     def compute(self, data: torch.Tensor) -> torch.Tensor:
         # convert to pd.Series data
@@ -483,7 +487,7 @@ This method is completely non-parallel and inefficient, but easy to write.
 
 Quick Starts contains easy-to-understand examples, please read first.
 
-The `CustomAlgorithm` currently does not supports live trading, but it designed as switchable,
+The `spectre.trading.CustomAlgorithm` currently does not supports live trading, but it designed as switchable,
 will implement it in the future.
 
 ### CustomAlgorithm.initialize
@@ -596,7 +600,7 @@ Returns the historical asset prices, adjusted and filtered by the current time.
 Record the data and pass all when calling `terminate`, use `column = value` format.
 
 
-### blotter.set_commission
+### SimulationBlotter.set_commission
 
 `alg.blotter.set_commission(percentage=0, per_share=0.005, minimum=1)`
 **context:** *initialize*
@@ -608,7 +612,7 @@ minimum: minimum commission if above sum does not exceed
 commission = max(percentage_part + per_share_part, minimum)
 
 
-### blotter.set_slippage
+### SimulationBlotter.set_slippage
 
 `alg.blotter.set_slippage(percentage=0, per_share=0.01)`
 **context:** *initialize, rebalance*
@@ -616,7 +620,7 @@ commission = max(percentage_part + per_share_part, minimum)
 Market impact add to the price.
 
 
-### blotter.set_short_fee
+### SimulationBlotter.set_short_fee
 
 `alg.blotter.set_short_fee(percentage=0)`
 **context:** *initialize*
@@ -624,7 +628,7 @@ Market impact add to the price.
 Set the transaction fees which only charged for sell orders.
 
 
-### blotter.daily_curb
+### SimulationBlotter.daily_curb
 
 `alg.blotter.daily_curb = float` 
 **context:** *initialize, rebalance*
@@ -632,7 +636,7 @@ Set the transaction fees which only charged for sell orders.
 Limit on trading a specific asset if today to previous day return >= ±value.
 
 
-### blotter.order_target_percent
+### SimulationBlotter.order_target_percent
 
 `alg.blotter.order_target_percent(asset: Union[str, Iterable], pct: Union[float, Iterable])` 
 **context:** *rebalance*
@@ -644,7 +648,7 @@ If `asset` is a list, The return value is a list of skipped assets, because ther
 (usually delisted), otherwise will return a Boolean.
 
 
-### blotter.order
+### SimulationBlotter.order
 
 `alg.blotter.order(asset: str, amount: int)` 
 **context:** *rebalance*
@@ -654,7 +658,7 @@ Order a certain amount of an asset. Negative number means short.
 If the asset cannot be traded, it will return False.
 
 
-### blotter.get_price
+### SimulationBlotter.get_price
 
 `float = alg.blotter.get_price(asset: Union[str, Iterable])` 
 **context:** *rebalance*
@@ -664,7 +668,7 @@ Get current price of assert.
 like: `engine.add(OHLCV.close, 'prices')`*
 
 
-### blotter.portfolio.positions
+### SimulationBlotter.portfolio.positions
 
 `pos = alg.blotter.portfolio.positions`
 **context:** *rebalance, terminate*
@@ -672,7 +676,7 @@ like: `engine.add(OHLCV.close, 'prices')`*
 Get the current position, Read-only, Dict[asset, shares] type.
 
 
-### trading.run_backtest
+### spectre.trading.run_backtest
 
 `results = trading.run_backtest(loader: DataLoader, alg_type: Type[CustomAlgorithm], start, end)`
 

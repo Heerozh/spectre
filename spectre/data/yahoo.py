@@ -10,7 +10,7 @@ import time
 import pandas as pd
 import numpy as np
 
-from .dataloader import ArrowLoader, CsvDirLoader
+from data.dataloader import ArrowLoader, CsvDirLoader
 
 
 class YahooDownloader:
@@ -115,5 +115,5 @@ class YahooDownloader:
         arrow_file = os.path.join(save_to, 'yahoo.feather')
         ArrowLoader.ingest(source=loader, save_to=arrow_file, force=True)
 
-        print('Ingest completed! Use `loader = spectre.factors.ArrowLoader(r"{}")` '
+        print('Ingest completed! Use `loader = spectre.data.ArrowLoader(r"{}")` '
               'to load your data.'.format(arrow_file))

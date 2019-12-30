@@ -32,7 +32,7 @@ class TestCustomFactorLib(unittest.TestCase):
         self.assertEqual(127, c1.get_total_backwards_())
 
         # test inheritance
-        loader = spectre.factors.CsvDirLoader(
+        loader = spectre.data.CsvDirLoader(
             data_dir + '/daily/', ohlcv=('uOpen', 'uHigh', 'uLow', 'uClose', 'uVolume'),
             prices_index='date', parse_dates=True,
         )

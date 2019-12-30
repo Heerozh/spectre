@@ -8,7 +8,7 @@ from typing import Union, Iterable, Tuple
 import warnings
 from .factor import BaseFactor, DataFactor, FilterFactor, AdjustedDataFactor
 from .plotting import plot_quantile_and_cumulative_returns
-from .dataloader import DataLoader
+from ..data import DataLoader
 from ..parallel import ParallelGroupBy
 import pandas as pd
 import numpy as np

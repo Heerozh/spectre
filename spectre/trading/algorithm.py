@@ -12,7 +12,7 @@ from .event import Event, EventReceiver, EventManager, EveryBarData, MarketOpen,
 from .metric import plot_cumulative_returns
 from .blotter import BaseBlotter, SimulationBlotter
 from ..factors import FactorEngine, OHLCV
-from ..factors import DataLoader
+from ..data import DataLoader
 
 
 class Recorder:

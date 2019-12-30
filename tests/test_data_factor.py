@@ -8,7 +8,7 @@ data_dir = dirname(__file__) + '/data/'
 
 class TestDataFactorLib(unittest.TestCase):
     def test_datafactor_value(self):
-        loader = spectre.factors.CsvDirLoader(
+        loader = spectre.data.CsvDirLoader(
             data_dir + '/daily/',
             ohlcv=('uOpen', 'uHigh', 'uLow', 'uClose', 'uVolume'),
             prices_index='date', parse_dates=True,

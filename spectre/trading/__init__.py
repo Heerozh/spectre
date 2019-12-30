@@ -72,7 +72,7 @@ class MyAlg(trading.CustomAlgorithm):
 
 # Back-test
 -----------------
-loader = spectre.factors.CsvDirLoader(...)
+loader = spectre.data.CsvDirLoader(...)
 blotter = spectre.trading.SimulationBlotter(loader)
 evt_mgr = spectre.trading.SimulationEventManager()
 alg = MyAlg(blotter, man=loader)

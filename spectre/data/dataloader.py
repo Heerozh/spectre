@@ -426,7 +426,7 @@ class QuandlLoader(DataLoader):
         download data first:
         https://www.quandl.com/api/v3/datatables/WIKI/PRICES.csv?qopts.export=true&api_key=[yourapi_key]
         then:
-        loader = factors.QuandlLoader('./quandl/WIKI_PRICES.zip')
+        loader = data.QuandlLoader('./quandl/WIKI_PRICES.zip')
         """
         super().__init__(file,
                          ohlcv=('open', 'high', 'low', 'close', 'volume'),

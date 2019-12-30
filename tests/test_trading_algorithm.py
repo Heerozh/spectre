@@ -11,7 +11,7 @@ data_dir = dirname(__file__) + '/data/'
 class TestTradingAlgorithm(unittest.TestCase):
 
     def test_simulation_event_manager(self):
-        loader = spectre.factors.CsvDirLoader(
+        loader = spectre.data.CsvDirLoader(
             data_dir + '/daily/', ohlcv=('uOpen', 'uHigh', 'uLow', 'uClose', 'uVolume'),
             prices_index='date', parse_dates=True,
         )
@@ -116,7 +116,7 @@ class TestTradingAlgorithm(unittest.TestCase):
             def terminate(self, _):
                 pass
 
-        loader = spectre.factors.CsvDirLoader(
+        loader = spectre.data.CsvDirLoader(
             data_dir + '/daily/', calender_asset='AAPL',
             ohlcv=('uOpen', 'uHigh', 'uLow', 'uClose', 'uVolume'),
             dividends_path=data_dir + '/dividends/', splits_path=data_dir + '/splits/',
@@ -181,7 +181,7 @@ class TestTradingAlgorithm(unittest.TestCase):
             def terminate(self, _):
                 pass
 
-        loader = spectre.factors.CsvDirLoader(
+        loader = spectre.data.CsvDirLoader(
             data_dir + '/daily/', calender_asset='AAPL',
             ohlcv=('uOpen', 'uHigh', 'uLow', 'uClose', 'uVolume'),
             dividends_path=data_dir + '/dividends/', splits_path=data_dir + '/splits/',

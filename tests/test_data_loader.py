@@ -15,15 +15,15 @@ class TestDataLoaderLib(unittest.TestCase):
         self.assertAlmostEqual(tdf.loc[tdf.index[-1], col], expected_last)
 
     def test_required_parameters(self):
-        loader = spectre.factors.CsvDirLoader(data_dir + '/daily/')
+        loader = spectre.data.CsvDirLoader(data_dir + '/daily/')
         self.assertRaisesRegex(ValueError, "df must index by datetime.*",
                                loader.load, '2019-01-01', '2019-01-15', 0)
-        loader = spectre.factors.CsvDirLoader(data_dir + '/daily/', prices_index='date', )
+        loader = spectre.data.CsvDirLoader(data_dir + '/daily/', prices_index='date', )
         self.assertRaisesRegex(ValueError, "df must index by datetime.*",
                                loader.load, '2019-01-01', '2019-01-15', 0)
 
     def test_csv_loader_value(self):
-        loader = spectre.factors.CsvDirLoader(
+        loader = spectre.data.CsvDirLoader(
             data_dir + '/daily/', calender_asset='AAPL', prices_index='date', parse_dates=True, )
         start, end = pd.Timestamp('2019-01-01', tz='UTC'), pd.Timestamp('2019-01-15', tz='UTC')
 
@@ -45,7 +45,7 @@ class TestDataLoaderLib(unittest.TestCase):
         loader.test_load()
 
     def test_csv_split_loader_value(self):
-        loader = spectre.factors.CsvDirLoader(
+        loader = spectre.data.CsvDirLoader(
             data_dir + '/5mins/', prices_by_year=True, prices_index='Date', parse_dates=True, )
         start = pd.Timestamp('2019-01-02 14:30:00', tz='UTC')
         end = pd.Timestamp('2019-01-15', tz='UTC')
@@ -61,7 +61,7 @@ class TestDataLoaderLib(unittest.TestCase):
 
     def test_csv_div_split(self):
         start, end = pd.Timestamp('2019-01-02', tz='UTC'), pd.Timestamp('2019-01-15', tz='UTC')
-        loader = spectre.factors.CsvDirLoader(
+        loader = spectre.data.CsvDirLoader(
             prices_path=data_dir + '/daily/', earliest_date=start, calender_asset='AAPL',
             dividends_path=data_dir + '/dividends/', splits_path=data_dir + '/splits/',
             ohlcv=('uOpen', 'uHigh', 'uLow', 'uClose', 'uVolume'), adjustments=('amount', 'ratio'),
@@ -116,7 +116,7 @@ class TestDataLoaderLib(unittest.TestCase):
 
     def test_no_ohlcv(self):
         start, end = pd.Timestamp('2019-01-02', tz='UTC'), pd.Timestamp('2019-01-15', tz='UTC')
-        loader = spectre.factors.CsvDirLoader(
+        loader = spectre.data.CsvDirLoader(
             prices_path=data_dir + '/daily/', earliest_date=start, calender_asset='AAPL',
             ohlcv=None, adjustments=None,
             prices_index='date',
@@ -134,8 +134,8 @@ class TestDataLoaderLib(unittest.TestCase):
         except FileNotFoundError:
             pass
 
-        spectre.factors.YahooDownloader.ingest("2011", yahoo_path, ['IBM', 'AAPL'])
-        loader = spectre.factors.ArrowLoader(yahoo_path + 'yahoo.feather')
+        spectre.data.YahooDownloader.ingest("2011", yahoo_path, ['IBM', 'AAPL'])
+        loader = spectre.data.ArrowLoader(yahoo_path + 'yahoo.feather')
         df = loader._load()
         self.assertEqual(['AAPL', 'IBM'], list(df.index.levels[1]))
 
@@ -148,12 +148,12 @@ class TestDataLoaderLib(unittest.TestCase):
         except FileNotFoundError:
             pass
 
-        spectre.factors.ArrowLoader.ingest(
-            spectre.factors.QuandlLoader(quandl_path + 'WIKI_PRICES.zip'),
+        spectre.data.ArrowLoader.ingest(
+            spectre.data.QuandlLoader(quandl_path + 'WIKI_PRICES.zip'),
             quandl_path + 'wiki_prices.feather'
         )
 
-        loader = spectre.factors.ArrowLoader(quandl_path + 'wiki_prices.feather')
+        loader = spectre.data.ArrowLoader(quandl_path + 'wiki_prices.feather')
 
         spectre.parallel.Rolling._split_multi = 80
         engine = spectre.factors.FactorEngine(loader)

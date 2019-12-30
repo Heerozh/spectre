@@ -19,7 +19,7 @@ class TestMultiProcessing(spectre.factors.CPUParallelFactor):
 class TestFactorLib(unittest.TestCase):
 
     def test_factors(self):
-        loader = spectre.factors.CsvDirLoader(
+        loader = spectre.data.CsvDirLoader(
             data_dir + '/daily/', calender_asset='AAPL',
             ohlcv=('uOpen', 'uHigh', 'uLow', 'uClose', 'uVolume'),
             prices_index='date', parse_dates=True,
@@ -275,7 +275,7 @@ class TestFactorLib(unittest.TestCase):
         # test cuda result eq cup
 
     def test_filter_factor(self):
-        loader = spectre.factors.CsvDirLoader(
+        loader = spectre.data.CsvDirLoader(
             data_dir + 'daily/', ohlcv=('uOpen', 'uHigh', 'uLow', 'uClose', 'uVolume'),
             prices_index='date', parse_dates=True,
         )
@@ -292,7 +292,7 @@ class TestFactorLib(unittest.TestCase):
         # test ma5 with filter
         import talib
         total_rows = 10
-        loader = spectre.factors.CsvDirLoader(
+        loader = spectre.data.CsvDirLoader(
             data_dir + '/daily/', calender_asset='AAPL',
             ohlcv=('uOpen', 'uHigh', 'uLow', 'uClose', 'uVolume'),
             prices_index='date', parse_dates=True,
@@ -328,7 +328,7 @@ class TestFactorLib(unittest.TestCase):
         assert_array_equal(['AAPL'], df.index.get_level_values(1).unique())
 
     def test_cuda(self):
-        loader = spectre.factors.CsvDirLoader(
+        loader = spectre.data.CsvDirLoader(
             data_dir + '/daily/', ohlcv=('uOpen', 'uHigh', 'uLow', 'uClose', 'uVolume'),
             prices_index='date', parse_dates=True,
         )
@@ -405,7 +405,7 @@ class TestFactorLib(unittest.TestCase):
         assert_array_equal(result[-1], expected)
 
     def test_engine_cross_factor(self):
-        loader = spectre.factors.CsvDirLoader(
+        loader = spectre.data.CsvDirLoader(
             data_dir + '/daily/', ohlcv=('uOpen', 'uHigh', 'uLow', 'uClose', 'uVolume'),
             prices_index='date', parse_dates=True,
         )
@@ -424,7 +424,7 @@ class TestFactorLib(unittest.TestCase):
         assert_array_equal(result.f[result['mask']], result2.f)
 
     def test_ref_count(self):
-        loader = spectre.factors.CsvDirLoader(
+        loader = spectre.data.CsvDirLoader(
             data_dir + '/daily/', ohlcv=('uOpen', 'uHigh', 'uLow', 'uClose', 'uVolume'),
             prices_index='date', parse_dates=True,
         )
@@ -454,7 +454,7 @@ class TestFactorLib(unittest.TestCase):
             test_count(k)
 
     def test_ops(self):
-        loader = spectre.factors.CsvDirLoader(
+        loader = spectre.data.CsvDirLoader(
             data_dir + '/daily/', ohlcv=('uOpen', 'uHigh', 'uLow', 'uClose', 'uVolume'),
             prices_index='date', parse_dates=True,
         )
@@ -508,7 +508,7 @@ class TestFactorLib(unittest.TestCase):
         assert_array_equal(result['~t'], b)
 
     def test_multiprocess(self):
-        loader = spectre.factors.CsvDirLoader(
+        loader = spectre.data.CsvDirLoader(
             data_dir + '/daily/', ohlcv=('uOpen', 'uHigh', 'uLow', 'uClose', 'uVolume'),
             prices_index='date', parse_dates=True,
         )
@@ -547,7 +547,7 @@ class TestFactorLib(unittest.TestCase):
 
     def test_memory_leak(self):
         quandl_path = data_dir + '../../../historical_data/us/prices/quandl/'
-        loader = spectre.factors.ArrowLoader(quandl_path + 'wiki_prices.feather')
+        loader = spectre.data.ArrowLoader(quandl_path + 'wiki_prices.feather')
         engine = spectre.factors.FactorEngine(loader)
 
         engine.to_cuda()
@@ -570,7 +570,7 @@ class TestFactorLib(unittest.TestCase):
     @unittest.skipUnless(os.getenv('COVERAGE_RUNNING'), "too slow, run manually")
     def test_full_run(self):
         quandl_path = data_dir + '../../../historical_data/us/prices/quandl/'
-        loader = spectre.factors.ArrowLoader(quandl_path + 'wiki_prices.feather')
+        loader = spectre.data.ArrowLoader(quandl_path + 'wiki_prices.feather')
         engine = spectre.factors.FactorEngine(loader)
 
         engine.to_cuda()
