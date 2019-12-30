@@ -128,7 +128,7 @@ bb_cross_factor.show_graph()
 
 The thickness of the line represents the length of the Rolling Window, kind of like "bandwidth".
 
-The engine performs multiple inputs calculations simultaneously, the two branch paths 
+The engine in GPU mode performs multiple inputs calculations simultaneously, the two branch paths 
 of the orange RankFactor in the diagram above will be calculated simultaneously, the same goes for 
 NormalizedBollingerBands.
 
@@ -225,8 +225,8 @@ pf.create_full_tear_sheet(results.returns, positions=results.positions.value, tr
 
 
 ### Differences with common chart:
-* The data is re-adjusted every day, so the factor you got, like the MA, will be different
-  from the stock chart software which only adjusted according to last day.
+* If there is adjustments data, the prices is re-adjusted every day, so the factor you got, like MA, 
+  will be different from the stock chart software which only adjusted according to last day.
   If you want adjusted by last day, use like 'AdjustedDataFactor(OHLCV.close)' as input data.
   This will speeds up a lot because it only needs to be adjusted once, but brings Look-Ahead Bias.
 
@@ -236,7 +236,7 @@ pf.create_full_tear_sheet(results.returns, positions=results.positions.value, tr
 `loader = spectre.data.CsvDirLoader(prices_path: str, prices_by_year=False, earliest_date: pd.Timestamp = None,
               dividends_path=None, splits_path=None, calender_asset: str = None,
               ohlcv=('open', 'high', 'low', 'close', 'volume'), adjustments=None,
-              split_ratio_is_inverse=False,
+              split_ratio_is_inverse=False, split_ratio_is_fraction=False,
               prices_index='date', dividends_index='exDate', splits_index='exDate', **read_csv)`
 
 Read CSV files in the directory, each file represents an asset.
@@ -255,7 +255,7 @@ Reading csv is very slow, so you also need to use [ArrowLoader](#arrowloader)
     `dividends_index` but different 'dividend amount(`adjustments[0]`)' rows, loader will sum them up.
     If `dividends_path` not set, the `adjustments[0]` column is considered to be included
     in the prices csv.\
-**dividends_index:** `index_col`for csv in `dividends_path`.\    
+**dividends_index:** `index_col`for csv in `dividends_path`.\
 **splits_path:** splits csv folder, structured as one csv per asset.
     When encountering duplicate indexes data in `splits_index`, Loader will use the last
     non-NaN 'split ratio', drop others.
@@ -264,6 +264,7 @@ Reading csv is very slow, so you also need to use [ArrowLoader](#arrowloader)
 **splits_index:** `index_col`for csv in `splits_path`.\
 **split_ratio_is_inverse:** If split ratio calculated by to/from, set to True.
     For example, 2-for-1 split, to/form = 2, 1-for-15 Reverse Split, to/form = 0.6666...\
+**split_ratio_is_fraction:** If split ratio in csv is fraction string, like `1/3`, set to True.\
 **earliest_date:** Data before this date will not be read, save memory\
 **calender_asset:** asset name as trading calendar, like 'SPY', for clean up non-trading
     time data.\
@@ -301,7 +302,7 @@ Can ingest data from other DataLoader into a feather file, speed up reading spee
 
 ### QuandlLoader
 
-**no longer updated**
+**no longer updated, only contain prices before 2018**
 
 Download 'WIKI_PRICES.zip' (You need an account):
 `https://www.quandl.com/api/v3/datatables/WIKI/PRICES.csv?qopts.export=true&api_key=[yourapi_key]`
@@ -350,7 +351,72 @@ class YourLoader(spectre.data.DataLoader):
         return df
 ```
 
-## Factor lists
+## FactorEngine
+
+### FactorEngine.__init__
+
+`engine = FactorEngine(loader: DataLoader)`
+
+### FactorEngine.add
+
+`engine = FactorEngine(factor, column_name)`
+
+Add a factor to engine.
+
+### FactorEngine.set_filter
+
+`engine.set_filter(factor: FilterFactor or None)`
+
+Set the Global Filter, filter deletes rows which Global Filter returns as False, 
+affecting all factors.
+
+### FactorEngine.clear
+
+`engine.clear()`
+
+Remove global filter, and all factors.
+
+### FactorEngine.to_cuda
+
+`engine.to_cuda()`
+
+Switch to GPU mode.
+
+### FactorEngine.to_cpu
+
+`engine.to_cpu()`
+
+Switch to CPU mode.
+
+
+### FactorEngine.run
+
+`df = engine.run(start_time, end_time, delay_factor=True)`
+
+Run the engine to calculate the factor data, return a DataFrame. The column is each added factor.
+
+`delay_factor=True` means that the results will shift(1), in theory you can't trade immediately 
+when you get the factor data. If you only use 'Open' prices, you can set it to `False`.
+
+### FactorEngine.full_run
+
+`factor_data, mean_returns = engine.full_run(
+    start_time, end_time, trade_at='close', periods=(1, 4, 9),
+    quantiles=5, filter_zscore=20, demean=True, preview=True)`
+    
+Not only run the engine, but also run factor analysis.
+
+                 
+### FactorEngine.get_price_matrix
+
+`df_prices = engine.get_price_matrix(start_time, end_time, prices: DataFactor = OHLCV.close)`
+
+Get the adjusted historical prices matrix which columns is all assets.
+
+If global filter is setted, all unfiltered assets from `start_time` to `end_time` will be included.
+
+
+## Built-in Factor lists
 
 ```python
 # All technical factors passed comparison test with TA-Lib
@@ -376,10 +442,10 @@ RollingLow = MIN(win=5, inputs=[OHLCV.close])
 
 ```python
 # Standardization
-new_factor = factor.rank()
-new_factor = factor.demean(groupby: 'dict or column_name'=None)
-new_factor = factor.zscore()
-new_factor = factor.to_weight(demean=True)  # return a weight that sum(abs(weight)) = 1
+new_factor = factor.rank(mask=filter)   
+new_factor = factor.demean(mask=filter, groupby: 'dict or column_name'=None)
+new_factor = factor.zscore(mask=filter)
+new_factor = factor.to_weight(mask=filter, demean=True)  # return a weight that sum(abs(weight)) = 1
 
 # Quick computation
 new_factor = factor1 + factor1
@@ -391,6 +457,9 @@ new_filter = factor.top(n)
 new_filter = factor.bottom(n)
 # StaticAssets
 new_filter = StaticAssets({'AAPL', 'MSFT'})
+
+# local filter
+new_factor = factor.filter(some_filter)   # filter only this factor
 ```
 
 ## How to write your own factor
