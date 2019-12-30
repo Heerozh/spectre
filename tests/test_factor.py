@@ -507,6 +507,7 @@ class TestFactorLib(unittest.TestCase):
         assert_array_equal(result['t|b'], t|b)
         assert_array_equal(result['~t'], b)
 
+    @unittest.skip("skip, need coverage 5.0")
     def test_multiprocess(self):
         loader = spectre.data.CsvDirLoader(
             data_dir + '/daily/', ohlcv=('uOpen', 'uHigh', 'uLow', 'uClose', 'uVolume'),

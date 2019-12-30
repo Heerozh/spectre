@@ -10,7 +10,7 @@ import time
 import pandas as pd
 import numpy as np
 
-from data.dataloader import ArrowLoader, CsvDirLoader
+from .dataloader import ArrowLoader, CsvDirLoader
 
 
 class YahooDownloader:
