@@ -78,15 +78,19 @@ def nanmean(data: torch.Tensor, dim=1) -> torch.Tensor:
     return data.sum(dim=dim) / (~isnan).sum(dim=dim)
 
 
-def nanstd(data: torch.Tensor, dim=1) -> torch.Tensor:
+def nanvar(data: torch.Tensor, dim=1, ddof=0) -> torch.Tensor:
     filled = data.clone()
     isnan = torch.isnan(data)
     filled[isnan] = 0
     mean = filled.sum(dim=dim) / (~isnan).sum(dim=dim)
     mean.unsqueeze_(-1)
-    var = (data - mean) ** 2 / (~isnan).sum(dim=dim).unsqueeze(-1)
+    var = (data - mean) ** 2 / ((~isnan).sum(dim=dim).unsqueeze(-1) - ddof)
     var[isnan] = 0
-    return var.sum(dim=dim).sqrt()
+    return var.sum(dim=dim)
+
+
+def nanstd(data: torch.Tensor, dim=1, ddof=0) -> torch.Tensor:
+    return nanvar(data, dim, ddof).sqrt()
 
 
 def nanlast(data: torch.Tensor, dim=1) -> torch.Tensor:
@@ -99,6 +103,35 @@ def nanlast(data: torch.Tensor, dim=1) -> torch.Tensor:
         return ret[None, :]
     else:
         return ret
+
+
+def pearsonr(x, y, dim=1):
+    demean_x = x - torch.mean(x, dim=dim)
+    demean_y = y - torch.mean(y, dim=dim)
+    r_num = demean_x.dot(demean_y)
+    r_den = torch.norm(demean_x, 2) * torch.norm(demean_y, 2)
+    r_val = r_num / r_den
+    return r_val
+
+
+def covariance(x, y, dim=1, ddof=0):
+    demean_x = x - torch.mean(x, dim=dim).unsqueeze(-1)
+    demean_y = y - torch.mean(y, dim=dim).unsqueeze(-1)
+    e = (demean_x * demean_y).sum(dim=dim)
+    return e / (x.shape[dim] - ddof)
+
+
+def linear_regression_1d(x, y, dim=1):
+    x_bar = nanmean(x, dim=dim).unsqueeze(-1)
+    y_bar = nanmean(y, dim=dim).unsqueeze(-1)
+    demean_x = x - x_bar
+    demean_y = y - y_bar
+    e = nanmean(demean_x * demean_y, dim=dim)
+    x_var = nanvar(x, dim=dim, ddof=0)
+    slope = e / x_var
+    slope[x_var == 0] = 0
+    intcp = y_bar.squeeze() - slope * x_bar.squeeze()
+    return slope, intcp
 
 
 class Rolling:

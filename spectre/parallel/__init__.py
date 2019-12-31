@@ -5,4 +5,6 @@ from .algorithmic import (
     nanmean,
     nanstd,
     nanlast,
+    covariance,
+    linear_regression_1d,
 )

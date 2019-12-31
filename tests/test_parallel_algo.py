@@ -29,7 +29,7 @@ class TestParallelAlgorithm(unittest.TestCase):
         self.assertRegex(str(spectre.parallel.Rolling(x, 3)),
                          "spectre.parallel.Rolling object(.|\n)*tensor(.|\n)*")
         s = spectre.parallel.Rolling(x, 3).sum()
-        assert_almost_equal(s.numpy(), expected.numpy(), decimal=4)
+        assert_almost_equal(expected.numpy(), s.numpy(), decimal=4)
 
         # test adjustment
         y = torch.tensor([[0.25, 0.25, 0.5, 1],
@@ -47,24 +47,43 @@ class TestParallelAlgorithm(unittest.TestCase):
                 sum([104.4200 * 0.75, 101.3000 * 0.75, 102.280]),
             ]
         ])
-        assert_almost_equal(s.numpy(), expected.numpy(), decimal=4)
+        assert_almost_equal(expected.numpy(), s.numpy(), decimal=4)
 
     def test_nan(self):
         data = [[1, 2, 1], [4, np.nan, 2], [7, 8, 1]]
         result = spectre.parallel.nanmean(torch.tensor(data, dtype=torch.float))
         expected = np.nanmean(data, axis=1)
-        assert_almost_equal(result, expected, decimal=6)
+        assert_almost_equal(expected, result, decimal=6)
 
         result = spectre.parallel.nanstd(torch.tensor(data, dtype=torch.float))
         expected = np.nanstd(data, axis=1)
-        assert_almost_equal(result, expected, decimal=6)
+        assert_almost_equal(expected, result, decimal=6)
+
+        result = spectre.parallel.nanstd(torch.tensor(data, dtype=torch.float), ddof=1)
+        expected = np.nanstd(data, axis=1, ddof=1)
+        assert_almost_equal(expected, result, decimal=6)
 
         data = [[1, 2, np.nan], [4, np.nan, 2], [7, 8, 1]]
         result = spectre.parallel.nanlast(torch.tensor(data, dtype=torch.float).cuda())
         expected = [2., 2., 1.]
-        assert_almost_equal(result.cpu(), expected, decimal=6)
+        assert_almost_equal(expected, result.cpu(), decimal=6)
 
         data = [[[1, 2, np.nan], [4, np.nan, 2], [7, 8, 1]]]
         result = spectre.parallel.nanlast(torch.tensor(data, dtype=torch.float).cuda(), dim=2)
         expected = [[2., 2., 1.]]
-        assert_almost_equal(result.cpu(), expected, decimal=6)
+        assert_almost_equal(expected, result.cpu(), decimal=6)
+
+    def test_stat(self):
+        x = torch.tensor([[1., 2, 3, 4, 5], [10, 12, 13, 14, 16], [2, 2, 2, 2, 2, ]])
+        y = torch.tensor([[-1., 2, 3, 4, -5], [11, 12, -13, 14, 15], [2, 2, 2, 2, 2, ]])
+        result = spectre.parallel.covariance(x, y, ddof=1)
+        expected = np.cov(x, y, ddof=1)
+        expected = expected[:x.shape[0], x.shape[0]:]
+        assert_almost_equal(np.diag(expected), result, decimal=6)
+
+        coef, intcp = spectre.parallel.linear_regression_1d(x, y)
+        from sklearn.linear_model import LinearRegression
+        for i in range(3):
+            reg = LinearRegression().fit(x[i, :, None], y[i, :, None])
+            assert_almost_equal(reg.coef_, coef[i], decimal=6)
+
