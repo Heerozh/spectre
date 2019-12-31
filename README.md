@@ -367,7 +367,7 @@ Add a factor to engine.
 
 `engine.set_filter(factor: FilterFactor or None)`
 
-Set the Global Filter, filter deletes rows which Global Filter returns as False, 
+Set the Global Filter, engine deletes rows which Global Filter returns as False, 
 affecting all factors.
 
 ### FactorEngine.clear
@@ -455,11 +455,14 @@ new_filter = (factor1 < factor2) | (factor1 > 0)
 # Rank filter
 new_filter = factor.top(n)
 new_filter = factor.bottom(n)
-# StaticAssets
+# Specific assets
 new_filter = StaticAssets({'AAPL', 'MSFT'})
 
 # local filter
 new_factor = factor.filter(some_filter)   # filter only this factor
+
+# multiple returns selecting
+new_factor = factor[0]
 ```
 
 ## How to write your own factor
@@ -579,7 +582,10 @@ Called when back-testing ends.
 `rebalance(self, data: pd.DataFrame, history: pd.DataFrame)` **Callback**
 
 The function name is not necessarily 'rebalance', it can be specified in `schedule_rebalance`.
-`data` is the factors data of last bar, `history` please refer to `set_history_window`.
+`data` is the factors data of last bar returned by `FactorEngine`; 
+`history` same as `data`, but contains previous data, please refer to `set_history_window`.
+
+Put calculations into the `FactorEngine` as much as possible can improve backtest performance.
 
 
 ### CustomAlgorithm.get_factor_engine
@@ -608,8 +614,8 @@ Create another engine, generally used when you need different data sources.
 **context:** *initialize*
 
 Set the length of historical data passed to each `rebalance` call.
-Default: pass all available historical data, so there will be no historical data on the first day, 
-one historical row on the next day, and so on.
+Default: If None, pass all available historical data, so there will be no historical data on the
+first day, one historical row on the next day, and so on.
 
 
 ### CustomAlgorithm.schedule_rebalance
