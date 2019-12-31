@@ -66,6 +66,9 @@ class BaseFactor:
     def __invert__(self):
         return InvertFactor(inputs=(self,))
 
+    def __getitem__(self, key):
+        return MultipleReturnSelector(inputs=(self, key))
+
     # --------------- helper functions ---------------
 
     def top(self, n, mask: 'BaseFactor' = None):
@@ -449,6 +452,11 @@ class TimeGroupFactor(CustomFactor, ABC):
 
 
 # --------------- helper factors ---------------
+
+class MultipleReturnSelector(CustomFactor):
+
+    def compute(self, data: torch.Tensor, key) -> torch.Tensor:
+        return data[:, :, key]
 
 
 class ShiftFactor(CustomFactor):
