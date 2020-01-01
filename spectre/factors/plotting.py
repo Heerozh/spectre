@@ -76,7 +76,10 @@ def plot_quantile_and_cumulative_returns(factor_data, mean_ret):
             ), row=row, col=1)
             quantile_styles[period]['showlegend'] = False
 
-            cum_ret = factor_return[period].resample('b' + period).mean().dropna()
+            open_period = period
+            if period.endswith('D'):
+                open_period = 'b' + open_period
+            cum_ret = factor_return[period].resample(open_period).mean().dropna()
             cum_ret = (cum_ret + 1).cumprod() * 100 - 100
             fig.add_trace(go.Scatter(
                 x=cum_ret.index, y=cum_ret.values, yaxis='y2', **cumulative_styles[period]
@@ -108,7 +111,8 @@ def plot_quantile_and_cumulative_returns(factor_data, mean_ret):
 
 def plot_factor_diagram(factor):
     import plotly.graph_objects as go
-    from .factor import BaseFactor, CustomFactor, DataFactor
+    from .factor import BaseFactor, CustomFactor
+    from .datafactor import DataFactor
 
     color = [
         "rgba(31, 119, 180, 0.8)", "rgba(255, 127, 14, 0.8)", "rgba(44, 160, 44, 0.8)",
