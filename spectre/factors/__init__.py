@@ -6,10 +6,13 @@ from .engine import (
 from .factor import (
     BaseFactor,
     CustomFactor,
-    DataFactor,
-    AdjustedDataFactor,
     RankFactor,
     QuantileFactor,
+)
+
+from .datafactor import (
+    DataFactor,
+    AdjustedDataFactor,
 )
 
 from .filter import (

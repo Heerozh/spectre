@@ -5,7 +5,8 @@
 @email: heeroz@gmail.com
 """
 from typing import Optional, Sequence
-from .factor import BaseFactor, CustomFactor, DataFactor
+from .factor import BaseFactor, CustomFactor
+from .datafactor import DataFactor
 from ..parallel import Rolling
 import pandas as pd
 import numpy as np

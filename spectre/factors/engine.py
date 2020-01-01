@@ -1,12 +1,13 @@
 """
 @author: Heerozh (Zhang Jianhao)
-@copyright: Copyright 2019, Heerozh. All rights reserved.
+@copyright: Copyright 2019-2020, Heerozh. All rights reserved.
 @license: Apache 2.0
 @email: heeroz@gmail.com
 """
 from typing import Union, Iterable, Tuple
 import warnings
-from .factor import BaseFactor, DataFactor, FilterFactor, AdjustedDataFactor
+from .factor import BaseFactor, FilterFactor
+from .datafactor import DataFactor, AdjustedDataFactor
 from .plotting import plot_quantile_and_cumulative_returns
 from ..data import DataLoader
 from ..parallel import ParallelGroupBy
