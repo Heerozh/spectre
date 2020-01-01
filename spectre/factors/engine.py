@@ -6,7 +6,8 @@
 """
 from typing import Union, Iterable, Tuple
 import warnings
-from .factor import BaseFactor, FilterFactor
+from .factor import BaseFactor
+from .filter import FilterFactor
 from .datafactor import DataFactor, AdjustedDataFactor
 from .plotting import plot_quantile_and_cumulative_returns
 from ..data import DataLoader

@@ -40,30 +40,39 @@ class BaseFactor:
         return NegFactor(inputs=(self,))
 
     def __and__(self, other):
+        from .filter import AndFactor
         return AndFactor(inputs=(self, other))
 
     def __or__(self, other):
+        from .filter import OrFactor
         return OrFactor(inputs=(self, other))
 
     def __lt__(self, other):
+        from .filter import LtFactor
         return LtFactor(inputs=(self, other))
 
     def __le__(self, other):
+        from .filter import LeFactor
         return LeFactor(inputs=(self, other))
 
     def __gt__(self, other):
+        from .filter import GtFactor
         return GtFactor(inputs=(self, other))
 
     def __ge__(self, other):
+        from .filter import GeFactor
         return GeFactor(inputs=(self, other))
 
     def __eq__(self, other):
+        from .filter import EqFactor
         return EqFactor(inputs=(self, other))
 
     def __ne__(self, other):
+        from .filter import NeFactor
         return NeFactor(inputs=(self, other))
 
     def __invert__(self):
+        from .filter import InvertFactor
         return InvertFactor(inputs=(self,))
 
     def __getitem__(self, key):
@@ -378,13 +387,6 @@ class CustomFactor(BaseFactor):
         raise NotImplementedError("abstractmethod")
 
 
-class FilterFactor(CustomFactor, ABC):
-    def shift(self, periods=1):
-        factor = FilterShiftFactor(inputs=(self,))
-        factor.periods = periods
-        return factor
-
-
 class TimeGroupFactor(CustomFactor, ABC):
     """Class that inputs and return value is grouped by datetime"""
     groupby = 'date'
@@ -396,6 +398,7 @@ class TimeGroupFactor(CustomFactor, ABC):
 
 
 # --------------- helper factors ---------------
+
 
 class MultipleReturnSelector(CustomFactor):
 
@@ -423,20 +426,6 @@ class AbsFactor(CustomFactor):
 class DoNothingFactor(CustomFactor):
     def compute(self, data: torch.Tensor) -> torch.Tensor:
         return data
-
-
-class FilterShiftFactor(CustomFactor):
-    """For "roll_cuda" not implemented for 'Bool' """
-    periods = 1
-
-    def compute(self, data: torch.Tensor) -> torch.Tensor:
-        shift = data.char().roll(self.periods, dims=1)
-        if self.periods > 0:
-            shift[:, 0:self.periods] = 0
-        else:
-            shift[:, self.periods:] = 0
-
-        return shift.bool()
 
 
 class RankFactor(TimeGroupFactor):
@@ -550,48 +539,3 @@ class PowFactor(CustomFactor):
 class NegFactor(CustomFactor):
     def compute(self, left) -> torch.Tensor:
         return -left
-
-
-class InvertFactor(FilterFactor):
-    def compute(self, left) -> torch.Tensor:
-        return ~left
-
-
-class OrFactor(FilterFactor):
-    def compute(self, left, right) -> torch.Tensor:
-        return left | right
-
-
-class AndFactor(FilterFactor):
-    def compute(self, left, right) -> torch.Tensor:
-        return left & right
-
-
-class LtFactor(FilterFactor):
-    def compute(self, left, right) -> torch.Tensor:
-        return torch.lt(left, right)
-
-
-class LeFactor(FilterFactor):
-    def compute(self, left, right) -> torch.Tensor:
-        return torch.le(left, right)
-
-
-class GtFactor(FilterFactor):
-    def compute(self, left, right) -> torch.Tensor:
-        return torch.gt(left, right)
-
-
-class GeFactor(FilterFactor):
-    def compute(self, left, right) -> torch.Tensor:
-        return torch.ge(left, right)
-
-
-class EqFactor(FilterFactor):
-    def compute(self, left, right) -> torch.Tensor:
-        return torch.eq(left, right)
-
-
-class NeFactor(FilterFactor):
-    def compute(self, left, right) -> torch.Tensor:
-        return torch.ne(left, right)
