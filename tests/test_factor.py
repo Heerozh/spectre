@@ -429,7 +429,6 @@ class TestFactorLib(unittest.TestCase):
              -0.873212, -0.640606,  0.046424], result, decimal=5)
         assert_array_equal(['slope', 'intcp'], df.columns)
 
-
     def test_engine_cross_factor(self):
         loader = spectre.data.CsvDirLoader(
             data_dir + '/daily/', ohlcv=('uOpen', 'uHigh', 'uLow', 'uClose', 'uVolume'),

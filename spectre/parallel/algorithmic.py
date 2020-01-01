@@ -157,7 +157,7 @@ class Rolling:
         # rolling multiplication will consume lot of memory, split it by size
         memory_usage = self.values.nelement() / (1024. ** 3)
         memory_usage *= Rolling._split_multi
-        step = int(self.values.shape[0] / memory_usage)
+        step = max(int(self.values.shape[0] / memory_usage), 1)
         boundary = list(range(0, self.values.shape[0], step)) + [self.values.shape[0]]
         self.split = list(zip(boundary[:-1], boundary[1:]))
 
