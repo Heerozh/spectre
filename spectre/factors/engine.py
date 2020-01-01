@@ -7,7 +7,7 @@
 from typing import Union, Iterable, Tuple
 import warnings
 from .factor import BaseFactor
-from .filter import FilterFactor
+from .filter import FilterFactor, StaticAssets
 from .datafactor import DataFactor, AdjustedDataFactor
 from .plotting import plot_quantile_and_cumulative_returns
 from ..data import DataLoader
@@ -101,6 +101,9 @@ class FactorEngine:
 
         # Get data
         self._dataframe = self._loader.load(start, end, max_backwards)
+
+        if isinstance(self._filter, StaticAssets):
+            self._dataframe = self._dataframe.loc[(slice(None), self._filter.assets), :]
 
         # asset group
         cat = self._dataframe.index.get_level_values(1).codes
