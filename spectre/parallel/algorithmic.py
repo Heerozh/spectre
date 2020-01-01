@@ -54,8 +54,15 @@ class ParallelGroupBy:
 
     def revert(self, split_data: torch.Tensor, dbg_str='None') -> torch.Tensor:
         if tuple(split_data.shape) != self._data_shape:
-            raise ValueError('The return data shape{} of Factor `{}` must same as input{}'
-                             .format(tuple(split_data.shape), dbg_str, self._data_shape))
+            if tuple(split_data.shape[:2]) == self._data_shape[:2]:
+                raise ValueError('The downstream needs shape{2}, and the input factor "{1}" is '
+                                 'shape{0}. Look like this factor has multiple return values, '
+                                 'use slice to select a value before using it, for example: '
+                                 '`factor[0]`.'
+                                 .format(tuple(split_data.shape), dbg_str, self._data_shape))
+            else:
+                raise ValueError('The return data shape{} of Factor `{}` must same as input{}.'
+                                 .format(tuple(split_data.shape), dbg_str, self._data_shape))
         return torch.take(split_data, self._inverse_indices)
 
     def create(self, dtype, values, nan_fill=np.nan):
