@@ -43,4 +43,5 @@ from .statistical import (
     StandardDeviation, STDDEV,
     RollingHigh, MAX,
     RollingLow, MIN,
+    RollingLinearRegression,
 )

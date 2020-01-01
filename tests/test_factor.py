@@ -3,6 +3,7 @@ import spectre
 import os
 import numpy as np
 import pandas as pd
+import torch
 from numpy.testing import assert_almost_equal, assert_array_equal
 from os.path import dirname
 
@@ -404,6 +405,31 @@ class TestFactorLib(unittest.TestCase):
         expected = pd.qcut(data[1], 5, labels=False) + 1
         assert_array_equal(result[-1], expected)
 
+    def test_linear_regression(self):
+        loader = spectre.data.CsvDirLoader(
+            data_dir + '/daily/', ohlcv=('uOpen', 'uHigh', 'uLow', 'uClose', 'uVolume'),
+            prices_index='date', parse_dates=True,
+        )
+        engine = spectre.factors.FactorEngine(loader)
+
+        class ARange(spectre.factors.CustomFactor):
+            def compute(self, y):
+                row = torch.arange(y.shape[-1], dtype=torch.float32, device=y.device)
+                return row.expand(y.shape)
+
+        x = ARange(inputs=[spectre.factors.OHLCV.close])
+        f = spectre.factors.RollingLinearRegression(x, spectre.factors.OHLCV.close, 10)
+        engine.add(f[0], 'slope')
+        engine.add(f[1], 'intcp')
+
+        df = engine.run("2019-01-01", "2019-01-15")
+        result = df.loc[(slice(None), 'AAPL'), 'slope']
+        assert_almost_equal(
+            [-0.555879, -0.710545, -0.935697, -1.04103, -1.232, -1.704182,
+             -0.873212, -0.640606,  0.046424], result, decimal=5)
+        assert_array_equal(['slope', 'intcp'], df.columns)
+
+
     def test_engine_cross_factor(self):
         loader = spectre.data.CsvDirLoader(
             data_dir + '/daily/', ohlcv=('uOpen', 'uHigh', 'uLow', 'uClose', 'uVolume'),
@@ -460,21 +486,21 @@ class TestFactorLib(unittest.TestCase):
         )
         engine = spectre.factors.FactorEngine(loader)
         f = spectre.factors.OHLCV.close
-        f2 = f**2
+        f2 = f ** 2
         engine.add(f, 'f')
         engine.add(f2, 'f^2')
         engine.add(-f, '-f')
-        engine.add(f+f2, 'f+f2')
-        engine.add(f-f2, 'f-f2')
-        engine.add(f*f2, 'f*f2')
-        engine.add(f/f2, 'f/f2')
+        engine.add(f + f2, 'f+f2')
+        engine.add(f - f2, 'f-f2')
+        engine.add(f * f2, 'f*f2')
+        engine.add(f / f2, 'f/f2')
 
-        engine.add(f>f2, 'f>f2')
-        engine.add(f<f2, 'f<f2')
-        engine.add(f>=f2, 'f>=f2')
-        engine.add(f<=f2, 'f<=f2')
-        engine.add(f==f2, 'f==f2')
-        engine.add(f!=f2, 'f!=f2')
+        engine.add(f > f2, 'f>f2')
+        engine.add(f < f2, 'f<f2')
+        engine.add(f >= f2, 'f>=f2')
+        engine.add(f <= f2, 'f<=f2')
+        engine.add(f == f2, 'f==f2')
+        engine.add(f != f2, 'f!=f2')
 
         t = spectre.factors.OHLCV.volume.top(1)
         b = spectre.factors.OHLCV.volume.bottom(1)
@@ -486,25 +512,25 @@ class TestFactorLib(unittest.TestCase):
         result = engine.run("2019-01-01", "2019-01-05")
 
         f = np.array([158.61, 101.30, 145.23, 102.28, 104.39])
-        f2 = f**2
+        f2 = f ** 2
         assert_array_equal(result['f^2'], f2)
         assert_array_equal(result['-f'], -f)
-        assert_array_equal(result['f+f2'], f+f2)
-        assert_array_equal(result['f-f2'], f-f2)
-        assert_array_equal(result['f*f2'], f*f2)
-        assert_array_equal(result['f/f2'], f/f2)
+        assert_array_equal(result['f+f2'], f + f2)
+        assert_array_equal(result['f-f2'], f - f2)
+        assert_array_equal(result['f*f2'], f * f2)
+        assert_array_equal(result['f/f2'], f / f2)
 
-        assert_array_equal(result['f>f2'], f>f2)
-        assert_array_equal(result['f<f2'], f<f2)
-        assert_array_equal(result['f>=f2'], f>=f2)
-        assert_array_equal(result['f<=f2'], f<=f2)
-        assert_array_equal(result['f==f2'], f==f2)
-        assert_array_equal(result['f!=f2'], f!=f2)
+        assert_array_equal(result['f>f2'], f > f2)
+        assert_array_equal(result['f<f2'], f < f2)
+        assert_array_equal(result['f>=f2'], f >= f2)
+        assert_array_equal(result['f<=f2'], f <= f2)
+        assert_array_equal(result['f==f2'], f == f2)
+        assert_array_equal(result['f!=f2'], f != f2)
 
         t = np.array([False, True, True, False, False])
         b = ~t
-        assert_array_equal(result['t&b'], t&b)
-        assert_array_equal(result['t|b'], t|b)
+        assert_array_equal(result['t&b'], t & b)
+        assert_array_equal(result['t|b'], t | b)
         assert_array_equal(result['~t'], b)
 
     @unittest.skip("skip, need coverage 5.0")
