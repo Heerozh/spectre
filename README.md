@@ -33,7 +33,7 @@ My Machine：
 
 Running on Quandl 5 years, 3196 Assets, total 3,637,344 bars.
 
-|                |       spectre (CUDA)         |       spectre (CPU)        |       zipline         |
+|                |       spectre (CUDA)         |       spectre (CPU)        |   zipline.pipeline    |
 |----------------|------------------------------|----------------------------|-----------------------|
 |SMA(100)        | 86.7 ms ± 876 µs (**34.4x**) | 2.68 s ± 36.1 ms (1.11x)   | 2.98 s ± 14.4 ms (1x) |
 |EMA(50) win=200 | 144 ms ± 942 µs (**52.8x**)  | 4.37 s ± 46.4 ms (1.74x)   | 7.6 s ± 15.4 ms (1x) |
@@ -353,13 +353,15 @@ class YourLoader(spectre.data.DataLoader):
 
 ## FactorEngine
 
+A fast factor calculation pipeline.
+
 ### FactorEngine.__init__
 
 `engine = FactorEngine(loader: DataLoader)`
 
 ### FactorEngine.add
 
-`engine = FactorEngine(factor, column_name)`
+`engine.add(factor, column_name)`
 
 Add a factor to engine.
 
@@ -458,10 +460,10 @@ new_filter = factor.bottom(n)
 # Specific assets
 new_filter = StaticAssets({'AAPL', 'MSFT'})
 
-# local filter
+# Local filter
 new_factor = factor.filter(some_filter)   # filter only this factor
 
-# multiple returns selecting
+# Multiple returns selecting
 new_factor = factor[0]
 ```
 
@@ -557,7 +559,7 @@ This method is completely non-parallel and inefficient, but easy to write.
 
 ## Back-testing
 
-Quick Starts contains easy-to-understand examples, please read first.
+[Quick Start](#back-testing) contains easy-to-understand examples, please read first.
 
 The `spectre.trading.CustomAlgorithm` currently does not supports live trading, but it designed as switchable,
 will implement it in the future.
@@ -620,7 +622,7 @@ first day, one historical row on the next day, and so on.
 
 ### CustomAlgorithm.schedule_rebalance
 
-`alg.schedule_rebalance(self, event: Event)`
+`alg.schedule_rebalance(event: Event)`
 **context:** *initialize*
 
 Schedule `rebalance` to be called when an event occurs.
@@ -629,6 +631,28 @@ For example:
 ```python
 alg.schedule_rebalance(trading.event.MarketClose(self.any_function))
 ```
+
+
+### CustomAlgorithm.schedule
+
+`alg.schedule(event: Event)`
+**context:** *initialize*
+   
+Schedule an event, callback is `callback(source: EventReceiver)`
+
+
+### CustomAlgorithm.stop_event_manager
+
+`alg.stop_event_manager()`
+
+Stop backtesting or live trading.
+
+
+### CustomAlgorithm.fire_event
+
+`alg.fire_event(event_type)`
+
+Trigger a type of event, for example: `alg.fire_event(MarketClose)`
 
 
 ### CustomAlgorithm.results
