@@ -165,6 +165,9 @@ class FactorEngine:
     def get_factor(self, name):
         return self._factors[name]
 
+    def get_asset_names(self):
+        return self._dataframe.index.get_level_values(1).unique().values
+
     def clear(self):
         self.remove_all_factors()
         self.set_filter(None)

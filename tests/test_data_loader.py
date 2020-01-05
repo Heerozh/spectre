@@ -134,7 +134,7 @@ class TestDataLoaderLib(unittest.TestCase):
         except FileNotFoundError:
             pass
 
-        spectre.data.YahooDownloader.ingest("2011", yahoo_path, ['IBM', 'AAPL'])
+        spectre.data.YahooDownloader.ingest("2011", yahoo_path, ['IBM', 'AAPL'], skip_exists=False)
         loader = spectre.data.ArrowLoader(yahoo_path + 'yahoo.feather')
         df = loader._load()
         self.assertEqual(['AAPL', 'IBM'], list(df.index.levels[1]))
