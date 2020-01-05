@@ -118,7 +118,9 @@ class CustomAlgorithm(EventReceiver, ABC):
             close = engine.loader_.ohlcv[3]
             df = engine.loader_.load(returns.index[0], returns.index[-1], 0)
             bench = df.loc[(slice(None), benchmark), close]
-            bench = bench.droplevel(1, axis=0).pct_change()
+            bench = bench.droplevel(1, axis=0)
+            bench = bench.resample('D').last().dropna()
+            bench = bench.pct_change()
 
         plot_cumulative_returns(returns, self._results.positions,  self._results.transactions,
                                 bench, annual_risk_free)

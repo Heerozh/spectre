@@ -295,7 +295,9 @@ class CustomFactor(BaseFactor):
     def compute_(self, down_stream: Union[torch.cuda.Stream, None]) -> torch.Tensor:
         # return cached result
         self._ref_count -= 1
-        assert self._ref_count >= 0
+        if self._ref_count < 0:
+            raise ValueError('Reference count error: Maybe you override `pre_compute_`, '
+                             'but did not call super() method.')
         if self._cache is not None:
             if down_stream:
                 down_stream.wait_event(self._cache_stream.record_event())
