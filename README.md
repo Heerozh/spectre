@@ -139,7 +139,7 @@ The return value of `full_run` is compatible with `alphalens`:
 import alphalens as al
 ...
 factor_data, _ = engine.full_run("2013-01-02", "2018-01-19")
-clean_data = factor_data[['factor_name', 'Returns']].droplevel(0, axis=1)
+clean_data = factor_data[['{factor_name}', 'Returns']].droplevel(0, axis=1)
 al.tears.create_full_tear_sheet(clean_data)
 ```
 
@@ -217,10 +217,10 @@ pf.create_full_tear_sheet(results.returns, positions=results.positions.value, tr
 
 ### Differences with zipline:
 * spectre's `QuandlLoader` using float32 datatype for GPU performance.
-* For performance, spectre's arranges the data to be flattened by bars without time
-  information so may be differences, such as `Return(win=10)` may actually be more than 10 days
-  if some stock not open trading in period.
-* When encounter NaN, spectre returns NaN, zipline uses `nan*` so still give you a number.
+* spectre does not align bars by time, so `Return(win=10)` means 10 bars return, may actually be 
+  more than 10 days if some stock not open trading in period.
+* When encounter NaN, spectre's Built-in Technical Factors returns NaN, zipline uses `nan*` so 
+  still give you a number.
 * If an asset has no data on the day, spectre will filter it out, no matter what value you return.
 
 
@@ -241,7 +241,7 @@ pf.create_full_tear_sheet(results.returns, positions=results.positions.value, tr
 
 Read CSV files in the directory, each file represents an asset.
 
-Reading csv is very slow, so you also need to use [ArrowLoader](#arrowloader)
+Reading csv is very slow, so you also need to use [ArrowLoader](#arrowloader).
 
 **prices_path:** prices csv folder. When encountering duplicate indexes data in `prices_index`, 
     Loader will keep the last, drop others.\
@@ -583,7 +583,7 @@ Called when back-testing ends.
 
 `rebalance(self, data: pd.DataFrame, history: pd.DataFrame)` **Callback**
 
-The function name is not necessarily 'rebalance', it can be specified in `schedule_rebalance`.
+The function name does not have to be 'rebalance', it can be specified in `schedule_rebalance`.
 `data` is the factors data of last bar returned by `FactorEngine`; 
 `history` same as `data`, but contains previous data, please refer to `set_history_window`.
 
@@ -607,7 +607,7 @@ But if you created multiple engines using `create_factor_engine`, you need to sp
 `alg.create_factor_engine(name: str, loader: DataLoader = None)`
 **context:** *initialize*
 
-Create another engine, generally used when you need different data sources.
+Create another engine, generally used when you need multiple data sources.
 
 
 ### CustomAlgorithm.set_history_window
@@ -783,11 +783,11 @@ Get the current position, Read-only, Dict[asset, shares] type.
 
 Run backtest, return value is namedtuple:
 
-**results.returns:** returns of each time period
+**results.returns:** daily return
 
-**results.positions:** positions of each time period
+**results.positions:** daily positions
 
-**results.transactions:** transactions of each time period
+**results.transactions:** full transactions with all orders
 
 
 
