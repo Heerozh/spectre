@@ -418,7 +418,7 @@ Get the adjusted historical prices matrix which columns is all assets.
 If global filter is setted, all unfiltered assets from `start_time` to `end_time` will be included.
 
 
-## Built-in Factor lists
+## Built-in Technical Indicator Factors list
 
 ```python
 # All technical factors passed comparison test with TA-Lib
@@ -638,7 +638,7 @@ alg.schedule_rebalance(trading.event.MarketClose(self.any_function))
 `alg.schedule(event: Event)`
 **context:** *initialize*
    
-Schedule an event, callback is `callback(source: EventReceiver)`
+Schedule an event, callback is `callback(source: "Any class who fired this event")`
 
 
 ### CustomAlgorithm.stop_event_manager
@@ -650,9 +650,10 @@ Stop backtesting or live trading.
 
 ### CustomAlgorithm.fire_event
 
-`alg.fire_event(event_type)`
+`alg.fire_event(event_type: Type[Event])`
 
-Trigger a type of event, for example: `alg.fire_event(MarketClose)`
+Trigger a type of event (any subclasses that inherit from `Event`）, 
+for example: `alg.fire_event(MarketClose)`
 
 
 ### CustomAlgorithm.results
@@ -668,8 +669,9 @@ Get back-test results, same as the return value of [trading.run_backtest](#tradi
 `alg.plot(annual_risk_free=0.04, benchmark: Union[pd.Series, str] = None)`
 **context:** *terminate*
 
-Plot a simple portfolio cumulative return chart, `benchmark` can be `pd.Series` or an asset name 
-in the `loader` passed to backtest.
+Plot a simple portfolio cumulative return chart.\
+`benchmark`: `pd.Series` of benchmark daily return, or an asset name.
+
 
 
 ### CustomAlgorithm.current
