@@ -53,6 +53,7 @@ class TestParallelAlgorithm(unittest.TestCase):
         spectre.parallel.Rolling(x, 252).sum()
 
     def test_nan(self):
+        # dim=1
         data = [[1, 2, 1], [4, np.nan, 2], [7, 8, 1]]
         result = spectre.parallel.nanmean(torch.tensor(data, dtype=torch.float))
         expected = np.nanmean(data, axis=1)
@@ -66,6 +67,18 @@ class TestParallelAlgorithm(unittest.TestCase):
         expected = np.nanstd(data, axis=1, ddof=1)
         assert_almost_equal(expected, result, decimal=6)
 
+        # dim=2
+        data = [[[np.nan, 1, 2], [1, 2, 1]], [[np.nan, 4, np.nan], [4, np.nan, 2]],
+                [[np.nan, 7, 8], [7, 8, 1]]]
+        result = spectre.parallel.nanmean(torch.tensor(data, dtype=torch.float), dim=2)
+        expected = np.nanmean(data, axis=2)
+        assert_almost_equal(expected, result, decimal=6)
+
+        result = spectre.parallel.nanstd(torch.tensor(data, dtype=torch.float), dim=2)
+        expected = np.nanstd(data, axis=2)
+        assert_almost_equal(expected, result, decimal=6)
+
+        # last
         data = [[1, 2, np.nan], [4, np.nan, 2], [7, 8, 1]]
         result = spectre.parallel.nanlast(torch.tensor(data, dtype=torch.float).cuda())
         expected = [2., 2., 1.]
@@ -75,6 +88,16 @@ class TestParallelAlgorithm(unittest.TestCase):
         result = spectre.parallel.nanlast(torch.tensor(data, dtype=torch.float).cuda(), dim=2)
         expected = [[2., 2., 1.]]
         assert_almost_equal(expected, result.cpu(), decimal=6)
+
+        # nanmin/max
+        data = [[1, 2, -14, np.nan, 2], [99999, 8, 1, np.nan, 2]]
+        result = spectre.parallel.nanmax(torch.tensor(data, dtype=torch.float))
+        expected = np.nanmax(data, axis=1)
+        assert_almost_equal(expected, result, decimal=6)
+
+        result = spectre.parallel.nanmin(torch.tensor(data, dtype=torch.float))
+        expected = np.nanmin(data, axis=1)
+        assert_almost_equal(expected, result, decimal=6)
 
     def test_stat(self):
         x = torch.tensor([[1., 2, 3, 4, 5], [10, 12, 13, 14, 16], [2, 2, 2, 2, 2, ]])

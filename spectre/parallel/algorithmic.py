@@ -89,15 +89,30 @@ def nanvar(data: torch.Tensor, dim=1, ddof=0) -> torch.Tensor:
     filled = data.clone()
     isnan = torch.isnan(data)
     filled[isnan] = 0
-    mean = filled.sum(dim=dim) / (~isnan).sum(dim=dim)
+    n = (~isnan).sum(dim=dim)
+    mean = filled.sum(dim=dim) / n
     mean.unsqueeze_(-1)
-    var = (data - mean) ** 2 / ((~isnan).sum(dim=dim).unsqueeze(-1) - ddof)
+    var = (data - mean) ** 2 / (n.unsqueeze(-1) - ddof)
     var[isnan] = 0
     return var.sum(dim=dim)
 
 
 def nanstd(data: torch.Tensor, dim=1, ddof=0) -> torch.Tensor:
     return nanvar(data, dim, ddof).sqrt()
+
+
+def nanmax(data: torch.Tensor, dim=1) -> torch.Tensor:
+    data = data.clone()
+    isnan = torch.isnan(data)
+    data[isnan] = -np.inf
+    return data.max(dim=dim)[0]
+
+
+def nanmin(data: torch.Tensor, dim=1) -> torch.Tensor:
+    data = data.clone()
+    isnan = torch.isnan(data)
+    data[isnan] = np.inf
+    return data.min(dim=dim)[0]
 
 
 def nanlast(data: torch.Tensor, dim=1) -> torch.Tensor:
@@ -209,35 +224,32 @@ class Rolling:
         return self.loc(0)
 
     def sum(self, axis=2):
-        def _sum(x):
-            return x.sum(dim=axis)
+        return self.agg(lambda x: x.sum(dim=axis))
 
-        return self.agg(_sum)
+    def nansum(self, axis=2):
+        return self.agg(lambda x: nansum(x, dim=axis))
 
     def mean(self, axis=2):
-        def _mean(x):
-            # return nanmean(x, dim=axis)
-            # tensor.sum encounters nan will return nan anyway
-            return x.sum(dim=axis) / self.win
+        return self.agg(lambda x: x.sum(dim=axis) / self.win)
 
-        return self.agg(_mean)
+    def nanmean(self, axis=2):
+        return self.agg(lambda x: nanmean(x, dim=axis))
 
     def std(self, axis=2):
-        def _std(x):
-            # return nanstd(x, dim=axis)
-            # unbiased=False eq ddof=0
-            return x.std(unbiased=False, dim=axis)
+        # unbiased=False eq ddof=0
+        return self.agg(lambda x: x.std(unbiased=False, dim=axis))
 
-        return self.agg(_std)
+    def nanstd(self, axis=2):
+        return self.agg(lambda x: nanstd(x, dim=axis, ddof=0))
 
     def max(self):
-        def _max(x):
-            return x.max(dim=2)[0]
-
-        return self.agg(_max)
+        return self.agg(lambda x: x.max(dim=2)[0])
 
     def min(self):
-        def _min(x):
-            return x.min(dim=2)[0]
+        return self.agg(lambda x: x.min(dim=2)[0])
 
-        return self.agg(_min)
+    def nanmax(self):
+        return self.agg(lambda x: nanmax(x, dim=2))
+
+    def nanmin(self):
+        return self.agg(lambda x: nanmin(x, dim=2))
