@@ -217,10 +217,10 @@ pf.create_full_tear_sheet(results.returns, positions=results.positions.value, tr
 
 ### Differences with zipline:
 * spectre's `QuandlLoader` using float32 datatype for GPU performance.
-* spectre does not align bars by time, so `Return(win=10)` means 10 bars return, may actually be 
-  more than 10 days if some stock not open trading in period.
-* When encounter NaN, spectre's Built-in Technical Factors returns NaN, zipline uses `nan*` so 
-  still give you a number.
+* spectre FactorEngine arranges data by bars, so `Return(win=10)` means 10 bars return, may 
+  actually be more than 10 days if some assets not open trading in period. You can change this 
+  behavior by aligning data: filling missing bars with NaNs in your DataLoader, please refer to the 
+  `align_by_time` parameter of `CsvDirLoader`.
 * If an asset has no data on the day, spectre will filter it out, no matter what value you return.
 
 
@@ -234,7 +234,7 @@ pf.create_full_tear_sheet(results.returns, positions=results.positions.value, tr
 
 ### CsvDirLoader
 `loader = spectre.data.CsvDirLoader(prices_path: str, prices_by_year=False, earliest_date: pd.Timestamp = None,
-              dividends_path=None, splits_path=None, calender_asset: str = None,
+              dividends_path=None, splits_path=None, calender_asset: str = None, align_by_time=False,
               ohlcv=('open', 'high', 'low', 'close', 'volume'), adjustments=None,
               split_ratio_is_inverse=False, split_ratio_is_fraction=False,
               prices_index='date', dividends_index='exDate', splits_index='exDate', **read_csv)`
@@ -243,20 +243,20 @@ Read CSV files in the directory, each file represents an asset.
 
 Reading csv is very slow, so you also need to use [ArrowLoader](#arrowloader).
 
-**prices_path:** prices csv folder. When encountering duplicate indexes data in `prices_index`, 
+**prices_path:** Prices csv folder. When encountering duplicate indexes data in `prices_index`, 
     Loader will keep the last, drop others.\
 **prices_index:** `index_col`for csv in `prices_path`\
 **prices_by_year:** If price file name like 'spy_2017.csv', set this to True\
 **ohlcv:** Required, OHLCV column names. When you don't need to use `adjustments` and
     `factors.OHLCV`, you can set this to None.\
 **adjustments:** Optional, list, `dividend amount` and `splits ratio` column names.\
-**dividends_path:** dividends csv folder, structured as one csv per asset.
+**dividends_path:** Dividends csv folder, structured as one csv per asset.
     For duplicate data, loader will first drop the exact same rows, and then for the same
     `dividends_index` but different 'dividend amount(`adjustments[0]`)' rows, loader will sum them up.
     If `dividends_path` not set, the `adjustments[0]` column is considered to be included
     in the prices csv.\
 **dividends_index:** `index_col`for csv in `dividends_path`.\
-**splits_path:** splits csv folder, structured as one csv per asset.
+**splits_path:** Splits csv folder, structured as one csv per asset.
     When encountering duplicate indexes data in `splits_index`, Loader will use the last
     non-NaN 'split ratio', drop others.
     If `splits_path` not set, the `adjustments[1]` column is considered to be included
@@ -266,8 +266,11 @@ Reading csv is very slow, so you also need to use [ArrowLoader](#arrowloader).
     For example, 2-for-1 split, to/form = 2, 1-for-15 Reverse Split, to/form = 0.6666...\
 **split_ratio_is_fraction:** If split ratio in csv is fraction string, like `1/3`, set to True.\
 **earliest_date:** Data before this date will not be read, save memory\
-**calender_asset:** asset name as trading calendar, like 'SPY', for clean up non-trading
+**calender_asset:** Asset name as trading calendar, like 'SPY', for clean up non-trading
     time data.\
+**align_by_time:** If True and `calender_asset` is not None, the index of datetime will be the same 
+   for all assets, if some assets have no data at that time, NaNs will be filled. The benefit is 
+   that the columns of data matrix in `CustomFactor.compute` will also be aligned.\
 **\*\*read_csv:** Parameters for all csv when calling `pd.read_csv`.
  `parse_dates` or `date_parser` is required.
 
@@ -365,12 +368,21 @@ A fast factor calculation pipeline.
 
 Add a factor to engine.
 
+
 ### FactorEngine.set_filter
 
 `engine.set_filter(factor: FilterFactor or None)`
 
 Set the Global Filter, engine deletes rows which Global Filter returns as False, 
 affecting all factors.
+
+
+### FactorEngine.set_align_by_time
+
+`engine.set_align_by_time(True)`
+
+Same as `CsvDirLoader(align_by_time=True)`, but it's dynamic, and very slow.
+
 
 ### FactorEngine.clear
 
@@ -474,9 +486,10 @@ Inherit from `factors.CustomFactor`, write `compute` function.
 Use `torch.Tensor` to write parallel computing code.
 
 ### win = 1
-When `win = 1`, the `inputs` data is tensor type, the first dimension of data is the
-asset, the second dimension is each bar price data. Note that the bars are not aligned
-across all assets, they are specific to each asset.
+When `win = 1`, the `inputs` data is tensor type, the first dimension of data is the asset, the 
+second dimension is each bar price data. Note that if the data is `align_by_time=False`, the number 
+of bars for each asset is different and not aligned (for example, the bar_t3 column may represent 
+different times for different assets).
 
         +-----------------------------------+
         |            bar_t1    bar_t3       |
@@ -540,8 +553,7 @@ close.agg(weighted_mean, volume)
 
 ### Using Pandas Series
 
-For performance, spectre's tensor data is a flattened matrix which grouped by assets,
-there is no DataFrame's index information.
+spectre CustomFactor's inputs data is a matrix without DataFrame's Index information.
 If you need index, or not familiar with PyTorch, here is a another way:
 
 ```python
