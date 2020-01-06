@@ -9,6 +9,7 @@ from .factor import BaseFactor, CustomFactor
 from .basic import MA, EMA
 from .statistical import STDDEV
 from .engine import OHLCV
+from ..parallel import nanmean
 import numpy as np
 
 
@@ -86,8 +87,8 @@ class RSI(CustomFactor):
             up = diff.clamp(min=0)
             down = diff.clamp(max=0)
             # Cutler's RSI, more stable, independent to data length
-            up = up[:, :, 1:].mean(dim=2)
-            down = down[:, :, 1:].mean(dim=2).abs()
+            up = nanmean(up[:, :, 1:], dim=2)
+            down = nanmean(down[:, :, 1:], dim=2).abs()
             if self.normalize:
                 return 1 - (2 / (1 + up / down))
             else:
@@ -105,8 +106,8 @@ class FastStochasticOscillator(CustomFactor):
     normalize = False
 
     def compute(self, highs, lows, closes):
-        highest_highs = highs.max()
-        lowest_lows = lows.min()
+        highest_highs = highs.nanmax()
+        lowest_lows = lows.nanmin()
         k = (closes.last() - lowest_lows) / (highest_highs - lowest_lows)
 
         if self.normalize:

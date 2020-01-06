@@ -15,7 +15,7 @@ class StandardDeviation(CustomFactor):
     _min_win = 2
 
     def compute(self, data):
-        return data.std()
+        return data.nanstd()
 
 
 class RollingHigh(CustomFactor):
@@ -24,7 +24,7 @@ class RollingHigh(CustomFactor):
     _min_win = 2
 
     def compute(self, data):
-        return data.max()
+        return data.nanmax()
 
 
 class RollingLow(CustomFactor):
@@ -33,7 +33,7 @@ class RollingLow(CustomFactor):
     _min_win = 2
 
     def compute(self, data):
-        return data.min()
+        return data.nanmin()
 
 
 class RollingLinearRegression(CustomFactor):

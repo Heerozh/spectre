@@ -6,6 +6,7 @@
 """
 from typing import Optional, Sequence
 from .factor import BaseFactor, CustomFactor
+from ..parallel import nansum, nanmean
 from .engine import OHLCV
 import numpy as np
 import torch
@@ -36,7 +37,7 @@ class SimpleMovingAverage(CustomFactor):
     _min_win = 2
 
     def compute(self, data):
-        return data.mean()
+        return data.nanmean()
 
 
 class WeightedAverageValue(CustomFactor):
@@ -44,7 +45,7 @@ class WeightedAverageValue(CustomFactor):
 
     def compute(self, base, weight):
         def _weight_mean(_base, _weight):
-            return (_base * _weight).sum(dim=2) / _weight.sum(dim=2)
+            return nansum(_base * _weight, dim=2) / nansum(_weight, dim=2)
 
         return base.agg(_weight_mean, weight)
 
@@ -80,7 +81,7 @@ class ExponentialWeightedMovingAverage(CustomFactor):
             self.weight = torch.tensor(self.weight, dtype=torch.float32, device=engine.device)
 
     def compute(self, data):
-        weighted_mean = data.agg(lambda x: (x * self.weight).sum(dim=2))
+        weighted_mean = data.agg(lambda x: nansum(x * self.weight, dim=2))
         if self.adjust:
             return weighted_mean
         else:
@@ -97,7 +98,7 @@ class AverageDollarVolume(CustomFactor):
         if self.win == 1:
             return closes * volumes
         else:
-            return closes.agg(lambda c, v: (c * v).sum(dim=2) / self.win, volumes)
+            return closes.agg(lambda c, v: nanmean(c * v, dim=2), volumes)
 
 
 class AnnualizedVolatility(CustomFactor):
@@ -106,7 +107,7 @@ class AnnualizedVolatility(CustomFactor):
     _min_win = 2
 
     def compute(self, returns, annualization_factor):
-        return returns.std() * (annualization_factor ** .5)
+        return returns.nanstd() * (annualization_factor ** .5)
 
 
 MA = SimpleMovingAverage

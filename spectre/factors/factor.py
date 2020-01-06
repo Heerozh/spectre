@@ -347,38 +347,37 @@ class CustomFactor(BaseFactor):
     def compute(self, *inputs: Sequence[torch.Tensor]) -> torch.Tensor:
         """
         Abstractmethod, do the actual factor calculation here.
-        Unlike zipline, here calculate all data at once. Does not guarantee Look-Ahead Bias.
+        Unlike zipline, here we will receive all data, you need to be careful to prevent
+        Look-Ahead Bias.
 
         `inputs` Data structure:
-        For parallel, the data structure is designed for optimal performance.
+        The data structure is designed for optimal performance in parallel.
         * Groupby `asset`(default):
-            set N = individual asset tick count, Max = Max tick count of all asset
+            set N = individual asset bar count, Max = Max bar count across all asset
             win = 1:
                 | asset id | price(t+0) | ... | price(t+N) | price(t+N+1) | ... | price(t+Max) |
                 |----------|------------|-----|------------|--------------|-----|--------------|
                 |     0    | 123.45     | ... | 234.56     | NaN          | ... | Nan          |
-                The price is sorted by tick, not by time, so it won't be aligned by time and got NaN
-                values in the middle of prices (unless tick value itself is NaN), NaNs all put at
-                the end of the row.
+                If `align_by_time=False` then the time represented by each bar is different.
             win > 1:
-                Gives you a rolling object `r`, you can `r.mean()`, `r.sum()`, or `r.agg()`
+                Gives you a rolling object `r`, you can `r.mean()`, `r.sum()`, or `r.agg()`.
                 `r.agg(callback)` gives you raw data structure as:
-                | asset id | Rolling tick | price(t+0) | ... | price(t+Win) |
+                | asset id | Rolling bar  | price(t+0) | ... | price(t+Win) |
                 |----------|--------------|------------|-----|--------------|
                 |     0    | 0            | NaN        | ... | 123.45       |
                 |          | ...          | ...        | ... | ...          |
                 |          | N            | xxx.xx     | ... | 234.56       |
-                If this table too big, it will split to multiple tables and call the callback
-                function separately.
+                If this table too big, it will split to multiple tables by axis 0, and call the
+                callback function separately.
         * Groupby `date` or others (set `groupby = 'date'`):
             set N = asset count, Max = Max asset count in all time
                 | time id  | price(t+0) | ... | price(t+N) | price(t+N+1) | ... | price(t+Max) |
                 |----------|------------|-----|------------|--------------|-----|--------------|
                 |     0    | 100.00     | ... | 200.00     | NaN          | ... | Nan          |
-                The prices is all asset price in same tick time, this is useful for calculations
+                The prices is all asset prices in same time, this is useful for calculations
                 such as rank, quantile.
-                But the order of assets in each row (time) is random, so the column cannot be
-                considered as a particular asset.
+                If `align_by_time=False` then the order of assets in each row (time) is not fixed,
+                in that way the column cannot be considered as a particular asset.
         * Custom:
             Use `series = self._revert_to_series(input)` you can get `pd.Series` data type, and
             manipulate by your own. Remember to call `return self._regroup(series)` when returning.

@@ -95,6 +95,8 @@ class TestTradingAlgorithm(unittest.TestCase):
         self.assertEqual(rcv._bar_dates[-1], pd.Timestamp("2019-01-11", tz='UTC'))
 
     def test_one_engine_algorithm(self):
+        self_test = self
+
         class OneEngineAlg(spectre.trading.CustomAlgorithm):
             def initialize(self):
                 engine = self.get_factor_engine()
@@ -109,6 +111,10 @@ class TestTradingAlgorithm(unittest.TestCase):
                 self.blotter.set_slippage(0, 0)
 
             def rebalance(self, data, history):
+                if 103.98 <= data.loc['MSFT', 'ma5'] <= 103.99:
+                    data = data.drop('MSFT', axis=0)
+                if 'MSFT' in data.index:
+                    self_test.assertAlmostEqual(1268.4657576628665, data.loc['MSFT', 'ma5'])
                 weights = data.ma5 / data.ma5.sum()
                 assets = data.index
                 self.blotter.order_target_percent(assets, weights)
@@ -200,7 +206,7 @@ class TestTradingAlgorithm(unittest.TestCase):
 
         # test two result should be the same.
         self.assertEqual(first_run, str(blotter))
-        assert_array_equal(['AAPL', 'AAPL', 'MSFT', 'AAPL'],
+        assert_array_equal(['AAPL', 'MSFT', 'AAPL', 'MSFT', 'AAPL'],
                            blotter.get_transactions().symbol.values)
 
     def test_record(self):
