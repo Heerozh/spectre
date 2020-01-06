@@ -161,9 +161,8 @@ class TestDataLoaderLib(unittest.TestCase):
         engine.to_cuda()
         df = engine.run("2014-01-02", "2014-01-02", delay_factor=False)
         # expected result comes from zipline
-        # AAOI only got 68 tick, so it's nan
         assert_almost_equal(df.head().values.T,
-                            [[51.388700, 49.194407, 599.280580, 28.336585, np.nan]], decimal=4)
+                            [[51.388700, 49.194407, 599.280580, 28.336585, 12.7058]], decimal=4)
         assert_almost_equal(df.tail().values.T,
                             [[86.087988, 3.602880, 7.364000, 31.428209, 27.605950]], decimal=4)
 

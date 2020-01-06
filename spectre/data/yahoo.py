@@ -98,6 +98,8 @@ class YahooDownloader:
         #     os.makedirs(sp_dir)
         # download('split', sp_dir)
 
+        session.close()
+
         print('Converting...')
         loader = CsvDirLoader(
             prices_dir, calender_asset=calender_asset,
