@@ -42,11 +42,13 @@ class DataLoader:
         raise NotImplementedError("abstractmethod")
 
     @classmethod
-    def _align_to(cls, df, calender_asset):
+    def _align_to(cls, df, calender_asset, align_by_time=False):
         """ helper method for align index """
         index = df.loc[(slice(None), calender_asset), :].index.get_level_values(0)
         df = df[df.index.get_level_values(0).isin(index)]
         df.index = df.index.remove_unused_levels()
+        if align_by_time:
+            df = df.reindex(pd.MultiIndex.from_product(df.index.levels))
         return df
 
     def _format(self, df, split_ratio_is_inverse=False) -> pd.DataFrame:
@@ -230,7 +232,8 @@ class ArrowLoader(DataLoader):
 
 class CsvDirLoader(DataLoader):
     def __init__(self, prices_path: str, prices_by_year=False, earliest_date: pd.Timestamp = None,
-                 dividends_path=None, splits_path=None, calender_asset: str = None,
+                 dividends_path=None, splits_path=None,
+                 calender_asset: str = None, align_by_time=False,
                  ohlcv=('open', 'high', 'low', 'close', 'volume'), adjustments=None,
                  split_ratio_is_inverse=False, split_ratio_is_fraction=False,
                  prices_index='date', dividends_index='exDate', splits_index='exDate', **read_csv):
@@ -253,6 +256,8 @@ class CsvDirLoader(DataLoader):
             in the prices csv.
         :param calender_asset: asset name as trading calendar, like 'SPY', for clean up non-trading
             time data.
+        :param align_by_time: if True and `calender_asset` not None, df index will be the product of
+            'date' and 'asset'.
         :param ohlcv: Required, OHLCV column names. When you don't need to use `adjustments` and
             `factors.OHLCV`, you can set this to None.
         :param adjustments: Optional, `dividend amount` and `splits ratio` column names.
@@ -284,6 +289,7 @@ class CsvDirLoader(DataLoader):
         self._dividends_index = dividends_index
         self._splits_index = splits_index
         self._read_csv = read_csv
+        self._align_by_time = align_by_time
 
     @property
     def last_modified(self) -> float:
@@ -410,7 +416,7 @@ class CsvDirLoader(DataLoader):
             # drop the data of the non-trading day by calender,
             # because there may be some one-line junk data in non-trading day,
             # causing extra row of nan to all others assets.
-            df = self._align_to(df, self._calender)
+            df = self._align_to(df, self._calender, self._align_by_time)
         return df
 
 

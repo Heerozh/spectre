@@ -405,6 +405,36 @@ class TestFactorLib(unittest.TestCase):
         expected = pd.qcut(data[1], 5, labels=False) + 1
         assert_array_equal(result[-1], expected)
 
+    def test_align_by_time(self):
+        loader = spectre.data.CsvDirLoader(
+            data_dir + '/daily/', calender_asset='AAPL',
+            ohlcv=('uOpen', 'uHigh', 'uLow', 'uClose', 'uVolume'),
+            prices_index='date', parse_dates=True,
+        )
+        engine = spectre.factors.FactorEngine(loader)
+        engine.set_align_by_time(True)
+        engine.add(spectre.factors.OHLCV.close, 'close')
+        engine.add(spectre.factors.SMA(2), 'ma')
+        df = engine.run("2019-01-01", "2019-01-15")
+
+        self.assertEqual(df.loc[("2019-01-11", 'MSFT'), 'ma'].values,
+                         df.loc[("2019-01-10", 'MSFT'), 'close'].values)
+
+        # dataloader
+        loader = spectre.data.CsvDirLoader(
+            data_dir + '/daily/', calender_asset='AAPL',
+            ohlcv=('uOpen', 'uHigh', 'uLow', 'uClose', 'uVolume'),
+            prices_index='date', parse_dates=True, align_by_time=True
+        )
+        engine = spectre.factors.FactorEngine(loader)
+        engine.set_align_by_time(False)
+        engine.add(spectre.factors.OHLCV.close, 'close')
+        engine.add(spectre.factors.SMA(2), 'ma')
+        df = engine.run("2019-01-01", "2019-01-15")
+
+        self.assertEqual(df.loc[("2019-01-11", 'MSFT'), 'ma'].values,
+                         df.loc[("2019-01-10", 'MSFT'), 'close'].values)
+
     def test_linear_regression(self):
         loader = spectre.data.CsvDirLoader(
             data_dir + '/daily/', ohlcv=('uOpen', 'uHigh', 'uLow', 'uClose', 'uVolume'),

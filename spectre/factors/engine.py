@@ -100,10 +100,16 @@ class FactorEngine:
         self._groups = dict()
 
         # Get data
-        self._dataframe = self._loader.load(start, end, max_backwards)
-
+        df = self._loader.load(start, end, max_backwards)
+        df.index = df.index.remove_unused_levels()
         if isinstance(self._filter, StaticAssets):
-            self._dataframe = self._dataframe.loc[(slice(None), self._filter.assets), :]
+            df = df.loc[(slice(None), self._filter.assets), :]
+        if self._align_by_time:
+            # since pandas 0.23, MultiIndex reindex is slow, so using a alternative way here,
+            # but still very slow.
+            # df = df.reindex(pd.MultiIndex.from_product(df.index.levels))
+            df = df.unstack(level=1).stack(dropna=False)
+        self._dataframe = df
 
         # asset group
         cat = self._dataframe.index.get_level_values(1).codes
@@ -134,10 +140,18 @@ class FactorEngine:
         self._factors = {}
         self._filter = None
         self._device = torch.device('cpu')
+        self._align_by_time = False
 
     @property
     def device(self):
         return self._device
+
+    def set_align_by_time(self, enable: bool):
+        """
+        If `enable` is `True`, df index will be the product of 'date' and 'asset'.
+        This method is slow, recommended to do it in your DataLoader in advance.
+        """
+        self._align_by_time = enable
 
     def add(self,
             factor: Union[Iterable[BaseFactor], BaseFactor],
