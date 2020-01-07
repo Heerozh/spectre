@@ -29,7 +29,7 @@ class Recorder:
         ret = pd.DataFrame(self._records)
         if ret.shape[0] > 0:
             ret = ret.set_index('date').sort_index(axis=0)
-        return ret
+        return ret.groupby(level=0).last()
 
 
 class CustomAlgorithm(EventReceiver, ABC):

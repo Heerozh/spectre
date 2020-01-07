@@ -228,6 +228,7 @@ class BaseBlotter:
             raise ValueError('None/NaN in `assets: ' + str(assets))
         if None in weights or np.nan in weights:
             raise ValueError('None/NaN in `weights: ' + str(weights))
+        assets = list(assets)  # copy for preventing del items in loop
         for asset, pct in zip(assets, weights):
             if self.long_only and pct < 0:
                 raise ValueError("Long only blotter, `pct` must greater than 0.")
