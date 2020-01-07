@@ -221,3 +221,34 @@ class TestTradingAlgorithm(unittest.TestCase):
                                        "2019-01-11"])
         expected.index.name = 'date'
         pd.testing.assert_frame_equal(expected, df)
+
+    def test_intraday_algorithm(self):
+        class IntradayAlg(spectre.trading.CustomAlgorithm):
+            order_shares = 0.3
+
+            def initialize(self):
+                engine_main = self.get_factor_engine()
+                ma5 = spectre.factors.MA(5)
+                engine_main.add(ma5, 'ma5')
+
+                self.schedule_rebalance(spectre.trading.event.MarketClose(
+                    self.rebalance, offset_ns=-10000))
+
+                self.blotter.set_commission(0, 0.005, 1)
+                self.blotter.set_slippage(0, 0.4)
+
+            def rebalance(self, data, history):
+                self.blotter.order_target_percent('AAPL', self.order_shares)
+                self.order_shares = -self.order_shares
+
+            def terminate(self, _):
+                pass
+
+        loader = spectre.data.CsvDirLoader(
+            data_dir + '/5mins/', prices_by_year=True, prices_index='Date',
+            ohlcv=('Open', 'High', 'Low', 'Close', 'Volume'), parse_dates=True, )
+        results = spectre.trading.run_backtest(loader, IntradayAlg, "2019-01-01", "2019-01-05")
+
+        self.assertAlmostEqual(157.92, results.transactions.loc['2019-01-02 20:55:00+00:00'].price)
+        self.assertAlmostEqual(142.09, results.transactions.loc['2019-01-03 20:55:00+00:00'].price)
+        self.assertAlmostEqual(148.26, results.transactions.loc['2019-01-04 20:55:00+00:00'].price)

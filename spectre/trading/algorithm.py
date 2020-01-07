@@ -261,7 +261,7 @@ class SimulationEventManager(EventManager):
                 if dt.day != last_day:
                     if last_day is not None:
                         self.fire_market_close(alg)
-                    alg.set_datetime(dt)
+                alg.set_datetime(dt)
 
                 # fire daily data event
                 if dt.hour == 0:
@@ -274,6 +274,7 @@ class SimulationEventManager(EventManager):
 
                 # fire intraday data event
                 if dt.hour != 0:
+                    alg.blotter.set_price('close')
                     self.fire_event(self, EveryBarData)
 
             self.fire_market_close(alg)

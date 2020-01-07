@@ -31,7 +31,7 @@ def sharpe_ratio(daily_returns: pd.Series, annual_risk_free_rate):
 
 def turnover(positions, transactions):
     value_trades = (transactions.amount * transactions.fill_price).abs()
-    value_trades = value_trades.groupby(level=0).sum()
+    value_trades = value_trades.groupby(value_trades.index.normalize()).sum()
     return value_trades / positions.value.sum(axis=1)
 
 

@@ -27,11 +27,12 @@ class TestMetric(unittest.TestCase):
                            columns=['symbol', 'amount', 'price',
                                     'fill_price', 'commission'],
                            index=['2040-01-01', '2040-01-02'])
+        txn.index = pd.to_datetime(txn.index)
 
         pos = pd.DataFrame([[384, 384*155.92, 10000],
                             [nan, nan, 10000+384*158.61]],
                            columns=pd.MultiIndex.from_tuples(
                                [('shares', 'AAPL'), ('value', 'AAPL'), ('value', 'cash')]),
                            index=['2040-01-01', '2040-01-02'])
-
+        pos.index = pd.to_datetime(pos.index)
         assert_almost_equal([0.8633665, 0.8525076], spectre.trading.turnover(pos, txn))

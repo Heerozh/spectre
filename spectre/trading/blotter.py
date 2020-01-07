@@ -224,6 +224,10 @@ class BaseBlotter:
         pf_value = self._portfolio.value
         prices = self.get_price(assets)
         skipped = []
+        if None in assets or np.nan in assets:
+            raise ValueError('None/NaN in `assets: ' + str(assets))
+        if None in weights or np.nan in weights:
+            raise ValueError('None/NaN in `weights: ' + str(weights))
         for asset, pct in zip(assets, weights):
             if self.long_only and pct < 0:
                 raise ValueError("Long only blotter, `pct` must greater than 0.")
@@ -320,11 +324,13 @@ class SimulationBlotter(BaseBlotter, EventReceiver):
 
     def set_datetime(self, dt: pd.Timestamp) -> None:
         if self._current_dt is not None:
-            # make up events for skipped dates
-            for day in pd.bdate_range(self._current_dt, dt):
-                if day == self._current_dt or day == dt:
+            # make up events for skipped days for update splits and divs.
+            current_date = self._current_dt.normalize()
+            target_date = dt.normalize()
+            for date in pd.bdate_range(current_date, target_date):
+                if date == current_date or date == target_date:
                     continue
-                super().set_datetime(day)
+                super().set_datetime(date)
                 self._update_time()
                 self.market_open(self)
                 if self._current_row is not None:
@@ -343,7 +349,7 @@ class SimulationBlotter(BaseBlotter, EventReceiver):
 
     def get_price(self, asset: Union[str, Iterable]):
         if self._current_prices is None:
-            return None
+            raise ValueError("_current_prices is None, maybe set_price is not called.")
 
         if not isinstance(asset, str):
             return self._current_prices

@@ -73,7 +73,7 @@ index
         pf.update_value(lambda x: None)
         self.assertEqual(2, pf.leverage)
 
-    def test_blotter(self):
+    def test_simulation_blotter(self):
         loader = spectre.data.CsvDirLoader(
             data_dir + '/daily/', ohlcv=('uOpen', 'uHigh', 'uLow', 'uClose', 'uVolume'),
             dividends_path=data_dir + '/dividends/', splits_path=data_dir + '/splits/',
@@ -179,3 +179,30 @@ index
             index=[date])
         pd.testing.assert_series_equal(expected.iloc[-1],
                                        blotter.get_historical_positions().iloc[-1])
+
+    def test_simulation_blotter_intraday(self):
+        loader = spectre.data.CsvDirLoader(
+            data_dir + '/5mins/', prices_by_year=True, prices_index='Date',
+            ohlcv=('Open', 'High', 'Low', 'Close', 'Volume'), parse_dates=True, )
+        blotter = spectre.trading.SimulationBlotter(loader, capital_base=200000)
+        blotter.set_commission(0, 0.005, 1)
+        blotter.set_slippage(0.005, 0.4)
+
+        # test not raise Out of market hours
+        datetime1 = pd.Timestamp("2019-01-02 14:35:00", tz='UTC')
+        blotter.set_datetime(datetime1)
+        blotter.market_open(self)
+        blotter.set_price("open")
+        blotter.set_price("close")
+        blotter.order_target_percent('AAPL', 0.3)
+
+        datetime2 = pd.Timestamp("2019-01-02 14:40:00", tz='UTC')
+        blotter.set_datetime(datetime2)
+        blotter.set_price("close")
+        blotter.order_target_percent('AAPL', 0.)
+        blotter.set_price("close")
+        blotter.market_close(self)
+        blotter.update_portfolio_value()
+
+        self.assertAlmostEqual(154.65, blotter.get_transactions().loc[datetime1].price)
+        self.assertAlmostEqual(155.0, blotter.get_transactions().loc[datetime2].price)
