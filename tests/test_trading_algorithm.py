@@ -117,7 +117,7 @@ class TestTradingAlgorithm(unittest.TestCase):
                     self_test.assertAlmostEqual(1268.4657576628665, data.loc['MSFT', 'ma5'])
                 weights = data.ma5 / data.ma5.sum()
                 assets = data.index
-                self.blotter.order_target_percent(assets, weights)
+                self.blotter.batch_order_target_percent(assets, weights)
 
             def terminate(self, _):
                 pass
