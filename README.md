@@ -35,12 +35,12 @@ Running on Quandl 5 years, 3196 Assets, total 3,637,344 bars.
 
 |                |       spectre (CUDA)         |       spectre (CPU)        |   zipline.pipeline    |
 |----------------|------------------------------|----------------------------|-----------------------|
-|SMA(100)        | 86.7 ms ± 876 µs (**34.4x**) | 2.68 s ± 36.1 ms (1.11x)   | 2.98 s ± 14.4 ms (1x) |
-|EMA(50) win=200 | 144 ms ± 942 µs (**52.8x**)  | 4.37 s ± 46.4 ms (1.74x)   | 7.6 s ± 15.4 ms (1x) |
-|(MACD+RSI+STOCHF).rank.zscore | 328 ms ± 74.5 ms ms (**43.6x**) | 6.01 s ± 28.1 (2.38x)   | 14.3 s ± 277 ms (1x) |
+|SMA(100)        | 126 ms ± 759 µs (**23.7x**)  | 2.68 s ± 36.1 ms (1.11x)   | 2.98 s ± 14.4 ms (1x) |
+|EMA(50) win=200 | 179 ms ± 692 µs (**42.5x**)  | 4.37 s ± 46.4 ms (1.74x)   | 7.6 s ± 15.4 ms (1x) |
+|(MACD+RSI+STOCHF).rank.zscore | 473 ms ± 73.2 ms (**30.2x**) | 6.01 s ± 28.1 (2.38x)   | 14.3 s ± 277 ms (1x) |
 
 
-* The CUDA memory used in the spectre benchmark is 0.7G, returned by cuda.max_memory_allocated().
+* The CUDA memory used in the spectre benchmark is 0.9G, returned by cuda.max_memory_allocated().
 * Benchmarks exclude the initial run (no copy data to VRAM, about saving 300ms).
 
 
@@ -757,7 +757,7 @@ Limit on trading a specific asset if today to previous day return >= ±value.
 `self.blotter.order_target(asset: str, target: number)` 
 **context:** *rebalance*
 
-Order assets to target shares. Negative number means short.
+Place an order on an asset to target number of shares in position, negative number means short.
 
 If no transaction occurs, like asset cannot be traded or limited by `daily_curb`, it will return 
 False.
@@ -779,8 +779,7 @@ Return value is a list of skipped assets, which indicate that they cannot be tra
 `self.blotter.order_target_percent(asset: str, pct: float)` 
 **context:** *rebalance*
 
-Order assets with a value equivalent to a percentage of net value of portfolio.
-Negative number means short.
+Place an order on an asset to target percentage of portfolio net value, negative number means short.
 
 If no transaction occurs, like asset cannot be traded or limited by `daily_curb`, it will return 
 False.
@@ -802,7 +801,7 @@ Return value is a list of skipped assets, which indicate that they cannot be tra
 `self.blotter.order(asset: str, amount: int)` 
 **context:** *rebalance*
 
-Order a certain amount of an asset. Negative number means short.
+Order a certain amount of an asset, negative number means short.
 
 If no transaction occurs, like asset cannot be traded or limited by `daily_curb`, it will return 
 False.
