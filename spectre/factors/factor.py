@@ -441,7 +441,7 @@ class RankFactor(TimeGroupFactor):
         _, indices = torch.sort(filled, dim=1, descending=not self.ascending)
         _, indices = torch.sort(indices, dim=1)
         rank = indices.float() + 1.
-        rank[torch.isnan(data)] = np.nan
+        rank.masked_fill_(torch.isnan(data), np.nan)
         return rank
 
 

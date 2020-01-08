@@ -74,26 +74,26 @@ class ParallelGroupBy:
 def nansum(data: torch.Tensor, dim=1) -> torch.Tensor:
     data = data.clone()
     isnan = torch.isnan(data)
-    data[isnan] = 0
+    data.masked_fill_(isnan, 0)  # much faster than data[isnan] = 0
     return data.sum(dim=dim)
 
 
 def nanmean(data: torch.Tensor, dim=1) -> torch.Tensor:
     data = data.clone()
     isnan = torch.isnan(data)
-    data[isnan] = 0
+    data.masked_fill_(isnan, 0)
     return data.sum(dim=dim) / (~isnan).sum(dim=dim)
 
 
 def nanvar(data: torch.Tensor, dim=1, ddof=0) -> torch.Tensor:
     filled = data.clone()
     isnan = torch.isnan(data)
-    filled[isnan] = 0
+    filled.masked_fill_(isnan, 0)
     n = (~isnan).sum(dim=dim)
     mean = filled.sum(dim=dim) / n
     mean.unsqueeze_(-1)
     var = (data - mean) ** 2 / (n.unsqueeze(-1) - ddof)
-    var[isnan] = 0
+    var.masked_fill_(isnan, 0)
     return var.sum(dim=dim)
 
 
@@ -104,14 +104,14 @@ def nanstd(data: torch.Tensor, dim=1, ddof=0) -> torch.Tensor:
 def nanmax(data: torch.Tensor, dim=1) -> torch.Tensor:
     data = data.clone()
     isnan = torch.isnan(data)
-    data[isnan] = -np.inf
+    data.masked_fill_(isnan, -np.inf)
     return data.max(dim=dim)[0]
 
 
 def nanmin(data: torch.Tensor, dim=1) -> torch.Tensor:
     data = data.clone()
     isnan = torch.isnan(data)
-    data[isnan] = np.inf
+    data.masked_fill_(isnan, np.inf)
     return data.min(dim=dim)[0]
 
 
