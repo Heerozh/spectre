@@ -4,10 +4,10 @@
 @license: Apache 2.0
 @email: heeroz@gmail.com
 """
-from typing import Union, Callable
+from typing import Union, Callable, Iterable
 import pandas as pd
 import numpy as np
-from collections import namedtuple, defaultdict, Iterable
+from collections import namedtuple, defaultdict
 from .event import *
 
 
@@ -215,12 +215,65 @@ class BaseBlotter:
             raise OverflowError(
                 'Cannot order more than ±{} shares: {}, set `blotter.max_shares` value'
                 'to change this limit.'.format(self.max_shares, amount))
+
         if not isinstance(asset, str):
             raise KeyError("`asset` must be a string")
 
+        opened = self._portfolio.shares(asset)
+        if self.long_only and (amount + opened) < 0:
+            raise ValueError("Long only blotter, order amount {}, opened {}.".format(
+                amount, opened))
+
         return self._order(asset, amount)
 
-    def batch_order_target_percent(self, assets: Iterable, weights: Iterable):
+    def _order_target(self, asset: str, target: Union[int, float]):
+        opened = self._portfolio.shares(asset)
+        amount = int(target - opened)
+
+        if abs(amount) > self.max_shares:
+            raise OverflowError(
+                'Cannot order more than ±{} shares: {}, set `blotter.max_shares` value'
+                'to change this limit.'.format(self.max_shares, amount))
+
+        return self._order(asset, amount)
+
+    def order_target(self, asset: str, target: Union[int, float]):
+        if not isinstance(asset, str):
+            raise KeyError("`asset` must be a string")
+        if not isinstance(target, (int, float)):
+            raise ValueError("`target` must be int or float")
+        if self.long_only and target < 0:
+            raise ValueError("Long only blotter, `target` must greater than 0.")
+
+        return self._order_target(asset, target)
+
+    def batch_order_target(self, assets: Iterable[str], targets: Iterable[float]):
+        skipped = []
+        if None in assets or np.nan in assets:
+            raise ValueError('None/NaN in `assets: ' + str(assets))
+        if None in targets or np.nan in targets:
+            raise ValueError('None/NaN in `targets: ' + str(targets))
+        assets = list(assets)  # copy for preventing del items in loop
+        for asset, target in zip(assets, targets):
+            if not self.order_target(asset, target):
+                skipped.append([asset, self._portfolio.shares(asset)])
+        return skipped
+
+    def order_target_percent(self, asset: str, pct: float):
+        if not isinstance(asset, str):
+            raise KeyError("`asset` must be a string")
+        if not isinstance(pct, float):
+            raise ValueError("`pct` must be float")
+        if self.long_only and pct < 0:
+            raise ValueError("Long only blotter, `pct` must greater than 0.")
+
+        price = self.get_price(asset)
+        if price is None:
+            return False
+        target = (self._portfolio.value * pct) / price
+        return self._order_target(asset, target)
+
+    def batch_order_target_percent(self, assets: Iterable[str], weights: Iterable[float]):
         pf_value = self._portfolio.value
         prices = self.get_price(assets)
         skipped = []
@@ -230,39 +283,14 @@ class BaseBlotter:
             raise ValueError('None/NaN in `weights: ' + str(weights))
         assets = list(assets)  # copy for preventing del items in loop
         for asset, pct in zip(assets, weights):
-            if self.long_only and pct < 0:
-                raise ValueError("Long only blotter, `pct` must greater than 0.")
             try:
-                amount = (pf_value * pct) / prices[asset]
+                target = (pf_value * pct) / prices[asset]
             except KeyError:
                 skipped.append([asset, self._portfolio.shares(asset)])
                 continue
-            opened = self._portfolio.shares(asset)
-            amount = int(amount - opened)
-            if amount != 0:
-                self._order(asset, amount)
+            if not self.order_target(asset, target):
+                skipped.append([asset, self._portfolio.shares(asset)])
         return skipped
-
-    def order_target_percent(self, asset: Union[str, Iterable], pct: Union[float, Iterable]):
-        if not isinstance(asset, str) and isinstance(asset, Iterable):
-            if isinstance(pct, Iterable):
-                return self.batch_order_target_percent(asset, pct)
-            else:
-                raise ValueError("`pct` must be a Iterable too")
-        elif not isinstance(asset, str):
-            raise KeyError("`asset` must be a string")
-        elif not isinstance(pct, float):
-            raise ValueError("`pct` must be float")
-        if self.long_only and pct < 0:
-            raise ValueError("Long only blotter, `pct` must greater than 0.")
-
-        price = self.get_price(asset)
-        if price is None:
-            return False
-        amount = (self._portfolio.value * pct) / price
-        opened = self._portfolio.shares(asset)
-        amount = int(amount - opened)
-        return self._order(asset, amount)
 
     def cancel_all_orders(self):
         raise NotImplementedError("abstractmethod")
@@ -366,22 +394,12 @@ class SimulationBlotter(BaseBlotter, EventReceiver):
             raise RuntimeError('Out of market hours, or you did not subscribe this class '
                                'with SimulationEventManager')
         if amount == 0:
-            return False
-
-        if abs(amount) > self.max_shares:
-            raise OverflowError(
-                'Cannot order more than ±{} shares: {}, set `blotter.max_shares` value '
-                'to change this limit.'.format(self.max_shares, amount))
-
-        opened = self._portfolio.shares(asset)
-        if self.long_only and (amount + opened) < 0:
-            raise ValueError("Long only blotter, order amount {}, opened {}.".format(
-                amount, opened))
+            return True
 
         # get price and change
         price = self.get_price(asset)
         if price is None:
-            raise KeyError("`asset` is not tradable today.")
+            return False
 
         # trading curb for daily return
         if self.daily_curb is not None:

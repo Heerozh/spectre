@@ -177,7 +177,7 @@ class MyAlg(trading.CustomAlgorithm):
 
     def rebalance(self, data: 'pd.DataFrame', history: 'pd.DataFrame'):
         data = data.fillna(0)
-        self.blotter.order_target_percent(data.index, data.weight)
+        self.blotter.batch_order_target_percent(data.index, data.weight)
 
         # closing asset position that are no longer in our universe.
         removes = self.blotter.portfolio.positions.keys() - set(data.index)
@@ -216,12 +216,14 @@ pf.create_full_tear_sheet(results.returns, positions=results.positions.value, tr
 ## Note
 
 ### Differences with zipline:
+* In order to parallel, the `CustomFactor.compute` function responsible for calculates the results 
+  of all bars at once, so the inputs not just historical data, you need to be careful to prevent 
+  Look-Ahead Bias.
 * spectre's `QuandlLoader` using float32 datatype for GPU performance.
 * spectre FactorEngine arranges data by bars, so `Return(win=10)` means 10 bars return, may 
   actually be more than 10 days if some assets not open trading in period. You can change this 
   behavior by aligning data: filling missing bars with NaNs in your DataLoader, please refer to the 
   `align_by_time` parameter of `CsvDirLoader`.
-* If an asset has no data on the day, spectre will filter it out, no matter what value you return.
 
 
 ### Differences with common chart:
@@ -381,7 +383,8 @@ affecting all factors.
 
 `engine.set_align_by_time(True)`
 
-Same as `CsvDirLoader(align_by_time=True)`, but it's dynamic, and very slow.
+Same as `CsvDirLoader(align_by_time=True)`, but it's dynamic. Notes: Very slow on large amounts of 
+data, and if the data source is already aligned, this method cannot make it return to unaligned. 
 
 
 ### FactorEngine.clear
@@ -488,8 +491,8 @@ Use `torch.Tensor` to write parallel computing code.
 ### win = 1
 When `win = 1`, the `inputs` data is tensor type, the first dimension of data is the asset, the 
 second dimension is each bar price data. Note that if the data is `align_by_time=False`, the number 
-of bars for each asset is different and not aligned (for example, the bar_t3 column may represent 
-different times for different assets).
+of bars for each asset is different and not aligned (for example, the time for each price in bar_t3 
+column may be inconsistent).
 
         +-----------------------------------+
         |            bar_t1    bar_t3       |
@@ -553,7 +556,7 @@ close.agg(weighted_mean, volume)
 
 ### Using Pandas Series
 
-spectre CustomFactor's inputs data is a matrix without DataFrame's Index information.
+CustomFactor's inputs data is a matrix without DataFrame's Index information.
 If you need index, or not familiar with PyTorch, here is a another way:
 
 ```python
@@ -604,7 +607,7 @@ Put calculations into the `FactorEngine` as much as possible can improve backtes
 
 ### CustomAlgorithm.get_factor_engine
 
-`alg.get_factor_engine(name: str = None)`
+`self.get_factor_engine(name: str = None)`
 **context:** *initialize, rebalance, terminate*
 
 Get the factor engine of this trading algorithm. But note that you can add factors or filter only 
@@ -616,7 +619,7 @@ But if you created multiple engines using `create_factor_engine`, you need to sp
 
 ### CustomAlgorithm.create_factor_engine
 
-`alg.create_factor_engine(name: str, loader: DataLoader = None)`
+`self.create_factor_engine(name: str, loader: DataLoader = None)`
 **context:** *initialize*
 
 Create another engine, generally used when you need multiple data sources.
@@ -624,7 +627,7 @@ Create another engine, generally used when you need multiple data sources.
 
 ### CustomAlgorithm.set_history_window
 
-`alg.set_history_window(offset: pd.DateOffset=None)`
+`self.set_history_window(offset: pd.DateOffset=None)`
 **context:** *initialize*
 
 Set the length of historical data passed to each `rebalance` call.
@@ -634,7 +637,7 @@ first day, one historical row on the next day, and so on.
 
 ### CustomAlgorithm.schedule_rebalance
 
-`alg.schedule_rebalance(event: Event)`
+`self.schedule_rebalance(event: Event)`
 **context:** *initialize*
 
 Schedule `rebalance` to be called when an event occurs.
@@ -647,7 +650,7 @@ alg.schedule_rebalance(trading.event.MarketClose(self.any_function))
 
 ### CustomAlgorithm.schedule
 
-`alg.schedule(event: Event)`
+`self.schedule(event: Event)`
 **context:** *initialize*
    
 Schedule an event, callback is `callback(source: "Any class who fired this event")`
@@ -670,7 +673,7 @@ for example: `alg.fire_event(MarketClose)`
 
 ### CustomAlgorithm.results
 
-`alg.results`
+`self.results`
 **context:** *terminate*
 
 Get back-test results, same as the return value of [trading.run_backtest](#tradingrun_backtest)
@@ -678,7 +681,7 @@ Get back-test results, same as the return value of [trading.run_backtest](#tradi
 
 ### CustomAlgorithm.plot
 
-`alg.plot(annual_risk_free=0.04, benchmark: Union[pd.Series, str] = None)`
+`self.plot(annual_risk_free=0.04, benchmark: Union[pd.Series, str] = None)`
 **context:** *terminate*
 
 Plot a simple portfolio cumulative return chart.\
@@ -688,7 +691,7 @@ Plot a simple portfolio cumulative return chart.\
 
 ### CustomAlgorithm.current
 
-`alg.current`
+`self.current`
 **context:** *rebalance*
 
 Current datetime, Read-Only.
@@ -696,7 +699,7 @@ Current datetime, Read-Only.
 
 ### CustomAlgorithm.get_price_matrix
 
-`alg.get_price_matrix(length: pd.DateOffset, name: str = None, prices=OHLCV.close)`
+`self.get_price_matrix(length: pd.DateOffset, name: str = None, prices=OHLCV.close)`
 **context:** *rebalance*
 
 Help method for calling `engine.get_price_matrix`, `name` specifies which engine.
@@ -707,7 +710,7 @@ Returns the historical asset prices, adjusted and filtered by the current time.
 
 ### CustomAlgorithm.record
 
-`alg.record(**kwargs)`
+`self.record(**kwargs)`
 **context:** *rebalance*
 
 Record the data and pass all when calling `terminate`, use `column = value` format.
@@ -715,7 +718,7 @@ Record the data and pass all when calling `terminate`, use `column = value` form
 
 ### SimulationBlotter.set_commission
 
-`alg.blotter.set_commission(percentage=0, per_share=0.005, minimum=1)`
+`self.blotter.set_commission(percentage=0, per_share=0.005, minimum=1)`
 **context:** *initialize*
 
 percentage: percentage part, calculated by `percentage * price * shares`\
@@ -727,7 +730,7 @@ commission = max(percentage_part + per_share_part, minimum)
 
 ### SimulationBlotter.set_slippage
 
-`alg.blotter.set_slippage(percentage=0, per_share=0.01)`
+`self.blotter.set_slippage(percentage=0, per_share=0.01)`
 **context:** *initialize, rebalance*
 
 Market impact add to the price.
@@ -735,7 +738,7 @@ Market impact add to the price.
 
 ### SimulationBlotter.set_short_fee
 
-`alg.blotter.set_short_fee(percentage=0)`
+`self.blotter.set_short_fee(percentage=0)`
 **context:** *initialize*
 
 Set the transaction fees which only charged for sell orders.
@@ -743,37 +746,71 @@ Set the transaction fees which only charged for sell orders.
 
 ### SimulationBlotter.daily_curb
 
-`alg.blotter.daily_curb = float` 
+`self.blotter.daily_curb = float` 
 **context:** *initialize, rebalance*
 
 Limit on trading a specific asset if today to previous day return >= ±value.
 
 
+### SimulationBlotter.order_target
+
+`self.blotter.order_target(asset: str, target: number)` 
+**context:** *rebalance*
+
+Order assets to target shares. Negative number means short.
+
+If no transaction occurs, like asset cannot be traded or limited by `daily_curb`, it will return 
+False.
+
+
+### SimulationBlotter.batch_order_target
+
+`self.blotter.batch_order_target(asset: Iterable[str], target: Iterable[float])` 
+**context:** *rebalance*
+
+Same as `SimulationBlotter.order_target`, but for multiple assets.
+
+Return value is a list of skipped assets, which indicate that they cannot be traded or limited by 
+`daily_curb`.
+
+
 ### SimulationBlotter.order_target_percent
 
-`alg.blotter.order_target_percent(asset: Union[str, Iterable], pct: Union[float, Iterable])` 
+`self.blotter.order_target_percent(asset: str, pct: float)` 
 **context:** *rebalance*
 
 Order assets with a value equivalent to a percentage of net value of portfolio.
 Negative number means short.
 
-If `asset` is a list, The return value is a list of skipped assets, because there was no price data 
-(usually delisted), otherwise will return a Boolean.
+If no transaction occurs, like asset cannot be traded or limited by `daily_curb`, it will return 
+False.
+
+
+### SimulationBlotter.batch_order_target_percent
+
+`self.blotter.batch_order_target_percent(asset: Iterable[str], pct: Iterable[float])` 
+**context:** *rebalance*
+
+Same as `SimulationBlotter.order_target_percent`, but for multiple assets and better performance.
+
+Return value is a list of skipped assets, which indicate that they cannot be traded or limited by 
+`daily_curb`.
 
 
 ### SimulationBlotter.order
 
-`alg.blotter.order(asset: str, amount: int)` 
+`self.blotter.order(asset: str, amount: int)` 
 **context:** *rebalance*
 
 Order a certain amount of an asset. Negative number means short.
 
-If the asset cannot be traded, it will return False.
+If no transaction occurs, like asset cannot be traded or limited by `daily_curb`, it will return 
+False.
 
 
 ### SimulationBlotter.get_price
 
-`float = alg.blotter.get_price(asset: Union[str, Iterable])` 
+`float = self.blotter.get_price(asset: Union[str, Iterable])` 
 **context:** *rebalance*
 
 Get current price of assert. 
@@ -781,12 +818,17 @@ Get current price of assert.
 like: `engine.add(OHLCV.close, 'prices')`*
 
 
-### SimulationBlotter.portfolio.positions
+### SimulationBlotter.portfolio Read Only Properties
 
-`pos = alg.blotter.portfolio.positions`
 **context:** *rebalance, terminate*
 
-Get the current position, Read-only, Dict[asset, shares] type.
+`self.blotter.portfolio.positions` Current position, Dict[asset, shares] type.
+
+`self.blotter.portfolio.value` Current portfolio value
+
+`self.blotter.portfolio.cash` Current portfolio cash
+
+`self.blotter.portfolio.leverage` Current portfolio leverage
 
 
 ### spectre.trading.run_backtest
