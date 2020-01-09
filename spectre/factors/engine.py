@@ -102,6 +102,14 @@ class FactorEngine:
         # Get data
         df = self._loader.load(start, end, max_backwards).copy()
         df.index = df.index.remove_unused_levels()
+        history_win = df.index.levels[0].get_loc(start, 'bfill')
+        if history_win < max_backwards:
+            warnings.warn("Historical data seems insufficient. "
+                          "{} rows of historical data are required, but only {} rows are obtained. "
+                          "It is also possible that `calender_asset` of the loader is not set, some"
+                          " out of trading hours data will cause indexing problems."
+                          .format(max_backwards, history_win),
+                          RuntimeWarning)
         if isinstance(self._filter, StaticAssets):
             df = df.loc[(slice(None), self._filter.assets), :]
         if self._align_by_time:
