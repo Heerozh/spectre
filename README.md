@@ -181,7 +181,7 @@ class MyAlg(trading.CustomAlgorithm):
 
         # closing asset position that are no longer in our universe.
         removes = self.blotter.portfolio.positions.keys() - set(data.index)
-        self.blotter.order_target_percent(removes, [0] * len(removes))
+        self.blotter.batch_order_target_percent(removes, [0] * len(removes))
 
         # record data for debugging / plotting
         self.record(aapl_weight=data.loc['AAPL', 'weight'],
@@ -216,9 +216,9 @@ pf.create_full_tear_sheet(results.returns, positions=results.positions.value, tr
 ## Note
 
 ### Differences with zipline:
-* In order to parallel, the `CustomFactor.compute` function responsible for calculates the results 
-  of all bars at once, so the inputs not just historical data, you need to be careful to prevent 
-  Look-Ahead Bias.
+* In order to GPU optimize, the `CustomFactor.compute` function calculates the results of all bars 
+  at once, so you need to be careful to prevent Look-Ahead Bias, because the inputs are not just 
+  historical data. Also using `engine.test_lookahead_bias` do some tests.
 * spectre's `QuandlLoader` using float32 datatype for GPU performance.
 * spectre FactorEngine arranges data by bars, so `Return(win=10)` means 10 bars return, may 
   actually be more than 10 days if some assets not open trading in period. You can change this 
@@ -393,11 +393,13 @@ data, and if the data source is already aligned, this method cannot make it retu
 
 Remove global filter, and all factors.
 
+
 ### FactorEngine.to_cuda
 
 `engine.to_cuda()`
 
 Switch to GPU mode.
+
 
 ### FactorEngine.to_cpu
 
@@ -415,6 +417,7 @@ Run the engine to calculate the factor data, return a DataFrame. The column is e
 `delay_factor=True` means that the results will shift(1), in theory you can't trade immediately 
 when you get the factor data. If you only use 'Open' prices, you can set it to `False`.
 
+
 ### FactorEngine.full_run
 
 `factor_data, mean_returns = engine.full_run(
@@ -422,6 +425,16 @@ when you get the factor data. If you only use 'Open' prices, you can set it to `
     quantiles=5, filter_zscore=20, demean=True, preview=True)`
     
 Not only run the engine, but also run factor analysis.
+
+
+### FactorEngine.test_lookahead_bias
+
+`engine.test_lookahead_bias(start_time, end_time)`
+
+Run the engine to test lookahead bias.
+
+Modify half of the ohlcv data, and then check if there are differences between the two runs in the 
+first half.
 
                  
 ### FactorEngine.get_price_matrix

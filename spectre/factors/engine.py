@@ -100,7 +100,7 @@ class FactorEngine:
         self._groups = dict()
 
         # Get data
-        df = self._loader.load(start, end, max_backwards)
+        df = self._loader.load(start, end, max_backwards).copy()
         df.index = df.index.remove_unused_levels()
         if isinstance(self._filter, StaticAssets):
             df = df.loc[(slice(None), self._filter.assets), :]
@@ -196,6 +196,30 @@ class FactorEngine:
     def to_cpu(self) -> None:
         self._device = torch.device('cpu')
         self._last_load = [None, None, None]
+
+    def test_lookahead_bias(self, start, end):
+        """Check all factors, if there are look-ahead bias"""
+        start, end = pd.to_datetime(start, utc=True), pd.to_datetime(end, utc=True)
+        # get results
+        df_expected = self.run(start, end)
+        # modify future data
+        mid = int(self._dataframe[start:].shape[0] / 2)
+        mid_time = self._dataframe[start:].index[mid][0]
+        length = self._dataframe.loc[mid_time:].shape[0]
+        for c in self._loader.ohlcv:
+            self._dataframe.loc[mid_time:, c] = np.random.randn(length)
+        self._column_cache = {}
+        # check if results are consistent
+        df = self.run(start, end)
+        # clean
+        self._column_cache = {}
+        self._last_load = [None, None, None]
+
+        try:
+            pd.testing.assert_frame_equal(df_expected[:mid_time], df[:mid_time])
+        except AssertionError as e:
+            raise RuntimeError('A look-ahead bias was detected, please check your factors code')
+        return 'No assertion raised.'
 
     def run(self, start: Union[str, pd.Timestamp], end: Union[str, pd.Timestamp],
             delay_factor=True) -> pd.DataFrame:
