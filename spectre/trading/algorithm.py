@@ -130,18 +130,21 @@ class CustomAlgorithm(EventReceiver, ABC):
         origin_callback = event.callback
 
         def _rebalance_callback(_):
+            history = self._data
             if isinstance(self._data, dict):
                 last = {k: v.loc[v.index.get_level_values(0)[-1]]
                         for k, v in self._data.items()}
-                history = {k: v.loc[(self._current_dt - self._history_window):]
-                           for k, v in self._data.items()}
+                if self._history_window is not None and self._history_window.n != 0:
+                    history = {k: v.loc[(self._current_dt - self._history_window):]
+                               for k, v in self._data.items()}
             elif self._data is None:
                 # data not ready
                 return
             else:
                 last_dt = self._data.index.get_level_values(0)[-1]
                 last = self._data.loc[last_dt]
-                history = self._data.loc[(self._current_dt - self._history_window):]
+                if self._history_window is not None and self._history_window.n != 0:
+                    history = self._data.loc[(self._current_dt - self._history_window):]
             origin_callback(last, history)
         event.callback = _rebalance_callback
         self.schedule(event)
