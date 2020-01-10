@@ -135,6 +135,9 @@ class CustomAlgorithm(EventReceiver, ABC):
                         for k, v in self._data.items()}
                 history = {k: v.loc[(self._current_dt - self._history_window):]
                            for k, v in self._data.items()}
+            elif self._data is None:
+                # data not ready
+                return
             else:
                 last_dt = self._data.index.get_level_values(0)[-1]
                 last = self._data.loc[last_dt]
@@ -155,12 +158,12 @@ class CustomAlgorithm(EventReceiver, ABC):
         else:
             return {name: engine.run(start, end) for name, engine in self._engines.items()}
 
-    def _run_engine(self, event_source=None):
+    def _data_updated(self, event_source=None):
         self._data = self.run_engine(None, None)
 
     def on_run(self):
         # schedule first, so it will run before rebalance
-        self.schedule(EveryBarData(self._run_engine))
+        self.schedule(EveryBarData(self._data_updated))
         self.initialize()
 
     def on_end_of_run(self):
