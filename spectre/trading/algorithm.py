@@ -237,7 +237,6 @@ class SimulationEventManager(EventManager):
             alg.blotter.clear()
             # get factor data from algorithm
             data = alg.run_engine(start, end)
-            alg.get_factor_engine().test_lookahead_bias(start, end)
             alg.run_engine = lambda x, y: self._last_data
             if isinstance(data, dict):
                 main = self._get_most_granular(data)
