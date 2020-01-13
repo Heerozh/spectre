@@ -43,10 +43,13 @@ class TestFactorLib(unittest.TestCase):
         df_aapl_open = df.loc[(slice(None), 'AAPL'), 'open']
         df_msft_open = df.loc[(slice(None), 'MSFT'), 'open']
 
-        def test_expected(factor, _expected_aapl, _expected_msft, _len=8, decimal=7, delay=True):
+        def test_expected(factor, _expected_aapl, _expected_msft, _len=8, decimal=7,
+                          delay=True, check_bias=True):
             engine.remove_all_factors()
             engine.add(factor, 'test')
             _result = engine.run('2019-01-01', '2019-01-15', delay)
+            if check_bias:
+                engine.test_lookahead_bias('2019-01-01', '2019-01-15')
             result_aapl = _result.loc[(slice(None), 'AAPL'), 'test'].values
             result_msft = _result.loc[(slice(None), 'MSFT'), 'test'].values
             assert_almost_equal(result_aapl[-_len:], _expected_aapl[-_len:], decimal=decimal)
@@ -142,9 +145,12 @@ class TestFactorLib(unittest.TestCase):
 
         expected_aapl = [149, 149, 151.55, 156.03, 161, 153.69, 157, 156.94, np.nan]
         expected_msft = [104.39, 103.2, 105.22, 106, 103.2, 103.39, 108.85, np.nan]
-        # bcuz down is shift(-2) then shift(1)
+        # bcuz delay=True, so it is shift(-2) and then shift(1)
+        self.assertRaisesRegex(RuntimeError, '.*look-ahead bias.*', test_expected,
+                               spectre.factors.OHLCV.close.shift(-2), expected_aapl, expected_msft,
+                               total_rows)
         test_expected(spectre.factors.OHLCV.close.shift(-2),
-                      expected_aapl, expected_msft, total_rows)
+                      expected_aapl, expected_msft, total_rows, check_bias=False)
 
         # test zscore and shift, mask bug
         expected_aapl = [1.] * 10
