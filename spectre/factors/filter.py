@@ -5,7 +5,7 @@
 @email: heeroz@gmail.com
 """
 from abc import ABC
-from typing import Sequence
+from typing import Set
 from .factor import CustomFactor
 import torch
 
@@ -33,7 +33,7 @@ class FilterShiftFactor(CustomFactor):
 
 class StaticAssets(FilterFactor):
     """Useful for remove specific outliers or debug some assets"""
-    def __init__(self, assets: Sequence[str]):
+    def __init__(self, assets: Set[str]):
         from .engine import OHLCV
         super().__init__(win=1, inputs=[OHLCV.open])
         self.assets = assets

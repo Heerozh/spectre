@@ -1,6 +1,6 @@
 """
 @author: Heerozh (Zhang Jianhao)
-@copyright: Copyright 2019, Heerozh. All rights reserved.
+@copyright: Copyright 2019-2020, Heerozh. All rights reserved.
 @license: Apache 2.0
 @email: heeroz@gmail.com
 """
@@ -100,6 +100,10 @@ class CustomAlgorithm(EventReceiver, ABC):
     def set_history_window(self, date_offset: pd.DateOffset):
         """Set the length of historical data passed to each `rebalance` call"""
         self._history_window = date_offset
+
+    @property
+    def history_window(self):
+        return self._history_window
 
     def record(self, **kwargs):
         self._recorder.record(self._current_dt, kwargs)

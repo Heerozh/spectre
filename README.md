@@ -6,9 +6,9 @@ spectre is a **GPU-accelerated Parallel** quantitative trading library, focused 
 
   * Fast, really fast, see below [Benchmarks](#benchmarks)
   * Pure python code, based on PyTorch, so it can integrate DL model very smoothly.
-  * Low CUDA memory usage
   * Compatible with `alphalens` and `pyfolio`
-  * Python 3.7, pandas 0.25 recommended
+
+Python 3.7, pandas 0.25 recommended
 
 
 # Installation
@@ -41,30 +41,30 @@ Running on Quandl 5 years, 3196 Assets, total 3,637,344 bars.
 
 
 * The CUDA memory used in the spectre benchmark is 0.9G, returned by cuda.max_memory_allocated().
-* Benchmarks exclude the initial run (no copy data to VRAM, about saving 300ms).
+* Benchmarks excluded the initial run (no copy data to VRAM, about saving 300ms).
 
 
 # Quick Start
 
 ## DataLoader
 
-First of all is data, you can use [CsvDirLoader](#csvdirloader) read your own csv.
+First of all is data, you can use [CsvDirLoader](#csvdirloader) read your csv files.
 
-But spectre also has built-in Yahoo downloader, `symbols=None` will download all SP500 components, 
-makes it easy for you to get data.
+spectre also has built-in Yahoo downloader, `symbols=None` will download all SP500 components.
 
 ```python
 from spectre.data import YahooDownloader
 YahooDownloader.ingest(start_date="2001", save_to="./prices/yahoo", symbols=None, skip_exists=True)
 ```
 
-That's it! You can use `spectre.data.ArrowLoader('./prices/yahoo/yahoo.feather')` load those data now.
+You can use `spectre.data.ArrowLoader('./prices/yahoo/yahoo.feather')` load those data now.
 
 ## Factor and FactorEngine
 
 ```python
-from spectre import factors, data
-loader = data.ArrowLoader('./prices/yahoo/yahoo.feather')
+from spectre import factors
+from spectre.data import ArrowLoader
+loader = ArrowLoader('./prices/yahoo/yahoo.feather')
 engine = factors.FactorEngine(loader)
 engine.to_cuda()
 engine.add(factors.SMA(5), 'ma5')
@@ -94,8 +94,9 @@ df
 
 
 ```python
-from spectre import factors, data
-loader = data.ArrowLoader('./prices/yahoo/yahoo.feather')
+from spectre import factors
+from spectre.data import ArrowLoader
+loader = ArrowLoader('./prices/yahoo/yahoo.feather')
 engine = factors.FactorEngine(loader)
 universe = factors.AverageDollarVolume(win=120).top(100)
 engine.set_filter( universe )
@@ -146,10 +147,13 @@ al.tears.create_full_tear_sheet(clean_data)
 
 ## Back-testing
 
-Back-testing uses FactorEngine's results as data, market events as triggers:
+Back-testing uses FactorEngine's results as data, market event as triggers.
+
+You can find other examples in the `./examples` directory.
 
 ```python
-from spectre import factors, trading, data
+from spectre import factors, trading
+from spectre.data import ArrowLoader
 import pandas as pd
 
 
@@ -165,7 +169,7 @@ class MyAlg(trading.CustomAlgorithm):
         bb_cross = -factors.BBANDS(win=5)
         bb_cross = bb_cross.filter(bb_cross < 0.7)  # p-hacking
         bb_cross_factor = bb_cross.rank(mask=universe).zscore()
-        engine.add( bb_cross_factor.to_weight(), 'weight' )
+        engine.add( bb_cross_factor.to_weight(), 'bb_weight' )
 
         # schedule rebalance before market close
         self.schedule_rebalance(trading.event.MarketClose(self.rebalance, offset_ns=-10000))
@@ -177,14 +181,14 @@ class MyAlg(trading.CustomAlgorithm):
 
     def rebalance(self, data: 'pd.DataFrame', history: 'pd.DataFrame'):
         data = data.fillna(0)
-        self.blotter.batch_order_target_percent(data.index, data.weight)
+        self.blotter.batch_order_target_percent(data.index, data.bb_weight)
 
         # closing asset position that are no longer in our universe.
         removes = self.blotter.portfolio.positions.keys() - set(data.index)
         self.blotter.batch_order_target_percent(removes, [0] * len(removes))
 
         # record data for debugging / plotting
-        self.record(aapl_weight=data.loc['AAPL', 'weight'],
+        self.record(aapl_weight=data.loc['AAPL', 'bb_weight'],
                     aapl_price=self.blotter.get_price('AAPL'))
 
     def terminate(self, records: 'pd.DataFrame'):
@@ -196,7 +200,7 @@ class MyAlg(trading.CustomAlgorithm):
         ax2 = ax1.twinx()
         records.aapl_weight.plot(ax=ax2, style='g-', secondary_y=True)
 
-loader = data.ArrowLoader('./prices/yahoo/yahoo.feather')
+loader = ArrowLoader('./prices/yahoo/yahoo.feather')
 %time results = trading.run_backtest(loader, MyAlg, '2013-01-01', '2018-01-01')
 ```
 
@@ -245,10 +249,10 @@ Read CSV files in the directory, each file represents an asset.
 
 Reading csv is very slow, so you also need to use [ArrowLoader](#arrowloader).
 
-**prices_path:** Prices csv folder. When encountering duplicate indexes data in `prices_index`, 
+**prices_path:** Prices csv folder. When encountering duplicate datetime in `prices_index`, 
     Loader will keep the last, drop others.\
 **prices_index:** `index_col`for csv in `prices_path`\
-**prices_by_year:** If price file name like 'spy_2017.csv', set this to True\
+**prices_by_year:** If prices file name like 'spy_2017.csv', set this to True\
 **ohlcv:** Required, OHLCV column names. When you don't need to use `adjustments` and
     `factors.OHLCV`, you can set this to None.\
 **adjustments:** Optional, list, `dividend amount` and `splits ratio` column names.\
@@ -259,7 +263,7 @@ Reading csv is very slow, so you also need to use [ArrowLoader](#arrowloader).
     in the prices csv.\
 **dividends_index:** `index_col`for csv in `dividends_path`.\
 **splits_path:** Splits csv folder, structured as one csv per asset.
-    When encountering duplicate indexes data in `splits_index`, Loader will use the last
+    When encountering duplicate datetime in `splits_index`, Loader will use the last
     non-NaN 'split ratio', drop others.
     If `splits_path` not set, the `adjustments[1]` column is considered to be included
     in the prices csv.\
@@ -267,7 +271,7 @@ Reading csv is very slow, so you also need to use [ArrowLoader](#arrowloader).
 **split_ratio_is_inverse:** If split ratio calculated by to/from, set to True.
     For example, 2-for-1 split, to/form = 2, 1-for-15 Reverse Split, to/form = 0.6666...\
 **split_ratio_is_fraction:** If split ratio in csv is fraction string, like `1/3`, set to True.\
-**earliest_date:** Data before this date will not be read, save memory\
+**earliest_date:** Data before this date will not be read, save memory.\
 **calender_asset:** Asset name as trading calendar, like 'SPY', for clean up non-trading
     time data.\
 **align_by_time:** If True and `calender_asset` is not None, the index of datetime will be the same 
@@ -291,19 +295,17 @@ csv_loader = spectre.data.CsvDirLoader(
            'uVolume': np.float64, 'amount': np.float64, 'ratio': np.float64})
 ```
 
-If you are going to purchase IEX data, please use my [Referrals](https://iexcloud.io/s/62efba08) :)
-
 ### ArrowLoader
 
-Can ingest data from other DataLoader into a feather file, speed up reading speed a lot.
+Ingest data from other DataLoader into a feather file, speed up reading speed a lot.
 
 3GB data takes about 7 seconds on initial load.
 
 **Ingest**
-`spectre.data.ArrowLoader.ingest(source=CsvDirLoader(...), save_to='filename.feather')`
+`spectre.data.ArrowLoader.ingest(source=CsvDirLoader(...), save_to='./filename.feather')`
 
 **Read**
-`loader = spectre.data.ArrowLoader(feather_file_path)`
+`loader = spectre.data.ArrowLoader('./filename.feather')`
 
 ### QuandlLoader
 
@@ -313,9 +315,9 @@ Download 'WIKI_PRICES.zip' (You need an account):
 `https://www.quandl.com/api/v3/datatables/WIKI/PRICES.csv?qopts.export=true&api_key=[yourapi_key]`
 
 ```python
-from spectre import data
-data.ArrowLoader.ingest(source=data.QuandlLoader('WIKI_PRICES.zip'),
-                        save_to='wiki_prices.feather')
+from spectre.data import ArrowLoader, QuandlLoader
+ArrowLoader.ingest(source=QuandlLoader('WIKI_PRICES.zip'),
+                   save_to='wiki_prices.feather')
 ```
 
 ### How to write your own DataLoader
@@ -375,8 +377,8 @@ Add a factor to engine.
 
 `engine.set_filter(factor: FilterFactor or None)`
 
-Set the Global Filter, engine deletes rows which Global Filter returns as False, 
-affecting all factors.
+Set the Global Filter, engine deletes rows which Global Filter returns as False at the last step, 
+affect all factors.
 
 
 ### FactorEngine.set_align_by_time
@@ -427,16 +429,6 @@ when you get the factor data. If you only use 'Open' prices, you can set it to `
 Not only run the engine, but also run factor analysis.
 
 
-### FactorEngine.test_lookahead_bias
-
-`engine.test_lookahead_bias(start_time, end_time)`
-
-Run the engine to test lookahead bias.
-
-Modify half of the ohlcv data, and then check if there are differences between the two runs in the 
-first half.
-
-                 
 ### FactorEngine.get_price_matrix
 
 `df_prices = engine.get_price_matrix(start_time, end_time, prices: DataFactor = OHLCV.close)`
@@ -444,6 +436,17 @@ first half.
 Get the adjusted historical prices matrix which columns is all assets.
 
 If global filter is setted, all unfiltered assets from `start_time` to `end_time` will be included.
+
+
+### FactorEngine.test_lookahead_bias
+
+`engine.test_lookahead_bias(start_time, end_time)`
+
+Run the engine to test if there is a lookahead bias.
+
+Fill random values to second half of the ohlcv data, and then check if there are differences between
+the two runs in the first half.
+
 
 
 ## Built-in Technical Indicator Factors list
@@ -499,7 +502,7 @@ new_factor = factor[0]
 
 Inherit from `factors.CustomFactor`, write `compute` function.
 
-Use `torch.Tensor` to write parallel computing code.
+All `inputs` will pass to compute function.
 
 ### win = 1
 When `win = 1`, the `inputs` data is tensor type, the first dimension of data is the asset, the 
@@ -527,11 +530,11 @@ class LogReturns(factors.CustomFactor):
 
 ### win > 1
 If rolling window is required(`win > 1`), all `inputs` data will be wrapped into
-`spectre.parallel.Rolling`
+`spectre.parallel.Rolling`.
 
-This is just an unfolded `tensor` data, but because the data is very large after unfolded,
-the rolling class automatically splits the data into multiple small portions. You need to use
-the `agg` method to operating `tensor`.
+This is just an unfolded `tensor` data, but because the data is very large after unfolded, for
+better performance and saving VRAM, the rolling class automatically splits the data into multiple
+small chunks. You need to use the `agg` method to operating `tensor`.
 ```python
 from spectre import factors, parallel
 class OvernightReturn(factors.CustomFactor):
@@ -542,11 +545,10 @@ class OvernightReturn(factors.CustomFactor):
         ret = opens.last() / closes.first() - 1
         return ret
 ```
-Where `Rolling.first()` is just a helper method for `rolling.agg(lambda x: x[:, :, 0])`,
+The `closes.first()` above is just a helper method for `closes.agg(lambda x: x[:, :, 0])`,
 where `x[:, :, 0]` return the first element of rolling window. The first dimension of `x` is the
-asset, the second dimension is each bar, and the third dimension is the price date containing
-the bar price and historical price with `win` length, and `Rolling.agg` runs on
-all the portions and combines them.
+asset, the second dimension is each bar, and the third dimension is the bar price and historical 
+price with `win` length, and `Rolling.agg` runs on all the chunks and combines them.
 
         +------------------win=3-------------------+
         |          history_t-2 curr_bar_value      |
@@ -589,7 +591,7 @@ This method is completely non-parallel and inefficient, but easy to write.
 
 [Quick Start](#back-testing) contains easy-to-understand examples, please read first.
 
-The `spectre.trading.CustomAlgorithm` currently does not supports live trading, but it designed as switchable,
+The `spectre.trading.CustomAlgorithm` currently does not supports live trading,
 will implement it in the future.
 
 ### CustomAlgorithm.initialize
@@ -672,6 +674,7 @@ Schedule an event, callback is `callback(source: "Any class who fired this event
 ### CustomAlgorithm.stop_event_manager
 
 `alg.stop_event_manager()`
+**context:** *all*
 
 Stop backtesting or live trading.
 
@@ -679,9 +682,10 @@ Stop backtesting or live trading.
 ### CustomAlgorithm.fire_event
 
 `alg.fire_event(event_type: Type[Event])`
+**context:** *all*
 
 Trigger a type of event (any subclasses that inherit from `Event`）, 
-for example: `alg.fire_event(MarketClose)`
+for example: `alg.fire_event(MarketClose)`, (do not do this, do not fire built-in events)
 
 
 ### CustomAlgorithm.results
@@ -772,8 +776,7 @@ Limit on trading a specific asset if today to previous day return >= ±value.
 
 Place an order on an asset to target number of shares in position, negative number means short.
 
-If no transaction occurs, like asset cannot be traded or limited by `daily_curb`, it will return 
-False.
+If asset cannot be traded or limited by `daily_curb`, it will return False.
 
 
 ### SimulationBlotter.batch_order_target
@@ -794,8 +797,7 @@ Return value is a list of skipped assets, which indicate that they cannot be tra
 
 Place an order on an asset to target percentage of portfolio net value, negative number means short.
 
-If no transaction occurs, like asset cannot be traded or limited by `daily_curb`, it will return 
-False.
+If asset cannot be traded or limited by `daily_curb`, it will return False.
 
 
 ### SimulationBlotter.batch_order_target_percent
@@ -816,8 +818,7 @@ Return value is a list of skipped assets, which indicate that they cannot be tra
 
 Order a certain amount of an asset, negative number means short.
 
-If no transaction occurs, like asset cannot be traded or limited by `daily_curb`, it will return 
-False.
+If asset cannot be traded or limited by `daily_curb`, it will return False.
 
 
 ### SimulationBlotter.get_price
