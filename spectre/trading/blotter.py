@@ -380,6 +380,10 @@ class SimulationBlotter(BaseBlotter, EventReceiver):
         self._current_prices = self._current_row[price_col].to_dict()
 
     def get_price(self, asset: Union[str, Iterable]):
+        if not self.market_opened:
+            raise RuntimeError('Out of market hours. Maybe you rebalance at AfterMarketClose; '
+                               'or BeforeMarketOpen; or EveryBarData on daily data; '
+                               'or you did not subscribe this class with SimulationEventManager')
         if self._current_prices is None:
             raise ValueError("_current_prices is None, maybe set_price is not called.")
 
@@ -394,8 +398,9 @@ class SimulationBlotter(BaseBlotter, EventReceiver):
 
     def _order(self, asset, amount):
         if not self.market_opened:
-            raise RuntimeError('Out of market hours, or you did not subscribe this class '
-                               'with SimulationEventManager')
+            raise RuntimeError('Out of market hours. Maybe you rebalance at AfterMarketClose; '
+                               'or BeforeMarketOpen; or EveryBarData on daily data; '
+                               'or you did not subscribe this class with SimulationEventManager')
         if amount == 0:
             return True
 

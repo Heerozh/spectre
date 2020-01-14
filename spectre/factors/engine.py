@@ -106,12 +106,15 @@ class FactorEngine:
         if history_win < max_backwards:
             warnings.warn("Historical data seems insufficient. "
                           "{} rows of historical data are required, but only {} rows are obtained. "
-                          "It is also possible that `calender_asset` of the loader is not set, some"
-                          " out of trading hours data will cause indexing problems."
+                          "It is also possible that `calender_asset` of the loader are not set, "
+                          "some out of trading hours data will cause indexing problems."
                           .format(max_backwards, history_win),
                           RuntimeWarning)
         if isinstance(self._filter, StaticAssets):
             df = df.loc[(slice(None), self._filter.assets), :]
+            if df.shape[0] == 0:
+                raise ValueError("The asset specified by StaticAssets filter, was not found in "
+                                 "DataLoader.")
         if self._align_by_time:
             # since pandas 0.23, MultiIndex reindex is slow, so using a alternative way here,
             # but still very slow.
