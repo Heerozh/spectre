@@ -284,7 +284,10 @@ class BaseBlotter:
         assets = list(assets)  # copy for preventing del items in loop
         for asset, pct in zip(assets, weights):
             try:
-                target = (pf_value * pct) / prices[asset]
+                price = prices[asset]
+                if price != price:
+                    raise KeyError("")
+                target = (pf_value * pct) / price
             except KeyError:
                 skipped.append([asset, self._portfolio.shares(asset)])
                 continue
