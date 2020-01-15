@@ -1,0 +1,4 @@
+[submodule "spectre/data/iex_fetcher"]
+	path = spectre/data/iex_fetcher
+	url = https://github.com/Heerozh/iex_fetcher.git
+	branch = lib
