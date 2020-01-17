@@ -4,7 +4,7 @@
 
 spectre is a **GPU-accelerated Parallel** quantitative trading library, focused on **performance**.
 
-  * Fast, really fast, see below [Benchmarks](#benchmarks)
+  * Fast GPU Factor Engine, see below [Benchmarks](#benchmarks)
   * Pure python code, based on PyTorch, so it can integrate DL model very smoothly.
   * Compatible with `alphalens` and `pyfolio`
 
@@ -280,7 +280,7 @@ Reading csv is very slow, so you also need to use [ArrowLoader](#arrowloader).
 **\*\*read_csv:** Parameters for all csv when calling `pd.read_csv`.
  `parse_dates` or `date_parser` is required.
 
-Example for load [IEX](https://github.com/Heerozh/iex_fetcher) data:
+Example for load [IEX](https://github.com/Heerozh/iex_fetcher) CSV files:
 
 ```python
 usecols = {'date', 'uOpen', 'uHigh', 'uLow', 'uClose', 'uVolume', 'exDate', 'amount', 'ratio'}
@@ -662,6 +662,9 @@ For example:
 alg.schedule_rebalance(trading.event.MarketClose(self.any_function))
 ```
 
+The `Market*` events has `offset_ns` parameter `MarketClose(self.any_function, offset_ns=-1000)`, 
+a negative value of `offset_ns` means 'before', in backtest mode, the magnitude of the value has no
+effect.
 
 ### CustomAlgorithm.schedule
 
