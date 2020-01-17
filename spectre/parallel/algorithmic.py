@@ -4,7 +4,7 @@
 @license: Apache 2.0
 @email: heeroz@gmail.com
 """
-from typing import Callable
+from typing import Callable, Tuple
 import torch
 import numpy as np
 
@@ -71,26 +71,26 @@ class ParallelGroupBy:
         return ret
 
 
-def nansum(data: torch.Tensor, dim=1) -> torch.Tensor:
+def _nansum(data: torch.Tensor, dim=1) -> Tuple[torch.Tensor, torch.Tensor]:
     data = data.clone()
     isnan = torch.isnan(data)
     data.masked_fill_(isnan, 0)  # much faster than data[isnan] = 0
-    return data.sum(dim=dim)
+    return data.sum(dim=dim), isnan
+
+
+def nansum(data: torch.Tensor, dim=1) -> torch.Tensor:
+    return _nansum(data, dim)[0]
 
 
 def nanmean(data: torch.Tensor, dim=1) -> torch.Tensor:
-    data = data.clone()
-    isnan = torch.isnan(data)
-    data.masked_fill_(isnan, 0)
-    return data.sum(dim=dim) / (~isnan).sum(dim=dim)
+    total, isnan = _nansum(data, dim)
+    return total / (~isnan).sum(dim=dim)
 
 
 def nanvar(data: torch.Tensor, dim=1, ddof=0) -> torch.Tensor:
-    filled = data.clone()
-    isnan = torch.isnan(data)
-    filled.masked_fill_(isnan, 0)
+    total, isnan = _nansum(data, dim)
     n = (~isnan).sum(dim=dim)
-    mean = filled.sum(dim=dim) / n
+    mean = total / n
     mean.unsqueeze_(-1)
     var = (data - mean) ** 2 / (n.unsqueeze(-1) - ddof)
     var.masked_fill_(isnan, 0)
@@ -127,20 +127,18 @@ def nanlast(data: torch.Tensor, dim=1) -> torch.Tensor:
         return ret
 
 
-def pearsonr(x, y, dim=1):
-    demean_x = x - torch.mean(x, dim=dim)
-    demean_y = y - torch.mean(y, dim=dim)
-    r_num = demean_x.dot(demean_y)
-    r_den = torch.norm(demean_x, 2) * torch.norm(demean_y, 2)
-    r_val = r_num / r_den
-    return r_val
-
-
 def covariance(x, y, dim=1, ddof=0):
-    demean_x = x - torch.mean(x, dim=dim).unsqueeze(-1)
-    demean_y = y - torch.mean(y, dim=dim).unsqueeze(-1)
-    e = (demean_x * demean_y).sum(dim=dim)
-    return e / (x.shape[dim] - ddof)
+    x_bar = nanmean(x, dim=dim).unsqueeze(-1)
+    y_bar = nanmean(y, dim=dim).unsqueeze(-1)
+    demean_x = x - x_bar
+    demean_y = y - y_bar
+    e, isnan = _nansum(demean_x * demean_y, dim=dim)
+    return e / ((~isnan).sum(dim=dim) - ddof)
+
+
+def pearsonr(x, y, dim=1):
+    cov = covariance(x, y, dim)
+    return cov / (nanstd(x) * nanstd(y))
 
 
 def linear_regression_1d(x, y, dim=1):
@@ -148,9 +146,9 @@ def linear_regression_1d(x, y, dim=1):
     y_bar = nanmean(y, dim=dim).unsqueeze(-1)
     demean_x = x - x_bar
     demean_y = y - y_bar
-    e = nanmean(demean_x * demean_y, dim=dim)
+    cov = nanmean(demean_x * demean_y, dim=dim)
     x_var = nanvar(x, dim=dim, ddof=0)
-    slope = e / x_var
+    slope = cov / x_var
     slope[x_var == 0] = 0
     intcp = y_bar.squeeze() - slope * x_bar.squeeze()
     return slope, intcp

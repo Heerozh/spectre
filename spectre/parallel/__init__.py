@@ -8,5 +8,6 @@ from .algorithmic import (
     nanmax,
     nanmin,
     covariance,
+    pearsonr,
     linear_regression_1d,
 )

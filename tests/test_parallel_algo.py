@@ -113,3 +113,9 @@ class TestParallelAlgorithm(unittest.TestCase):
             reg = LinearRegression().fit(x[i, :, None], y[i, :, None])
             assert_almost_equal(reg.coef_, coef[i], decimal=6)
 
+        # test pearsonr
+        result = spectre.parallel.pearsonr(x, y)
+        from scipy import stats
+        for i in range(3):
+            expected, _ = stats.pearsonr(x[i], y[i])
+            assert_almost_equal(expected, result[i], decimal=6)
