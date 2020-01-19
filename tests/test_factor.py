@@ -568,7 +568,6 @@ class TestFactorLib(unittest.TestCase):
         assert_array_equal(result['t|b'], t | b)
         assert_array_equal(result['~t'], b)
 
-    @unittest.skip("skip, need coverage 5.0")
     def test_multiprocess(self):
         loader = spectre.data.CsvDirLoader(
             data_dir + '/daily/', ohlcv=('uOpen', 'uHigh', 'uLow', 'uClose', 'uVolume'),
@@ -595,7 +594,7 @@ class TestFactorLib(unittest.TestCase):
         result = engine.run("2018-12-25", "2019-01-05")
         assert_almost_equal(result.f.values, result.f2.values)
         # test one row
-        engine.run("2019-01-05", "2019-01-05")
+        engine.run("2019-01-04", "2019-01-05")
 
         # test nested window
         engine.clear()
@@ -605,7 +604,7 @@ class TestFactorLib(unittest.TestCase):
             inputs=[spectre.factors.MA(3), spectre.factors.MA(4)],
             multiprocess=False
         ), 'f')
-        engine.run("2019-01-05", "2019-01-05")
+        engine.run("2019-01-04", "2019-01-05")
 
     def test_memory_leak(self):
         quandl_path = data_dir + '../../../historical_data/us/prices/quandl/'

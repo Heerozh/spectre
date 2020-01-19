@@ -171,7 +171,7 @@ class DataLoader:
         start_loc = index.get_loc(start, 'bfill')
         backward_loc = max(start_loc - backwards, 0)
         end_loc = index.get_loc(end, 'ffill')
-        assert end_loc >= start_loc, 'There is no data between `start` and `end` date.'
+        assert end_loc >= start_loc, 'There is no data between `start` and `end`.'
 
         backward_start = index[backward_loc]
         return df.loc[backward_start:end]

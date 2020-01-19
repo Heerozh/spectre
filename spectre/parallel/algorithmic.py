@@ -120,11 +120,8 @@ def nanlast(data: torch.Tensor, dim=1) -> torch.Tensor:
     w = torch.linspace(0.1, 0, mask.shape[-1], dtype=torch.float, device=mask.device)
     mask = mask.float() + w
     last = mask.argmin(dim=dim)
-    ret = data.gather(dim, last.unsqueeze(-1)).squeeze()
-    if last.shape[0] == 1:
-        return ret[None, :]
-    else:
-        return ret
+    ret = data.gather(dim, last.unsqueeze(-1)).squeeze(-1)
+    return ret
 
 
 def covariance(x, y, dim=1, ddof=0):
@@ -155,7 +152,7 @@ def linear_regression_1d(x, y, dim=1):
 
 
 class Rolling:
-    _split_multi = 64  # 32-64 recommended, you can tune this for kernel performance
+    _split_multi = 1  # 0.5-1 recommended, you can tune this for kernel performance
 
     @classmethod
     def unfold(cls, x, win, fill=np.nan):
@@ -168,10 +165,10 @@ class Rolling:
         self.win = win
 
         # rolling multiplication will consume lot of memory, split it by size
-        memory_usage = self.values.nelement() / (1024. ** 3)
+        memory_usage = self.values.nelement() * win / (1024. ** 3)
         memory_usage *= Rolling._split_multi
-        step = max(int(self.values.shape[0] / memory_usage), 1)
-        boundary = list(range(0, self.values.shape[0], step)) + [self.values.shape[0]]
+        step = max(int(self.values.shape[1] / memory_usage), 1)
+        boundary = list(range(0, self.values.shape[1], step)) + [self.values.shape[1]]
         self.split = list(zip(boundary[:-1], boundary[1:]))
 
         if _adjustment is not None:
@@ -182,12 +179,12 @@ class Rolling:
             self.adjustments = None
             self.adjustment_last = None
 
-    def adjusted(self, s=None, e=None) -> torch.Tensor:
+    def adjust(self, s=None, e=None) -> torch.Tensor:
         """this will contiguous tensor consume lot of memory, limit e-s size"""
         if self.adjustments is not None:
-            return self.values[s:e] * self.adjustments[s:e] / self.adjustment_last[s:e]
+            return self.values[:, s:e] * self.adjustments[:, s:e] / self.adjustment_last[:, s:e]
         else:
-            return self.values[s:e]
+            return self.values[:, s:e]
 
     def __repr__(self):
         return 'spectre.parallel.Rolling object contains:\n' + self.values.__repr__()
@@ -198,9 +195,9 @@ class Rolling:
         and finally aggregate them into a whole.
         """
         assert all(r.win == self.win for r in others), '`others` must have same `win` with `self`'
-        seq = [op(self.adjusted(s, e), *[r.adjusted(s, e) for r in others]).contiguous()
+        seq = [op(self.adjust(s, e), *[r.adjust(s, e) for r in others]).contiguous()
                for s, e in self.split]
-        return torch.cat(seq)
+        return torch.cat(seq, dim=1)
 
     def loc(self, i):
         if i == -1:

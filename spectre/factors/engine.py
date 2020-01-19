@@ -326,7 +326,7 @@ class FactorEngine:
         factors_backup = self._factors
         self._factors = {'price': AdjustedDataFactor(prices)}
 
-        # get ticker s first
+        # get tickers first
         assets = None
         if self._filter is not None:
             with warnings.catch_warnings():
