@@ -35,7 +35,8 @@ class TestTradingAlgorithm(unittest.TestCase):
                 f = spectre.factors.MA(5)
                 engine.add(f, 'f')
                 # self._engines = {'main': engine}
-                return engine.run(start, end)
+                df = engine.run(start, end)
+                return df, df.loc[df.index.get_level_values(0)[-1]]
 
             def initialize(self):
                 self.schedule(spectre.trading.event.EveryBarData(
@@ -47,7 +48,7 @@ class TestTradingAlgorithm(unittest.TestCase):
                 self.schedule(spectre.trading.event.MarketClose(self.test_close, 1000))
 
             def _run_engine(self, source):
-                self._data = self.run_engine(None, None)
+                self._data, _ = self.run_engine(None, None)
 
             def on_run(self):
                 self.schedule(spectre.trading.event.EveryBarData(
