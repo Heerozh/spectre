@@ -328,7 +328,7 @@ class SimulationBlotter(BaseBlotter, EventReceiver):
         df = dataloader.load(None, None, 0)
         self._data = df
         self._prices = df[list(dataloader.ohlcv)]
-        self._current_row = None
+        self._current_prices_col = None
         self._current_prices = None
         if dataloader.adjustments is not None:
             div_col = dataloader.adjustments[0]
@@ -347,51 +347,64 @@ class SimulationBlotter(BaseBlotter, EventReceiver):
         self._portfolio.clear()
         self._portfolio.update_cash(self.capital_base)
 
-    def _update_time(self) -> None:
-        try:
-            self._current_row = self._prices.loc[self._current_dt]
-        except KeyError:
-            self._current_row = None
-        self._current_prices = None
-
     def set_datetime(self, dt: pd.Timestamp) -> None:
+        self._current_prices_col = None
         if self._current_dt is not None:
             # make up events for skipped days for update splits and divs.
             current_date = self._current_dt.normalize()
             target_date = dt.normalize()
-            for date in pd.bdate_range(current_date, target_date):
-                if date == current_date or date == target_date:
-                    continue
-                super().set_datetime(date)
-                self._update_time()
-                self.market_open(self)
-                if self._current_row is not None:
-                    self._current_prices = self._current_row[self.dataloader.ohlcv[3]].to_dict()
+            if current_date != target_date:
+                for date in pd.bdate_range(current_date, target_date):
+                    if date == current_date or date == target_date:
+                        continue
+
+                    row = self._prices.loc[date:date + pd.DateOffset(days=1, seconds=-1)]
+                    bar_times = row.index.get_level_values(0)
+                    if len(bar_times) == 0:
+                        continue
+
+                    open_time = bar_times[0]
+                    super().set_datetime(open_time)
+                    self.set_price('open')
+                    self.market_open(self)
+
+                    close_time = bar_times[-1]
+                    super().set_datetime(close_time)
+                    self.set_price('close')
                     self.update_portfolio_value()
-                self.market_close(self)
+                    self.market_close(self)
         super().set_datetime(dt)
-        self._update_time()
 
     def set_price(self, name: str):
         if name == 'open':
-            price_col = self.dataloader.ohlcv[0]
+            self._current_prices_col = self.dataloader.ohlcv[0]
         else:
-            price_col = self.dataloader.ohlcv[3]
-        self._current_prices = self._current_row[price_col].to_dict()
+            self._current_prices_col = self.dataloader.ohlcv[3]
+        self._current_prices = None
 
-    def get_price(self, asset: Union[str, Iterable]):
+    def _get_current_prices(self):
+        if self._current_prices_col is None:
+            raise ValueError("_current_prices is None, maybe set_price was not called.")
+
+        if self._current_prices is None:
+            curr_prices = self._prices.loc[self._current_dt]
+            curr_prices = curr_prices[self._current_prices_col]  # much faster in 2 steps
+            self._current_prices = curr_prices.to_dict()
+
+        return self._current_prices
+
+    def get_price(self, asset: Union[str, Iterable, None]):
         if not self.market_opened:
             raise RuntimeError('Out of market hours. Maybe you rebalance at AfterMarketClose; '
                                'or BeforeMarketOpen; or EveryBarData on daily data; '
                                'or you did not subscribe this class with SimulationEventManager')
-        if self._current_prices is None:
-            raise ValueError("_current_prices is None, maybe set_price is not called.")
 
+        curr_prices = self._get_current_prices()
         if not isinstance(asset, str):
-            return self._current_prices
+            return curr_prices
 
         try:
-            price = self._current_prices[asset]
+            price = curr_prices[asset]
             return price
         except KeyError:
             return None
@@ -456,7 +469,7 @@ class SimulationBlotter(BaseBlotter, EventReceiver):
         return ret
 
     def update_portfolio_value(self):
-        self._portfolio.update_value(self._current_prices)
+        self._portfolio.update_value(self._get_current_prices())
 
     def market_open(self, _):
         self.market_opened = True
