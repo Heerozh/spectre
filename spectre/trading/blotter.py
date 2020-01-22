@@ -213,7 +213,7 @@ class BaseBlotter:
     def order(self, asset: str, amount: int):
         if abs(amount) > self.max_shares:
             raise OverflowError(
-                'Cannot order more than ±{} shares: {}, set `blotter.max_shares` value'
+                'Cannot order more than ±{} shares: {}, set `blotter.max_shares` value '
                 'to change this limit.'.format(self.max_shares, amount))
 
         if not isinstance(asset, str):

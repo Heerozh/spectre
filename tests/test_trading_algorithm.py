@@ -30,7 +30,7 @@ class TestTradingAlgorithm(unittest.TestCase):
             def clear(self):
                 pass
 
-            def run_engine(self, start, end):
+            def run_engine(self, start, end, _=False):
                 engine = spectre.factors.FactorEngine(loader)
                 f = spectre.factors.MA(5)
                 engine.add(f, 'f')

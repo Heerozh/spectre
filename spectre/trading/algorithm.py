@@ -151,7 +151,7 @@ class CustomAlgorithm(EventReceiver, ABC):
         event.callback = self._call_rebalance
         self.schedule(event)
 
-    def run_engine(self, start, end):
+    def run_engine(self, start, end, delay_factor=True):
         if start is None:
             start = self._current_dt
             end = self._current_dt
@@ -159,11 +159,12 @@ class CustomAlgorithm(EventReceiver, ABC):
 
         if len(self._engines) == 1:
             name = next(iter(self._engines))
-            df = self._engines[name].run(start, end)
+            df = self._engines[name].run(start, end, delay_factor)
             last_dt = df.index.get_level_values(0)[-1]
             return df, df.loc[last_dt]
         else:
-            dfs = {name: engine.run(start, end) for name, engine in self._engines.items()}
+            dfs = {name: engine.run(start, end, delay_factor)
+                   for name, engine in self._engines.items()}
             lasts = {k: v.loc[v.index.get_level_values(0)[-1]] for k, v in dfs.items()}
             return dfs, lasts
 
@@ -228,7 +229,7 @@ class SimulationEventManager(EventManager):
         self.fire_before_event(MarketClose)
         self.fire_after_event(MarketClose)
 
-    def run(self, start, end):
+    def run(self, start, end, delay_factor=True):
         from tqdm.auto import tqdm
 
         start, end = pd.to_datetime(start, utc=True), pd.to_datetime(end, utc=True)
@@ -250,9 +251,10 @@ class SimulationEventManager(EventManager):
                 raise ValueError('SimulationEventManager only supports SimulationBlotter.')
             alg.blotter.clear()
             # get factor data from algorithm
-            data, _ = alg.run_engine(start, end)
+            run_engine = alg.run_engine
+            data, _ = run_engine(start, end, delay_factor)
             # mock CustomAlgorithm
-            alg.run_engine = lambda x, y: (self._mock_data, self._mock_last)
+            alg.run_engine = lambda *args: (self._mock_data, self._mock_last)
             if isinstance(data, dict):
                 lv0_dropped_data = {k: v.droplevel(0) for k, v in data.items()}
                 main = self._get_most_granular(data)
@@ -302,6 +304,7 @@ class SimulationEventManager(EventManager):
                     self.fire_event(self, EveryBarData)
 
             self.fire_market_close(alg)
+            alg.run_engine = run_engine
 
         for r in self._subscribers.keys():
             r.on_end_of_run()
