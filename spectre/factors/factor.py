@@ -225,7 +225,7 @@ class CustomFactor(BaseFactor):
         backwards = 0
         if self.inputs:
             backwards = max([up.get_total_backwards_() for up in self.inputs
-                            if isinstance(up, BaseFactor)] or (0,))
+                             if isinstance(up, BaseFactor)] or (0,))
         backwards = backwards + self.win - 1
 
         if self._mask:
@@ -404,6 +404,11 @@ class TimeGroupFactor(CustomFactor, ABC):
 class MultipleReturnSelector(CustomFactor):
 
     def compute(self, data: torch.Tensor, key) -> torch.Tensor:
+        if len(data.shape) < 3:
+            raise KeyError('This factor has only one return value, cannot slice.')
+        elif data.shape[2] <= key:
+            raise KeyError('OutOfBounds: factor has only {} return values, and slice is [{}].'.
+                           format(data.shape[2], key))
         return data[:, :, key]
 
 

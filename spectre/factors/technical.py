@@ -11,6 +11,7 @@ from .statistical import STDDEV
 from .engine import OHLCV
 from ..parallel import nanmean
 import numpy as np
+import torch
 
 
 class NormalizedBollingerBands(CustomFactor):
@@ -30,6 +31,14 @@ class NormalizedBollingerBands(CustomFactor):
 
     def compute(self, closes, ma, std, k):
         return (closes - ma) / (k * std)
+
+
+class BollingerBands(NormalizedBollingerBands):
+    def compute(self, closes, ma, std, k):
+        d = k * std
+        up = ma + d
+        down = ma - d
+        return torch.cat([up.unsqueeze(-1), ma.unsqueeze(-1), down.unsqueeze(-1)], dim=-1)
 
 
 class MovingAverageConvergenceDivergenceSignal(EMA):
