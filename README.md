@@ -240,7 +240,7 @@ pf.create_full_tear_sheet(results.returns, positions=results.positions.value, tr
 
 ### CsvDirLoader
 `loader = spectre.data.CsvDirLoader(prices_path: str, prices_by_year=False, earliest_date: pd.Timestamp = None,
-              dividends_path=None, splits_path=None, calender_asset: str = None, align_by_time=False,
+              dividends_path=None, splits_path=None, file_pattern='*.csv', calender_asset: str = None, align_by_time=False,
               ohlcv=('open', 'high', 'low', 'close', 'volume'), adjustments=None,
               split_ratio_is_inverse=False, split_ratio_is_fraction=False,
               prices_index='date', dividends_index='exDate', splits_index='exDate', **read_csv)`
@@ -271,6 +271,7 @@ Reading csv is very slow, so you also need to use [ArrowLoader](#arrowloader).
 **split_ratio_is_inverse:** If split ratio calculated by to/from, set to True.
     For example, 2-for-1 split, to/form = 2, 1-for-15 Reverse Split, to/form = 0.6666...\
 **split_ratio_is_fraction:** If split ratio in csv is fraction string, like `1/3`, set to True.\
+**file_pattern:** csv file name pattern, default is '*.csv'.\
 **earliest_date:** Data before this date will not be read, save memory.\
 **calender_asset:** Asset name as trading calendar, like 'SPY', for clean up non-trading
     time data.\
@@ -645,7 +646,8 @@ Create another engine, generally used when you need multiple data sources.
 `self.set_history_window(offset: pd.DateOffset=None)`
 **context:** *initialize*
 
-Set the length of historical data passed to each `rebalance` call.
+Set the length of historical data passed to each `rebalance` call, Non-None values will slow down 
+backtesting.
 Default: If None, pass all available historical data, so there will be no historical data on the
 first day, one historical row on the next day, and so on.
 
@@ -696,7 +698,7 @@ for example: `alg.fire_event(MarketClose)`, (do not do this, do not fire built-i
 `self.results`
 **context:** *terminate*
 
-Get back-test results, same as the return value of [trading.run_backtest](#tradingrun_backtest)
+Get back-test results, same as the return value of [trading.run_backtest](#spectretradingrun_backtest)
 
 
 ### CustomAlgorithm.plot

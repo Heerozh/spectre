@@ -232,7 +232,7 @@ class ArrowLoader(DataLoader):
 
 class CsvDirLoader(DataLoader):
     def __init__(self, prices_path: str, prices_by_year=False, earliest_date: pd.Timestamp = None,
-                 dividends_path=None, splits_path=None,
+                 dividends_path=None, splits_path=None, file_pattern='*.csv',
                  calender_asset: str = None, align_by_time=False,
                  ohlcv=('open', 'high', 'low', 'close', 'volume'), adjustments=None,
                  split_ratio_is_inverse=False, split_ratio_is_fraction=False,
@@ -254,6 +254,7 @@ class CsvDirLoader(DataLoader):
             non-NaN 'split ratio', drop others.
             If `splits_path` not set, the `adjustments[1]` column is considered to be included
             in the prices csv.
+        :param file_pattern: csv file name pattern, default is '*.csv'.
         :param calender_asset: asset name as trading calendar, like 'SPY', for clean up non-trading
             time data.
         :param align_by_time: if True and `calender_asset` not None, df index will be the product of
@@ -284,6 +285,7 @@ class CsvDirLoader(DataLoader):
         self._earliest_date = earliest_date
         self._dividends_path = dividends_path
         self._splits_path = splits_path
+        self._file_pattern = file_pattern
         self._calender = calender_asset
         self._prices_index = prices_index
         self._dividends_index = dividends_index
@@ -293,7 +295,7 @@ class CsvDirLoader(DataLoader):
 
     @property
     def last_modified(self) -> float:
-        pattern = os.path.join(self._path, '*.csv')
+        pattern = os.path.join(self._path, self._file_pattern)
         files = glob.glob(pattern)
         if len(files) == 0:
             raise ValueError("Dir '{}' does not contains any csv files.".format(self._path))
@@ -301,7 +303,7 @@ class CsvDirLoader(DataLoader):
 
     def _walk_split_by_year_dir(self, csv_path, index_col):
         years = set(pd.date_range(self._earliest_date or 0, pd.Timestamp.now()).year)
-        pattern = os.path.join(csv_path, '*.csv')
+        pattern = os.path.join(csv_path, self._file_pattern)
         files = glob.glob(pattern)
         assets = {}
         for fn in files:
@@ -329,7 +331,7 @@ class CsvDirLoader(DataLoader):
         return dfs
 
     def _walk_dir(self, csv_path, index_col):
-        pattern = os.path.join(csv_path, '*.csv')
+        pattern = os.path.join(csv_path, self._file_pattern)
         files = glob.glob(pattern)
         if len(files) == 0:
             raise ValueError("There are no files is {}".format(csv_path))
