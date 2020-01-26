@@ -235,6 +235,9 @@ pf.create_full_tear_sheet(results.returns, positions=results.positions.value, tr
   will be different from the stock chart software which only adjusted according to last day.
   If you want adjusted by last day, use like 'AdjustedDataFactor(OHLCV.close)' as input data.
   This will speeds up a lot because it only needs to be adjusted once, but brings Look-Ahead Bias.
+* spectre's `EMA` uses the algorithm same as `zipline` and `Dataframe.ewm(span=win)`, when `win` is 
+  greater than 100, it will be different from common EMA.
+* spectre's `RSI` uses the algorithm same as `zipline`, for consistency in benchmarks. 
 
 ## Dataloader
 

@@ -195,7 +195,7 @@ class TestFactorLib(unittest.TestCase):
         test_expected(spectre.factors.EMA(11), expected_aapl, expected_msft, decimal=3)
         expected_aapl = talib.EMA(df_aapl_close.values, timeperiod=50)
         expected_msft = talib.EMA(df_msft_close.values, timeperiod=50)
-        test_expected(spectre.factors.EMA(50), expected_aapl, expected_msft, decimal=2)
+        test_expected(spectre.factors.EMA(50), expected_aapl, expected_msft, decimal=3)
 
         # test MACD
         expected = talib.MACD(df_aapl_close.values, fastperiod=12, slowperiod=26, signalperiod=9)

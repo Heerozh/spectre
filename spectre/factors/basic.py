@@ -68,9 +68,6 @@ class ExponentialWeightedMovingAverage(CustomFactor):
         # Length required to achieve 99.97% accuracy, np.log(1-99.97/100) / np.log(alpha)
         # simplification to 4 * (span+1). 3.45 achieve 99.90%, 2.26 99.00%
         self.win = int(4.5 * (self.span + 1))
-        # For GPU efficiency here, weight is not float64 type, EMA 50+ will leading to inaccurate,
-        # and so window greater than 200 produces a very small and negligible weight
-        self.win = min(self.win, 200)
         self.weight = np.full(self.win, 1 - self.alpha) ** np.arange(self.win - 1, -1, -1)
         if self.adjust:
             self.weight = self.weight / sum(self.weight)  # to sum one
