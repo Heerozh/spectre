@@ -17,7 +17,7 @@ class FilterFactor(CustomFactor, ABC):
         return factor
 
 
-class FilterShiftFactor(CustomFactor):
+class FilterShiftFactor(FilterFactor):
     """For "roll_cuda" not implemented for 'Bool' """
     periods = 1
 
