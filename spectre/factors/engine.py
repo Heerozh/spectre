@@ -49,7 +49,7 @@ class FactorEngine:
             return self._column_cache[data_column]
 
         series = self._dataframe[data_column]
-        data = torch.from_numpy(series.values).pin_memory().to(self._device, non_blocking=True)
+        data = torch.from_numpy(series.values).to(self._device, non_blocking=True)
         self._column_cache[data_column] = data
         return data
 

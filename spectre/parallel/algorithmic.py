@@ -25,7 +25,7 @@ class ParallelGroupBy:
         # get inverse indices
         width = np.diff(boundary).max()
         groups = len(boundary) - 1
-        inverse_indices = sorted_indices.new_full((groups, width), n + 1).pin_memory()
+        inverse_indices = sorted_indices.new_full((groups, width), n + 1)
         for start, end, i in zip(boundary[:-1], boundary[1:], range(groups)):
             inverse_indices[i, 0:(end - start)] = sorted_indices[start:end]
         # keep inverse_indices in GPU for sort
