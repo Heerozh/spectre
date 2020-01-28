@@ -30,7 +30,7 @@ class DataFactor(BaseFactor):
     def get_total_backwards_(self) -> int:
         return 0
 
-    def include_close_data(self) -> bool:
+    def is_close_data_used(self) -> bool:
         return self.is_data_after_market_close
 
     def pre_compute_(self, engine, start, end) -> None:

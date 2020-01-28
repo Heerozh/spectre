@@ -165,7 +165,7 @@ class BaseFactor:
     def get_total_backwards_(self) -> int:
         raise NotImplementedError("abstractmethod")
 
-    def include_close_data(self) -> bool:
+    def is_close_data_used(self) -> bool:
         return False
 
     def pre_compute_(self, engine: 'FactorEngine', start, end) -> None:
@@ -234,12 +234,12 @@ class CustomFactor(BaseFactor):
         else:
             return backwards
 
-    def include_close_data(self) -> bool:
-        ret = super().include_close_data()
+    def is_close_data_used(self) -> bool:
+        ret = super().is_close_data_used()
         if self.inputs:
             for upstream in self.inputs:
                 if isinstance(upstream, BaseFactor):
-                    up_ret = upstream.include_close_data()
+                    up_ret = upstream.is_close_data_used()
                     ret = max(ret, up_ret)
         return ret
 

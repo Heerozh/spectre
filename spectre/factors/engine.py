@@ -242,7 +242,7 @@ class FactorEngine:
 
         if not delay_factor:
             for c, f in self._factors.items():
-                if f.include_close_data():
+                if f.is_close_data_used():
                     warnings.warn("Warning!! delay_factor is set to False, "
                                   "but {} factor uses data that is only available "
                                   "after the market is closed.".format(c),
