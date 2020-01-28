@@ -11,7 +11,7 @@ from collections import namedtuple
 from .event import Event, EventReceiver, EventManager, EveryBarData, MarketOpen, MarketClose
 from .metric import plot_cumulative_returns
 from .blotter import BaseBlotter, SimulationBlotter
-from ..factors import FactorEngine, OHLCV
+from ..factors import FactorEngine, OHLCV, StaticAssets
 from ..data import DataLoader
 
 
@@ -121,10 +121,11 @@ class CustomAlgorithm(EventReceiver, ABC):
             bench = benchmark.loc[returns.index[0]:returns.index[-1]]
         elif isinstance(benchmark, str):
             engine = self.get_factor_engine()
-            close = engine.loader_.ohlcv[3]
-            df = engine.loader_.load(returns.index[0], returns.index[-1], 0)
-            bench = df.loc[(slice(None), benchmark), close]
-            bench = bench.droplevel(1, axis=0)
+            filter_ = engine.get_filter()
+            engine.set_filter(StaticAssets({benchmark}))
+            df = engine.get_price_matrix(returns.index[0], returns.index[-1])
+            engine.set_filter(filter_)
+            bench = df[benchmark]
             bench = bench.resample('D').last().dropna()
             bench = bench.pct_change()
 

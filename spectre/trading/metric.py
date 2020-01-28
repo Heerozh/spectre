@@ -72,13 +72,17 @@ def plot_cumulative_returns(returns, positions, transactions, benchmark, annual_
                   secondary_y=True)
 
     sr = sharpe_ratio(returns, annual_risk_free)
-    bench_sr = sharpe_ratio(benchmark, annual_risk_free)
     dd, ddd = drawdown(cum_ret)
     mdd = abs(dd.min())
     mdd_dur = ddd.max()
-
     vol = annual_volatility(returns) * 100
-    bench_vol = annual_volatility(benchmark) * 100
+
+    if benchmark is not None:
+        bench_sr = sharpe_ratio(benchmark, annual_risk_free)
+        bench_vol = annual_volatility(benchmark) * 100
+    else:
+        bench_sr = 0
+        bench_vol = 0
 
     ann = go.layout.Annotation(
         x=0.01, y=0.98, xref="paper", yref="paper",
