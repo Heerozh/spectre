@@ -110,6 +110,7 @@ class FactorEngine:
                           "some out of trading hours data will cause indexing problems."
                           .format(max_backwards, history_win),
                           RuntimeWarning)
+        # If possible, pre-screen
         if isinstance(self._filter, StaticAssets):
             df = df.loc[(slice(None), self._filter.assets), :]
             if df.shape[0] == 0:
@@ -131,7 +132,11 @@ class FactorEngine:
         self.column_to_parallel_groupby_(self._loader.time_category, 'date')
 
         self._column_cache = {}
-        self._last_load = [start, end, max_backwards]
+        if isinstance(self._filter, StaticAssets):
+            # if pre-screened, don't cache data, only cache full data.
+            self._last_load = [None, None, None]
+        else:
+            self._last_load = [start, end, max_backwards]
 
     def _compute_and_revert(self, f: BaseFactor, name) -> torch.Tensor:
         stream = None
@@ -335,7 +340,7 @@ class FactorEngine:
             assets = assets_ret.index.get_level_values(1).unique()
 
         filter_backup = self._filter
-        self._filter = None
+        self._filter = StaticAssets(assets)
         with warnings.catch_warnings():
             warnings.simplefilter("ignore")
             ret = self.run(start, end, delay_factor=False)
@@ -343,8 +348,6 @@ class FactorEngine:
         self._filter = filter_backup
 
         ret = ret['price'].unstack(level=[1])
-        if assets is not None:
-            ret = ret[assets]
         return ret
 
     def full_run(self, start, end, trade_at='close', periods=(1, 4, 9),
