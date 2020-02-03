@@ -87,18 +87,16 @@ class BaseFactor:
         return self.rank(ascending=True, mask=mask) <= n
 
     def rank(self, ascending=True, mask: 'BaseFactor' = None):
-        factor = RankFactor(inputs=(self,))
+        factor = RankFactor(inputs=(self,), mask=mask)
         # factor.method = method
         factor.ascending = ascending
-        factor.set_mask(mask)
         return factor
 
     def zscore(self, axis_asset=False, mask: 'BaseFactor' = None):
         if axis_asset:
-            factor = AssetZScoreFactor(inputs=(self,))
+            factor = AssetZScoreFactor(inputs=(self,), mask=mask)
         else:
-            factor = ZScoreFactor(inputs=(self,))
-        factor.set_mask(mask)
+            factor = ZScoreFactor(inputs=(self,), mask=mask)
         return factor
 
     def demean(self, groupby: Union[str, dict] = None, mask: 'BaseFactor' = None):
@@ -108,25 +106,22 @@ class BaseFactor:
         dict groupby will interrupt the parallelism of cuda, it is recommended to add group key to
         the Dataloader as a column, or use it only in the last step.
         """
-        factor = DemeanFactor(inputs=(self,))
+        factor = DemeanFactor(inputs=(self,), mask=mask)
         if isinstance(groupby, str):
             factor.groupby = groupby
         elif isinstance(groupby, dict):
             factor.group_dict = groupby
         elif groupby is not None:
             raise ValueError()
-        factor.set_mask(mask)
         return factor
 
     def quantile(self, bins=5, mask: 'BaseFactor' = None):
-        factor = QuantileFactor(inputs=(self,))
+        factor = QuantileFactor(inputs=(self,), mask=mask)
         factor.bins = bins
-        factor.set_mask(mask)
         return factor
 
     def to_weight(self, demean=True, mask: 'BaseFactor' = None):
-        factor = ToWeightFactor(inputs=(self,))
-        factor.set_mask(mask)
+        factor = ToWeightFactor(inputs=(self,), mask=mask)
         factor.demean = demean
         return factor
 
@@ -214,6 +209,7 @@ class CustomFactor(BaseFactor):
             self.win = win
         if inputs:
             self.inputs = inputs
+        assert isinstance(self.inputs, (list, tuple, type(None))), 'inputs must be a list.'
 
         assert (self.win >= (self._min_win or 1))
 
@@ -393,9 +389,11 @@ class TimeGroupFactor(CustomFactor, ABC):
     groupby = 'date'
     win = 1
 
-    def __init__(self, win: Optional[int] = None, inputs: Optional[Sequence[BaseFactor]] = None):
+    def __init__(self, win: Optional[int] = None, inputs: Optional[Sequence[BaseFactor]] = None,
+                 mask: Optional[BaseFactor] = None):
         super().__init__(win, inputs)
-        assert self.win == 1, 'TimeGroupFactor can only be win=1'
+        self.set_mask(mask)
+        assert self.win == 1, 'TimeGroupFactor.win can only be 1'
 
 
 # --------------- helper factors ---------------
