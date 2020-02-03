@@ -140,7 +140,7 @@ class FactorEngine:
 
     def _compute_and_revert(self, f: BaseFactor, name) -> torch.Tensor:
         stream = None
-        if self._device.type == 'cuda':
+        if self._device.type == 'cuda' and self._enable_stream:
             stream = torch.cuda.current_stream()
         data = f.compute_(stream)
         return self._groups[f.groupby].revert(data, name)
@@ -156,6 +156,7 @@ class FactorEngine:
         self._factors = {}
         self._filter = None
         self._device = torch.device('cpu')
+        self._enable_stream = False
         self._align_by_time = False
 
     @property
@@ -205,9 +206,14 @@ class FactorEngine:
     def remove_all_factors(self) -> None:
         self._factors = {}
 
-    def to_cuda(self) -> None:
+    def to_cuda(self, enable_stream=False) -> None:
+        """
+        Set enable_stream to True allows pipeline branches to calculation simultaneously.
+        However, this will lead to more VRAM usage and may affect speed.
+        """
         self._device = torch.device('cuda')
         self._last_load = [None, None, None]
+        self._enable_stream = enable_stream
 
     def to_cpu(self) -> None:
         self._device = torch.device('cpu')

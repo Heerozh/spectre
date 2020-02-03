@@ -237,6 +237,12 @@ class Rolling:
     def nanstd(self, axis=2):
         return self.agg(lambda x: nanstd(x, dim=axis, ddof=0))
 
+    def var(self, axis=2):
+        return self.agg(lambda x: x.var(unbiased=False, dim=axis))
+
+    def nanvar(self, axis=2):
+        return self.agg(lambda x: nanvar(x, dim=axis, ddof=0))
+
     def max(self):
         return self.agg(lambda x: x.max(dim=2)[0])
 
