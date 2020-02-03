@@ -62,7 +62,8 @@ class TestDataLoaderLib(unittest.TestCase):
     def test_csv_div_split(self):
         start, end = pd.Timestamp('2019-01-02', tz='UTC'), pd.Timestamp('2019-01-15', tz='UTC')
         loader = spectre.data.CsvDirLoader(
-            prices_path=data_dir + '/daily/', earliest_date=start, calender_asset='AAPL',
+            prices_path=data_dir + '/daily/', earliest_date=start.tz_convert(None),
+            calender_asset='AAPL',
             dividends_path=data_dir + '/dividends/', splits_path=data_dir + '/splits/',
             ohlcv=('uOpen', 'uHigh', 'uLow', 'uClose', 'uVolume'), adjustments=('amount', 'ratio'),
             prices_index='date', dividends_index='exDate', splits_index='exDate',
@@ -170,3 +171,21 @@ class TestDataLoaderLib(unittest.TestCase):
         engine.run("2016-12-15", "2017-01-02")
         df = engine._dataframe.loc[(slice('2016-12-15', '2017-12-15'), 'STJ'), :]
         assert df.price_multi.values[-1] == 1
+
+    def test_fast_get(self):
+        loader = spectre.data.CsvDirLoader(
+            data_dir + '/daily/', prices_index='date', parse_dates=True, )
+        df = loader.load()[list(loader.ohlcv)]
+        getter = spectre.data.DataLoaderFastGetter(df)
+
+        cur = getter.set_cursor(pd.Timestamp('2018-01-02', tz='UTC'), 3)
+        self.assertAlmostEqual(df.loc[("2018-01-02", 'MSFT')].close, cur['MSFT'])
+        self.assertAlmostEqual(df.loc[("2018-01-02", 'AAPL')].close, cur['AAPL'])
+        self.assertRaises(KeyError, cur.__getitem__, 'A')
+
+        cur = getter.set_cursor(pd.Timestamp('2019-01-05', tz='UTC'), 3)
+        self.assertTrue(np.isnan(cur['MSFT']))
+        self.assertRaises(KeyError, cur.__getitem__, 'AAPL')
+
+        cur = getter.set_cursor(pd.Timestamp('2019-01-10', tz='UTC'), 3)
+        self.assertRaises(KeyError, cur.__getitem__, 'MSFT')
