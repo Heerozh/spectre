@@ -1,6 +1,6 @@
 """
 @author: Heerozh (Zhang Jianhao)
-@copyright: Copyright 2019, Heerozh. All rights reserved.
+@copyright: Copyright 2019-2020, Heerozh. All rights reserved.
 @license: Apache 2.0
 @email: heeroz@gmail.com
 """
@@ -9,6 +9,7 @@ import pandas as pd
 import numpy as np
 from collections import namedtuple, defaultdict
 from .event import *
+from ..data import DataLoaderFastGetter
 
 
 class Portfolio:
@@ -327,7 +328,7 @@ class SimulationBlotter(BaseBlotter, EventReceiver):
 
         df = dataloader.load(None, None, 0)
         self._data = df
-        self._prices = df[list(dataloader.ohlcv)]
+        self._prices = DataLoaderFastGetter(df[list(dataloader.ohlcv)])
         self._current_prices_col = None
         self._current_prices = None
         if dataloader.adjustments is not None:
@@ -349,6 +350,7 @@ class SimulationBlotter(BaseBlotter, EventReceiver):
 
     def set_datetime(self, dt: pd.Timestamp) -> None:
         self._current_prices_col = None
+        self._current_prices = None
         if self._current_dt is not None:
             # make up events for skipped days for update splits and divs.
             current_date = self._current_dt.normalize()
@@ -358,8 +360,8 @@ class SimulationBlotter(BaseBlotter, EventReceiver):
                     if date == current_date or date == target_date:
                         continue
 
-                    row = self._prices.loc[date:date + pd.DateOffset(days=1, seconds=-1)]
-                    bar_times = row.index.get_level_values(0)
+                    table = self._prices.get_as_dict(date, 0)
+                    bar_times = table.get_datetime_index()
                     if len(bar_times) == 0:
                         continue
 
@@ -377,9 +379,9 @@ class SimulationBlotter(BaseBlotter, EventReceiver):
 
     def set_price(self, name: str):
         if name == 'open':
-            self._current_prices_col = self.dataloader.ohlcv[0]
+            self._current_prices_col = 0  # ohlcv[0] = o
         else:
-            self._current_prices_col = self.dataloader.ohlcv[3]
+            self._current_prices_col = 3  # ohlcv[3] = c
         self._current_prices = None
 
     def _get_current_prices(self):
@@ -387,9 +389,8 @@ class SimulationBlotter(BaseBlotter, EventReceiver):
             raise ValueError("_current_prices is None, maybe set_price was not called.")
 
         if self._current_prices is None:
-            curr_prices = self._prices.loc[self._current_dt]
-            curr_prices = curr_prices[self._current_prices_col]  # much faster in 2 steps
-            self._current_prices = curr_prices.to_dict()
+            self._current_prices = self._prices.get_as_dict(
+                self._current_dt, self._current_prices_col)
 
         return self._current_prices
 
@@ -469,7 +470,7 @@ class SimulationBlotter(BaseBlotter, EventReceiver):
         return ret
 
     def update_portfolio_value(self):
-        self._portfolio.update_value(self._get_current_prices())
+        self._portfolio.update_value(self._get_current_prices().get)
 
     def market_open(self, _):
         self.market_opened = True
@@ -481,6 +482,7 @@ class SimulationBlotter(BaseBlotter, EventReceiver):
         # push dividend/split data to portfolio
         if self._adjustments is not None:
             try:
+                # bottleneck point 1.5s
                 current_adj = self._adjustments.loc[self._current_dt]
                 div_col = self.dataloader.adjustments[0]
                 sp_col = self.dataloader.adjustments[1]
@@ -488,6 +490,7 @@ class SimulationBlotter(BaseBlotter, EventReceiver):
 
                 for asset, div in current_adj[div_col].items():
                     self._portfolio.process_dividends(asset, div)
+                # bottleneck point, 1.9s
                 for sr_row in current_adj[[sp_col, close_col]].itertuples():
                     self._portfolio.process_split(sr_row[0], 1/sr_row[1], sr_row[2])
             except KeyError:

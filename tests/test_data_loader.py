@@ -178,14 +178,25 @@ class TestDataLoaderLib(unittest.TestCase):
         df = loader.load()[list(loader.ohlcv)]
         getter = spectre.data.DataLoaderFastGetter(df)
 
-        cur = getter.set_cursor(pd.Timestamp('2018-01-02', tz='UTC'), 3)
-        self.assertAlmostEqual(df.loc[("2018-01-02", 'MSFT')].close, cur['MSFT'])
-        self.assertAlmostEqual(df.loc[("2018-01-02", 'AAPL')].close, cur['AAPL'])
-        self.assertRaises(KeyError, cur.__getitem__, 'A')
+        table = getter.get_as_dict(pd.Timestamp('2018-01-02', tz='UTC'), 3)
+        self.assertAlmostEqual(df.loc[("2018-01-02", 'MSFT')].close, table['MSFT'])
+        self.assertAlmostEqual(df.loc[("2018-01-02", 'AAPL')].close, table['AAPL'])
+        self.assertRaises(KeyError, table.__getitem__, 'A')
+        table = dict(table.items())
+        self.assertAlmostEqual(df.loc[("2018-01-02", 'MSFT')].close, table['MSFT'])
+        self.assertAlmostEqual(df.loc[("2018-01-02", 'AAPL')].close, table['AAPL'])
 
-        cur = getter.set_cursor(pd.Timestamp('2019-01-05', tz='UTC'), 3)
-        self.assertTrue(np.isnan(cur['MSFT']))
-        self.assertRaises(KeyError, cur.__getitem__, 'AAPL')
+        table = getter.get_as_dict(pd.Timestamp('2018-01-02', tz='UTC'))
+        np.testing.assert_array_almost_equal(df.loc[("2018-01-02", 'MSFT')].values, table['MSFT'])
+        np.testing.assert_array_almost_equal(df.loc[("2018-01-02", 'AAPL')].values, table['AAPL'])
 
-        cur = getter.set_cursor(pd.Timestamp('2019-01-10', tz='UTC'), 3)
-        self.assertRaises(KeyError, cur.__getitem__, 'MSFT')
+        result_df = getter.get_as_df(pd.Timestamp('2018-01-02', tz='UTC'))
+        expected = df.xs("2018-01-02")
+        pd.testing.assert_frame_equal(expected, result_df)
+
+        table = getter.get_as_dict(pd.Timestamp('2019-01-05', tz='UTC'), 3)
+        self.assertTrue(np.isnan(table['MSFT']))
+        self.assertRaises(KeyError, table.__getitem__, 'AAPL')
+
+        table = getter.get_as_dict(pd.Timestamp('2019-01-10', tz='UTC'), 3)
+        self.assertRaises(KeyError, table.__getitem__, 'MSFT')
