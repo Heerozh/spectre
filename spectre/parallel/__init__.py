@@ -3,6 +3,7 @@ from .algorithmic import (
     Rolling,
     nansum,
     nanmean,
+    nanvar,
     nanstd,
     nanlast,
     nanmax,

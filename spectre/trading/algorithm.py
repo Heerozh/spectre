@@ -12,7 +12,7 @@ from .event import Event, EventReceiver, EventManager, EveryBarData, MarketOpen,
 from .metric import plot_cumulative_returns
 from .blotter import BaseBlotter, SimulationBlotter
 from ..factors import FactorEngine, OHLCV, StaticAssets
-from ..data import DataLoader
+from ..data import DataLoader, DataLoaderFastGetter
 
 
 class Recorder:
@@ -196,13 +196,29 @@ class CustomAlgorithm(EventReceiver, ABC):
 
 
 class SimulationEventManager(EventManager):
-    _mock_data = None
-    _mock_last = None
+    _mocked_data = None
+    _mocked_last = None
 
     @classmethod
     def _get_most_granular(cls, data):
         freq = {k: min(v.index.levels[0][1:]-v.index.levels[0][:-1]) for k, v in data.items()}
         return data[min(freq, key=freq.get)]
+
+    @classmethod
+    def get_data_ticks(cls, data, start):
+        if isinstance(data, dict):
+            df = cls._get_most_granular(data)
+            df = df.loc[start:]
+        else:
+            df = data[start:]
+        return df.index.get_level_values(0).unique()
+
+    @classmethod
+    def wrap_data(cls, data, func):
+        if isinstance(data, dict):
+            return {k: func(v) for k, v in data.items()}
+        else:
+            return func(data)
 
     def fire_before_event(self, event_type):
         for _, events in self._subscribers.items():
@@ -230,6 +246,20 @@ class SimulationEventManager(EventManager):
         self.fire_before_event(MarketClose)
         self.fire_after_event(MarketClose)
 
+    def mock_data(self, data, datetime):
+        def _mock_one(_getter):
+            last = _getter.get_as_df(datetime)
+            head = _getter.source.iloc[:_getter.last_row_slice.stop]
+            return last, head
+
+        if isinstance(data, dict):
+            self._mocked_last = {}
+            self._mocked_data = {}
+            for k, getter in data.items():
+                self._mocked_last[k], self._mocked_data[k] = _mock_one(getter)
+        else:
+            self._mocked_last, self._mocked_data = _mock_one(data)
+
     def run(self, start, end, delay_factor=True):
         from tqdm.auto import tqdm
 
@@ -254,35 +284,20 @@ class SimulationEventManager(EventManager):
             # get factor data from algorithm
             run_engine = alg.run_engine
             data, _ = run_engine(start, end, delay_factor)
+            ticks = self.get_data_ticks(data, start)
+            if len(ticks) == 0:
+                raise ValueError("No data returned, please set `start`, `end` time correctly")
+            data = self.wrap_data(data, DataLoaderFastGetter)
             # mock CustomAlgorithm
-            alg.run_engine = lambda *args: (self._mock_data, self._mock_last)
-            if isinstance(data, dict):
-                lv0_dropped_data = {k: v.droplevel(0) for k, v in data.items()}
-                main = self._get_most_granular(data)
-                main = main.loc[start:end]
-            else:
-                lv0_dropped_data = data.droplevel(0)  # for performance purpose
-                main = data[start:]
+            alg.run_engine = lambda *args: (self._mocked_data, self._mocked_last)
 
             # loop factor data
             last_day = None
-            ticks = main.index.get_level_values(0).unique()
-            if len(ticks) == 0:
-                raise ValueError("No data, please set `start`, `end` time correctly")
             for dt in tqdm(ticks):
                 if self._stop:
                     break
                 # prepare data
-                if isinstance(data, dict):
-                    self._mock_data = {k: v[:dt] for k, v in data.items()}
-                    self._mock_last = {
-                        k: lv0_dropped_data[k].iloc[
-                            v.index.get_loc(v.index.get_level_values(0)[-1])]
-                        for k, v in self._mock_data.items()}
-                else:
-                    i = data.index.get_loc(dt)
-                    self._mock_data = data.iloc[:i.stop]
-                    self._mock_last = lv0_dropped_data.iloc[i]
+                self.mock_data(data, dt)
 
                 # if date changed
                 if dt.day != last_day:
