@@ -448,7 +448,7 @@ class FactorEngine:
                 demean_col = ('Demeaned', period_col)
                 mean_col = (fact_name, period_col)
                 mean_return[mean_col] = grouped_mean[demean_col]
-        mean_return.index.levels[0].name = 'quantile'
+        mean_return.index.set_names('quantile', level=0)
         mean_return = mean_return.groupby(level=0).agg(['mean', 'sem'])
         mean_return.sort_index(axis=1, inplace=True)
 

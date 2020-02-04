@@ -94,7 +94,8 @@ class BaseFactor:
 
     def zscore(self, axis_asset=False, mask: 'BaseFactor' = None):
         if axis_asset:
-            factor = AssetZScoreFactor(inputs=(self,), mask=mask)
+            factor = AssetZScoreFactor(inputs=(self,))
+            factor.set_mask(mask)
         else:
             factor = ZScoreFactor(inputs=(self,), mask=mask)
         return factor
