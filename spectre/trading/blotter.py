@@ -335,7 +335,8 @@ class SimulationBlotter(BaseBlotter, EventReceiver):
             div_col = dataloader.adjustments[0]
             sp_col = dataloader.adjustments[1]
             adj = df[[div_col, sp_col, dataloader.ohlcv[3]]]
-            self._adjustments = adj[(adj[div_col] != 0) | (adj[sp_col] != 1)]
+            adj = adj[(adj[div_col] != 0) | (adj[sp_col] != 1)]
+            self._adjustments = DataLoaderFastGetter(adj)
         else:
             self._adjustments = None
 
@@ -482,17 +483,12 @@ class SimulationBlotter(BaseBlotter, EventReceiver):
         # push dividend/split data to portfolio
         if self._adjustments is not None:
             try:
-                # bottleneck point 1.5s
-                current_adj = self._adjustments.loc[self._current_dt]
-                div_col = self.dataloader.adjustments[0]
-                sp_col = self.dataloader.adjustments[1]
-                close_col = self.dataloader.ohlcv[3]
+                div_col, sp_col, close_col = 0, 1, 2
+                current_adj = self._adjustments.get_as_dict(self._current_dt)
 
-                for asset, div in current_adj[div_col].items():
-                    self._portfolio.process_dividends(asset, div)
-                # bottleneck point, 1.9s
-                for sr_row in current_adj[[sp_col, close_col]].itertuples():
-                    self._portfolio.process_split(sr_row[0], 1/sr_row[1], sr_row[2])
+                for asset, row in current_adj.items():
+                    self._portfolio.process_dividends(asset, row[div_col])
+                    self._portfolio.process_split(asset, 1/row[sp_col], row[close_col])
             except KeyError:
                 pass
 
