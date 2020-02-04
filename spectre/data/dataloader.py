@@ -9,72 +9,6 @@ import pandas as pd
 import numpy as np
 
 
-class DataLoaderFastGetter:
-    """Fast get method for dataloader's DataFrame"""
-    class DictLikeCursor:
-        def __init__(self, parent, row_slice, column_id):
-            self.parent = parent
-            self.row_slice = row_slice
-            self.data = parent.raw_data[row_slice, column_id]
-            self.index = parent.asset_index[row_slice]
-            self.length = len(self.index)
-
-        def get_datetime_index(self):
-            return self.parent.indexes[0][self.row_slice]
-
-        def __getitem__(self, asset):
-            asset_id = self.parent.asset_to_code[asset]
-            cursor_index = self.index
-            i = cursor_index.searchsorted(asset_id)
-            if i >= self.length:
-                raise KeyError('{} not found'.format(asset))
-            if cursor_index[i] != asset_id:
-                raise KeyError('{} not found'.format(asset))
-            return self.data[i]
-
-        def items(self):
-            idx = self.index
-            code_to_asset = self.parent.code_to_asset
-            for i in range(self.length):
-                code = idx[i]
-                name = code_to_asset[code]
-                yield name, self.data[i]
-
-        def get(self, asset, default=None):
-            try:
-                return self[asset]
-            except KeyError:
-                return default
-
-    def __init__(self, df):
-        cat = df.index.get_level_values(1)
-
-        self.source = df
-        self.raw_data = df.values
-        self.columns = df.columns
-        self.indexes = [df.index.get_level_values(0), cat]
-        self.asset_index = cat.codes
-        self.asset_to_code = {v: k for k, v in enumerate(cat.categories)}
-        self.code_to_asset = dict(enumerate(cat.categories))
-        self.last_row_slice = None
-
-    def get_as_dict(self, datetime, column_id=slice(None)):
-        idx = self.indexes[0]
-        row_slice = slice(idx.searchsorted(datetime), idx.searchsorted(datetime, side='right'))
-        cur = self.DictLikeCursor(self, row_slice, column_id)
-        self.last_row_slice = row_slice
-        return cur
-
-    def get_as_df(self, datetime):
-        """550x faster than .loc[], 3x faster than .iloc[]"""
-        idx = self.indexes[0]
-        row_slice = slice(idx.searchsorted(datetime), idx.searchsorted(datetime, side='right'))
-        data = self.raw_data[row_slice]
-        index = self.indexes[1][row_slice]
-        self.last_row_slice = row_slice
-        return pd.DataFrame(data, index=index, columns=self.columns)
-
-
 class DataLoader:
     def __init__(self, path: str, ohlcv=('open', 'high', 'low', 'close', 'volume'),
                  adjustments=('ex-dividend', 'split_ratio')) -> None:
@@ -238,3 +172,69 @@ class DataLoader:
 
         backward_start = index[backward_loc]
         return df.loc[backward_start:end]
+
+
+class DataLoaderFastGetter:
+    """Fast get method for dataloader's DataFrame"""
+    class DictLikeCursor:
+        def __init__(self, parent, row_slice, column_id):
+            self.parent = parent
+            self.row_slice = row_slice
+            self.data = parent.raw_data[row_slice, column_id]
+            self.index = parent.asset_index[row_slice]
+            self.length = len(self.index)
+
+        def get_datetime_index(self):
+            return self.parent.indexes[0][self.row_slice]
+
+        def __getitem__(self, asset):
+            asset_id = self.parent.asset_to_code[asset]
+            cursor_index = self.index
+            i = cursor_index.searchsorted(asset_id)
+            if i >= self.length:
+                raise KeyError('{} not found'.format(asset))
+            if cursor_index[i] != asset_id:
+                raise KeyError('{} not found'.format(asset))
+            return self.data[i]
+
+        def items(self):
+            idx = self.index
+            code_to_asset = self.parent.code_to_asset
+            for i in range(self.length):
+                code = idx[i]
+                name = code_to_asset[code]
+                yield name, self.data[i]
+
+        def get(self, asset, default=None):
+            try:
+                return self[asset]
+            except KeyError:
+                return default
+
+    def __init__(self, df):
+        cat = df.index.get_level_values(1)
+
+        self.source = df
+        self.raw_data = df.values
+        self.columns = df.columns
+        self.indexes = [df.index.get_level_values(0), cat]
+        self.asset_index = cat.codes
+        self.asset_to_code = {v: k for k, v in enumerate(cat.categories)}
+        self.code_to_asset = dict(enumerate(cat.categories))
+        self.last_row_slice = None
+
+    def get_as_dict(self, datetime, column_id=slice(None)):
+        idx = self.indexes[0]
+        row_slice = slice(idx.searchsorted(datetime), idx.searchsorted(datetime, side='right'))
+        cur = self.DictLikeCursor(self, row_slice, column_id)
+        self.last_row_slice = row_slice
+        return cur
+
+    def get_as_df(self, datetime):
+        """550x faster than .loc[], 3x faster than .iloc[]"""
+        idx = self.indexes[0]
+        row_slice = slice(idx.searchsorted(datetime), idx.searchsorted(datetime, side='right'))
+        data = self.raw_data[row_slice]
+        index = self.indexes[1][row_slice]
+        self.last_row_slice = row_slice
+        return pd.DataFrame(data, index=index, columns=self.columns)
