@@ -361,7 +361,8 @@ class SimulationBlotter(BaseBlotter, EventReceiver):
                     if date == current_date or date == target_date:
                         continue
 
-                    table = self._prices.get_as_dict(date, 0)
+                    stop = date + pd.DateOffset(days=1, seconds=-1)
+                    table = self._prices.get_as_dict(date, stop)
                     bar_times = table.get_datetime_index()
                     if len(bar_times) == 0:
                         continue
@@ -391,7 +392,7 @@ class SimulationBlotter(BaseBlotter, EventReceiver):
 
         if self._current_prices is None:
             self._current_prices = self._prices.get_as_dict(
-                self._current_dt, self._current_prices_col)
+                self._current_dt, column_id=self._current_prices_col)
 
         return self._current_prices
 
@@ -484,7 +485,9 @@ class SimulationBlotter(BaseBlotter, EventReceiver):
         if self._adjustments is not None:
             try:
                 div_col, sp_col, close_col = 0, 1, 2
-                current_adj = self._adjustments.get_as_dict(self._current_dt)
+                start = self._current_dt.normalize()
+                stop = start + pd.DateOffset(days=1, seconds=-1)
+                current_adj = self._adjustments.get_as_dict(start, stop)
 
                 for asset, row in current_adj.items():
                     self._portfolio.process_dividends(asset, row[div_col])

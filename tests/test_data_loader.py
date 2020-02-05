@@ -178,7 +178,7 @@ class TestDataLoaderLib(unittest.TestCase):
         df = loader.load()[list(loader.ohlcv)]
         getter = spectre.data.DataLoaderFastGetter(df)
 
-        table = getter.get_as_dict(pd.Timestamp('2018-01-02', tz='UTC'), 3)
+        table = getter.get_as_dict(pd.Timestamp('2018-01-02', tz='UTC'), column_id=3)
         self.assertAlmostEqual(df.loc[("2018-01-02", 'MSFT')].close, table['MSFT'])
         self.assertAlmostEqual(df.loc[("2018-01-02", 'AAPL')].close, table['AAPL'])
         self.assertRaises(KeyError, table.__getitem__, 'A')
@@ -194,9 +194,20 @@ class TestDataLoaderLib(unittest.TestCase):
         expected = df.xs("2018-01-02")
         pd.testing.assert_frame_equal(expected, result_df)
 
-        table = getter.get_as_dict(pd.Timestamp('2019-01-05', tz='UTC'), 3)
+        table = getter.get_as_dict(pd.Timestamp('2019-01-05', tz='UTC'), column_id=3)
         self.assertTrue(np.isnan(table['MSFT']))
         self.assertRaises(KeyError, table.__getitem__, 'AAPL')
 
-        table = getter.get_as_dict(pd.Timestamp('2019-01-10', tz='UTC'), 3)
+        table = getter.get_as_dict(pd.Timestamp('2019-01-10', tz='UTC'), column_id=3)
         self.assertRaises(KeyError, table.__getitem__, 'MSFT')
+
+        # test 5mins
+        loader = spectre.data.CsvDirLoader(
+            data_dir + '/5mins/', prices_by_year=True, prices_index='Date', parse_dates=True, )
+        df = loader.load()
+        getter = spectre.data.DataLoaderFastGetter(df)
+        table = getter.get_as_dict(
+            pd.Timestamp('2018-12-20 00:00:00+00:00', tz='UTC'),
+            pd.Timestamp('2018-12-20 23:59:59+00:00', tz='UTC'),
+            column_id=0)
+        self.assertTrue(len(table.get_datetime_index().normalize().unique()) == 1)
