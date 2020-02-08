@@ -8,7 +8,7 @@ spectre is a **GPU-accelerated Parallel** quantitative trading library, focused 
   * Pure python code, based on PyTorch, so it can integrate DL model very smoothly.
   * Compatible with `alphalens` and `pyfolio`
 
-Python 3.7, pandas 0.25 recommended
+Python 3.7+, PyTorch 1.3+, Pandas 1.0+ recommended
 
 
 # Installation
@@ -35,14 +35,13 @@ Running on Quandl 5 years, 3196 Assets, total 3,637,344 bars.
 
 |                |       spectre (CUDA)         |       spectre (CPU)        |   zipline.pipeline    |
 |----------------|------------------------------|----------------------------|-----------------------|
-|SMA(100)        | 126 ms ± 759 µs (**23.7x**)  | 2.68 s ± 36.1 ms (1.11x)   | 2.98 s ± 14.4 ms (1x) |
-|EMA(50) win=200 | 179 ms ± 692 µs (**42.5x**)  | 4.37 s ± 46.4 ms (1.74x)   | 7.6 s ± 15.4 ms (1x) |
-|(MACD+RSI+STOCHF).rank.zscore | 473 ms ± 73.2 ms (**30.2x**) | 6.01 s ± 28.1 (2.38x)   | 14.3 s ± 277 ms (1x) |
+|SMA(100)        | 144 ms ± 974 µs (**20.7x**) | 2.68 s ± 36.1 ms (1.11x)   | 2.98 s ± 14.4 ms (1x) |
+|EMA(50) win=229 | 270 ms ± 1.89 ms (**31.0x**)  | 4.37 s ± 46.4 ms (1.74x)   | 8.38 s ± 56.8 ms (1x) |
+|(MACD+RSI+STOCHF).rank.zscore | 282 ms ± 1.33 ms (**50.7x**) | 6.01 s ± 28.1 (2.38x)   | 14.3 s ± 277 ms (1x) |
 
 
-* The CUDA memory used in the spectre benchmark is 0.9G, returned by cuda.max_memory_allocated().
+* The CUDA memory used in the spectre benchmark is 2.4G, returned by cuda.max_memory_allocated().
 * Benchmarks excluded the initial run (no copy data to VRAM, about saving 300ms).
-
 
 # Quick Start
 
@@ -219,7 +218,7 @@ pf.create_full_tear_sheet(results.returns, positions=results.positions.value, tr
 
 ## Note
 
-### Differences with zipline:
+### Differences to zipline:
 * In order to GPU optimize, the `CustomFactor.compute` function calculates the results of all bars 
   at once, so you need to be careful to prevent Look-Ahead Bias, because the inputs are not just 
   historical data. Also using `engine.test_lookahead_bias` do some tests.
@@ -230,13 +229,13 @@ pf.create_full_tear_sheet(results.returns, positions=results.positions.value, tr
   `align_by_time` parameter of `CsvDirLoader`.
 
 
-### Differences with common chart:
+### Differences to common chart:
 * If there is adjustments data, the prices is re-adjusted every day, so the factor you got, like MA, 
   will be different from the stock chart software which only adjusted according to last day.
   If you want adjusted by last day, use like 'AdjustedDataFactor(OHLCV.close)' as input data.
   This will speeds up a lot because it only needs to be adjusted once, but brings Look-Ahead Bias.
 * spectre's `EMA` uses the algorithm same as `zipline` and `Dataframe.ewm(span=win)`, when `win` is 
-  greater than 100, it will be different from common EMA.
+  greater than 100, it will be slightly different from common EMA.
 * spectre's `RSI` uses the algorithm same as `zipline`, for consistency in benchmarks. 
 
 ## Dataloader
@@ -402,10 +401,12 @@ Remove global filter, and all factors.
 
 ### FactorEngine.to_cuda
 
-`engine.to_cuda()`
+`engine.to_cuda(enable_stream=False)`
 
 Switch to GPU mode.
 
+Set enable_stream to True allows pipeline branches to calculation simultaneously.
+However, this will lead to more VRAM usage and may also affect performance.
 
 ### FactorEngine.to_cpu
 
@@ -649,8 +650,8 @@ Create another engine, generally used when you need multiple data sources.
 `self.set_history_window(offset: pd.DateOffset=None)`
 **context:** *initialize*
 
-Set the length of historical data passed to each `rebalance` call, Non-None values will slow down 
-backtesting.
+Set the length of historical data passed to each `rebalance` call. **SLOW**
+
 Default: If None, pass all available historical data, so there will be no historical data on the
 first day, one historical row on the next day, and so on.
 
@@ -774,7 +775,7 @@ Set the transaction fees which only charged for sell orders.
 `self.blotter.daily_curb = float` 
 **context:** *initialize, rebalance*
 
-Limit on trading a specific asset if today to previous day return >= ±value.
+Limit on trading a specific asset if today to previous day return >= ±value. **SLOW**
 
 
 ### SimulationBlotter.order_target
