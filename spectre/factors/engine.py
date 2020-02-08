@@ -67,9 +67,6 @@ class FactorEngine:
         keys = torch.tensor(cat, device=self._device, dtype=torch.int32)
         self._groups[as_group_name] = ParallelGroupBy(keys)
 
-    def create_tensor(self, group: str, dtype, values, nan_values) -> torch.Tensor:
-        return self._groups[group].create(dtype, values, nan_values)
-
     def revert_(self, data: torch.Tensor, group: str, factor_name: str) -> torch.Tensor:
         return self._groups[group].revert(data, factor_name)
 
@@ -122,9 +119,10 @@ class FactorEngine:
             # df = df.reindex(pd.MultiIndex.from_product(df.index.levels))
             df = df.unstack(level=1).stack(dropna=False)
         self._dataframe = df
+        self._dataframe_index = [df.index.get_level_values(i) for i in range(len(df.index.levels))]
 
         # asset group
-        cat = self._dataframe.index.get_level_values(1).codes
+        cat = self._dataframe_index[1].codes
         keys = torch.tensor(cat, device=self._device, dtype=torch.int32)
         self._groups['asset'] = ParallelGroupBy(keys)
 
@@ -150,6 +148,7 @@ class FactorEngine:
     def __init__(self, loader: DataLoader) -> None:
         self._loader = loader
         self._dataframe = None
+        self._dataframe_index = None
         self._groups = dict()
         self._last_load = [None, None, None]
         self._column_cache = {}
@@ -162,6 +161,13 @@ class FactorEngine:
     @property
     def device(self):
         return self._device
+
+    @property
+    def dataframe_index(self):
+        return self._dataframe_index
+
+    def create_tensor(self, group: str, dtype, values, nan_values) -> torch.Tensor:
+        return self._groups[group].create(dtype, values, nan_values)
 
     def set_align_by_time(self, enable: bool):
         """
@@ -195,9 +201,6 @@ class FactorEngine:
 
     def get_factor(self, name):
         return self._factors[name]
-
-    def get_asset_names(self):
-        return self._dataframe.index.get_level_values(1).unique().values
 
     def clear(self):
         self.remove_all_factors()
