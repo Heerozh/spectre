@@ -65,3 +65,37 @@ class AdjustedDataFactor(CustomFactor):
         if multi is None:
             return data
         return data * multi / nanlast(multi, dim=1)[:, None]
+
+
+class AssetClassifierDataFactor(BaseFactor):
+    """dict to categorical output for asset"""
+    def __init__(self, sector: dict, default: int):
+        super().__init__()
+        self.sector = sector
+        self.default = default
+        self._data = None
+
+    def get_total_backwards_(self) -> int:
+        return 0
+
+    def is_close_data_used(self) -> bool:
+        return False
+
+    def pre_compute_(self, engine, start, end) -> None:
+        super().pre_compute_(engine, start, end)
+        assets = engine.dataframe_index[1]
+        sector = self.sector
+        default = self.default
+        data = [sector.get(asset, default) for asset in assets]
+        data = torch.tensor(data, device=engine.device, dtype=torch.float32)
+        self._data = engine.group_by_(data, self.groupby)
+
+    def clean_up_(self) -> None:
+        super().clean_up_()
+        self._data = None
+
+    def compute_(self, stream: Union[torch.cuda.Stream, None]) -> torch.Tensor:
+        return self._data
+
+    def compute(self, *inputs: Sequence[torch.Tensor]) -> torch.Tensor:
+        pass

@@ -13,6 +13,7 @@ from .factor import (
 from .datafactor import (
     DataFactor,
     AdjustedDataFactor,
+    AssetClassifierDataFactor,
 )
 
 from .filter import (
