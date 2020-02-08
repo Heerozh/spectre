@@ -17,7 +17,9 @@ from .datafactor import (
 )
 
 from .filter import (
+    FilterFactor,
     StaticAssets,
+    OneHotEncoder,
 )
 
 from .multiprocessing import (

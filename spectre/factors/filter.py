@@ -6,15 +6,24 @@
 """
 from abc import ABC
 from typing import Set
-from .factor import CustomFactor
+from .factor import BaseFactor, CustomFactor, MultiRetSelector
 import torch
+import warnings
 
 
 class FilterFactor(CustomFactor, ABC):
+    def __getitem__(self, key):
+        return FilterMultiRetSelector(inputs=(self, key))
+
     def shift(self, periods=1):
         factor = FilterShiftFactor(inputs=(self,))
         factor.periods = periods
         return factor
+
+
+class FilterMultiRetSelector(MultiRetSelector, FilterFactor):
+    """MultiRetSelector returns CustomFactor, we're override here as FilterFactor"""
+    pass
 
 
 class FilterShiftFactor(FilterFactor):
@@ -42,6 +51,23 @@ class StaticAssets(FilterFactor):
         s = self._revert_to_series(data)
         ret = s.index.isin(self.assets, level=1)
         return self._regroup(ret)
+
+
+class OneHotEncoder(FilterFactor):
+    def __init__(self, input_: BaseFactor):
+        super().__init__(1, [input_])
+
+    def compute(self, data: torch.Tensor) -> torch.Tensor:
+        classes = torch.unique(data, sorted=False)
+        classes = classes[~torch.isnan(classes)]
+        one_hot = []
+        if classes.shape[0] > 1000:
+            warnings.warn("One hot encoding with too many features: ({}). "
+                          .format(classes.shape[0]),
+                          RuntimeWarning)
+        for i in range(classes.shape[0]):
+            one_hot.append((data == classes[i]).unsqueeze(-1))
+        return torch.cat(one_hot, dim=-1)
 
 
 class InvertFactor(FilterFactor):

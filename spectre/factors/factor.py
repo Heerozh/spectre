@@ -76,7 +76,7 @@ class BaseFactor:
         return InvertFactor(inputs=(self,))
 
     def __getitem__(self, key):
-        return MultipleReturnSelector(inputs=(self, key))
+        return MultiRetSelector(inputs=(self, key))
 
     # --------------- helper functions ---------------
 
@@ -138,6 +138,11 @@ class BaseFactor:
         mf = DoNothingFactor(inputs=(self,))
         mf.set_mask(mask)
         return mf
+
+    def one_hot(self):
+        from .filter import OneHotEncoder
+        factor = OneHotEncoder(self)
+        return factor
 
     # --------------- main methods ---------------
     @property
@@ -400,7 +405,7 @@ class TimeGroupFactor(CustomFactor, ABC):
 # --------------- helper factors ---------------
 
 
-class MultipleReturnSelector(CustomFactor):
+class MultiRetSelector(CustomFactor):
 
     def compute(self, data: torch.Tensor, key) -> torch.Tensor:
         if len(data.shape) < 3:
