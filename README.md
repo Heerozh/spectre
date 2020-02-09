@@ -128,9 +128,8 @@ bb_cross_factor.show_graph()
 
 The thickness of the line represents the length of the Rolling Window, kind of like "bandwidth".
 
-The engine in GPU mode performs multiple inputs calculations simultaneously, the two branch paths 
-of the orange RankFactor in the diagram above will be calculated simultaneously, the same goes for 
-NormalizedBollingerBands.
+If `engine.to_cuda(enable_stream=True)`, the calculation of the branches will be performed
+simultaneously, and the VRAM usage will increase proportionally. 
 
 ### Compatible with alphalens
 
@@ -501,6 +500,11 @@ new_factor = factor.filter(some_filter)   # filter only this factor
 
 # Multiple returns selecting
 new_factor = factor[0]
+
+# Others
+new_filter[n_features] = factor.one_hot()  # one-hot encoding
+new_factor = factor.quantile(bins=5)  # factor value quantile groupby datetime
+
 ```
 
 ## How to write your own factor
