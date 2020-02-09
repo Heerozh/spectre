@@ -1,6 +1,6 @@
 """
 @author: Heerozh (Zhang Jianhao)
-@copyright: Copyright 2019, Heerozh. All rights reserved.
+@copyright: Copyright 2019-2020, Heerozh. All rights reserved.
 @license: Apache 2.0
 @email: heeroz@gmail.com
 """
@@ -86,7 +86,7 @@ class AssetClassifierDataFactor(BaseFactor):
         assets = engine.dataframe_index[1]
         sector = self.sector
         default = self.default
-        data = [sector.get(asset, default) for asset in assets]
+        data = [sector.get(asset, default) for asset in assets]  # slow
         data = torch.tensor(data, device=engine.device, dtype=torch.float32)
         self._data = engine.group_by_(data, self.groupby)
 

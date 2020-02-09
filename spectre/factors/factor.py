@@ -482,7 +482,7 @@ class AssetZScoreFactor(CustomFactor):
 
 
 class QuantileFactor(TimeGroupFactor):
-    """return the quantile that factor belongs to each tick"""
+    """return the quantile that factor belongs to each bar"""
     bins = 5
 
     def compute(self, data: torch.Tensor) -> torch.Tensor:
