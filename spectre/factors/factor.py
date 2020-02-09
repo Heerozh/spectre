@@ -166,7 +166,8 @@ class BaseFactor:
     def get_total_backwards_(self) -> int:
         raise NotImplementedError("abstractmethod")
 
-    def is_close_data_used(self) -> bool:
+    def should_delay(self) -> bool:
+        """Is this factor should be delayed?"""
         return False
 
     def pre_compute_(self, engine: 'FactorEngine', start, end) -> None:
@@ -236,12 +237,12 @@ class CustomFactor(BaseFactor):
         else:
             return backwards
 
-    def is_close_data_used(self) -> bool:
-        ret = super().is_close_data_used()
+    def should_delay(self) -> bool:
+        ret = super().should_delay()
         if self.inputs:
             for upstream in self.inputs:
                 if isinstance(upstream, BaseFactor):
-                    up_ret = upstream.is_close_data_used()
+                    up_ret = upstream.should_delay()
                     ret = max(ret, up_ret)
         return ret
 
