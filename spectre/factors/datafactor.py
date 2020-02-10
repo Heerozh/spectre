@@ -11,8 +11,7 @@ import torch
 
 
 class DataFactor(BaseFactor):
-    def __init__(self, inputs: Optional[Sequence[str]] = None,
-                 is_data_after_market_close=True) -> None:
+    def __init__(self, inputs: Optional[Sequence[str]] = None, should_delay=True) -> None:
         super().__init__()
         if inputs:
             self.inputs = inputs
@@ -21,7 +20,7 @@ class DataFactor(BaseFactor):
             "adjustments column"
         self._data = None
         self._multi = None
-        self.is_data_after_market_close = is_data_after_market_close
+        self._should_delay = should_delay
 
     @property
     def adjustments(self):
@@ -30,8 +29,8 @@ class DataFactor(BaseFactor):
     def get_total_backwards_(self) -> int:
         return 0
 
-    def is_close_data_used(self) -> bool:
-        return self.is_data_after_market_close
+    def should_delay(self) -> bool:
+        return self._should_delay
 
     def pre_compute_(self, engine, start, end) -> None:
         super().pre_compute_(engine, start, end)
@@ -68,7 +67,7 @@ class AdjustedDataFactor(CustomFactor):
 
 
 class AssetClassifierDataFactor(BaseFactor):
-    """dict to categorical output for asset"""
+    """Dict to categorical output for asset, slow"""
     def __init__(self, sector: dict, default: int):
         super().__init__()
         self.sector = sector
@@ -78,7 +77,7 @@ class AssetClassifierDataFactor(BaseFactor):
     def get_total_backwards_(self) -> int:
         return 0
 
-    def is_close_data_used(self) -> bool:
+    def should_delay(self) -> bool:
         return False
 
     def pre_compute_(self, engine, start, end) -> None:

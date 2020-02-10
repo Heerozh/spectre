@@ -35,3 +35,9 @@ class TestDataFactorLib(unittest.TestCase):
                            (155.72, 155.19, 150.81))
         assert_array_equal(df.loc[(slice(None), 'MSFT'), 'open'].values,
                            (104.65, 104.9, 103.19))
+
+        df = engine.run('2019-01-11', '2019-01-15')
+        assert_array_equal(df.loc[(slice(None), 'AAPL'), 'open'].values,
+                           (155.72, 155.19, 150.81))
+        assert_array_equal(df.loc[(slice(None), 'MSFT'), 'open'].values,
+                           (104.65, 104.9, 103.19))

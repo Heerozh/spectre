@@ -18,7 +18,7 @@ import torch
 
 
 class OHLCV:
-    open = DataFactor(inputs=('',), is_data_after_market_close=False)
+    open = DataFactor(inputs=('',), should_delay=False)
     high = DataFactor(inputs=('',))
     low = DataFactor(inputs=('',))
     close = DataFactor(inputs=('',))
@@ -226,23 +226,29 @@ class FactorEngine:
         """Check all factors, if there are look-ahead bias"""
         start, end = pd.to_datetime(start, utc=True), pd.to_datetime(end, utc=True)
         # get results
-        df_expected = self.run(start, end)
+        with warnings.catch_warnings():
+            warnings.simplefilter("ignore")
+            df_expected = self.run(start, end, delay_factor=False)
         # modify future data
-        mid = int(self._dataframe[start:].shape[0] / 2)
-        mid_time = self._dataframe[start:].index[mid][0]
-        length = self._dataframe.loc[mid_time:].shape[0]
-        for c in self._loader.ohlcv:
-            self._dataframe.loc[mid_time:, c] = np.random.randn(length)
+        dt_index = self._dataframe[start:].index.get_level_values(0).unique()
+        mid = int(len(dt_index) / 2)
+        mid_left = dt_index[mid-1]
+        mid_right = dt_index[mid]
+        length = self._dataframe.loc[mid_right:].shape[0]
+        for col in self._loader.ohlcv:
+            self._dataframe.loc[mid_right:, col] = np.random.randn(length)
         self._column_cache = {}
         # check if results are consistent
-        df = self.run(start, end)
+        with warnings.catch_warnings():
+            warnings.simplefilter("ignore")
+            df = self.run(start, end, delay_factor=False)
         # clean
         self._column_cache = {}
         self._last_load = [None, None, None]
 
         try:
-            pd.testing.assert_frame_equal(df_expected[:mid_time], df[:mid_time])
-        except AssertionError as e:
+            pd.testing.assert_frame_equal(df_expected[:mid_left], df[:mid_left])
+        except AssertionError:
             raise RuntimeError('A look-ahead bias was detected, please check your factors code')
         return 'No assertion raised.'
 
@@ -254,13 +260,13 @@ class FactorEngine:
         if len(self._factors) == 0:
             raise ValueError('Please add at least one factor to engine, then run again.')
 
-        if not delay_factor:
-            for c, f in self._factors.items():
-                if f.is_close_data_used():
-                    warnings.warn("Warning!! delay_factor is set to False, "
-                                  "but {} factor uses data that is only available "
-                                  "after the market is closed.".format(c),
-                                  RuntimeWarning)
+        delays = {col for col, fct in self._factors.items() if fct.should_delay()}
+        if not delay_factor and len(delays) > 0:
+            warnings.warn("Warning!! delay_factor is set to False, "
+                          "but {} factors uses data that is only available "
+                          "after the market is closed.".format(str(delays)),
+                          RuntimeWarning)
+            delays = {}
 
         start, end = pd.to_datetime(start, utc=True), pd.to_datetime(end, utc=True)
         # make columns to data factors.
@@ -271,26 +277,28 @@ class FactorEngine:
             OHLCV.close.inputs = (self._loader.ohlcv[3], self._loader.adjustment_multipliers[0])
             OHLCV.volume.inputs = (self._loader.ohlcv[4], self._loader.adjustment_multipliers[1])
 
-        # get factor
+        # shift factors if necessary
         filter_ = self._filter
-        if filter_ and delay_factor:
+        if filter_ and filter_.should_delay() and delay_factor:
             filter_ = filter_.shift(1)
-        factors = {c: delay_factor and f.shift(1) or f for c, f in self._factors.items()}
+        factors = {col: col in delays and fct.shift(1) or fct
+                   for col, fct in self._factors.items()}
 
-        # Calculate data that requires backwards in tree
+        # calculate how much historical data is needed
         max_backwards = max([f.get_total_backwards_() for f in factors.values()])
         if filter_:
             max_backwards = max(max_backwards, filter_.get_total_backwards_())
-        # Get data
+
+        # copy data to tensor
         self._prepare_tensor(start, end, max_backwards)
 
-        # clean up before start / may be keyboard interrupt
+        # clean up before start (may be keyboard interrupted)
         if filter_:
             filter_.clean_up_()
         for f in factors.values():
             f.clean_up_()
 
-        # ready to compute
+        # some pre-work
         if filter_:
             filter_.pre_compute_(self, start, end)
         for f in factors.values():
@@ -298,14 +306,14 @@ class FactorEngine:
 
         # schedule possible gpu work first
         results = {col: self._compute_and_revert(fct, col) for col, fct in factors.items()}
-        shift_mask = None
+        shifted_mask = None
         if filter_:
-            shift_mask = self._compute_and_revert(filter_, 'filter')
+            shifted_mask = self._compute_and_revert(filter_, 'filter')
         # do cpu work and synchronize will automatically done by torch
         ret = pd.DataFrame(index=self._dataframe.index.copy())
         ret = ret.assign(**{col: t.cpu().numpy() for col, t in results.items()})
         if filter_:
-            ret = ret[shift_mask.cpu().numpy()]
+            ret = ret[shifted_mask.cpu().numpy()]
 
         # do clean up again
         if filter_:
@@ -313,11 +321,12 @@ class FactorEngine:
         for f in factors.values():
             f.clean_up_()
 
-        index = ret.index.levels[0]
-        start = index.get_loc(start, 'bfill')
-        if delay_factor:
-            start += 1
-        return ret.loc[index[start]:]
+        # if any factors delayed, return df also should be delayed
+        if delays:
+            index = ret.index.levels[0]
+            start_ind = index.get_loc(start, 'bfill')
+            start = index[start_ind + 1]
+        return ret.loc[start:]
 
     def get_factors_raw_value(self):
         stream = None
@@ -369,21 +378,20 @@ class FactorEngine:
         |---------------------------|-------|-----------|-----------|-------------------|
         |2014-01-08 00:00:00+00:00	|ARNC	|0.070159	|0.215274	|5                  |
         |                           |BA	    |-0.038556	|-1.638784	|1                  |
-        for alphalens analysis, you can use this:
+        For alphalens analysis, you can use this:
         factor_data = full_run_return[['factor_name', 'Returns']].droplevel(0, axis=1)
         al.tears.create_returns_tear_sheet(factor_data)
-        :param str, pd.Timestamp start: factor analysis start time
-        :param str, pd.Timestamp end: factor analysis end time
-        :param trade_at: which price for forward returns. 'open', or 'close.
+        :param str, pd.Timestamp start: Factor analysis start time
+        :param str, pd.Timestamp end: Factor analysis end time
+        :param trade_at: Which price for forward returns. 'open', or 'close.
                          If is 'current_close', same as run engine with delay_factor=False,
-                         Meaning use the factor to trade on the same day it generated. Be sure that
-                         no any high,low,close data is used in factor, otherwise will cause
-                         lookahead bias.
-        :param periods: forward return periods
-        :param quantiles: number of quantile
-        :param filter_zscore: drop extreme factor return, for stability of the analysis.
+                         Be sure that no any high,low,close data is used in factor, otherwise will
+                         cause lookahead bias.
+        :param periods: Forward return periods
+        :param quantiles: Number of quantile
+        :param filter_zscore: Drop extreme factor return, for stability of the analysis.
         :param demean: Whether the factor is converted into a hedged weight: sum(weight) = 0
-        :param preview: display a preview chart of the result
+        :param preview: Display a preview chart of the result
         """
         factors = self._factors.copy()
         universe = self.get_filter()
