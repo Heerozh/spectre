@@ -14,6 +14,7 @@ from .datafactor import (
     DataFactor,
     AdjustedDataFactor,
     AssetClassifierDataFactor,
+    DatetimeDataFactor,
 )
 
 from .filter import (
@@ -55,5 +56,6 @@ from .statistical import (
 from .feature import (
     MarketDispersion,
     MarketVolatility,
+    MONTH, WEEKDAY, QUARTER,
+    IS_JANUARY, IS_DECEMBER, IS_MONTH_END, IS_MONTH_START, IS_QUARTER_END, IS_QUARTER_START,
 )
-

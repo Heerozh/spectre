@@ -98,3 +98,42 @@ class AssetClassifierDataFactor(BaseFactor):
 
     def compute(self, *inputs: Sequence[torch.Tensor]) -> torch.Tensor:
         pass
+
+
+class DatetimeDataFactor(BaseFactor):
+    """Datetime's attr to DataFactor"""
+    _instance = {}
+
+    def __new__(cls, attr):
+        if attr not in cls._instance:
+            cls._instance[attr] = super().__new__(cls)
+        return cls._instance[attr]
+
+    def __init__(self, attr) -> None:
+        super().__init__()
+        self._data = None
+        self.attr = attr
+
+    def get_total_backwards_(self) -> int:
+        return 0
+
+    def should_delay(self) -> bool:
+        return False
+
+    def pre_compute_(self, engine, start, end) -> None:
+        super().pre_compute_(engine, start, end)
+        if self._data is None:
+            data = getattr(engine.dataframe_index[0], self.attr)  # slow
+            data = torch.from_numpy(data.values).to(
+                device=engine.device, dtype=torch.float32, non_blocking=True)
+            self._data = engine.group_by_(data, self.groupby)
+
+    def clean_up_(self) -> None:
+        super().clean_up_()
+        self._data = None
+
+    def compute_(self, stream: Union[torch.cuda.Stream, None]) -> torch.Tensor:
+        return self._data
+
+    def compute(self, *inputs: Sequence[torch.Tensor]) -> torch.Tensor:
+        pass

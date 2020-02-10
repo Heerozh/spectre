@@ -226,9 +226,7 @@ class FactorEngine:
         """Check all factors, if there are look-ahead bias"""
         start, end = pd.to_datetime(start, utc=True), pd.to_datetime(end, utc=True)
         # get results
-        with warnings.catch_warnings():
-            warnings.simplefilter("ignore")
-            df_expected = self.run(start, end, delay_factor=False)
+        df_expected = self.run(start, end)
         # modify future data
         dt_index = self._dataframe[start:].index.get_level_values(0).unique()
         mid = int(len(dt_index) / 2)
@@ -239,9 +237,7 @@ class FactorEngine:
             self._dataframe.loc[mid_right:, col] = np.random.randn(length)
         self._column_cache = {}
         # check if results are consistent
-        with warnings.catch_warnings():
-            warnings.simplefilter("ignore")
-            df = self.run(start, end, delay_factor=False)
+        df = self.run(start, end)
         # clean
         self._column_cache = {}
         self._last_load = [None, None, None]
