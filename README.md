@@ -221,7 +221,7 @@ pf.create_full_tear_sheet(results.returns, positions=results.positions.value, tr
 * In order to GPU optimize, the `CustomFactor.compute` function calculates the results of all bars 
   at once, so you need to be careful to prevent Look-Ahead Bias, because the inputs are not just 
   historical data. Also using `engine.test_lookahead_bias` do some tests.
-* spectre's `QuandlLoader` using float32 datatype for GPU performance.
+* spectre's normally using float32 data type for GPU performance.
 * spectre FactorEngine arranges data by bars, so `Return(win=10)` means 10 bars return, may 
   actually be more than 10 days if some assets not open trading in period. You can change this 
   behavior by aligning data: filling missing bars with NaNs in your DataLoader, please refer to the 
@@ -233,6 +233,7 @@ pf.create_full_tear_sheet(results.returns, positions=results.positions.value, tr
   will be different from the stock chart software which only adjusted according to last day.
   If you want adjusted by last day, use like 'AdjustedDataFactor(OHLCV.close)' as input data.
   This will speeds up a lot because it only needs to be adjusted once, but brings Look-Ahead Bias.
+* Factors that uses the close data will be delayed by 1 bar.
 * spectre's `EMA` uses the algorithm same as `zipline` and `Dataframe.ewm(span=win)`, when `win` is 
   greater than 100, it will be slightly different from common EMA.
 * spectre's `RSI` uses the algorithm same as `zipline`, for consistency in benchmarks. 
@@ -420,8 +421,13 @@ Switch to CPU mode.
 
 Run the engine to calculate the factor data, return a DataFrame. The column is each added factor.
 
-`delay_factor=True` means that the results will shift(1), in theory you can't trade immediately 
-when you get the factor data. If you only use 'Open' prices, you can set it to `False`.
+#### *Auto Delay
+By default, `delay_factor` is True, it means enable auto-delay. If 'high, low, close, volume' data 
+is used by a terminal factor (including its upstream), that factor will be delayed by `shift(1)`, 
+because in theory you can't trade on this factor before it generated. Others will not be delayed, 
+in order to provide the latest data as much as possible.
+
+Set to `False` to force engine not delay any factors.
 
 
 ### FactorEngine.full_run
