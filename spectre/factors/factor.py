@@ -200,6 +200,7 @@ class CustomFactor(BaseFactor):
     _ref_count = 0
     _cache_stream = None
     _mask = None
+    _force_delay = None
 
     def __init__(self, win: Optional[int] = None, inputs: Optional[Sequence[BaseFactor]] = None):
         """
@@ -239,12 +240,18 @@ class CustomFactor(BaseFactor):
 
     def should_delay(self) -> bool:
         ret = super().should_delay()
+        if self._force_delay is not None:
+            return self._force_delay
         if self.inputs:
             for upstream in self.inputs:
                 if isinstance(upstream, BaseFactor):
                     up_ret = upstream.should_delay()
                     ret = max(ret, up_ret)
         return ret
+
+    def set_force_delay(self, delay):
+        """None: Auto delay. False: Force not to delay. True: Force to delay."""
+        self._force_delay = delay
 
     def show_graph(self):
         plot_factor_diagram(self)

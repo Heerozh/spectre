@@ -43,7 +43,7 @@ class MarketVolatility(CustomFactor):
         return (returns.nanvar() * annualization_factor) ** 0.5
 
 
-# ----------- Common Datetime Features -----------
+# ----------- Common Calendar Features -----------
 
 
 MONTH = DatetimeDataFactor('month')
