@@ -60,6 +60,8 @@ class CsvDirLoader(DataLoader):
         assert 'index_col' not in read_csv, \
             "`index_col` cannot be used here. Use `prices_index` and `dividends_index` and " \
             "`splits_index` instead."
+        if 'dtype' not in read_csv:
+            read_csv['dtype'] = np.float32
         self._adjustment_cols = adjustments
         self._split_ratio_is_inverse = split_ratio_is_inverse
         self._split_ratio_is_fraction = split_ratio_is_fraction
