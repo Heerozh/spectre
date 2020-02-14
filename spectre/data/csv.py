@@ -8,6 +8,7 @@ import numpy as np
 import pandas as pd
 import os
 import glob
+import warnings
 from .dataloader import DataLoader
 
 
@@ -60,6 +61,11 @@ class CsvDirLoader(DataLoader):
         assert 'index_col' not in read_csv, \
             "`index_col` cannot be used here. Use `prices_index` and `dividends_index` and " \
             "`splits_index` instead."
+        if 'dtype' not in read_csv:
+            warnings.warn("It is recommended to set the `dtype` parameter and use float32 whenever "
+                          "possible. Example: dtype = {'Open': np.float32, 'High': np.float32, "
+                          "'Low': np.float32, 'Close': np.float32, 'Volume': np.float64}",
+                          RuntimeWarning)
         self._adjustment_cols = adjustments
         self._split_ratio_is_inverse = split_ratio_is_inverse
         self._split_ratio_is_fraction = split_ratio_is_fraction
