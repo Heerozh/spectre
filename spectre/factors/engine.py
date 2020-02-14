@@ -98,6 +98,13 @@ class FactorEngine:
 
         # Get data
         df = self._loader.load(start, end, max_backwards).copy()
+        # If possible, pre-screen
+        if isinstance(self._filter, StaticAssets):
+            df = df.loc[(slice(None), self._filter.assets), :]
+            if df.shape[0] == 0:
+                raise ValueError("The asset specified by StaticAssets filter, was not found in "
+                                 "DataLoader.")
+        # check history data is insufficient
         df.index = df.index.remove_unused_levels()
         history_win = df.index.levels[0].get_loc(start, 'bfill')
         if history_win < max_backwards:
@@ -107,17 +114,16 @@ class FactorEngine:
                           "some out of trading hours data will cause indexing problems."
                           .format(max_backwards, history_win),
                           RuntimeWarning)
-        # If possible, pre-screen
-        if isinstance(self._filter, StaticAssets):
-            df = df.loc[(slice(None), self._filter.assets), :]
-            if df.shape[0] == 0:
-                raise ValueError("The asset specified by StaticAssets filter, was not found in "
-                                 "DataLoader.")
+        # post processing data
         if self._align_by_time:
             # since pandas 0.23, MultiIndex reindex is slow, so using a alternative way here,
             # but still very slow.
             # df = df.reindex(pd.MultiIndex.from_product(df.index.levels))
             df = df.unstack(level=1).stack(dropna=False)
+        if self.timezone != 'UTC':
+            df = df.reset_index('asset').tz_convert(self.timezone)\
+                .set_index(['asset'], append=True)
+
         self._dataframe = df
         self._dataframe_index = [df.index.get_level_values(i) for i in range(len(df.index.levels))]
 
@@ -157,6 +163,7 @@ class FactorEngine:
         self._device = torch.device('cpu')
         self._enable_stream = False
         self._align_by_time = False
+        self.timezone = 'UTC'
 
     @property
     def device(self):
