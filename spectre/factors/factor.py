@@ -249,7 +249,7 @@ class CustomFactor(BaseFactor):
                     ret = max(ret, up_ret)
         return ret
 
-    def set_force_delay(self, delay):
+    def set_delay(self, delay):
         """None: Auto delay. False: Force not to delay. True: Force to delay."""
         self._force_delay = delay
 
