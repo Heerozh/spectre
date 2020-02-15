@@ -251,7 +251,67 @@ class TestFactorLib(unittest.TestCase):
                                      fastk_period=14)[0]
         test_expected(spectre.factors.STOCHF(), expected_aapl, expected_msft)
 
-        # test same factor only compute once, and nest factor window
+        # test MarketDispersion features
+        expected_aapl = [0.0006367, 0.047016, 0.0026646, 0.0056998, 0.0012298, 0.0110741,
+                         0., 0.0094943, 0.0098479]
+        expected_msft = expected_aapl.copy()
+        del expected_msft[6]
+        test_expected(spectre.factors.MarketDispersion(), expected_aapl, expected_msft, 10)
+
+        # test MarketReturn features
+        expected_aapl = [-0.030516, -0.0373418,  0.0232942, -0.0056998,  0.0183439,
+                         0.0184871,  0.0318528, -0.0359094,  0.011689]
+        expected_msft = expected_aapl.copy()
+        del expected_msft[6]
+        test_expected(spectre.factors.MarketReturn(), expected_aapl, expected_msft, 10)
+
+        # test MarketVolatility features
+        expected_aapl = [0.341934, 0.3439502, 0.344212, 0.3442616, 0.3447192, 0.3451061,
+                         0.3462575, 0.3471314, 0.3469935]
+        expected_msft = [0.341934, 0.3439502, 0.344212, 0.3442616, 0.3447192, 0.3451061,
+                         0.3467437, 0.3458821]
+        test_expected(spectre.factors.MarketVolatility(), expected_aapl, expected_msft, 10)
+
+        # test IS_JANUARY,DatetimeDataFactor,etc features
+        expected_aapl = [True] * 9
+        expected_msft = expected_aapl.copy()
+        del expected_msft[6]
+        test_expected(spectre.factors.IS_JANUARY, expected_aapl, expected_msft, 10)
+
+        expected_aapl = [False] * 9
+        expected_msft = expected_aapl.copy()
+        del expected_msft[6]
+        test_expected(spectre.factors.IS_DECEMBER, expected_aapl, expected_msft, 10)
+
+        expected_aapl = np.array([3., 4., 0., 1., 2., 3., 4., 0., 1.])
+        expected_msft = np.delete(expected_aapl, 5)  # 5 because DatetimeDataFactor no delay
+        test_expected(spectre.factors.WEEKDAY, expected_aapl, expected_msft, 10)
+
+        # test timezone
+        engine.timezone = 'America/New_York'
+        expected_aapl -= 1
+        expected_msft -= 1
+        expected_aapl[expected_aapl < 0] = 6
+        expected_msft[expected_msft < 0] = 6
+        test_expected(spectre.factors.WEEKDAY, expected_aapl, expected_msft, 10)
+        engine.timezone = 'UTC'
+
+        # test AssetClassifierDataFactor and one_hot features
+        test_sector = {'AAPL': 2, }
+        expected_aapl = [2] * 9
+        expected_msft = [-1] * 8
+        test_expected(spectre.factors.AssetClassifierDataFactor(test_sector, -1),
+                      expected_aapl, expected_msft, 10)
+
+        one_hot = spectre.factors.AssetClassifierDataFactor(test_sector, -1).one_hot()
+        expected_aapl = [True] * 9
+        expected_msft = [False] * 8
+        test_expected(one_hot[0], expected_aapl, expected_msft, 10)
+        expected_aapl = [False] * 9
+        expected_msft = [True] * 8
+        test_expected(one_hot[1], expected_aapl, expected_msft, 10)
+
+        # test reused factor only compute once, and nest factor window
         f1 = spectre.factors.BBANDS(win=20, inputs=[spectre.factors.OHLCV.close, 2])
         f2 = spectre.factors.EMA(win=10, inputs=[f1])
         fa = spectre.factors.STDDEV(win=15, inputs=[f2])
