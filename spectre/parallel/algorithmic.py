@@ -124,6 +124,14 @@ def nanlast(data: torch.Tensor, dim=1) -> torch.Tensor:
     return ret
 
 
+def pad_2d(data: torch.Tensor) -> torch.Tensor:
+    mask = torch.isnan(data)
+    idx = torch.arange(0, mask.shape[1]).repeat(mask.shape[0], 1)
+    idx = idx.masked_fill(mask, 0)
+    idx = np.maximum.accumulate(idx, axis=1)  # replace to idx.cummax when pytorch 1.5 release
+    return torch.gather(data, 1, idx)
+
+
 def covariance(x, y, dim=1, ddof=0):
     x_bar = nanmean(x, dim=dim).unsqueeze(-1)
     y_bar = nanmean(y, dim=dim).unsqueeze(-1)

@@ -8,6 +8,7 @@ from .algorithmic import (
     nanlast,
     nanmax,
     nanmin,
+    pad_2d,
     covariance,
     pearsonr,
     linear_regression_1d,

@@ -3,6 +3,7 @@ import torch
 import spectre
 from numpy.testing import assert_array_equal, assert_almost_equal
 import numpy as np
+import pandas as pd
 
 
 class TestParallelAlgorithm(unittest.TestCase):
@@ -124,3 +125,13 @@ class TestParallelAlgorithm(unittest.TestCase):
         for i in range(3):
             expected, _ = stats.pearsonr(x[i], y[i])
             assert_almost_equal(expected, result[i], decimal=6)
+
+    def test_pad2d(self):
+        x = torch.tensor([[np.nan, 1, 1, np.nan, 1, np.nan, np.nan, 0, np.nan, 0, np.nan, np.nan, 0,
+                           np.nan, -1, np.nan, - 1, np.nan, np.nan, np.nan, 1],
+                          [np.nan, 1, 0, np.nan, 1, np.nan, np.nan, 1, np.nan, -1, np.nan, -1, 0,
+                           np.nan, -1, np.nan, - 1, np.nan, np.nan, np.nan, 1]])
+        result = spectre.parallel.pad_2d(x)
+
+        expected = [pd.Series(x[0]).fillna(method='ffill'), pd.Series(x[1]).fillna(method='ffill')]
+        assert_almost_equal(expected, result)
