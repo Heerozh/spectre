@@ -8,7 +8,7 @@ from abc import ABC
 from typing import Optional, Sequence, Union
 import numpy as np
 import torch
-from ..parallel import nansum, nanmean, nanstd, Rolling
+from ..parallel import nansum, nanmean, nanstd, pad_2d, Rolling
 from .plotting import plot_factor_diagram
 
 
@@ -142,6 +142,10 @@ class BaseFactor:
     def one_hot(self):
         from .filter import OneHotEncoder
         factor = OneHotEncoder(self)
+        return factor
+
+    def ffill_na(self):
+        factor = PadFactor(inputs=(self,))
         return factor
 
     # --------------- main methods ---------------
@@ -439,6 +443,11 @@ class ShiftFactor(CustomFactor):
 class AbsFactor(CustomFactor):
     def compute(self, data: torch.Tensor) -> torch.Tensor:
         return data.abs()
+
+
+class PadFactor(CustomFactor):
+    def compute(self, data: torch.Tensor) -> torch.Tensor:
+        return pad_2d(data)
 
 
 class DoNothingFactor(CustomFactor):

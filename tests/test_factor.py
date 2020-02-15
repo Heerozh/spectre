@@ -311,6 +311,17 @@ class TestFactorLib(unittest.TestCase):
         expected_msft = [True] * 8
         test_expected(one_hot[1], expected_aapl, expected_msft, 10)
 
+        # test ffill_na
+        mask = spectre.factors.WEEKDAY >= 3
+        factor = spectre.factors.WEEKDAY.filter(mask)
+        expected_aapl = np.array([3., 4., np.nan, np.nan, np.nan, 3., 4., np.nan, np.nan])
+        expected_msft = np.delete(expected_aapl, 5)
+        test_expected(factor, expected_aapl, expected_msft, 10)
+
+        expected_aapl = np.array([3., 4., 4, 4, 4, 3., 4., 4, 4])
+        expected_msft = np.delete(expected_aapl, 5)
+        test_expected(factor.ffill_na(), expected_aapl, expected_msft, 10)
+
         # test reused factor only compute once, and nest factor window
         f1 = spectre.factors.BBANDS(win=20, inputs=[spectre.factors.OHLCV.close, 2])
         f2 = spectre.factors.EMA(win=10, inputs=[f1])
