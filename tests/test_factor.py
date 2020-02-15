@@ -320,9 +320,12 @@ class TestFactorLib(unittest.TestCase):
 
         expected_aapl = np.array([3., 4., 4, 4, 4, 3., 4., 4, 4])
         expected_msft = np.delete(expected_aapl, 5)
+        engine.to_cuda()
         test_expected(factor.ffill_na(), expected_aapl, expected_msft, 10)
+        engine.to_cpu()
 
         # test reused factor only compute once, and nest factor window
+        engine.run('2019-01-11', '2019-01-15')  # let pre_compute_ test executable
         f1 = spectre.factors.BBANDS(win=20, inputs=[spectre.factors.OHLCV.close, 2])
         f2 = spectre.factors.EMA(win=10, inputs=[f1])
         fa = spectre.factors.STDDEV(win=15, inputs=[f2])
