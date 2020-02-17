@@ -124,8 +124,10 @@ from .algorithm import (
     CustomAlgorithm,
     SimulationEventManager
 )
-from .blotter import (
+from .portfolio import (
     Portfolio,
+)
+from .blotter import (
     BaseBlotter,
     SimulationBlotter
 )
