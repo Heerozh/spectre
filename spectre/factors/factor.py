@@ -503,6 +503,8 @@ class QuantileFactor(TimeGroupFactor):
     bins = 5
 
     def compute(self, data: torch.Tensor) -> torch.Tensor:
+        if data.dtype == torch.bool:
+            data = data.char()
         x, _ = torch.sort(data, dim=1)
         mask = torch.isnan(data)
         act_size = data.shape[1] - mask.sum(dim=1)
