@@ -499,12 +499,14 @@ class AssetZScoreFactor(CustomFactor):
 
 
 class QuantileFactor(TimeGroupFactor):
-    """return the quantile that factor belongs to each bar"""
+    """Returns the quantile of the factor at each datetime"""
     bins = 5
 
     def compute(self, data: torch.Tensor) -> torch.Tensor:
         if data.dtype == torch.bool:
             data = data.char()
+        if data.shape[1] == 1:  # if only one asset in universe
+            return data.new_full(data.shape, 0, dtype=torch.float32)
         x, _ = torch.sort(data, dim=1)
         mask = torch.isnan(data)
         act_size = data.shape[1] - mask.sum(dim=1)
