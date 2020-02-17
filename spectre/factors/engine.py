@@ -102,8 +102,8 @@ class FactorEngine:
         if isinstance(self._filter, StaticAssets):
             df = df.loc[(slice(None), self._filter.assets), :]
             if df.shape[0] == 0:
-                raise ValueError("The asset specified by StaticAssets filter, was not found in "
-                                 "DataLoader.")
+                raise ValueError("The assets {} specified by StaticAssets filter, was not found in "
+                                 "DataLoader.".format(self._filter.assets))
         # check history data is insufficient
         df.index = df.index.remove_unused_levels()
         history_win = df.index.levels[0].get_loc(start, 'bfill')
@@ -424,7 +424,10 @@ class FactorEngine:
                 # Different: The zscore here contains all backward data which alphalens not counted.
                 zscore_factor = ret.zscore(axis_asset=True, mask=universe)
                 zscore_filter = zscore_factor.abs() <= filter_zscore
-                mask = mask & zscore_filter
+                if mask is not None:
+                    mask = mask & zscore_filter
+                else:
+                    mask = zscore_filter
                 self.add(ret.filter(mask), str(n) + '_r_')
             else:
                 self.add(ret, str(n) + '_r_')
