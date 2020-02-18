@@ -1,6 +1,6 @@
 """
 @author: Heerozh (Zhang Jianhao)
-@copyright: Copyright 2019, Heerozh. All rights reserved.
+@copyright: Copyright 2019-2020, Heerozh. All rights reserved.
 @license: Apache 2.0
 @email: heeroz@gmail.com
 """
@@ -52,6 +52,8 @@ def plot_cumulative_returns(returns, positions, transactions, benchmark, annual_
     cum_ret = (returns + 1).cumprod()
     fig.add_trace(go.Scatter(x=cum_ret.index, y=cum_ret.values * 100 - 100, name='portfolio',
                              hovertemplate='<b>Date</b>:%{x}<br><b>Return</b>: %{y:.3f}%'))
+    fig.add_shape(go.layout.Shape(y0=0, y1=0, x0=cum_ret.index[0], x1=cum_ret.index[-1],
+                                  type="line", line=dict(width=1)))
 
     if benchmark is not None:
         cum_bench = (benchmark + 1).cumprod()

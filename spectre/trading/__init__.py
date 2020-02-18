@@ -124,6 +124,9 @@ from .algorithm import (
     CustomAlgorithm,
     SimulationEventManager
 )
+from .position import (
+    Position,
+)
 from .portfolio import (
     Portfolio,
 )

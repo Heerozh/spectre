@@ -7,14 +7,13 @@
 from typing import Union, Callable
 import pandas as pd
 import numpy as np
-from collections import defaultdict
+from .position import Position
 
 
 class Portfolio:
     def __init__(self):
         self._history = []
         self._positions = dict()
-        self._last_price = defaultdict(lambda: np.nan)
         self._cash = 0
         self._current_date = None
 
@@ -42,14 +41,12 @@ class Portfolio:
         # for asset, shares in self.positions.items():
         #     if self._last_price[asset] != self._last_price[asset]:
         #         raise ValueError('{}({}) is nan in {}'.format(asset, shares, self._current_date))
-        values = [self._last_price[asset] * shares
-                  for asset, shares in self.positions.items() if shares != 0]
+        values = [pos.value for asset, pos in self.positions.items() if pos.shares != 0]
         return sum(values) + self._cash
 
     @property
     def leverage(self):
-        values = [self._last_price[asset] * shares
-                  for asset, shares in self.positions.items() if shares != 0]
+        values = [pos.value for asset, pos in self.positions.items() if pos.shares != 0]
         return sum(np.abs(values)) / (sum(values) + self._cash)
 
     def __repr__(self):
@@ -60,15 +57,16 @@ class Portfolio:
 
     def shares(self, asset):
         try:
-            return self._positions[asset]
+            return self._positions[asset].shares
         except KeyError:
             return 0
 
     def _get_today_record(self):
         record = {('index', ''): self._current_date, ('value', 'cash'): self._cash}
-        for asset, shares in self._positions.items():
-            record[('shares', asset)] = shares
-            record[('value', asset)] = shares * self._last_price[asset]
+        for asset, pos in self._positions.items():
+            record[('cost_basis', asset)] = pos.cost_basis
+            record[('shares', asset)] = pos.shares
+            record[('value', asset)] = pos.value
         return record
 
     def set_date(self, date):
@@ -84,46 +82,45 @@ class Portfolio:
 
         self._current_date = date
 
-    def update(self, asset, amount, fill_price):
+    def update(self, asset, amount, fill_price, commission):
+        """asset position + amount, also calculation cost_basis and realized P&L"""
         assert self._current_date is not None
-        self._positions[asset] = self.shares(asset) + amount
-        if fill_price is not None:  # update last price for correct portfolio value
-            self._last_price[asset] = fill_price
-        if self._positions[asset] == 0:
-            del self._positions[asset]
+        if amount == 0:
+            return
+        if asset in self._positions:
+            if self._positions[asset].update(amount, fill_price, commission):
+                del self._positions[asset]
+        else:
+            self._positions[asset] = Position(amount, fill_price, commission)
 
     def update_cash(self, amount):
         self._cash += amount
 
     def process_split(self, asset, inverse_ratio: float, last_price):
-        if inverse_ratio != inverse_ratio or inverse_ratio == 1 or asset not in self._positions:
+        if asset not in self._positions:
             return
-        sp = self._positions[asset] * inverse_ratio
-        if inverse_ratio < 1:  # reverse split remaining to cash
-            remaining = int(self._positions[asset] - int(sp) / inverse_ratio)  # for more precise
-            if remaining != 0:
-                self.update_cash(remaining * last_price)
-        self._last_price[asset] = last_price / inverse_ratio
-        change = int(sp) - self._positions[asset]
-        self.update(asset, change, None)
+        pos = self._positions[asset]
+        cash = pos.process_split(inverse_ratio, last_price)
+        self.update_cash(cash)
 
     def process_dividends(self, asset, amount):
-        if amount != amount or amount == 0 or asset not in self._positions:
+        if asset not in self._positions:
             return
-        div = self._positions[asset] * amount
-        self.update_cash(div)
+        pos = self._positions[asset]
+        cash = pos.process_dividends(amount)
+        self.update_cash(cash)
 
     def _update_value_func(self, func):
-        for asset, shares in self._positions.items():
+        for asset, pos in self._positions.items():
             price = func(asset)
             if price and price == price:
-                self._last_price[asset] = price
+                pos.last_price = price
 
     def _update_value_dict(self, prices):
-        for asset, shares in self._positions.items():
+        for asset, pos in self._positions.items():
             price = prices.get(asset, np.nan)
             if price == price:
-                self._last_price[asset] = price
+                pos.last_price = price
 
     def update_value(self, prices: Union[Callable, dict]):
         if callable(prices):

@@ -329,7 +329,7 @@ class SimulationBlotter(BaseBlotter, EventReceiver):
         self.orders[asset].append(order)
 
         # update portfolio, pay cash
-        self._portfolio.update(asset, amount, fill_price)
+        self._portfolio.update(asset, amount, fill_price, commission)
         self._portfolio.update_cash(-amount * fill_price - commission)
         return True
 
