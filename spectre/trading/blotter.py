@@ -349,7 +349,8 @@ class SimulationBlotter(BaseBlotter, EventReceiver):
         return ret
 
     def update_portfolio_value(self):
-        self._portfolio.update_value(self._get_current_prices().get)
+        if len(self._portfolio.positions) > 0:
+            self._portfolio.update_value(self._get_current_prices().get)
 
     def market_open(self, _):
         self.market_opened = True
