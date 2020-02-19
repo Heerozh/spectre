@@ -5,6 +5,7 @@
 @email: heeroz@gmail.com
 """
 import math
+from .stopmodel import StopTracker
 
 
 def sign(x):
@@ -12,22 +13,15 @@ def sign(x):
 
 
 class Position:
-    _shares = None
-    _cost_basis = None
-    _last_price = None
-    _high_price = None
-    _low_price = None
-    _unrealized = None
-    _realized = None
-
-    def __init__(self, shares: int, fill_price: float, commission: float):
+    def __init__(self, shares: int, fill_price: float, commission: float,
+                 stop_tracker: StopTracker = None):
         self._shares = shares
-        self._cost_basis = fill_price + commission / shares
+        self._average_price = fill_price + commission / shares
         self._last_price = fill_price
-        self._high_price = fill_price
-        self._low_price = fill_price
-        self._unrealized = 0
         self._realized = 0
+        self.stop_tracker = stop_tracker
+        if stop_tracker:
+            self.stop_tracker.tracking_position = self
 
     @property
     def value(self):
@@ -38,8 +32,8 @@ class Position:
         return self._shares
 
     @property
-    def cost_basis(self):
-        return self._cost_basis
+    def average_price(self):
+        return self._average_price
 
     @property
     def last_price(self):
@@ -48,33 +42,28 @@ class Position:
     @last_price.setter
     def last_price(self, last_price: float):
         self._last_price = last_price
-        self._high_price = max(self._high_price, last_price)
-        self._low_price = min(self._low_price, last_price)
-        self._unrealized = self.value - self._cost_basis * self._shares
-
-    @property
-    def high_price(self):
-        return self._high_price
-
-    @property
-    def low_price(self):
-        return self._low_price
-
-    @property
-    def unrealized(self):
-        return self._unrealized
+        if self.stop_tracker:
+            self.stop_tracker.update_price(last_price)
 
     @property
     def realized(self):
         return self._realized
 
+    @property
+    def unrealized(self):
+        return (self._last_price - self._average_price) * self._shares
+
+    @property
+    def unrealized_percent(self):
+        return (self._last_price / self._average_price - 1) * sign(self._shares)
+
     def update(self, amount: int, fill_price: float, commission: float) -> bool:
         """
-        position + amount, fill_price and commission is for calculation cost_basis and P&L
+        position + amount, fill_price and commission is for calculation average_price and P&L
         return True when position is empty.
         """
         before_shares = self._shares
-        before_basis = self._cost_basis
+        before_avg_px = self._average_price
         after_shares = before_shares + amount
 
         # If the position is reversed, it will be filled in 2 steps
@@ -88,16 +77,16 @@ class Position:
             self.__init__(fill_2, fill_price, per_comm * fill_2)
             return False
         else:
-            cum_cost = self._cost_basis * before_shares + amount * fill_price + commission
+            cum_cost = self._average_price * before_shares + amount * fill_price + commission
             self._shares = after_shares
             if after_shares == 0:
-                self._cost_basis = 0
+                self._average_price = 0
                 self._realized += fill_price * amount - commission
                 self.last_price = fill_price
                 return True
             else:
-                self._cost_basis = cum_cost / after_shares
-                self._realized += (before_basis - self._cost_basis) * abs(after_shares)
+                self._average_price = cum_cost / after_shares
+                self._realized += (before_avg_px - self._average_price) * abs(after_shares)
                 self.last_price = fill_price
                 return False
 
@@ -111,15 +100,20 @@ class Position:
             if remaining != 0:
                 cash = remaining * last_price
         self._shares = int(sp)
-        self._cost_basis = self._cost_basis / inverse_ratio
-        self._high_price = self._high_price / inverse_ratio
-        self._low_price = self._low_price / inverse_ratio
+        self._average_price = self._average_price / inverse_ratio
         self.last_price = last_price / inverse_ratio
+
+        if self.stop_tracker:
+            self.stop_tracker.process_split(last_price)
         return cash
 
     def process_dividends(self, amount: float) -> float:
         if amount != amount or amount == 0:
             return 0
-        self._cost_basis -= amount
+        self._average_price -= amount
         cash = self._shares * amount
         return cash
+
+    def check_stop_trigger(self, *args):
+        if self.stop_tracker:
+            return self.stop_tracker.check_trigger(*args)

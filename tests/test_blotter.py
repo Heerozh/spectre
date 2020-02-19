@@ -43,7 +43,7 @@ class TestBlotter(unittest.TestCase):
                                  [-1.,  8., 10., -25, 120, -225, 5000.],
                                  [-3.,  6., 10.,   5,  15,   10, 7030.]],
                                 columns=pd.MultiIndex.from_tuples(
-                                    [('cost_basis', 'AAPL'), ('cost_basis', 'MSFT'),
+                                    [('avg_px', 'AAPL'), ('avg_px', 'MSFT'),
                                      ('shares', 'AAPL'), ('shares', 'MSFT'),
                                      ('value', 'AAPL'), ('value', 'MSFT'),
                                      ('value', 'cash')]),
@@ -52,13 +52,13 @@ class TestBlotter(unittest.TestCase):
         expected.index.name = 'index'
         pd.testing.assert_frame_equal(expected, pf.history)
         self.assertEqual(str(pf),
-                         """<Portfolio>cost_basis      shares        value                
-                 AAPL MSFT   AAPL  MSFT   AAPL   MSFT     cash
-index                                                         
-2019-01-01        NaN  NaN    NaN   NaN    NaN    NaN  10000.0
-2019-01-03        5.0  8.0   20.0 -25.0   30.0 -225.0   5000.0
-2019-01-04       -1.0  8.0   10.0 -25.0  120.0 -225.0   5000.0
-2019-01-05       -3.0  6.0   10.0   5.0   15.0   10.0   7030.0""")
+                         """<Portfolio>avg_px      shares        value                
+             AAPL MSFT   AAPL  MSFT   AAPL   MSFT     cash
+index                                                     
+2019-01-01    NaN  NaN    NaN   NaN    NaN    NaN  10000.0
+2019-01-03    5.0  8.0   20.0 -25.0   30.0 -225.0   5000.0
+2019-01-04   -1.0  8.0   10.0 -25.0  120.0 -225.0   5000.0
+2019-01-05   -3.0  6.0   10.0   5.0   15.0   10.0   7030.0""")
         pf.update_value(lambda x: x == 'AAPL' and 1.5 or 2)
         self.assertEqual(7030 + 15 + 10, pf.value)
         self.assertEqual(25 / 7055, pf.leverage)
@@ -184,7 +184,7 @@ index
             [[aapl_basis, msft_basis, -651.0, int(969 / 15), -651 * 156.94, int(969 / 15) * 108.85,
               cash]],
             columns=pd.MultiIndex.from_tuples(
-                [('cost_basis', 'AAPL'), ('cost_basis', 'MSFT'),
+                [('avg_px', 'AAPL'), ('avg_px', 'MSFT'),
                  ('shares', 'AAPL'), ('shares', 'MSFT'),
                  ('value', 'AAPL'), ('value', 'MSFT'),
                  ('value', 'cash')]),
@@ -218,3 +218,80 @@ index
 
         self.assertAlmostEqual(154.65, blotter.get_transactions().loc[datetime1].price)
         self.assertAlmostEqual(155.0, blotter.get_transactions().loc[datetime2].price)
+
+    def test_trailing_stop(self):
+        def init_model(ratio):
+            m = spectre.trading.TrailingStopModel(ratio, True).new_tracker(9)
+            m.update_price(8)
+            m.update_price(7)
+            m.update_price(6)
+            return m
+
+        model = init_model(-0.1)
+        self.assertEqual(9*0.9, model.stop_price)
+        model = init_model(0.1)
+        self.assertEqual(6*1.1, model.stop_price)
+
+        changes = [0.8, 0.9, 0.91, 1, 1.09, 1.1, 1.2]
+        # test stop high bound
+        model = init_model(0.1)
+        result = []
+        for p in changes:
+            model.last_price = 6 * p
+            result.append(model.check_trigger())
+        self.assertListEqual([False, False, False, False, False, True, True], result)
+
+        # test stop low bound
+        model = init_model(-0.1)
+        result = []
+        for p in changes:
+            model.last_price = 9 * p
+            result.append(model.check_trigger())
+        self.assertListEqual([True, True, False, False, False, False, False], result)
+
+        # test DecayTrailingStopModel
+        # test short stop loss
+        pos = spectre.trading.Position(-10, 9, 0)
+        model = spectre.trading.DecayTrailingStopModel(0.1, True).new_tracker(pos.last_price)
+        model.tracking_position = pos
+        self.assertEqual(9 * 1.1, model.stop_price)
+        pos.last_price = 8
+        model.update_price(pos.last_price)
+        self.assertAlmostEqual(8 * (1 + 0.1 * 0.05 ** (1/9/0.1)), model.stop_price)
+        pos.last_price = 7
+        model.update_price(pos.last_price)
+        pos.last_price = 6
+        model.update_price(pos.last_price)
+
+        model.last_price = 5.99
+        self.assertFalse(model.check_trigger())
+        model.last_price = 6.01
+        self.assertTrue(model.check_trigger())
+
+        # test long stop loss
+        pos = spectre.trading.Position(10, 9, 0)
+        model = spectre.trading.DecayTrailingStopModel(-0.1, True).new_tracker(pos.last_price)
+        model.tracking_position = pos
+        self.assertEqual(9 * 0.9, model.stop_price)
+        pos.last_price = 8
+        model.update_price(pos.last_price)
+        self.assertTrue(model.check_trigger())
+
+        # test long stop gain
+        pos = spectre.trading.Position(10, 9, 0)
+        model = spectre.trading.DecayTrailingStopModel(
+            0.1, pnl_target=-0.1, callback=True).new_tracker(pos.last_price)
+        model.tracking_position = pos
+        self.assertEqual(9 * 1.1, model.stop_price)
+        pos.last_price = 8
+        model.update_price(pos.last_price)
+        self.assertAlmostEqual(8 * (1 + 0.1 * 0.05 ** (1/9/0.1)), model.stop_price)
+        pos.last_price = 7
+        model.update_price(pos.last_price)
+        pos.last_price = 6
+        model.update_price(pos.last_price)
+
+        model.last_price = 5.99
+        self.assertFalse(model.check_trigger())
+        model.last_price = 6.01
+        self.assertTrue(model.check_trigger())

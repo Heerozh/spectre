@@ -124,6 +124,11 @@ from .algorithm import (
     CustomAlgorithm,
     SimulationEventManager
 )
+from .stopmodel import (
+    StopModel,
+    TrailingStopModel,
+    DecayTrailingStopModel,
+)
 from .position import (
     Position,
 )
