@@ -510,6 +510,7 @@ new_factor = factor[0]
 # Others
 new_filter[n_features] = factor.one_hot()  # one-hot encoding
 new_factor = factor.quantile(bins=5)  # factor value quantile groupby datetime
+new_factor = factor.ffill_na()  # propagate last valid observation forward to next valid
 
 ```
 
@@ -854,7 +855,17 @@ like: `engine.add(OHLCV.close, 'prices')`*
 
 **context:** *rebalance, terminate*
 
-`self.blotter.portfolio.positions` Current position, Dict[asset, shares] type.
+`self.blotter.portfolio.positions` Current positions, `Dict[asset, Position]` type.
+```python
+class Position:
+    shares = None
+    cost_basis = None
+    last_price = None
+    high_price = None
+    low_price = None
+    unrealized = None
+    realized = None
+```
 
 `self.blotter.portfolio.value` Current portfolio value
 
