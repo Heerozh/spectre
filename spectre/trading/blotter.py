@@ -373,6 +373,12 @@ class SimulationBlotter(BaseBlotter, EventReceiver):
             except KeyError:
                 pass
 
+    def new_bars_data(self, _):
+        # update value if received intraday bars
+        if self.market_opened:
+            self.update_portfolio_value()
+
     def on_run(self):
         self.schedule(MarketOpen(self.market_open, -1))  # -1 for grab priority
         self.schedule(MarketClose(self.market_close))
+        self.schedule(EveryBarData(self.new_bars_data))

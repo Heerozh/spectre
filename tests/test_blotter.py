@@ -219,6 +219,26 @@ index
         self.assertAlmostEqual(154.65, blotter.get_transactions().loc[datetime1].price)
         self.assertAlmostEqual(155.0, blotter.get_transactions().loc[datetime2].price)
 
+        # test stop
+        blotter.portfolio.set_stop_model(spectre.trading.TrailingStopModel(0.002, blotter.order))
+        datetime3 = pd.Timestamp("2019-01-02 14:45:00", tz='UTC')
+        blotter.set_datetime(datetime3)
+        blotter.market_open(self)
+        blotter.set_price("close")
+        blotter.order_target_percent('AAPL', 1.)
+        blotter.set_price("close")
+        blotter.update_portfolio_value()
+        blotter.portfolio.check_stop_trigger()
+
+        datetime4 = pd.Timestamp("2019-01-02 14:50:00", tz='UTC')
+        blotter.set_datetime(datetime4)
+        blotter.set_price("close")
+        blotter.update_portfolio_value()
+        blotter.portfolio.check_stop_trigger()
+        blotter.market_close(self)
+
+        self.assertAlmostEqual(0, len(blotter.portfolio.positions))
+
     def test_trailing_stop(self):
         def init_model(ratio):
             m = spectre.trading.TrailingStopModel(ratio, True).new_tracker(9)

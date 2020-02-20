@@ -8,6 +8,7 @@ from typing import Union, Callable
 import pandas as pd
 import numpy as np
 from .position import Position
+from .stopmodel import StopModel
 
 
 class Portfolio:
@@ -16,6 +17,14 @@ class Portfolio:
         self._positions = dict()
         self._cash = 0
         self._current_date = None
+        self.stop_model = None
+
+    def set_stop_model(self, stop_model: StopModel):
+        """
+        Set default portfolio stop model.
+        Stop model can make more strategic triggers than stop orders.
+        """
+        self.stop_model = stop_model
 
     @property
     def history(self):
@@ -64,7 +73,7 @@ class Portfolio:
     def _get_today_record(self):
         record = {('index', ''): self._current_date, ('value', 'cash'): self._cash}
         for asset, pos in self._positions.items():
-            record[('cost_basis', asset)] = pos.cost_basis
+            record[('avg_px', asset)] = pos.average_price
             record[('shares', asset)] = pos.shares
             record[('value', asset)] = pos.value
         return record
@@ -83,7 +92,7 @@ class Portfolio:
         self._current_date = date
 
     def update(self, asset, amount, fill_price, commission):
-        """asset position + amount, also calculation cost_basis and realized P&L"""
+        """asset position + amount, also calculation average_price and realized P&L"""
         assert self._current_date is not None
         if amount == 0:
             return
@@ -91,7 +100,10 @@ class Portfolio:
             if self._positions[asset].update(amount, fill_price, commission):
                 del self._positions[asset]
         else:
-            self._positions[asset] = Position(amount, fill_price, commission)
+            stop_tracker = None
+            if self.stop_model:
+                stop_tracker = self.stop_model.new_tracker(fill_price)
+            self._positions[asset] = Position(amount, fill_price, commission, stop_tracker)
 
     def update_cash(self, amount):
         self._cash += amount
@@ -129,3 +141,10 @@ class Portfolio:
             self._update_value_dict(prices)
         else:
             raise ValueError('prices ether callable or dict')
+
+    def check_stop_trigger(self):
+        ret = []
+        for asset in list(self._positions.keys()):
+            pos = self._positions[asset]
+            ret.append(pos.check_stop_trigger(asset, -pos.shares))
+        return ret

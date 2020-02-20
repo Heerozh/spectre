@@ -156,7 +156,7 @@ class TestTradingAlgorithm(unittest.TestCase):
                                  [aapl_basis, 103.19, aapl_shares2, msft_shares2, aapl_value2,
                                   msft_value2, cash2]],
                                 columns=pd.MultiIndex.from_tuples(
-                                    [('cost_basis', 'AAPL'), ('cost_basis', 'MSFT'),
+                                    [('avg_px', 'AAPL'), ('avg_px', 'MSFT'),
                                      ('shares', 'AAPL'), ('shares', 'MSFT'),
                                      ('value', 'AAPL'), ('value', 'MSFT'),
                                      ('value', 'cash')]),
