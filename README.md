@@ -888,8 +888,6 @@ class Position:
     shares = None
     average_price = None
     last_price = None
-    high_price = None
-    low_price = None
     unrealized = None
     realized = None
 ```
