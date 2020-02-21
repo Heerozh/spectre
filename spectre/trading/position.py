@@ -5,7 +5,7 @@
 @email: heeroz@gmail.com
 """
 import math
-from .stopmodel import StopTracker
+from .stopmodel import StopModel
 
 
 def sign(x):
@@ -14,13 +14,16 @@ def sign(x):
 
 class Position:
     def __init__(self, shares: int, fill_price: float, commission: float,
-                 stop_tracker: StopTracker = None):
+                 stop_model: StopModel = None):
         self._shares = shares
         self._average_price = fill_price + commission / shares
         self._last_price = fill_price
         self._realized = 0
-        self.stop_tracker = stop_tracker
-        if stop_tracker:
+        self.stop_model = stop_model
+        self.stop_tracker = None
+        if stop_model is not None:
+            self.stop_tracker = stop_model.new_tracker(
+                fill_price, True if self._shares < 0 else False)
             self.stop_tracker.tracking_position = self
 
     @property
@@ -74,7 +77,7 @@ class Position:
             # close position, this class just save last state, so it can be skipped
             # self.update(fill_1, fill_price, per_comm * fill_1)
             # open a new position
-            self.__init__(fill_2, fill_price, per_comm * fill_2)
+            self.__init__(fill_2, fill_price, per_comm * fill_2, stop_model=self.stop_model)
             return False
         else:
             cum_cost = self._average_price * before_shares + amount * fill_price + commission

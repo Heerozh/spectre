@@ -241,7 +241,7 @@ index
 
     def test_trailing_stop(self):
         def init_model(ratio):
-            m = spectre.trading.TrailingStopModel(ratio, True).new_tracker(9)
+            m = spectre.trading.TrailingStopModel(ratio, True).new_tracker(9, False)
             m.update_price(8)
             m.update_price(7)
             m.update_price(6)
@@ -272,7 +272,8 @@ index
         # test DecayTrailingStopModel
         # test short stop loss
         pos = spectre.trading.Position(-10, 9, 0)
-        model = spectre.trading.DecayTrailingStopModel(0.1, True).new_tracker(pos.last_price)
+        model = spectre.trading.DecayTrailingStopModel(0.1, 0.1, True).new_tracker(
+            pos.last_price, False)
         model.tracking_position = pos
         self.assertEqual(9 * 1.1, model.stop_price)
         pos.last_price = 8
@@ -290,7 +291,8 @@ index
 
         # test long stop loss
         pos = spectre.trading.Position(10, 9, 0)
-        model = spectre.trading.DecayTrailingStopModel(-0.1, True).new_tracker(pos.last_price)
+        model = spectre.trading.DecayTrailingStopModel(-0.1, 0.1, True).new_tracker(
+            pos.last_price, False)
         model.tracking_position = pos
         self.assertEqual(9 * 0.9, model.stop_price)
         pos.last_price = 8
@@ -299,8 +301,8 @@ index
 
         # test long stop gain
         pos = spectre.trading.Position(10, 9, 0)
-        model = spectre.trading.DecayTrailingStopModel(
-            0.1, pnl_target=-0.1, callback=True).new_tracker(pos.last_price)
+        model = spectre.trading.DecayTrailingStopModel(0.1, -0.1, True).new_tracker(
+            pos.last_price, False)
         model.tracking_position = pos
         self.assertEqual(9 * 1.1, model.stop_price)
         pos.last_price = 8

@@ -12,12 +12,12 @@ from .stopmodel import StopModel
 
 
 class Portfolio:
-    def __init__(self):
+    def __init__(self, stop_model: StopModel = None):
         self._history = []
         self._positions = dict()
         self._cash = 0
         self._current_date = None
-        self.stop_model = None
+        self.stop_model = stop_model
 
     def set_stop_model(self, stop_model: StopModel):
         """
@@ -62,7 +62,7 @@ class Portfolio:
         return "<Portfolio>" + str(self.history)[11:]
 
     def clear(self):
-        self.__init__()
+        self.__init__(self.stop_model)
 
     def shares(self, asset):
         try:
@@ -100,10 +100,7 @@ class Portfolio:
             if self._positions[asset].update(amount, fill_price, commission):
                 del self._positions[asset]
         else:
-            stop_tracker = None
-            if self.stop_model:
-                stop_tracker = self.stop_model.new_tracker(fill_price)
-            self._positions[asset] = Position(amount, fill_price, commission, stop_tracker)
+            self._positions[asset] = Position(amount, fill_price, commission, self.stop_model)
 
     def update_cash(self, amount):
         self._cash += amount
@@ -142,9 +139,9 @@ class Portfolio:
         else:
             raise ValueError('prices ether callable or dict')
 
-    def check_stop_trigger(self):
+    def check_stop_trigger(self, *args):
         ret = []
         for asset in list(self._positions.keys()):
             pos = self._positions[asset]
-            ret.append(pos.check_stop_trigger(asset, -pos.shares))
+            ret.append(pos.check_stop_trigger(asset, -pos.shares, *args))
         return ret
