@@ -129,7 +129,7 @@ bb_cross_factor.show_graph()
 The thickness of the line represents the length of the Rolling Window, kind of like "bandwidth".
 
 If `engine.to_cuda(enable_stream=True)`, the calculation of the branches will be performed
-simultaneously, and the VRAM usage will increase proportionally. 
+simultaneously, but the VRAM usage will increase proportionally. 
 
 ### Compatible with alphalens
 
@@ -851,6 +851,33 @@ Get current price of assert.
 like: `engine.add(OHLCV.close, 'prices')`*
 
 
+### SimulationBlotter.portfolio.set_stop_model
+
+`self.blotter.portfolio.set_stop_model(model: StopModel)` 
+**context:** *initialize*
+
+Set stop tracking model for positions, models are:
+
+`trading.StopModel(ratio, callback)`
+`trading.TrailingStopModel(ratio, callback)`
+
+Stop loss example:
+```python
+class Backtester(trading.CustomAlgorithm):
+    def initialize(self):
+        ...
+        self.blotter.portfolio.set_stop_model(trading.TrailingStopModel(-0.1, self.stop))
+
+    def stop(self, asset, amount):
+        self.blotter.order(asset, amount)
+        self.record(...)
+
+    def rebalance(self, data, history):
+        self.blotter.portfolio.check_stop_trigger()
+        ...
+```
+
+
 ### SimulationBlotter.portfolio Read Only Properties
 
 **context:** *rebalance, terminate*
@@ -859,7 +886,7 @@ like: `engine.add(OHLCV.close, 'prices')`*
 ```python
 class Position:
     shares = None
-    cost_basis = None
+    average_price = None
     last_price = None
     high_price = None
     low_price = None
