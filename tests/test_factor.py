@@ -321,7 +321,7 @@ class TestFactorLib(unittest.TestCase):
         expected_aapl = np.array([3., 4., 4, 4, 4, 3., 4., 4, 4])
         expected_msft = np.delete(expected_aapl, 5)
         engine.to_cuda()
-        test_expected(factor.ffill_na(), expected_aapl, expected_msft, 10)
+        test_expected(factor.fill_na(ffill=True), expected_aapl, expected_msft, 10)
         engine.to_cpu()
 
         # test reused factor only compute once, and nest factor window
