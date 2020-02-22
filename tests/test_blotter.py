@@ -104,10 +104,11 @@ index
         blotter.update_portfolio_value()
 
         # check transactions
-        expected = pd.DataFrame([['AAPL', 384, 155.92, 157.09960, 1.92],
-                                 ['AAPL', -384, 158.61, 157.41695, 1.92]],
+        rzd = (157.41695 - 157.09960) * 384 - 1.92 * 2
+        expected = pd.DataFrame([['AAPL', 384, 155.92, 157.09960, 1.92, 0.0],
+                                 ['AAPL', -384, 158.61, 157.41695, 1.92, rzd]],
                                 columns=['symbol', 'amount', 'price',
-                                         'fill_price', 'commission'],
+                                         'fill_price', 'commission', 'realized'],
                                 index=[date, date])
         expected.index.name = 'index'
         pd.testing.assert_frame_equal(expected, blotter.get_transactions())

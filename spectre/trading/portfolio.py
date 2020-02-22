@@ -91,16 +91,19 @@ class Portfolio:
 
         self._current_date = date
 
-    def update(self, asset, amount, fill_price, commission):
+    def update(self, asset, amount, fill_price, commission) -> float:
         """asset position + amount, also calculation average_price and realized P&L"""
         assert self._current_date is not None
         if amount == 0:
-            return
+            return 0
         if asset in self._positions:
-            if self._positions[asset].update(amount, fill_price, commission):
+            empty, realized = self._positions[asset].update(amount, fill_price, commission)
+            if empty:
                 del self._positions[asset]
+            return realized
         else:
             self._positions[asset] = Position(amount, fill_price, commission, self.stop_model)
+            return 0
 
     def update_cash(self, amount):
         self._cash += amount

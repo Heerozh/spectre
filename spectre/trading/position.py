@@ -5,6 +5,8 @@
 @email: heeroz@gmail.com
 """
 import math
+from typing import Tuple
+
 from .stopmodel import StopModel
 
 
@@ -60,10 +62,10 @@ class Position:
     def unrealized_percent(self):
         return (self._last_price / self._average_price - 1) * sign(self._shares)
 
-    def update(self, amount: int, fill_price: float, commission: float) -> bool:
+    def update(self, amount: int, fill_price: float, commission: float) -> Tuple[bool, float]:
         """
         position + amount, fill_price and commission is for calculation average_price and P&L
-        return True when position is empty.
+        return (True, realized) when position is empty.
         """
         before_shares = self._shares
         before_avg_px = self._average_price
@@ -74,24 +76,24 @@ class Position:
             fill_1 = amount - after_shares
             fill_2 = amount - fill_1
             per_comm = commission / amount
-            # close position, this class just save last state, so it can be skipped
-            # self.update(fill_1, fill_price, per_comm * fill_1)
+            # close position
+            _, realized = self.update(fill_1, fill_price, per_comm * fill_1)
             # open a new position
             self.__init__(fill_2, fill_price, per_comm * fill_2, stop_model=self.stop_model)
-            return False
+            return False, realized
         else:
             cum_cost = self._average_price * before_shares + amount * fill_price + commission
             self._shares = after_shares
             if after_shares == 0:
                 self._average_price = 0
-                self._realized += fill_price * amount - commission
+                self._realized += -cum_cost
                 self.last_price = fill_price
-                return True
+                return True, self._realized
             else:
                 self._average_price = cum_cost / after_shares
                 self._realized += (before_avg_px - self._average_price) * abs(after_shares)
                 self.last_price = fill_price
-                return False
+                return False, self._realized
 
     def process_split(self, inverse_ratio: float, last_price: float) -> float:
         if inverse_ratio != inverse_ratio or inverse_ratio == 1:

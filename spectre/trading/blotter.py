@@ -188,7 +188,7 @@ class BaseBlotter:
 
 class SimulationBlotter(BaseBlotter, EventReceiver):
     Order = namedtuple("Order", ['date', 'asset', 'amount', 'price',
-                                 'fill_price', 'commission'])
+                                 'fill_price', 'commission', 'realized'])
 
     def __init__(self, dataloader, capital_base=100000, daily_curb=None):
         """
@@ -323,14 +323,14 @@ class SimulationBlotter(BaseBlotter, EventReceiver):
         else:
             fill_price = price + slippage
 
+        # update portfolio, pay cash
+        realized = self._portfolio.update(asset, amount, fill_price, commission)
+        self._portfolio.update_cash(-amount * fill_price - commission)
+
         # make order
         order = SimulationBlotter.Order(
-            self._current_dt, asset, amount, price, fill_price, commission)
+            self._current_dt, asset, amount, price, fill_price, commission, realized)
         self.orders[asset].append(order)
-
-        # update portfolio, pay cash
-        self._portfolio.update(asset, amount, fill_price, commission)
-        self._portfolio.update_cash(-amount * fill_price - commission)
         return True
 
     def cancel_all_orders(self):
@@ -342,9 +342,10 @@ class SimulationBlotter(BaseBlotter, EventReceiver):
         for asset, orders in self.orders.items():
             for o in orders:
                 data.append(dict(index=o.date, amount=o.amount, price=o.price, symbol=o.asset,
-                                 fill_price=o.fill_price, commission=o.commission))
+                                 fill_price=o.fill_price, commission=o.commission,
+                                 realized=o.realized))
         ret = pd.DataFrame(data, columns=['index', 'symbol', 'amount', 'price',
-                                          'fill_price', 'commission'])
+                                          'fill_price', 'commission', 'realized'])
         ret = ret.set_index('index').sort_index()
         return ret
 
