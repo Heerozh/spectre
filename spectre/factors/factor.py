@@ -194,6 +194,12 @@ class BaseFactor:
 
     fill_nan = fill_na
 
+    def any(self, win):
+        return AnyFactor(win, inputs=(self,))
+
+    def all(self, win):
+        return AllFactor(win, inputs=(self,))
+
     # --------------- main methods ---------------
     @property
     def adjustments(self):
@@ -489,6 +495,16 @@ class ShiftFactor(CustomFactor):
 class AbsFactor(CustomFactor):
     def compute(self, data: torch.Tensor) -> torch.Tensor:
         return data.abs()
+
+
+class AnyFactor(CustomFactor):
+    def compute(self, data: Rolling) -> torch.Tensor:
+        return ~torch.isnan(data.values).any(dim=2)
+
+
+class AllFactor(CustomFactor):
+    def compute(self, data: Rolling) -> torch.Tensor:
+        return ~torch.isnan(data.values).all(dim=2)
 
 
 class PadFactor(CustomFactor):

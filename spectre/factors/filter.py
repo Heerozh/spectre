@@ -7,6 +7,7 @@
 from abc import ABC
 from typing import Set
 from .factor import BaseFactor, CustomFactor, MultiRetSelector
+from ..parallel import Rolling
 import torch
 import warnings
 
@@ -19,6 +20,12 @@ class FilterFactor(CustomFactor, ABC):
         factor = FilterShiftFactor(inputs=(self,))
         factor.periods = periods
         return factor
+
+    def any(self, win):
+        return AnyFilter(win, inputs=(self,))
+
+    def all(self, win):
+        return AllFilter(win, inputs=(self,))
 
 
 class FilterMultiRetSelector(MultiRetSelector, FilterFactor):
@@ -68,6 +75,16 @@ class OneHotEncoder(FilterFactor):
         for i in range(classes.shape[0]):
             one_hot.append((data == classes[i]).unsqueeze(-1))
         return torch.cat(one_hot, dim=-1)
+
+
+class AnyFilter(FilterFactor):
+    def compute(self, data: Rolling) -> torch.Tensor:
+        return data.values.any(dim=2)
+
+
+class AllFilter(FilterFactor):
+    def compute(self, data: Rolling) -> torch.Tensor:
+        return data.values.all(dim=2)
 
 
 class InvertFactor(FilterFactor):
