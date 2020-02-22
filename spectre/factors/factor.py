@@ -19,34 +19,71 @@ class BaseFactor:
 
     # --------------- overload ops ---------------
 
+    # op: +
     def __add__(self, other):
         return AddFactor(inputs=(self, other))
 
+    def __radd__(self, other):
+        return AddFactor(inputs=(other, self))
+
+    # op: -
     def __sub__(self, other):
         return SubFactor(inputs=(self, other))
 
+    def __rsub__(self, other):
+        return SubFactor(inputs=(other, self))
+
+    # op: *
     def __mul__(self, other):
         return MulFactor(inputs=(self, other))
 
+    def __rmul__(self, other):
+        return MulFactor(inputs=(other, self))
+
+    # op: /
     def __truediv__(self, other):
         return DivFactor(inputs=(self, other))
 
-    # __mod__
+    def __rtruediv__(self, other):
+        return DivFactor(inputs=(other, self))
 
+    # op: %
+    def __mod__(self, other):
+        return ModFactor(inputs=(self, other))
+
+    def __rmod__(self, other):
+        return ModFactor(inputs=(other, self))
+
+    # op: **
     def __pow__(self, other):
         return PowFactor(inputs=(self, other))
 
+    def __rpow__(self, other):
+        return PowFactor(inputs=(other, self))
+
+    # op: negative
     def __neg__(self):
         return NegFactor(inputs=(self,))
 
+    # op: and
     def __and__(self, other):
         from .filter import AndFactor
         return AndFactor(inputs=(self, other))
 
+    def __rand__(self, other):
+        from .filter import AndFactor
+        return AndFactor(inputs=(other, self))
+
+    # op: or
     def __or__(self, other):
         from .filter import OrFactor
         return OrFactor(inputs=(self, other))
 
+    def __ror__(self, other):
+        from .filter import OrFactor
+        return OrFactor(inputs=(other, self))
+
+    # op: <=>==!=
     def __lt__(self, other):
         from .filter import LtFactor
         return LtFactor(inputs=(self, other))
@@ -71,10 +108,12 @@ class BaseFactor:
         from .filter import NeFactor
         return NeFactor(inputs=(self, other))
 
+    # op: ~
     def __invert__(self):
         from .filter import InvertFactor
         return InvertFactor(inputs=(self,))
 
+    # op: []
     def __getitem__(self, key):
         return MultiRetSelector(inputs=(self, key))
 
@@ -144,9 +183,16 @@ class BaseFactor:
         factor = OneHotEncoder(self)
         return factor
 
-    def ffill_na(self):
-        factor = PadFactor(inputs=(self,))
+    def fill_na(self, value=None, ffill=None):
+        if value is not None:
+            factor = FillNANFactor(inputs=(self, value))
+        elif ffill:
+            factor = PadFactor(inputs=(self,))
+        else:
+            raise ValueError('Either `value=number` or `ffill=True` must be specified.')
         return factor
+
+    fill_nan = fill_na
 
     # --------------- main methods ---------------
     @property
@@ -450,6 +496,12 @@ class PadFactor(CustomFactor):
         return pad_2d(data)
 
 
+class FillNANFactor(CustomFactor):
+    def compute(self, data: torch.Tensor, value) -> torch.Tensor:
+        mask = torch.isnan(data)
+        return data.masked_fill(mask, value)
+
+
 class DoNothingFactor(CustomFactor):
     def compute(self, data: torch.Tensor) -> torch.Tensor:
         return data
@@ -560,6 +612,11 @@ class MulFactor(CustomFactor):
 class DivFactor(CustomFactor):
     def compute(self, left, right) -> torch.Tensor:
         return left / right
+
+
+class ModFactor(CustomFactor):
+    def compute(self, left, right) -> torch.Tensor:
+        return left % right
 
 
 class PowFactor(CustomFactor):

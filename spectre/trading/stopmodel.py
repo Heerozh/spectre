@@ -105,7 +105,7 @@ class DecayTrailingStopTracker(TrailingStopTracker):
 class DecayTrailingStopModel(StopModel):
     """
     Exponential decay to the stop ratio: `ratio * decay_rate ^ (PnL% / PnL_target%)`.
-    If its stop gain model, `PnL_target` should be Loss Target (negative).
+    If it's stop gain model, `PnL_target` should be Loss Target (negative).
 
     So, the lower the `ratio` when PnL% approaches the target, and if PnL% exceeds PnL_target%,
     any small opposite changes will trigger stop.
