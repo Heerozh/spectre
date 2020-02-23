@@ -16,7 +16,7 @@ class Portfolio:
         self._history = []
         self._positions = dict()
         self._cash = 0
-        self._current_date = None
+        self._current_dt = None
         self.stop_model = stop_model
 
     def set_stop_model(self, stop_model: StopModel):
@@ -49,7 +49,7 @@ class Portfolio:
     def value(self):
         # for asset, shares in self.positions.items():
         #     if self._last_price[asset] != self._last_price[asset]:
-        #         raise ValueError('{}({}) is nan in {}'.format(asset, shares, self._current_date))
+        #         raise ValueError('{}({}) is nan in {}'.format(asset, shares, self._current_dt))
         values = [pos.value for asset, pos in self.positions.items() if pos.shares != 0]
         return sum(values) + self._cash
 
@@ -71,38 +71,42 @@ class Portfolio:
             return 0
 
     def _get_today_record(self):
-        record = {('index', ''): self._current_date, ('value', 'cash'): self._cash}
+        current_date = self._current_dt.normalize()
+        record = {('index', ''): current_date, ('value', 'cash'): self._cash}
         for asset, pos in self._positions.items():
             record[('avg_px', asset)] = pos.average_price
             record[('shares', asset)] = pos.shares
             record[('value', asset)] = pos.value
         return record
 
-    def set_date(self, date):
-        if isinstance(date, str):
-            date = pd.Timestamp(date)
-        date = date.normalize()
-        if self._current_date is not None:
-            if date < self._current_date:
+    def set_datetime(self, dt):
+        if isinstance(dt, str):
+            dt = pd.Timestamp(dt)
+        date = dt.normalize()
+        if self._current_dt is not None:
+            current_date = self._current_dt.normalize()
+            if dt < self._current_dt:
                 raise ValueError('Cannot set a date less than the current date')
-            elif date > self._current_date:
+            elif date > current_date:
                 # today add to history
                 self._history.append(self._get_today_record())
 
-        self._current_date = date
+        self._current_dt = dt
 
     def update(self, asset, amount, fill_price, commission) -> float:
         """asset position + amount, also calculation average_price and realized P&L"""
-        assert self._current_date is not None
+        assert self._current_dt is not None
         if amount == 0:
             return 0
         if asset in self._positions:
-            empty, realized = self._positions[asset].update(amount, fill_price, commission)
+            empty, realized = self._positions[asset].update(
+                amount, fill_price, commission, self._current_dt)
             if empty:
                 del self._positions[asset]
             return realized
         else:
-            self._positions[asset] = Position(amount, fill_price, commission, self.stop_model)
+            self._positions[asset] = Position(
+                amount, fill_price, commission, self._current_dt, self.stop_model)
             return 0
 
     def update_cash(self, amount):
@@ -140,7 +144,7 @@ class Portfolio:
         elif isinstance(prices, dict):
             self._update_value_dict(prices)
         else:
-            raise ValueError('prices ether callable or dict')
+            raise ValueError('prices either callable or dict')
 
     def check_stop_trigger(self, *args):
         ret = []

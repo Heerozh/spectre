@@ -16,17 +16,22 @@ def sign(x):
 
 class Position:
     def __init__(self, shares: int, fill_price: float, commission: float,
-                 stop_model: StopModel = None):
+                 dt, stop_model: StopModel = None):
         self._shares = shares
         self._average_price = fill_price + commission / shares
         self._last_price = fill_price
         self._realized = 0
+        self._open_dt = dt
         self.stop_model = stop_model
         self.stop_tracker = None
         if stop_model is not None:
             self.stop_tracker = stop_model.new_tracker(
                 fill_price, True if self._shares < 0 else False)
             self.stop_tracker.tracking_position = self
+
+    @property
+    def open_dt(self):
+        return self._open_dt
 
     @property
     def value(self):
@@ -62,7 +67,7 @@ class Position:
     def unrealized_percent(self):
         return (self._last_price / self._average_price - 1) * sign(self._shares)
 
-    def update(self, amount: int, fill_price: float, commission: float) -> Tuple[bool, float]:
+    def update(self, amount: int, fill_price: float, commission: float, dt) -> Tuple[bool, float]:
         """
         position + amount, fill_price and commission is for calculation average_price and P&L
         return (True, realized) when position is empty.
@@ -77,9 +82,9 @@ class Position:
             fill_2 = amount - fill_1
             per_comm = commission / amount
             # close position
-            _, realized = self.update(fill_1, fill_price, per_comm * fill_1)
+            _, realized = self.update(fill_1, fill_price, per_comm * fill_1, dt)
             # open a new position
-            self.__init__(fill_2, fill_price, per_comm * fill_2, stop_model=self.stop_model)
+            self.__init__(fill_2, fill_price, per_comm * fill_2, dt, stop_model=self.stop_model)
             return False, realized
         else:
             cum_cost = self._average_price * before_shares + amount * fill_price + commission

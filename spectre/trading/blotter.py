@@ -50,7 +50,7 @@ class BaseBlotter:
 
     def set_datetime(self, dt: pd.Timestamp) -> None:
         self._current_dt = dt
-        self._portfolio.set_date(dt)
+        self._portfolio.set_datetime(dt)
 
     def set_commission(self, percentage: float, per_share: float, minimum: float):
         """

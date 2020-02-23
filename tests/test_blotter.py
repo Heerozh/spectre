@@ -11,21 +11,21 @@ class TestBlotter(unittest.TestCase):
 
     def test_portfolio(self):
         pf = spectre.trading.Portfolio()
-        pf.set_date("2019-01-01")
+        pf.set_datetime("2019-01-01")
         pf.update_cash(10000)
 
-        pf.set_date("2019-01-03")
+        pf.set_datetime("2019-01-03")
         pf.update('AAPL', 10, 9, 10)
         pf.update('MSFT', -25, 9, 25)
         pf.update_cash(-5000)
         pf.process_split('AAPL', 2.0, 3)
 
-        pf.set_date("2019-01-04")
+        pf.set_datetime("2019-01-04")
         pf.update('AAPL', -10, 12, 10)
 
         self.assertEqual(60, pf.positions['AAPL'].realized)
 
-        pf.set_date("2019-01-05 23:00:00")
+        pf.set_datetime("2019-01-05 23:00:00")
         pf.update('MSFT', 30, 7, 30)
         pf.update_cash(2000)
 
@@ -63,7 +63,7 @@ index
         self.assertEqual(7030 + 15 + 10, pf.value)
         self.assertEqual(25 / 7055, pf.leverage)
 
-        pf.set_date("2019-01-06")
+        pf.set_datetime("2019-01-06")
         pf.update_cash(-6830)
         pf.update('AAPL', -100, 1, 0)
         pf.update('MSFT', 50, 1, 0)
@@ -72,7 +72,7 @@ index
         self.assertEqual(200 + -135 + 110, pf.value)
         self.assertEqual(245 / 175, pf.leverage)
 
-        pf.set_date("2019-01-07")
+        pf.set_datetime("2019-01-07")
         pf.update_cash(-200)
         pf.update('AAPL', 400, 1.5, 0)
         pf.update('MSFT', 50, 2, 0)
@@ -82,7 +82,7 @@ index
 
         # test realized
         pf = spectre.trading.Portfolio()
-        pf.set_date("2019-01-03")
+        pf.set_datetime("2019-01-03")
         self.assertEqual(0, pf.update('AAPL', 10, 10, 0))
         pos = pf.positions['AAPL']
         self.assertEqual(5, pf.update('AAPL', -5, 11, 0))
@@ -281,7 +281,7 @@ index
 
         # test DecayTrailingStopModel
         # test short stop loss
-        pos = spectre.trading.Position(-10, 9, 0)
+        pos = spectre.trading.Position(-10, 9, 0, None, None)
         model = spectre.trading.DecayTrailingStopModel(0.1, 0.1, True).new_tracker(
             pos.last_price, False)
         model.tracking_position = pos
@@ -300,7 +300,7 @@ index
         self.assertTrue(model.check_trigger())
 
         # test long stop loss
-        pos = spectre.trading.Position(10, 9, 0)
+        pos = spectre.trading.Position(10, 9, 0, None, None)
         model = spectre.trading.DecayTrailingStopModel(-0.1, 0.1, True).new_tracker(
             pos.last_price, False)
         model.tracking_position = pos
@@ -310,7 +310,7 @@ index
         self.assertTrue(model.check_trigger())
 
         # test long stop gain
-        pos = spectre.trading.Position(10, 9, 0)
+        pos = spectre.trading.Position(10, 9, 0, None, None)
         model = spectre.trading.DecayTrailingStopModel(0.1, -0.1, True).new_tracker(
             pos.last_price, False)
         model.tracking_position = pos
