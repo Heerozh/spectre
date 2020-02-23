@@ -78,11 +78,15 @@ class OneHotEncoder(FilterFactor):
 
 
 class AnyFilter(FilterFactor):
+    _min_win = 2
+
     def compute(self, data: Rolling) -> torch.Tensor:
         return data.values.any(dim=2)
 
 
 class AllFilter(FilterFactor):
+    _min_win = 2
+
     def compute(self, data: Rolling) -> torch.Tensor:
         return data.values.all(dim=2)
 

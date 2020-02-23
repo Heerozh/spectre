@@ -173,6 +173,9 @@ class BaseFactor:
     def abs(self):
         return AbsFactor(inputs=(self,))
 
+    def sum(self, win):
+        return SumFactor(win, inputs=(self,))
+
     def filter(self, mask):
         mf = DoNothingFactor(inputs=(self,))
         mf.set_mask(mask)
@@ -497,12 +500,23 @@ class AbsFactor(CustomFactor):
         return data.abs()
 
 
+class SumFactor(CustomFactor):
+    _min_win = 2
+
+    def compute(self, data: Rolling) -> torch.Tensor:
+        return data.nansum()
+
+
 class AnyFactor(CustomFactor):
+    _min_win = 2
+
     def compute(self, data: Rolling) -> torch.Tensor:
         return ~torch.isnan(data.values).any(dim=2)
 
 
 class AllFactor(CustomFactor):
+    _min_win = 2
+
     def compute(self, data: Rolling) -> torch.Tensor:
         return ~torch.isnan(data.values).all(dim=2)
 

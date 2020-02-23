@@ -163,7 +163,6 @@ class TestTradingAlgorithm(unittest.TestCase):
                                 index=[pd.Timestamp("2019-01-14", tz='UTC'),
                                        pd.Timestamp("2019-01-15", tz='UTC')])
         expected.index.name = 'index'
-        print(results.positions)
         pd.testing.assert_frame_equal(expected, results.positions)
 
     def test_two_engine_algorithm(self):
