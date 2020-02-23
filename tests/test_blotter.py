@@ -80,6 +80,15 @@ index
         pf.update_value(lambda x: None)
         self.assertEqual(2, pf.leverage)
 
+        # test realized
+        pf = spectre.trading.Portfolio()
+        pf.set_date("2019-01-03")
+        self.assertEqual(0, pf.update('AAPL', 10, 10, 0))
+        pos = pf.positions['AAPL']
+        self.assertEqual(5, pf.update('AAPL', -5, 11, 0))
+        self.assertEqual(-5, pf.update('AAPL', -5, 9, 0))
+        self.assertEqual(0, pos.realized)
+
     def test_simulation_blotter(self):
         loader = spectre.data.CsvDirLoader(
             data_dir + '/daily/', ohlcv=('uOpen', 'uHigh', 'uLow', 'uClose', 'uVolume'),

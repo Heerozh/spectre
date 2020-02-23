@@ -86,14 +86,16 @@ class Position:
             self._shares = after_shares
             if after_shares == 0:
                 self._average_price = 0
-                self._realized += -cum_cost
+                realized = -cum_cost - self._realized
+                self._realized = -cum_cost
                 self.last_price = fill_price
-                return True, self._realized
+                return True, realized
             else:
                 self._average_price = cum_cost / after_shares
-                self._realized += (before_avg_px - self._average_price) * abs(after_shares)
+                realized = (before_avg_px - self._average_price) * abs(after_shares)
+                self._realized += realized
                 self.last_price = fill_price
-                return False, self._realized
+                return False, realized
 
     def process_split(self, inverse_ratio: float, last_price: float) -> float:
         if inverse_ratio != inverse_ratio or inverse_ratio == 1:
