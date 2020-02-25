@@ -9,7 +9,7 @@ from typing import Optional, Sequence, Union
 import numpy as np
 import torch
 from ..parallel import nansum, nanmean, nanstd, pad_2d, Rolling
-from .plotting import plot_factor_diagram
+from ..plotting import plot_factor_diagram
 
 
 class BaseFactor:

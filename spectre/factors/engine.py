@@ -9,7 +9,7 @@ import warnings
 from .factor import BaseFactor
 from .filter import FilterFactor, StaticAssets
 from .datafactor import DataFactor, AdjustedDataFactor
-from .plotting import plot_quantile_and_cumulative_returns
+from ..plotting import plot_quantile_and_cumulative_returns
 from ..data import DataLoader
 from ..parallel import ParallelGroupBy
 import pandas as pd

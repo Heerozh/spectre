@@ -9,7 +9,7 @@ from typing import Union
 import pandas as pd
 from collections import namedtuple
 from .event import Event, EventReceiver, EventManager, EveryBarData, MarketOpen, MarketClose
-from .metric import plot_cumulative_returns
+from ..plotting import plot_cumulative_returns
 from .blotter import BaseBlotter, SimulationBlotter
 from ..factors import FactorEngine, OHLCV, StaticAssets
 from ..data import DataLoader, DataLoaderFastGetter

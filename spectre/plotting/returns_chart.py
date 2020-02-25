@@ -1,12 +1,13 @@
 """
 @author: Heerozh (Zhang Jianhao)
-@copyright: Copyright 2019, Heerozh. All rights reserved.
+@copyright: Copyright 2019-2020, Heerozh. All rights reserved.
 @license: Apache 2.0
 @email: heeroz@gmail.com
 """
 import math
-from itertools import cycle, islice
+from itertools import cycle
 import sys
+
 
 DEFAULT_COLORS = [
     'rgb(99, 110, 250)', 'rgb(239, 85, 59)', 'rgb(0, 204, 150)',
@@ -109,92 +110,63 @@ def plot_quantile_and_cumulative_returns(factor_data, mean_ret):
     fig.show()
 
 
-def plot_factor_diagram(factor):
+def plot_cumulative_returns(returns, positions, transactions, benchmark, annual_risk_free):
+    from ..trading import turnover, sharpe_ratio, drawdown, annual_volatility
+
     import plotly.graph_objects as go
-    from .factor import BaseFactor, CustomFactor
-    from .datafactor import DataFactor
+    import plotly.subplots as subplots
 
-    color = [
-        "rgba(31, 119, 180, 0.8)", "rgba(255, 127, 14, 0.8)", "rgba(44, 160, 44, 0.8)",
-        "rgba(214, 39, 40, 0.8)", "rgba(148, 103, 189, 0.8)", "rgba(140, 86, 75, 0.8)",
-        "rgba(227, 119, 194, 0.8)", "rgba(127, 127, 127, 0.8)", "rgba(188, 189, 34, 0.8)",
-        "rgba(23, 190, 207, 0.8)", "rgba(31, 119, 180, 0.8)", "rgba(255, 127, 14, 0.8)",
-        "rgba(44, 160, 44, 0.8)", "rgba(214, 39, 40, 0.8)", "rgba(148, 103, 189, 0.8)",
-        "rgba(140, 86, 75, 0.8)", "rgba(227, 119, 194, 0.8)", "rgba(127, 127, 127, 0.8)",
-        "rgba(188, 189, 34, 0.8)", "rgba(23, 190, 207, 0.8)", "rgba(31, 119, 180, 0.8)",
-        "rgba(255, 127, 14, 0.8)", "rgba(44, 160, 44, 0.8)", "rgba(214, 39, 40, 0.8)",
-        "rgba(148, 103, 189, 0.8)", "rgba(140, 86, 75, 0.8)", "rgba(227, 119, 194, 0.8)",
-        "rgba(127, 127, 127, 0.8)", "rgba(188, 189, 34, 0.8)", "rgba(23, 190, 207, 0.8)",
-        "rgba(31, 119, 180, 0.8)", "rgba(255, 127, 14, 0.8)", "rgba(44, 160, 44, 0.8)",
-        "rgba(214, 39, 40, 0.8)", "rgba(148, 103, 189, 0.8)", "magenta",
-        "rgba(227, 119, 194, 0.8)", "rgba(127, 127, 127, 0.8)", "rgba(188, 189, 34, 0.8)",
-        "rgba(23, 190, 207, 0.8)", "rgba(31, 119, 180, 0.8)", "rgba(255, 127, 14, 0.8)",
-        "rgba(44, 160, 44, 0.8)", "rgba(214, 39, 40, 0.8)", "rgba(148, 103, 189, 0.8)",
-        "rgba(140, 86, 75, 0.8)", "rgba(227, 119, 194, 0.8)", "rgba(127, 127, 127, 0.8)"
-    ]
+    fig = subplots.make_subplots(specs=[[{"secondary_y": True}]])
 
-    factor_id = dict()
-    label = []
-    source = []
-    target = []
-    value = []
-    line_label = []
+    cum_ret = (returns + 1).cumprod()
+    fig.add_trace(go.Scatter(x=cum_ret.index, y=cum_ret.values * 100 - 100, name='portfolio',
+                             hovertemplate='<b>Date</b>:%{x}<br><b>Return</b>: %{y:.3f}%'))
+    fig.add_shape(go.layout.Shape(y0=0, y1=0, x0=cum_ret.index[0], x1=cum_ret.index[-1],
+                                  type="line", line=dict(width=1)))
 
-    def add_node(this, parent_label_id, parent_label, parent_win):
-        class_id = id(this)
+    if benchmark is not None:
+        cum_bench = (benchmark + 1).cumprod()
+        fig.add_trace(go.Scatter(x=cum_bench.index, y=cum_bench.values * 100 - 100,
+                                 name='benchmark', line=dict(width=0.5)))
 
-        if class_id in factor_id:
-            this_label_id = factor_id[class_id]
-        else:
-            this_label_id = len(label)
-            if isinstance(this, DataFactor):
-                label.append(this.inputs[0])
-            else:
-                label.append(type(this).__name__)
+    fig.add_shape(go.layout.Shape(
+        type="rect", xref="x", yref="paper", opacity=0.5, line_width=0,
+        fillcolor="LightGoldenrodYellow", layer="below",
+        y0=0, y1=1, x0=cum_ret.idxmax(), x1=cum_ret[cum_ret.idxmax():].idxmin(),
+    ))
 
-        if parent_label_id is not None:
-            source.append(parent_label_id)
-            target.append(this_label_id)
-            value.append(parent_win)
-            line_label.append(parent_label)
+    to = turnover(positions, transactions) * 100
+    resample = int(len(to) / 126)
+    if resample > 0:
+        to = to.fillna(0).rolling(resample).mean()[::resample]
+    fig.add_trace(go.Bar(x=to.index, y=to.values, opacity=0.2, name='turnover'),
+                  secondary_y=True)
 
-        if class_id in factor_id:
-            return
+    sr = sharpe_ratio(returns, annual_risk_free)
+    dd, ddd = drawdown(cum_ret)
+    mdd = abs(dd.min())
+    mdd_dur = ddd.max()
+    vol = annual_volatility(returns) * 100
 
-        if isinstance(this, CustomFactor):
-            this_win = this.win
-        else:
-            this_win = 1
+    if benchmark is not None:
+        bench_sr = sharpe_ratio(benchmark, annual_risk_free)
+        bench_vol = annual_volatility(benchmark) * 100
+    else:
+        bench_sr = 0
+        bench_vol = 0
 
-        factor_id[class_id] = this_label_id
-        if isinstance(this, CustomFactor):
-            if this.inputs:
-                for upstream in this.inputs:
-                    if isinstance(upstream, BaseFactor):
-                        add_node(upstream, this_label_id, 'inputs', this_win)
+    ann = go.layout.Annotation(
+        x=0.01, y=0.98, xref="paper", yref="paper",
+        showarrow=False, borderwidth=1, bordercolor='black', align='left',
+        text="<b>Overall</b> (portfolio/benchmark)<br>"
+             "SharpeRatio:      {:.3f}/{:.3f}<br>"
+             "MaxDrawDown:  {:.2f}%, {} Days<br>"
+             "AnnualVolatility: {:.2f}%/{:.2f}%</b>"
+            .format(sr, bench_sr, mdd * 100, mdd_dur, vol, bench_vol),
+    )
 
-            if this._mask is not None:
-                add_node(this._mask, this_label_id, 'mask', this_win)
-
-    add_node(factor, None, None, None)
-
-    fig = go.Figure(data=[go.Sankey(
-        valueformat=".0f",
-        valuesuffix="win",
-        node=dict(
-            pad=15,
-            thickness=15,
-            line=dict(color="black", width=0.5),
-            label=label,
-            color=list(islice(cycle(color), len(label)))
-        ),
-        # Add links
-        link=dict(
-            source=source,
-            target=target,
-            value=value,
-            label=line_label
-        ))])
-
-    fig.update_layout(title_text="Factor Diagram")
+    fig.update_layout(height=400, annotations=[ann], margin={'t': 50})
+    fig.update_xaxes(tickformat='%Y-%m-%d')
+    fig.update_yaxes(title_text='cumulative return', ticksuffix='%', secondary_y=False)
+    fig.update_yaxes(title_text='turnover', ticksuffix='%', secondary_y=True)
     fig.show()

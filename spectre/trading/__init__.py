@@ -144,7 +144,6 @@ from .metric import (
     sharpe_ratio,
     turnover,
     annual_volatility,
-    plot_cumulative_returns
 )
 
 
