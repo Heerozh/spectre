@@ -17,10 +17,8 @@ DEFAULT_COLORS = [
 
 def plot_quantile_and_cumulative_returns(factor_data, mean_ret):
     """
-    install plotly extension first:
-    https://plot.ly/python/getting-started/
-    conda install -c conda-forge jupyterlab=1.2
-    conda install "ipywidgets=7.5"
+    Plotly Installation:
+    https://github.com/plotly/plotly.py#jupyterlab-support-python-35
     """
     quantiles = mean_ret.index
 

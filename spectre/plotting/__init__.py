@@ -7,3 +7,7 @@ from .returns_chart import (
 from .factor_diagram import (
     plot_factor_diagram,
 )
+
+from .chart import (
+    plot_chart,
+)

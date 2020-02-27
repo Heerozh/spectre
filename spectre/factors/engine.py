@@ -9,7 +9,7 @@ import warnings
 from .factor import BaseFactor
 from .filter import FilterFactor, StaticAssets
 from .datafactor import DataFactor, AdjustedDataFactor
-from ..plotting import plot_quantile_and_cumulative_returns
+from ..plotting import plot_quantile_and_cumulative_returns, plot_chart
 from ..data import DataLoader
 from ..parallel import ParallelGroupBy
 import pandas as pd
@@ -370,6 +370,37 @@ class FactorEngine:
 
         ret = ret['price'].unstack(level=[1])
         return ret
+
+    def plot_chart(self, start, end, trace_types=None, styles=None, delay_factor=True):
+        """
+        Plotting common stock price chart for researching.
+        :param start: same as engine.run()
+        :param end: same as engine.run()
+        :param delay_factor: same as engine.run()
+        :param trace_types: dict(factor_name=plotly_trace_type), default is 'Scatter'
+        :param styles: dict(factor_name=plotly_trace_styles)
+
+        Usage::
+
+            engine = factors.FactorEngine(loader)
+            engine.timezone = 'America/New_York'
+            engine.set_filter(factors.StaticAssets({'NVDA', 'MSFT'}))
+            engine.add(factors.MA(20), 'MA20')
+            engine.add(factors.RSI(), 'RSI')
+            engine.to_cuda()
+            engine.plot_chart('2017', '2018', styles={
+                'MA20': {
+                          'line': {'dash': 'dash'}
+                       },
+                'RSI': {
+                          'yaxis': 'y3',
+                          'line': {'width': 1}
+                       }
+            })
+
+        """
+        df = self.run(start, end, delay_factor)
+        plot_chart(self._dataframe, self.loader_.ohlcv, df, trace_types=trace_types, styles=styles)
 
     def full_run(self, start, end, trade_at='close', periods=(1, 4, 9),
                  quantiles=5, filter_zscore=20, demean=True, preview=True
