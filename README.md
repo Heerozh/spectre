@@ -430,6 +430,33 @@ in order to provide the latest data as much as possible.
 Set to `False` to force engine not delay any factors.
 
 
+### FactorEngine.plot_chart
+
+`engine.plot_chart(start_time, end_time, trace_types=None, styles=None, delay_factor=True)`
+    
+Plotting common stock price chart for researching.
+
+```python
+engine = factors.FactorEngine(loader)
+engine.timezone = 'America/New_York'
+engine.set_filter(factors.StaticAssets({'NVDA', 'BABA'}))
+engine.add(factors.MA(20), 'MA20')
+engine.add(factors.RSI(), 'RSI')
+engine.to_cuda()
+engine.plot_chart('2017', '2018', styles={
+    'MA20': {
+              'line': {'dash': 'dash'}
+           },
+    'RSI': {
+              'yaxis': 'y3',
+              'line': {'width': 1}
+           }
+})
+```
+
+<img src="https://github.com/Heerozh/spectre/raw/media/chart.png" width="730" height="1000">
+
+
 ### FactorEngine.full_run
 
 `factor_data, mean_returns = engine.full_run(
@@ -492,9 +519,14 @@ new_factor = factor.to_weight(mask=filter, demean=True)  # return a weight that 
 
 # Quick computation
 new_factor = factor1 + factor1
+new_factor = factor.abs()
+new_factor = factor.sum()
 
 # To filter (Comparison operator):
 new_filter = (factor1 < factor2) | (factor1 > 0)
+new_filter[n_features] = factor.one_hot()  # one-hot encoding
+new_filter = factor.any(win=5)
+new_filter = factor.all(win=5)
 # Rank filter
 new_filter = factor.top(n)
 new_filter = factor.bottom(n)
@@ -508,9 +540,10 @@ new_factor = factor.filter(some_filter)   # filter only this factor
 new_factor = factor[0]
 
 # Others
-new_filter[n_features] = factor.one_hot()  # one-hot encoding
+new_factor = factor.shift(1)
 new_factor = factor.quantile(bins=5)  # factor value quantile groupby datetime
-new_factor = factor.ffill_na()  # propagate last valid observation forward to next valid
+new_factor = factor.fill_na(0)
+new_factor = factor.fill_na(ffill=True)  # propagate last valid observation forward to next valid
 
 ```
 
@@ -858,8 +891,9 @@ like: `engine.add(OHLCV.close, 'prices')`*
 
 Set stop tracking model for positions, models are:
 
-`trading.StopModel(ratio, callback)`
-`trading.TrailingStopModel(ratio, callback)`
+`trading.StopModel(ratio, callback)`\
+`trading.TrailingStopModel(ratio, callback)`\
+`trading.DecayTrailingStopModel(ratio, pnl_target, callback, decay_rate=0.05, max_decay=0)`
 
 Stop loss example:
 ```python
@@ -877,6 +911,13 @@ class Backtester(trading.CustomAlgorithm):
         ...
 ```
 
+#### DecayTrailingStopModel
+This is a model that can stop gain and stop loss at the same time.
+
+Exponential decay to the stop ratio: `ratio * decay_rate ^ (PnL% / PnL_target%)`, 
+So `DecayTrailingStopModel(-0.1, 0.1, callback)` means initial stop loss is -10%, and the `ratio` 
+will decrease when profit% approaches the target +10%. If recorded high profit% exceeds 10%, any
+drawdown will trigger a stop loss.
 
 ### SimulationBlotter.portfolio Read Only Properties
 
@@ -913,8 +954,10 @@ Run backtest, return value is namedtuple:
 
 
 
-# Copyright
+# Copyright & Thanks
 Copyright (C) 2019-2020, by Zhang Jianhao (heeroz@gmail.com), All rights reserved.
+
+Thanks to [JetBrains](https://www.jetbrains.com/?from=spectre)'s support.
 
 ------------
 > *A spectre is haunting Market — the spectre of capitalism.*
