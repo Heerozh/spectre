@@ -439,7 +439,7 @@ Plotting common stock price chart for researching.
 ```python
 engine = factors.FactorEngine(loader)
 engine.timezone = 'America/New_York'
-engine.set_filter(factors.StaticAssets({'NVDA', 'BABA'}))
+engine.set_filter(factors.StaticAssets({'NVDA', 'MSFT'}))
 engine.add(factors.MA(20), 'MA20')
 engine.add(factors.RSI(), 'RSI')
 engine.to_cuda()
