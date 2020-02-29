@@ -276,7 +276,8 @@ class CustomFactor(BaseFactor):
             self.win = win
         if inputs:
             self.inputs = inputs
-        assert isinstance(self.inputs, (list, tuple, type(None))), 'inputs must be a list.'
+        assert isinstance(self.inputs, (list, tuple, type(None))), '`factor.inputs` must be a list.'
+        assert isinstance(self.win, int), '`factor.win` must be a integer.'
 
         assert (self.win >= (self._min_win or 1))
 
