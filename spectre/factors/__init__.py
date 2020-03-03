@@ -7,7 +7,7 @@ from .factor import (
     BaseFactor,
     CustomFactor,
     RankFactor,
-    QuantileFactor,
+    QuantileClassifier,
 )
 
 from .datafactor import (

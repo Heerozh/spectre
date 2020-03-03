@@ -131,12 +131,11 @@ class BaseFactor:
         factor.ascending = ascending
         return factor
 
-    def zscore(self, axis_asset=False, mask: 'BaseFactor' = None):
-        if axis_asset:
-            factor = AssetZScoreFactor(inputs=(self,))
-            factor.set_mask(mask)
-        else:
-            factor = ZScoreFactor(inputs=(self,), mask=mask)
+    def zscore(self, groupby: str = 'date', mask: 'BaseFactor' = None):
+        factor = ZScoreFactor(inputs=(self,))
+        factor.set_mask(mask)
+        factor.groupby = groupby
+
         return factor
 
     def demean(self, groupby: Union[str, dict] = None, mask: 'BaseFactor' = None):
@@ -155,8 +154,10 @@ class BaseFactor:
             raise ValueError()
         return factor
 
-    def quantile(self, bins=5, mask: 'BaseFactor' = None):
-        factor = QuantileFactor(inputs=(self,), mask=mask)
+    def quantile(self, bins=5, mask: 'BaseFactor' = None, groupby: str = 'date'):
+        factor = QuantileClassifier(inputs=(self,))
+        factor.set_mask(mask)
+        factor.groupby = groupby
         factor.bins = bins
         return factor
 
@@ -569,19 +570,13 @@ class DemeanFactor(TimeGroupFactor):
             return data - nanmean(data)[:, None]
 
 
-class ZScoreFactor(TimeGroupFactor):
+class ZScoreFactor(CustomFactor):
 
     def compute(self, data: torch.Tensor) -> torch.Tensor:
         return (data - nanmean(data)[:, None]) / nanstd(data)[:, None]
 
 
-class AssetZScoreFactor(CustomFactor):
-
-    def compute(self, data: torch.Tensor) -> torch.Tensor:
-        return (data - nanmean(data)[:, None]) / nanstd(data)[:, None]
-
-
-class QuantileFactor(TimeGroupFactor):
+class QuantileClassifier(CustomFactor):
     """Returns the quantile of the factor at each datetime"""
     bins = 5
 

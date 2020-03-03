@@ -453,7 +453,7 @@ class FactorEngine:
             mask = universe
             if filter_zscore is not None:
                 # Different: The zscore here contains all backward data which alphalens not counted.
-                zscore_factor = ret.zscore(axis_asset=True, mask=universe)
+                zscore_factor = ret.zscore(groupby='asset', mask=universe)
                 zscore_filter = zscore_factor.abs() <= filter_zscore
                 if mask is not None:
                     mask = mask & zscore_filter

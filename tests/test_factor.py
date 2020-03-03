@@ -442,7 +442,7 @@ class TestFactorLib(unittest.TestCase):
         assert_almost_equal(result, expected)
 
     def test_quantile(self):
-        f = spectre.factors.QuantileFactor()
+        f = spectre.factors.QuantileClassifier()
         f.bins = 5
         import torch
         result = f.compute(torch.tensor([[1, 1, np.nan, 1.01, 1.01, 2],
