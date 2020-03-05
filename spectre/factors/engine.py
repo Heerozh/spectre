@@ -213,6 +213,13 @@ class FactorEngine:
         self.remove_all_factors()
         self.set_filter(None)
 
+    def empty_cache(self):
+        self._last_load = [None, None, None]
+        self._column_cache = {}
+        self._groups = dict()
+        self._dataframe = None
+        self._dataframe_index = None
+
     def remove_all_factors(self) -> None:
         self._factors = {}
 
@@ -222,12 +229,12 @@ class FactorEngine:
         However, this will lead to more VRAM usage and may affect performance.
         """
         self._device = torch.device('cuda')
-        self._last_load = [None, None, None]
         self._enable_stream = enable_stream
+        self.empty_cache()
 
     def to_cpu(self) -> None:
         self._device = torch.device('cpu')
-        self._last_load = [None, None, None]
+        self.empty_cache()
 
     def test_lookahead_bias(self, start, end):
         """Check all factors, if there are look-ahead bias"""
@@ -246,8 +253,7 @@ class FactorEngine:
         # check if results are consistent
         df = self.run(start, end)
         # clean
-        self._column_cache = {}
-        self._last_load = [None, None, None]
+        self.empty_cache()
 
         try:
             pd.testing.assert_frame_equal(df_expected[:mid_left], df[:mid_left])
