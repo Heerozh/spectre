@@ -57,7 +57,7 @@ class MovingAverageConvergenceDivergenceSignal(EMA):
         self.inputs = (EMA(inputs=self.inputs, win=fast) - EMA(inputs=self.inputs, win=slow),)
 
     def normalized(self):
-        """In order not to double the calculation, reuse `inputs` factor here"""
+        # In order not to double the calculation, reuse `inputs` factor here
         macd = self.inputs[0]
         sign = self
         return macd - sign
@@ -112,17 +112,16 @@ class FastStochasticOscillator(CustomFactor):
     inputs = (OHLCV.high, OHLCV.low, OHLCV.close)
     win = 14
     _min_win = 2
-    normalize = False
 
     def compute(self, highs, lows, closes):
         highest_highs = highs.nanmax()
         lowest_lows = lows.nanmin()
         k = (closes.last() - lowest_lows) / (highest_highs - lowest_lows)
 
-        if self.normalize:
-            return k - 0.5
-        else:
-            return k * 100
+        return k * 100
+
+    def normalized(self):
+        return self / 100 - 0.5
 
 
 BBANDS = NormalizedBollingerBands
