@@ -85,6 +85,13 @@ class TestFactorLib(unittest.TestCase):
                          0.235832738, 0.202266499, 0.308870901, 0.235088127]
         test_expected(spectre.factors.AnnualizedVolatility(3), expected_aapl, expected_msft, 10)
 
+        # test LogReturn
+        expected_aapl = np.log(df_aapl_close) - np.log(df_aapl_close.shift(1))
+        expected_msft = np.log(df_msft_close) - np.log(df_msft_close.shift(1))
+        expected_aapl = expected_aapl[-9:]
+        expected_msft = expected_msft[-8:]
+        test_expected(spectre.factors.LogReturns(), expected_aapl, expected_msft, 10)
+
         # test rank
         _expected_aapl = [2.] * 9
         _expected_aapl[6] = 1  # because msft was nan this day

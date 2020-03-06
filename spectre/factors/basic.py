@@ -29,7 +29,7 @@ class LogReturns(CustomFactor):
     _min_win = 2
 
     def compute(self, closes):
-        return (closes.last_nonnan() / closes.first() - 1).log()
+        return (closes.last_nonnan() / closes.first()).log()
 
 
 class SimpleMovingAverage(CustomFactor):
