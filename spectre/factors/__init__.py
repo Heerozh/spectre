@@ -39,7 +39,7 @@ from .basic import (
 )
 
 from .technical import (
-    NormalizedBollingerBands, BBANDS, BollingerBands,
+    BollingerBands, BBANDS,
     MovingAverageConvergenceDivergenceSignal, MACD,
     TrueRange, TRANGE,
     RSI,

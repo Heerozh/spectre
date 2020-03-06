@@ -14,6 +14,9 @@ class ArrowLoader(DataLoader):
     """ Read from persistent data. """
 
     def __init__(self, path: str = None, keep_in_memory: bool = True) -> None:
+        if not os.path.exists(path + '.meta'):
+            raise FileNotFoundError(os.path.abspath(path + '.meta'))
+
         # pandas 0.22 has the fastest MultiIndex
         if pd.__version__.startswith('0.22'):
             import feather

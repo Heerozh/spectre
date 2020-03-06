@@ -15,12 +15,16 @@ import torch
 
 
 class BollingerBands(CustomFactor):
+    """ usage: BBANDS(win, inputs=[OHLCV.close, k]), k is constant normally 2 """
     inputs = (OHLCV.close, 2)
     win = 20
     _min_win = 2
 
     def __init__(self, win: Optional[int] = None, inputs: Optional[Sequence[BaseFactor]] = None):
         super().__init__(win, inputs)
+        if len(self.inputs) < 2:
+            raise ValueError("BollingerBands's inputs needs 2 inputs, "
+                             "inputs=[OHLCV.close, k]), k is constant normally 2.")
         comm_inputs = (self.inputs[0],)
         k = self.inputs[1]
         self.inputs = (self.inputs[0],
@@ -67,7 +71,7 @@ class MovingAverageConvergenceDivergenceSignal(EMA):
 
 
 class TrueRange(CustomFactor):
-    """ATR = MA(inputs=(TrueRange(),))"""
+    """ATR = MA(14, inputs=(TrueRange(),))"""
     inputs = (OHLCV.high, OHLCV.low, OHLCV.close)
     win = 2
     _min_win = 2
@@ -81,6 +85,7 @@ class TrueRange(CustomFactor):
 
 
 class RSI(CustomFactor):
+    """ usage: RSI(win, inputs=[OHLCV.close]) """
     inputs = (OHLCV.close,)
     win = 14
     _min_win = 2
@@ -111,6 +116,7 @@ class RSI(CustomFactor):
 
 
 class FastStochasticOscillator(CustomFactor):
+    """ usage: STOCHF(win, inputs=[OHLCV.high, OHLCV.low, OHLCV.close]) """
     inputs = (OHLCV.high, OHLCV.low, OHLCV.close)
     win = 14
     _min_win = 2
