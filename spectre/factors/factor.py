@@ -360,6 +360,11 @@ class CustomFactor(BaseFactor):
 
         # if need rolling and adjustment
         if self.win > 1:
+            if len(ret.shape) >= 3:
+                raise ValueError("upstream factor `{}` has multiple outputs ({}), "
+                                 "rolling win > 1 only supports one output, "
+                                 "use slice to select a value before using it, for example: "
+                                 "`factor[0]`.".format(str(upstream), ret.shape[2]))
             ret = Rolling(ret, self.win, upstream.adjustments)
         return ret
 

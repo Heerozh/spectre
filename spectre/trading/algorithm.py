@@ -7,6 +7,7 @@
 from abc import ABC
 from typing import Union
 import pandas as pd
+import numpy as np
 from collections import namedtuple
 from .event import Event, EventReceiver, EventManager, EveryBarData, MarketOpen, MarketClose
 from ..plotting import plot_cumulative_returns
@@ -22,6 +23,8 @@ class Recorder:
     def record(self, date, table):
         if 'date' in table:
             raise ValueError('`date` is reserved key for record.')
+        if np.any([isinstance(v, np.ndarray) for v in table.values()]):
+            raise ValueError("recorder does not support np.ndarray datatype")
         table['date'] = date
         self._records.append(table)
 
