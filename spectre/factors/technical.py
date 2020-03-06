@@ -14,7 +14,7 @@ import numpy as np
 import torch
 
 
-class NormalizedBollingerBands(CustomFactor):
+class BollingerBands(CustomFactor):
     inputs = (OHLCV.close, 2)
     win = 20
     _min_win = 2
@@ -30,15 +30,18 @@ class NormalizedBollingerBands(CustomFactor):
         self.win = 1
 
     def compute(self, closes, ma, std, k):
-        return (closes - ma) / (k * std)
-
-
-class BollingerBands(NormalizedBollingerBands):
-    def compute(self, closes, ma, std, k):
         d = k * std
         up = ma + d
         down = ma - d
         return torch.cat([up.unsqueeze(-1), ma.unsqueeze(-1), down.unsqueeze(-1)], dim=-1)
+
+    def normalized(self):
+        return NormalizedBollingerBands(self.win, self.inputs)
+
+
+class NormalizedBollingerBands(CustomFactor):
+    def compute(self, closes, ma, std, k):
+        return (closes - ma) / (k * std)
 
 
 class MovingAverageConvergenceDivergenceSignal(EMA):
@@ -81,7 +84,6 @@ class RSI(CustomFactor):
     inputs = (OHLCV.close,)
     win = 14
     _min_win = 2
-    normalize = False
 
     def __init__(self, win: Optional[int] = None, inputs: Optional[Sequence[BaseFactor]] = None):
         super().__init__(win, inputs)
@@ -98,14 +100,14 @@ class RSI(CustomFactor):
             # Cutler's RSI, more stable, independent to data length
             up = nanmean(up[:, :, 1:], dim=2)
             down = nanmean(down[:, :, 1:], dim=2).abs()
-            if self.normalize:
-                return 1 - (2 / (1 + up / down))
-            else:
-                return 100 - (100 / (1 + up / down))
+            return 100 - (100 / (1 + up / down))
             # Wilder's RSI
             # up = up.ewm(com=14-1, adjust=False).mean()
             # down = down.ewm(com=14-1, adjust=False).mean().abs()
         return closes.agg(_rsi)
+
+    def normalized(self):
+        return self / 50 - 1
 
 
 class FastStochasticOscillator(CustomFactor):
@@ -124,7 +126,7 @@ class FastStochasticOscillator(CustomFactor):
         return self / 100 - 0.5
 
 
-BBANDS = NormalizedBollingerBands
+BBANDS = BollingerBands
 MACD = MovingAverageConvergenceDivergenceSignal
 TRANGE = TrueRange
 STOCHF = FastStochasticOscillator

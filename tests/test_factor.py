@@ -216,16 +216,23 @@ class TestFactorLib(unittest.TestCase):
                       decimal=3)
 
         # test BBANDS
-        expected = talib.BBANDS(df_aapl_close.values, timeperiod=20)
-        expected_aapl_normal = (df_aapl_close.values - expected[1]) / (expected[0] - expected[1])
-        expected = talib.BBANDS(df_msft_close.values, timeperiod=20)
-        expected_msft_normal = (df_msft_close.values - expected[1]) / (expected[0] - expected[1])
-        test_expected(spectre.factors.BBANDS(), expected_aapl_normal, expected_msft_normal)
+        expected_aapl = talib.BBANDS(df_aapl_close.values, timeperiod=20)
+        expected_msft = talib.BBANDS(df_msft_close.values, timeperiod=20)
+        test_expected(spectre.factors.BBANDS()[0], expected_aapl[0], expected_msft[0])
+        # normalized
+        expected_aapl_normal = (df_aapl_close.values - expected_aapl[1]) /\
+                               (expected_aapl[0] - expected_aapl[1])
+        expected_msft_normal = (df_msft_close.values - expected_msft[1]) / \
+                               (expected_msft[0] - expected_msft[1])
+        test_expected(spectre.factors.BBANDS().normalized(), expected_aapl_normal,
+                      expected_msft_normal)
+
         expected = talib.BBANDS(df_aapl_close.values, timeperiod=50, nbdevup=3, nbdevdn=3)
         expected_aapl_normal = (df_aapl_close.values - expected[1]) / (expected[0] - expected[1])
         expected = talib.BBANDS(df_msft_close.values, timeperiod=50, nbdevup=3, nbdevdn=3)
         expected_msft_normal = (df_msft_close.values - expected[1]) / (expected[0] - expected[1])
-        test_expected(spectre.factors.BBANDS(win=50, inputs=(spectre.factors.OHLCV.close, 3)),
+        test_expected(spectre.factors.BBANDS(win=50, inputs=(spectre.factors.OHLCV.close, 3))
+                      .normalized(),
                       expected_aapl_normal, expected_msft_normal)
 
         # test TRANGE
@@ -243,6 +250,10 @@ class TestFactorLib(unittest.TestCase):
                          47.095672, 46.7363662, 46.127465]
         # expected_aapl += 7
         test_expected(spectre.factors.RSI(), expected_aapl, expected_msft)
+        # normalized
+        expected_aapl = np.array(expected_aapl) / 50 - 1
+        expected_msft = np.array(expected_msft) / 50 - 1
+        test_expected(spectre.factors.RSI().normalized(), expected_aapl, expected_msft)
 
         # test stochf
         expected_aapl = talib.STOCHF(df_aapl_high.values, df_aapl_low.values, df_aapl_close.values,
@@ -326,7 +337,7 @@ class TestFactorLib(unittest.TestCase):
 
         # test reused factor only compute once, and nest factor window
         engine.run('2019-01-11', '2019-01-15')  # let pre_compute_ test executable
-        f1 = spectre.factors.BBANDS(win=20, inputs=[spectre.factors.OHLCV.close, 2])
+        f1 = spectre.factors.BBANDS(win=20, inputs=[spectre.factors.OHLCV.close, 2]).normalized()
         f2 = spectre.factors.EMA(win=10, inputs=[f1])
         fa = spectre.factors.STDDEV(win=15, inputs=[f2])
         fb = spectre.factors.MACD(12, 26, 9, inputs=[f2])
