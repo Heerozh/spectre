@@ -8,6 +8,8 @@ from abc import ABC
 from typing import Union
 import pandas as pd
 import numpy as np
+import gc
+import torch
 from collections import namedtuple
 from .event import Event, EventReceiver, EventManager, EveryBarData, MarketOpen, MarketClose
 from ..plotting import plot_cumulative_returns
@@ -293,6 +295,11 @@ class SimulationEventManager(EventManager):
             data = self.wrap_data(data, DataLoaderFastGetter)
             # mock CustomAlgorithm
             alg.run_engine = lambda *args: (self._mocked_data, self._mocked_last)
+            if 'empty_cache_after_run' in alg.__dict__:
+                for eng in alg._engines.values():
+                    eng.empty_cache()
+                gc.collect()
+                torch.cuda.empty_cache()
 
             # loop factor data
             last_day = None
