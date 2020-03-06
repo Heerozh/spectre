@@ -436,6 +436,13 @@ Set to `False` to force engine not delay any factors.
     
 Plotting common stock price chart for researching.
 
+`trace_types`: `dict(factor_name=plotly_trace_type)`, trace type can be 'Bar', or 'Scatter', 
+default is 'Scatter'.
+
+`styles`: `dict(factor_name=plotly_trace_styles)`, add the trace styles, please refer 
+to plotly documentation: [Scatter traces](https://plot.ly/python/reference/#scatter)
+
+
 ```python
 engine = factors.FactorEngine(loader)
 engine.timezone = 'America/New_York'
@@ -448,7 +455,7 @@ engine.plot_chart('2017', '2018', styles={
               'line': {'dash': 'dash'}
            },
     'RSI': {
-              'yaxis': 'y3',
+              'yaxis': 'y3',  # y1: price axis, y2: volume axis, yN: add new y-axis
               'line': {'width': 1}
            }
 })
@@ -893,7 +900,7 @@ Set stop tracking model for positions, models are:
 
 `trading.StopModel(ratio, callback)`\
 `trading.TrailingStopModel(ratio, callback)`\
-`trading.DecayTrailingStopModel(ratio, pnl_target, callback, decay_rate=0.05, max_decay=0)`
+`trading.PnLDecayTrailingStopModel` and `trading.TimeDecayTrailingStopModel`
 
 Stop loss example:
 ```python
@@ -911,13 +918,21 @@ class Backtester(trading.CustomAlgorithm):
         ...
 ```
 
-#### DecayTrailingStopModel
+#### PnLDecayTrailingStopModel
+`trading.PnLDecayTrailingStopModel(ratio, pnl_target, callback, decay_rate=0.05, max_decay=0)`
+
 This is a model that can stop gain and stop loss at the same time.
 
 Exponential decay to the stop ratio: `ratio * decay_rate ^ (PnL% / PnL_target%)`, 
-So `DecayTrailingStopModel(-0.1, 0.1, callback)` means initial stop loss is -10%, and the `ratio` 
-will decrease when profit% approaches the target +10%. If recorded high profit% exceeds 10%, any
-drawdown will trigger a stop loss.
+So `PnLDecayTrailingStopModel(-0.1, 0.1, callback)` means initial stop loss is -10%, and the 
+`ratio` will decrease when profit% approaches the target +10%. If recorded high profit% exceeds 10%, 
+any drawdown will trigger a stop loss.
+
+#### TimeDecayTrailingStopModel
+`trading.TimeDecayTrailingStopModel(ratio, period_target, callback, decay_rate=0.05, max_decay=0)`
+
+Same as `PnLDecayTrailingStopModel`, but target is time period.
+
 
 ### SimulationBlotter.portfolio Read Only Properties
 
