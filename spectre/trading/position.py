@@ -22,6 +22,7 @@ class Position:
         self._last_price = fill_price
         self._realized = 0
         self._open_dt = dt
+        self.current_dt = dt
         self.stop_model = stop_model
         self.stop_tracker = None
         if stop_model is not None:
@@ -32,6 +33,10 @@ class Position:
     @property
     def open_dt(self):
         return self._open_dt
+
+    @property
+    def period(self):
+        return self.current_dt - self._open_dt
 
     @property
     def value(self):

@@ -92,6 +92,8 @@ class Portfolio:
                 self._history.append(self._get_today_record())
 
         self._current_dt = dt
+        for pos in self._positions.values():
+            pos.current_dt = dt
 
     def update(self, asset, amount, fill_price, commission) -> float:
         """asset position + amount, also calculation average_price and realized P&L"""

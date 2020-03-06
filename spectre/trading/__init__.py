@@ -127,7 +127,8 @@ from .algorithm import (
 from .stopmodel import (
     StopModel,
     TrailingStopModel,
-    DecayTrailingStopModel,
+    PnLDecayTrailingStopModel,
+    TimeDecayTrailingStopModel
 )
 from .position import (
     Position,

@@ -282,7 +282,7 @@ index
         # test DecayTrailingStopModel
         # test short stop loss
         pos = spectre.trading.Position(-10, 9, 0, None, None)
-        model = spectre.trading.DecayTrailingStopModel(0.1, 0.1, True).new_tracker(
+        model = spectre.trading.PnLDecayTrailingStopModel(0.1, 0.1, True).new_tracker(
             pos.last_price, False)
         model.tracking_position = pos
         self.assertEqual(9 * 1.1, model.stop_price)
@@ -301,7 +301,7 @@ index
 
         # test long stop loss
         pos = spectre.trading.Position(10, 9, 0, None, None)
-        model = spectre.trading.DecayTrailingStopModel(-0.1, 0.1, True).new_tracker(
+        model = spectre.trading.PnLDecayTrailingStopModel(-0.1, 0.1, True).new_tracker(
             pos.last_price, False)
         model.tracking_position = pos
         self.assertEqual(9 * 0.9, model.stop_price)
@@ -311,7 +311,7 @@ index
 
         # test long stop gain
         pos = spectre.trading.Position(10, 9, 0, None, None)
-        model = spectre.trading.DecayTrailingStopModel(0.1, -0.1, True).new_tracker(
+        model = spectre.trading.PnLDecayTrailingStopModel(0.1, -0.1, True).new_tracker(
             pos.last_price, False)
         model.tracking_position = pos
         self.assertEqual(9 * 1.1, model.stop_price)
@@ -327,3 +327,16 @@ index
         self.assertFalse(model.check_trigger())
         model.last_price = 6.01
         self.assertTrue(model.check_trigger())
+
+        # test time decay
+        pos = spectre.trading.Position(10, 9, 0, pd.Timestamp('2014-01-02', tz='UTC'), None)
+        model = spectre.trading.TimeDecayTrailingStopModel(-0.1, pd.Timedelta(days=5), True)\
+            .new_tracker(pos.last_price, False)
+        model.tracking_position = pos
+        self.assertEqual(9 * 0.9, model.stop_price)
+        pos.last_price = 8
+        model.update_price(pos.last_price)
+        self.assertTrue(model.check_trigger())
+
+        pos.current_dt = pd.Timestamp('2014-01-05', tz='UTC')
+        self.assertEqual(9 * (1 - 0.1 * 0.05 ** 0.6), model.stop_price)

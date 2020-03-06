@@ -26,6 +26,9 @@ class PriceTracker:
         self.recorded_price /= inverse_ratio
 
 
+# -----------------------------------------------------------------------------
+
+
 class StopTracker(PriceTracker):
     def __init__(self, current_price, stop_price, callback):
         super().__init__(current_price, lambda _, x: x)
@@ -66,6 +69,9 @@ class StopModel:
         return StopTracker(current_price, stop_price, self.callback)
 
 
+# -----------------------------------------------------------------------------
+
+
 class TrailingStopTracker(StopTracker):
     def __init__(self, current_price, ratio, callback):
         self.ratio = ratio
@@ -84,25 +90,38 @@ class TrailingStopModel(StopModel):
         return TrailingStopTracker(current_price, ratio, self.callback)
 
 
+# -----------------------------------------------------------------------------
+
+
 class DecayTrailingStopTracker(TrailingStopTracker):
-    def __init__(self, current_price, ratio, pnl_target, decay_rate, max_decay, callback):
+    def __init__(self, current_price, ratio, target, decay_rate, max_decay, callback):
         self.initial_ratio = ratio
         self.max_decay = max_decay
         self.decay_rate = decay_rate
-        self.pnl_target = pnl_target
+        self.target = target
         super().__init__(current_price, ratio, callback)
 
     @property
+    def current(self):
+        raise NotImplementedError("abstractmethod")
+
+    @property
     def stop_price(self):
-        pos = self.tracking_position
-        pnl = (self.recorded_price / pos.average_price - 1) * sign(pos.shares)
-        pnl = max(pnl, 0) if self.pnl_target > 0 else min(pnl, 0)
-        decay = max(self.decay_rate ** (pnl / self.pnl_target), self.max_decay)
+        decay = max(self.decay_rate ** (self.current / self.target), self.max_decay)
         self.ratio = self.initial_ratio * decay
         return self.recorded_price * (1 + self.ratio)
 
 
-class DecayTrailingStopModel(StopModel):
+class PnLDecayTrailingStopTracker(DecayTrailingStopTracker):
+    @property
+    def current(self):
+        pos = self.tracking_position
+        pnl = (self.recorded_price / pos.average_price - 1) * sign(pos.shares)
+        pnl = max(pnl, 0) if self.target > 0 else min(pnl, 0)
+        return pnl
+
+
+class PnLDecayTrailingStopModel(StopModel):
     """
     Exponential decay to the stop ratio: `ratio * decay_rate ^ (PnL% / PnL_target%)`.
     If it's stop gain model, `PnL_target` should be Loss Target (negative).
@@ -120,5 +139,27 @@ class DecayTrailingStopModel(StopModel):
 
     def new_tracker(self, current_price, inverse):
         ratio = -self.ratio if inverse else self.ratio
-        return DecayTrailingStopTracker(current_price, ratio, self.pnl_target,
-                                        self.decay_rate, self.max_decay, self.callback)
+        return PnLDecayTrailingStopTracker(
+            current_price, ratio, self.pnl_target, self.decay_rate, self.max_decay, self.callback)
+
+
+class TimeDecayTrailingStopTracker(DecayTrailingStopTracker):
+    @property
+    def current(self):
+        pos = self.tracking_position
+        return pos.period
+
+
+class TimeDecayTrailingStopModel(StopModel):
+    def __init__(self, ratio: float, period_target: 'pd.Timedelta', callback=None,
+                 decay_rate=0.05, max_decay=0):
+        super().__init__(ratio, callback)
+        self.decay_rate = decay_rate
+        self.period_target = period_target
+        self.max_decay = max_decay
+
+    def new_tracker(self, current_price, inverse):
+        ratio = -self.ratio if inverse else self.ratio
+        return TimeDecayTrailingStopTracker(
+            current_price, ratio, self.period_target, self.decay_rate, self.max_decay,
+            self.callback)
