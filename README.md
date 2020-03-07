@@ -384,9 +384,9 @@ Set the Global Filter, engine deletes rows which Global Filter returns as False 
 affect all factors.
 
 
-### FactorEngine.set_align_by_time
+### FactorEngine.align_by_time
 
-`engine.set_align_by_time(True)`
+`engine.align_by_time = bool`
 
 Same as `CsvDirLoader(align_by_time=True)`, but it's dynamic. Notes: Very slow on large amounts of 
 data, and if the data source is already aligned, this method cannot make it return to unaligned. 
@@ -444,19 +444,27 @@ to plotly documentation: [Scatter traces](https://plot.ly/python/reference/#scat
 
 
 ```python
+rsi = factors.RSI()
+buy_signal = (rsi.shift(1) < 30) & (rsi > 30)
+
 engine = factors.FactorEngine(loader)
 engine.timezone = 'America/New_York'
 engine.set_filter(factors.StaticAssets({'NVDA', 'MSFT'}))
 engine.add(factors.MA(20), 'MA20')
-engine.add(factors.RSI(), 'RSI')
+engine.add(rsi, 'RSI')
+engine.add(factors.OHLCV.close.filter(buy_signal), 'Buy')
 engine.to_cuda()
 engine.plot_chart('2017', '2018', styles={
     'MA20': {
               'line': {'dash': 'dash'}
-           },
+            },
     'RSI': {
               'yaxis': 'y3',  # y1: price axis, y2: volume axis, yN: add new y-axis
               'line': {'width': 1}
+           },
+    'Buy': { 
+              'mode': 'markers', 
+              'marker': { 'symbol': 'triangle-up', 'size': 10, 'color': 'rgba(0, 0, 255, 0.5)' }
            }
 })
 ```
