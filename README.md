@@ -504,7 +504,7 @@ VWAP(inputs=[OHLCV.close, OHLCV.volume])
 ExponentialWeightedMovingAverage = EMA(win=5, inputs=[OHLCV.close])
 AverageDollarVolume(win=5, inputs=[OHLCV.close, OHLCV.volume])
 AnnualizedVolatility(win=20, inputs=[Returns(win=2), 252])
-NormalizedBollingerBands = BBANDS(win=20, inputs=[OHLCV.close, 2])
+BollingerBands = BBANDS(win=20, inputs=[OHLCV.close, 2])
 MovingAverageConvergenceDivergenceSignal = MACD(12, 26, 9, inputs=[OHLCV.close])
 TrueRange = TRANGE(inputs=[OHLCV.high, OHLCV.low, OHLCV.close])
 RSI(win=14, inputs=[OHLCV.close])
@@ -581,7 +581,7 @@ class LogReturns(factors.CustomFactor):
     win = 1
 
     def compute(self, change: torch.Tensor) -> torch.Tensor:
-        return change.log()
+        return (change + 1).log()
 ```
 
 ### win > 1
@@ -929,7 +929,8 @@ So `PnLDecayTrailingStopModel(-0.1, 0.1, callback)` means initial stop loss is -
 any drawdown will trigger a stop loss.
 
 #### TimeDecayTrailingStopModel
-`trading.TimeDecayTrailingStopModel(ratio, period_target, callback, decay_rate=0.05, max_decay=0)`
+`trading.TimeDecayTrailingStopModel(ratio, period_target： pd.Timedelta, callback, decay_rate=0.05, 
+max_decay=0)`
 
 Same as `PnLDecayTrailingStopModel`, but target is time period.
 
