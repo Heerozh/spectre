@@ -101,7 +101,7 @@ universe = factors.AverageDollarVolume(win=120).top(100)
 engine.set_filter( universe )
 
 ma_cross = (factors.MA(5)-factors.MA(10)-factors.MA(30))
-bb_cross = -factors.BBANDS(win=5)
+bb_cross = -factors.BBANDS(win=5).normalized()
 bb_cross = bb_cross.filter(bb_cross < 0.7)  # p-hacking
 
 ma_cross_factor = ma_cross.rank(mask=universe).zscore()
@@ -164,7 +164,7 @@ class MyAlg(trading.CustomAlgorithm):
         engine.set_filter( universe )
 
         # add your factors
-        bb_cross = -factors.BBANDS(win=5)
+        bb_cross = -factors.BBANDS(win=5).normalized()
         bb_cross = bb_cross.filter(bb_cross < 0.7)  # p-hacking
         bb_cross_factor = bb_cross.rank(mask=universe).zscore()
         engine.add( bb_cross_factor.to_weight(), 'bb_weight' )
