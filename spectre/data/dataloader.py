@@ -223,19 +223,21 @@ class DataLoaderFastGetter:
         self.code_to_asset = dict(enumerate(cat.categories))
         self.last_row_slice = None
 
-    def get_as_dict(self, start, stop=None, column_id=slice(None)):
+    def get_slice(self, start, stop):
         idx = self.indexes[0]
         stop = stop or start
         row_slice = slice(idx.searchsorted(start), idx.searchsorted(stop, side='right'))
+        return row_slice
+
+    def get_as_dict(self, start, stop=None, column_id=slice(None)):
+        row_slice = self.get_slice(start, stop)
         cur = self.DictLikeCursor(self, row_slice, column_id)
         self.last_row_slice = row_slice
         return cur
 
     def get_as_df(self, start, stop=None):
         """550x faster than .loc[], 3x faster than .iloc[]"""
-        idx = self.indexes[0]
-        stop = stop or start
-        row_slice = slice(idx.searchsorted(start), idx.searchsorted(stop, side='right'))
+        row_slice = self.get_slice(start, stop)
         data = self.raw_data[row_slice]
         index = self.indexes[1][row_slice]
         self.last_row_slice = row_slice
