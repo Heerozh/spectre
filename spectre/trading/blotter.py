@@ -203,9 +203,10 @@ class SimulationBlotter(BaseBlotter, EventReceiver):
         self.capital_base = capital_base
         self._portfolio.update_cash(capital_base)
 
-        df = dataloader.load(None, None, 0)
+        df = dataloader.load(None, None, 0).copy()
+        df['__pct_chg'] = df[dataloader.ohlcv[3]].groupby(level=1).pct_change()
         self._data = df
-        self._prices = DataLoaderFastGetter(df[list(dataloader.ohlcv)])
+        self._prices = DataLoaderFastGetter(df[list(dataloader.ohlcv) + ['__pct_chg']])
         self._current_prices_col = None
         self._current_prices = None
         if dataloader.adjustments is not None:
@@ -304,12 +305,9 @@ class SimulationBlotter(BaseBlotter, EventReceiver):
 
         # trading curb for daily return
         if self.daily_curb is not None:
-            df = self._data.loc[(slice(None, self._current_dt), asset), :]
-            if df.shape[0] < 2:
-                return False
-            close_col = self.dataloader.ohlcv[3]
-            previous_close = df[close_col].iloc[-2]
-            change = price / previous_close - 1
+            curr_prices = self._get_current_prices()
+            curr_changes = self._prices.get_as_dict(curr_prices.row_slice, column_id=-1)
+            change = curr_changes[asset]
             # Detecting whether transactions are possible
             if abs(change) > self.daily_curb:
                 return False

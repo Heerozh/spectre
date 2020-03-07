@@ -224,6 +224,8 @@ class DataLoaderFastGetter:
         self.last_row_slice = None
 
     def get_slice(self, start, stop):
+        if isinstance(start, slice):
+            return start
         idx = self.indexes[0]
         stop = stop or start
         row_slice = slice(idx.searchsorted(start), idx.searchsorted(stop, side='right'))
