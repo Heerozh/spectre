@@ -576,8 +576,9 @@ column may be inconsistent).
 Example of LogReturns:
 ```python
 from spectre import factors 
+import torch
 class LogReturns(factors.CustomFactor):
-    inputs = [factors.Returns(factors.OHLCV.close)]
+    inputs = [factors.Returns(2, inputs=[factors.OHLCV.close])]
     win = 1
 
     def compute(self, change: torch.Tensor) -> torch.Tensor:
