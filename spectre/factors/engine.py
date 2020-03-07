@@ -176,7 +176,12 @@ class FactorEngine:
     def create_tensor(self, group: str, dtype, values, nan_values) -> torch.Tensor:
         return self._groups[group].create(dtype, values, nan_values)
 
-    def set_align_by_time(self, enable: bool):
+    @property
+    def align_by_time(self):
+        return self._align_by_time
+
+    @align_by_time.setter
+    def align_by_time(self, enable: bool):
         """
         If `enable` is `True`, df index will be the product of 'date' and 'asset'.
         This method is slow, recommended to do it in your DataLoader in advance.

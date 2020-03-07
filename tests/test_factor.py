@@ -290,6 +290,15 @@ class TestFactorLib(unittest.TestCase):
                          0.3467437, 0.3458821]
         test_expected(spectre.factors.MarketVolatility(), expected_aapl, expected_msft, 10)
 
+        # test AssetData features
+        expected_msft = df_msft_close[-8:].values
+        expected_aapl = df_msft_close[-8:].values
+        expected_aapl = np.insert(expected_aapl, 6, np.nan)
+        engine.align_by_time = True
+        test_expected(spectre.factors.AssetData('MSFT', spectre.factors.OHLCV.close),
+                      expected_aapl, expected_msft, 10)
+        engine.align_by_time = False
+
         # test IS_JANUARY,DatetimeDataFactor,etc features
         expected_aapl = [True] * 9
         expected_msft = expected_aapl.copy()
@@ -510,7 +519,7 @@ class TestFactorLib(unittest.TestCase):
             prices_index='date', parse_dates=True,
         )
         engine = spectre.factors.FactorEngine(loader)
-        engine.set_align_by_time(True)
+        engine.align_by_time = True
         engine.add(spectre.factors.OHLCV.close, 'close')
         engine.add(spectre.factors.SMA(2), 'ma')
         df = engine.run("2019-01-01", "2019-01-15")
@@ -525,7 +534,7 @@ class TestFactorLib(unittest.TestCase):
             prices_index='date', parse_dates=True, align_by_time=True
         )
         engine = spectre.factors.FactorEngine(loader)
-        engine.set_align_by_time(False)
+        engine.align_by_time = False
         engine.add(spectre.factors.OHLCV.close, 'close')
         engine.add(spectre.factors.SMA(2), 'ma')
         df = engine.run("2019-01-01", "2019-01-15")
