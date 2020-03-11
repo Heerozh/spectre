@@ -5,6 +5,8 @@ from .algorithmic import (
     nanmean,
     nanvar,
     nanstd,
+    masked_last,
+    masked_first,
     nanlast,
     nanmax,
     nanmin,

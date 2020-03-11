@@ -115,13 +115,26 @@ def nanmin(data: torch.Tensor, dim=1) -> torch.Tensor:
     return data.min(dim=dim)[0]
 
 
-def nanlast(data: torch.Tensor, dim=1) -> torch.Tensor:
-    mask = torch.isnan(data)
-    w = torch.linspace(0.1, 0, mask.shape[-1], dtype=torch.float, device=mask.device)
-    mask = mask.float() + w
-    last = mask.argmin(dim=dim)
+def masked_last(data: torch.Tensor, mask: torch.Tensor, dim=1, reverse=False) -> torch.Tensor:
+    if reverse:
+        w = torch.linspace(0.1, 0.0, mask.shape[-1], dtype=torch.float, device=mask.device)
+    else:
+        w = torch.linspace(0.0, 0.1, mask.shape[-1], dtype=torch.float, device=mask.device)
+    w = mask.float() + w
+    last = w.argmax(dim=dim)
     ret = data.gather(dim, last.unsqueeze(-1)).squeeze(-1)
+    ret_mask = mask.gather(dim, last.unsqueeze(-1)).squeeze(-1)
+    ret = torch.masked_fill(ret, ~ret_mask, np.nan)
     return ret
+
+
+def masked_first(data: torch.Tensor, mask: torch.Tensor, dim=1) -> torch.Tensor:
+    return masked_last(data, mask, dim, reverse=True)
+
+
+def nanlast(data: torch.Tensor, dim=1) -> torch.Tensor:
+    mask = ~torch.isnan(data)
+    return masked_last(data, mask, dim)
 
 
 def pad_2d(data: torch.Tensor) -> torch.Tensor:

@@ -95,6 +95,19 @@ class TestParallelAlgorithm(unittest.TestCase):
         expected = [1.]
         assert_almost_equal(expected, result, decimal=6)
 
+        data = [1, 2, np.nan]
+        mask = [False, True, True]
+        result = spectre.parallel.masked_first(
+            torch.tensor(data, dtype=torch.float), torch.tensor(mask, dtype=torch.bool), dim=0)
+        expected = [2.]
+        assert_almost_equal(expected, result, decimal=6)
+
+        mask = [False, False, True]
+        result = spectre.parallel.masked_first(
+            torch.tensor(data, dtype=torch.float), torch.tensor(mask, dtype=torch.bool), dim=0)
+        expected = [np.nan]
+        assert_almost_equal(expected, result, decimal=6)
+
         # nanmin/max
         data = [[1, 2, -14, np.nan, 2], [99999, 8, 1, np.nan, 2]]
         result = spectre.parallel.nanmax(torch.tensor(data, dtype=torch.float))
