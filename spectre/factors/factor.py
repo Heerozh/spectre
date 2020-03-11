@@ -178,6 +178,7 @@ class BaseFactor:
         return SumFactor(win, inputs=(self,))
 
     def filter(self, mask):
+        """Local filter, fills elements of self with NaN where mask is False."""
         mf = DoNothingFactor(inputs=(self,))
         mf.set_mask(mask)
         return mf

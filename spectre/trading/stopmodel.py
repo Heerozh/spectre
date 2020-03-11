@@ -85,6 +85,11 @@ class TrailingStopTracker(StopTracker):
 
 
 class TrailingStopModel(StopModel):
+    """
+    Unlike trailing stop order, the ratio in this model is relative to the highest / lowest price,
+    so -0.1 means stop price is 90% of the highest price from now to the future; 0.1 means stop
+    price is 110% of the lowest price from now to the future.
+    """
     def new_tracker(self, current_price, inverse):
         ratio = -self.ratio if inverse else self.ratio
         return TrailingStopTracker(current_price, ratio, self.callback)
