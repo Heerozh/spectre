@@ -255,6 +255,11 @@ class FactorEngine:
         for col in self._loader.ohlcv:
             self._dataframe.loc[mid_right:, col] = np.random.randn(length)
         self._column_cache = {}
+        # hack to disable reload _dataframe
+        max_backwards = max([f.get_total_backwards_() for f in self._factors.values()])
+        if self._filter:
+            max_backwards = max(max_backwards, self._filter.get_total_backwards_())
+        self._last_load = [start, end, max_backwards]
         # check if results are consistent
         df = self.run(start, end)
         # clean
