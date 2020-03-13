@@ -169,10 +169,10 @@ class TestFactorLib(unittest.TestCase):
         test_expected(spectre.factors.OHLCV.open.zscore().shift(1),
                       expected_aapl, expected_msft, total_rows, delay=False)
 
-        # test quantile get factors from engine._factorsnan bug
-        expected_aapl = [5.] * 9
+        # test quantile get factors from engine._factors nan bug
+        expected_aapl = [4.] * 9
         expected_aapl[6] = np.nan
-        expected_msft = [1.] * 8
+        expected_msft = [0.] * 8
         engine.set_filter(spectre.factors.OHLCV.close.top(2))
         engine.add(spectre.factors.OHLCV.close.zscore(), 'pre')
         f = engine.get_factor('pre')
@@ -474,12 +474,12 @@ class TestFactorLib(unittest.TestCase):
         import torch
         result = f.compute(torch.tensor([[1, 1, np.nan, 1.01, 1.01, 2],
                                          [3, 4, 5, 1.01, np.nan, 1.01]]))
-        expected = [[1, 1, np.nan, 3, 3, 5], [3, 4, 5, 1, np.nan, 1]]
+        expected = [[0, 0, np.nan, 2, 2, 4], [2, 3, 4, 0, np.nan, 0]]
         assert_array_equal(result, expected)
 
         result = f.compute(torch.tensor([[-1, 1, np.nan, 1.01, 1.02, 2],
                                          [3, -4, 5, 1.01, np.nan, 1.01]]))
-        expected = [[1, 2, np.nan, 3, 4, 5], [4, 1, 5, 2, np.nan, 2]]
+        expected = [[0, 1, np.nan, 2, 3, 4], [3, 0, 4, 1, np.nan, 1]]
         assert_array_equal(result, expected)
 
         data = [[-1.01318216e+00, -6.03849769e-01, -1.57474554e+00, -1.72021079e+00,
@@ -509,7 +509,7 @@ class TestFactorLib(unittest.TestCase):
                  1.04137313e+00, -1.17894483e+00, -5.27170479e-01, -1.33455884e+00,
                  -1.50483203e+00, -1.50595963e+00, 1.53978884e+00, -2.41878211e-01]]
         result = f.compute(torch.tensor(data))
-        expected = pd.qcut(data[1], 5, labels=False) + 1
+        expected = pd.qcut(data[1], 5, labels=False)
         assert_array_equal(result[-1], expected)
 
     def test_align_by_time(self):

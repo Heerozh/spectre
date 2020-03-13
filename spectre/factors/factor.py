@@ -8,7 +8,7 @@ from abc import ABC
 from typing import Optional, Sequence, Union
 import numpy as np
 import torch
-from ..parallel import nansum, nanmean, nanstd, pad_2d, Rolling
+from ..parallel import nansum, nanmean, nanstd, pad_2d, Rolling, quantile
 from ..plotting import plot_factor_diagram
 
 
@@ -587,31 +587,7 @@ class QuantileClassifier(CustomFactor):
     bins = 5
 
     def compute(self, data: torch.Tensor) -> torch.Tensor:
-        if data.dtype == torch.bool:
-            data = data.char()
-        if data.shape[1] == 1:  # if only one asset in universe
-            return data.new_full(data.shape, 0, dtype=torch.float32)
-        x, _ = torch.sort(data, dim=1)
-        mask = torch.isnan(data)
-        act_size = data.shape[1] - mask.sum(dim=1)
-        q = np.linspace(0, 1, self.bins + 1, dtype=np.float32)
-        q = torch.tensor(q[:, None], device=data.device)
-        q_index = q * (act_size - 1)
-        q_weight = q % 1
-        q_index = q_index.long()
-        q_next = q_index + 1
-        q_next[-1] = act_size - 1
-
-        rows = torch.arange(data.shape[0], device=data.device)
-        b_start = x[rows, q_index]
-        b = b_start + (x[rows, q_next] - b_start) * q_weight
-        b[0] -= 1
-        b = b[:, :, None]
-
-        ret = data.new_full(data.shape, np.nan, dtype=torch.float32)
-        for start, end, tile in zip(b[:-1], b[1:], range(self.bins)):
-            ret[(data > start) & (data <= end)] = tile + 1.
-        return ret
+        return quantile(data, self.bins, dim=1)
 
 
 class ToWeightFactor(TimeGroupFactor):
