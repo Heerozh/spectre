@@ -14,4 +14,5 @@ from .algorithmic import (
     covariance,
     pearsonr,
     linear_regression_1d,
+    quantile,
 )

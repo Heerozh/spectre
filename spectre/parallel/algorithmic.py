@@ -173,6 +173,44 @@ def linear_regression_1d(x, y, dim=1):
     return slope, intcp
 
 
+def quantile(data, bins, dim=1):
+    if data.dtype == torch.bool:
+        data = data.char()
+    if data.shape[1] == 1:  # if only one asset in universe
+        return data.new_full(data.shape, 0, dtype=torch.float32)
+
+    x, _ = torch.sort(data, dim=dim)
+    # get non-nan size of each row
+    mask = torch.isnan(data)
+    act_size = data.shape[dim] - mask.sum(dim=dim)
+    # get each bin's cut indices of each row by non-nan size
+    q = torch.linspace(0, 1, bins + 1, device=data.device)
+    q = q.view(-1, *[1 for _ in range(dim)])
+    q_index = q * (act_size - 1)
+    # calculate un-perfect cut weight
+    q_weight = q % 1
+    q_index = q_index.long()
+    q_next = q_index + 1
+    q_next[-1] = act_size - 1
+
+    # get quantile values of each row
+    dim_len = data.stride()[dim - 1]
+    offset = torch.arange(0, q_index[0].nelement()) * dim_len
+    offset = offset.reshape(q_index[0].shape)
+    q_index += offset
+    q_next += offset
+    b_start = x.take(q_index)
+    b_end = x.take(q_next)
+    b = b_start + (b_end - b_start) * q_weight
+    b[0] -= 1
+    b = b.unsqueeze(-1)
+
+    ret = data.new_full(data.shape, np.nan, dtype=torch.float32)
+    for start, end, tile in zip(b[:-1], b[1:], range(bins)):
+        ret[(data > start) & (data <= end)] = tile
+    return ret
+
+
 class Rolling:
     _split_multi = 1  # 0.5-1 recommended, you can tune this for kernel performance
 
