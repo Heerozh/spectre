@@ -265,9 +265,57 @@ class SimulationEventManager(EventManager):
         else:
             self._mocked_last, self._mocked_data = _mock_one(data)
 
-    def run(self, start, end, delay_factor=True):
+    def run_simulation_alg(self, alg, start, end, delay_factor=True):
         from tqdm.auto import tqdm
 
+        alg.blotter.clear()
+        # get factor data from algorithm
+        run_engine = alg.run_engine
+        data, _ = run_engine(start, end, delay_factor)
+        ticks = self.get_data_ticks(data, start)
+        if len(ticks) == 0:
+            raise ValueError("No data returned, please set `start`, `end` time correctly")
+        data = self.wrap_data(data, DataLoaderFastGetter)
+        # mock CustomAlgorithm
+        alg.run_engine = lambda *args: (self._mocked_data, self._mocked_last)
+        if 'empty_cache_after_run' in alg.__dict__:
+            for eng in alg._engines.values():
+                eng.empty_cache()
+            gc.collect()
+            torch.cuda.empty_cache()
+
+        # loop factor data
+        last_day = None
+        for dt in tqdm(ticks):
+            if self._stop:
+                break
+            # prepare data
+            self.mock_data(data, dt)
+
+            # if date changed
+            if dt.day != last_day:
+                if last_day is not None:
+                    self.fire_market_close(alg)
+            alg.set_datetime(dt)
+
+            # fire daily data event
+            if dt.hour == 0:
+                self.fire_event(self, EveryBarData)
+
+            # fire open event
+            if dt.day != last_day:
+                self.fire_market_open(alg)
+                last_day = dt.day
+
+            # fire intraday data event
+            if dt.hour != 0:
+                alg.blotter.set_price('close')
+                self.fire_event(self, EveryBarData)
+
+        self.fire_market_close(alg)
+        alg.run_engine = run_engine
+
+    def run(self, start, end, delay_factor=True):
         start, end = pd.to_datetime(start, utc=True), pd.to_datetime(end, utc=True)
 
         if not self._subscribers:
@@ -280,57 +328,15 @@ class SimulationEventManager(EventManager):
                 r.clear()
             r.on_run()
 
-        for alg in self._subscribers:
-            if not isinstance(alg, CustomAlgorithm):
-                continue
-            if not isinstance(alg.blotter, SimulationBlotter):
-                raise ValueError('SimulationEventManager only supports SimulationBlotter.')
-            alg.blotter.clear()
-            # get factor data from algorithm
-            run_engine = alg.run_engine
-            data, _ = run_engine(start, end, delay_factor)
-            ticks = self.get_data_ticks(data, start)
-            if len(ticks) == 0:
-                raise ValueError("No data returned, please set `start`, `end` time correctly")
-            data = self.wrap_data(data, DataLoaderFastGetter)
-            # mock CustomAlgorithm
-            alg.run_engine = lambda *args: (self._mocked_data, self._mocked_last)
-            if 'empty_cache_after_run' in alg.__dict__:
-                for eng in alg._engines.values():
-                    eng.empty_cache()
-                gc.collect()
-                torch.cuda.empty_cache()
-
-            # loop factor data
-            last_day = None
-            for dt in tqdm(ticks):
-                if self._stop:
-                    break
-                # prepare data
-                self.mock_data(data, dt)
-
-                # if date changed
-                if dt.day != last_day:
-                    if last_day is not None:
-                        self.fire_market_close(alg)
-                alg.set_datetime(dt)
-
-                # fire daily data event
-                if dt.hour == 0:
-                    self.fire_event(self, EveryBarData)
-
-                # fire open event
-                if dt.day != last_day:
-                    self.fire_market_open(alg)
-                    last_day = dt.day
-
-                # fire intraday data event
-                if dt.hour != 0:
-                    alg.blotter.set_price('close')
-                    self.fire_event(self, EveryBarData)
-
-            self.fire_market_close(alg)
-            alg.run_engine = run_engine
+        try:
+            for alg in self._subscribers:
+                if not isinstance(alg, CustomAlgorithm):
+                    continue
+                if not isinstance(alg.blotter, SimulationBlotter):
+                    raise ValueError('SimulationEventManager only supports SimulationBlotter.')
+                self.run_simulation_alg(alg, start, end, delay_factor)
+        except KeyboardInterrupt:
+            print('Interrupted, terminating..')
 
         for r in self._subscribers.keys():
             r.on_end_of_run()
