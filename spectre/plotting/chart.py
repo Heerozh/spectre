@@ -7,7 +7,7 @@
 import warnings
 
 
-def plot_chart(df_prices, ohlcv, df_factor, trace_types=None, styles=None):
+def plot_chart(df_prices, ohlcv, df_factor, trace_types=None, styles=None, inline=True):
     import plotly.graph_objects as go
 
     # group df by asset
@@ -26,6 +26,7 @@ def plot_chart(df_prices, ohlcv, df_factor, trace_types=None, styles=None):
     styles['volume'] = styles.get('volume', {})
 
     # default styles
+    styles['height'] = styles.get('height', 500)
     styles['price']['line'] = styles['price'].get('line', dict(width=1))
     styles['price']['name'] = styles['price'].get('name', 'price')
     styles['volume']['opacity'] = styles['volume'].get('opacity', 0.2)
@@ -35,14 +36,18 @@ def plot_chart(df_prices, ohlcv, df_factor, trace_types=None, styles=None):
     # get y-axises
     y_axises = set()
     for k, v in styles.items():
+        if not isinstance(v, dict):
+            continue
         if 'yaxis' in v:
             y_axises.add('yaxis' + v['yaxis'][1:])
         if 'yref' in v:
             y_axises.add('yaxis' + v['yref'][1:])
 
+    figs = {}
     # plotting
     for i, (asset, factors) in enumerate(dfs):
         fig = go.Figure()
+        figs[asset] = fig
 
         factors = factors.droplevel(level=1)
         start, end = factors.index[0], factors.index[-1]
@@ -75,5 +80,10 @@ def plot_chart(df_prices, ohlcv, df_factor, trace_types=None, styles=None):
         fig.update_xaxes(rangeslider=dict(visible=False))
         fig.update_yaxes(showgrid=False, scaleanchor="x", scaleratio=1)
         fig.update_layout(legend=dict(xanchor='right', x=x_right, y=1, bgcolor='rgba(0,0,0,0)'))
-        fig.update_layout(height=500, barmode='group', bargap=0.5, margin={'t': 50}, title=asset)
-        fig.show()
+        fig.update_layout(height=styles['height'], barmode='group', bargap=0.5, margin={'t': 50},
+                          title=asset)
+
+        if inline:
+            fig.show()
+
+    return figs

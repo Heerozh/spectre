@@ -387,7 +387,8 @@ class FactorEngine:
         ret = ret['price'].unstack(level=[1])
         return ret
 
-    def plot_chart(self, start, end, trace_types=None, styles=None, delay_factor=True):
+    def plot_chart(self, start, end, trace_types=None, styles=None, delay_factor=True,
+                   inline=True):
         """
         Plotting common stock price chart for researching.
         :param start: same as engine.run()
@@ -395,6 +396,7 @@ class FactorEngine:
         :param delay_factor: same as engine.run()
         :param trace_types: dict(factor_name=plotly_trace_type), default is 'Scatter'
         :param styles: dict(factor_name=plotly_trace_styles)
+        :param inline: display plot immediately
 
         Usage::
 
@@ -416,7 +418,9 @@ class FactorEngine:
 
         """
         df = self.run(start, end, delay_factor)
-        plot_chart(self._dataframe, self.loader_.ohlcv, df, trace_types=trace_types, styles=styles)
+        figs = plot_chart(self._dataframe, self.loader_.ohlcv, df, trace_types=trace_types,
+                          styles=styles, inline=inline)
+        return figs, df
 
     def full_run(self, start, end, trade_at='close', periods=(1, 4, 9),
                  quantiles=5, filter_zscore=20, demean=True, preview=True
