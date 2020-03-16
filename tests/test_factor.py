@@ -425,24 +425,31 @@ class TestFactorLib(unittest.TestCase):
         # get not filtered close value
         engine.remove_all_factors()
         engine.set_filter(None)
-        engine.add(spectre.factors.OHLCV.close, 'c')
+        engine.add(spectre.factors.OHLCV.close, 'close')
         df = engine.run('2018-01-01', '2019-01-15')
-        df_aapl_close = df.loc[(slice(None), 'AAPL'), 'c']
-        df_msft_close = df.loc[(slice(None), 'MSFT'), 'c']
+        df_aapl_close = df.loc[(slice(None), 'AAPL'), 'close']
+        df_msft_close = df.loc[(slice(None), 'MSFT'), 'close']
         expected_aapl = talib.SMA(df_aapl_close.values, timeperiod=5)[-total_rows:]
         expected_msft = talib.SMA(df_msft_close.values, timeperiod=5)[-total_rows:]
         expected_aapl = np.delete(expected_aapl, [0, 1, 8])
         expected_msft = [expected_msft[2], expected_msft[8]]
-        # test
         assert_almost_equal(result_aapl, expected_aapl)
         assert_almost_equal(result_msft, expected_msft)
 
+        # test StaticAssets
         aapl_filter = spectre.factors.StaticAssets(['AAPL'])
         engine.remove_all_factors()
         engine.set_filter(aapl_filter)
-        engine.add(spectre.factors.OHLCV.close, 'c')
+        engine.add(spectre.factors.OHLCV.close, 'close')
         df = engine.run('2018-01-01', '2019-01-15')
         assert_array_equal(['AAPL'], df.index.get_level_values(1).unique())
+
+        # test filtering a filter
+        engine.remove_all_factors()
+        mask = spectre.factors.OHLCV.close > 177
+        self.assertRaisesRegex(ValueError, '.*does not support local filtering.*',
+                               mask.filter, mask)
+
 
     def test_cuda(self):
         loader = spectre.data.CsvDirLoader(

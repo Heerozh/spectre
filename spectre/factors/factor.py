@@ -495,6 +495,11 @@ class ShiftFactor(CustomFactor):
     periods = 1
 
     def compute(self, data: torch.Tensor) -> torch.Tensor:
+        if data.dtype in {torch.int8, torch.int16, torch.int32, torch.int64}:
+            raise ValueError('factor.shift() does not support `int` type, '
+                             'please convert to float by using `factor * 1.0`, upstreams: {}'
+                             .format(self.inputs))
+
         shift = data.roll(self.periods, dims=1)
         if self.periods > 0:
             shift[:, 0:self.periods] = np.nan

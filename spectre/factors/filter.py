@@ -21,6 +21,14 @@ class FilterFactor(CustomFactor, ABC):
         factor.periods = periods
         return factor
 
+    def sum(self, win):
+        raise ValueError("FilterFactor does not support `.sum()` method, "
+                         "please convert to float by using `filter_factor * 1.0`")
+
+    def filter(self, mask):
+        raise ValueError("FilterFactor does not support local filtering `.filter()` method, "
+                         "please convert to float by using `filter_factor * 1.0`")
+
     def any(self, win):
         return AnyFilter(win, inputs=(self,))
 
