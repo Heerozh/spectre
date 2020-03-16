@@ -72,6 +72,7 @@ class AssetData(CustomFactor):
 MONTH = DatetimeDataFactor('month')
 WEEKDAY = DatetimeDataFactor('weekday')
 QUARTER = DatetimeDataFactor('quarter')
+TIME = DatetimeDataFactor('hour') + DatetimeDataFactor('minute') / 60.0
 
 IS_JANUARY = MONTH == 1
 IS_DECEMBER = MONTH == 12

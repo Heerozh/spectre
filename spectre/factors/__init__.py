@@ -58,6 +58,11 @@ from .feature import (
     MarketReturn,
     MarketVolatility,
     AssetData,
-    MONTH, WEEKDAY, QUARTER,
+    MONTH, WEEKDAY, QUARTER, TIME,
     IS_JANUARY, IS_DECEMBER, IS_MONTH_END, IS_MONTH_START, IS_QUARTER_END, IS_QUARTER_START,
+)
+
+from .label import (
+    RollingFirst,
+    ForwardSignalData,
 )

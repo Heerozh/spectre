@@ -351,6 +351,15 @@ class TestFactorLib(unittest.TestCase):
         test_expected(factor.fill_na(ffill=True), expected_aapl, expected_msft, 10)
         engine.to_cpu()
 
+        # test ForwardSignalData
+        signal = spectre.factors.OHLCV.close > 150
+        signal_price = spectre.factors.ForwardSignalData(4, spectre.factors.OHLCV.close, signal)
+        signal_ret = signal_price / spectre.factors.OHLCV.close - 1
+
+        expected_aapl = np.array([0, 0.04351718, 0.017114094, 0.017114094, 0, 0, 0, 0, 0])
+        expected_msft = np.array([np.nan, np.nan, np.nan, np.nan, np.nan, np.nan, np.nan, np.nan])
+        test_expected(signal_ret, expected_aapl, expected_msft, 10)
+
         # test reused factor only compute once, and nest factor window
         engine.run('2019-01-11', '2019-01-15')  # let pre_compute_ test executable
         f1 = spectre.factors.BBANDS(win=20, inputs=[spectre.factors.OHLCV.close, 2]).normalized()
