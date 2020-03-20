@@ -8,7 +8,7 @@ import warnings
 from .datafactor import DatetimeDataFactor
 from .factor import TimeGroupFactor, CustomFactor
 from .basic import Returns
-from ..parallel import nanstd, nanmean
+from ..parallel import nanstd, nanmean, nansum
 
 
 # ----------- Common Market Features -----------
@@ -42,6 +42,17 @@ class MarketVolatility(CustomFactor):
 
     def compute(self, returns, annualization_factor):
         return (returns.nanvar() * annualization_factor) ** 0.5
+
+
+class AdvanceDeclineRatio(TimeGroupFactor):
+    """Need to work with MA, and could be applied to volume too"""
+    inputs = (Returns(), )
+    win = 1
+
+    def compute(self, returns):
+        advancing = nansum(returns > 0, dim=1)
+        declining = nansum(returns < 0, dim=1)
+        return advancing / declining
 
 
 # ----------- Asset-specific data -----------

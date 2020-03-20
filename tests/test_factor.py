@@ -450,7 +450,6 @@ class TestFactorLib(unittest.TestCase):
         self.assertRaisesRegex(ValueError, '.*does not support local filtering.*',
                                mask.filter, mask)
 
-
     def test_cuda(self):
         loader = spectre.data.CsvDirLoader(
             data_dir + '/daily/', ohlcv=('uOpen', 'uHigh', 'uLow', 'uClose', 'uVolume'),
@@ -565,15 +564,9 @@ class TestFactorLib(unittest.TestCase):
         )
         engine = spectre.factors.FactorEngine(loader)
 
-        class ARange(spectre.factors.CustomFactor):
-            def compute(self, y):
-                row = torch.arange(y.shape[-1], dtype=torch.float32, device=y.device)
-                return row.expand(y.shape)
-
-        x = ARange(inputs=[spectre.factors.OHLCV.close])
-        f = spectre.factors.RollingLinearRegression(x, spectre.factors.OHLCV.close, 10)
-        engine.add(f[0], 'slope')
-        engine.add(f[1], 'intcp')
+        f = spectre.factors.RollingLinearRegression(10, None, spectre.factors.OHLCV.close)
+        engine.add(f.coef, 'slope')
+        engine.add(f.intercept, 'intcp')
 
         df = engine.run("2019-01-01", "2019-01-15")
         result = df.loc[(slice(None), 'AAPL'), 'slope']
@@ -581,6 +574,27 @@ class TestFactorLib(unittest.TestCase):
             [-0.555879, -0.710545, -0.935697, -1.04103, -1.232, -1.704182,
              -0.873212, -0.640606,  0.046424], result, decimal=5)
         assert_array_equal(['slope', 'intcp'], df.columns)
+
+        # test RollingMomentum
+        engine.remove_all_factors()
+        f = spectre.factors.RollingMomentum(5)
+        engine.add(f.gain, 'gain')
+        engine.add(f.accelerate, 'accelerate')
+        engine.add(f.intercept, 'intcp')
+        engine.add(spectre.factors.OHLCV.close, 'close')
+
+        df = engine.run("2019-01-01", "2019-01-15")
+        result = df.xs('AAPL', level=1)
+
+        from sklearn.linear_model import LinearRegression
+        x = np.stack([np.arange(5), np.arange(5) ** 2]).T
+        reg = LinearRegression().fit(x, result.close[-5:])
+        assert_almost_equal(reg.coef_, result[['gain', 'accelerate']].iloc[-1])
+        self.assertAlmostEqual(reg.intercept_, result.intcp.iloc[-1])
+
+        reg = LinearRegression().fit(x, result.close[-6:-1])
+        assert_almost_equal(reg.coef_, result[['gain', 'accelerate']].iloc[-2])
+        self.assertAlmostEqual(reg.intercept_, result.intcp.iloc[-2])
 
     def test_engine_cross_factor(self):
         loader = spectre.data.CsvDirLoader(

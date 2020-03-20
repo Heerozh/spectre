@@ -51,6 +51,9 @@ from .statistical import (
     RollingHigh, MAX,
     RollingLow, MIN,
     RollingLinearRegression,
+    RollingMomentum,
+    RollingQuantile,
+    HalfLifeMeanReversion,
 )
 
 from .feature import (

@@ -1,12 +1,11 @@
 """
 @author: Heerozh (Zhang Jianhao)
-@copyright: Copyright 2019, Heerozh. All rights reserved.
+@copyright: Copyright 2019-2020, Heerozh. All rights reserved.
 @license: Apache 2.0
 @email: heeroz@gmail.com
 """
 from .factor import CustomFactor
 from ..parallel import masked_first
-from .engine import OHLCV
 
 
 class RollingFirst(CustomFactor):
@@ -28,5 +27,3 @@ class ForwardSignalData(RollingFirst):
     """Data in future window periods where signal = True. Lookahead biased."""
     def __init__(self, win, data, signal):
         super().__init__(win, data.shift(-win+1), signal.shift(-win+1))
-
-
