@@ -194,7 +194,7 @@ def quantile(data, bins, dim=1):
     q_next[-1] = act_size - 1
 
     # get quantile values of each row
-    dim_len = data.stride()[dim - 1]
+    dim_len = data.shape[dim]
     offset = torch.arange(0, q_index[0].nelement(), device=data.device) * dim_len
     offset = offset.reshape(q_index[0].shape)
     q_index += offset

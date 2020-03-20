@@ -147,9 +147,11 @@ class TestParallelAlgorithm(unittest.TestCase):
         expected = pd.qcut(x[1], 5, labels=False)
         assert_array_equal(expected, result[1])
 
-        x = torch.tensor([[[1, 2, np.nan, 3, 4, 5, 6], [3, 4, 5, 1.01, np.nan, 1.02, 1.03]],
-                          [[1, 2, 2.1, 3, 4, 5, 6], [3, 4, 5, np.nan, np.nan, 1.02, 1.03]]
-                          ])
+        x = torch.tensor(
+            [[[1, 2, np.nan, 3,      4,      5,    6],
+              [3, 4, 5,      1.01,   np.nan, 1.02, 1.03]],
+             [[1, 2, 2.1,    3,      4,      5,    6],
+              [3, 4, 5,      np.nan, np.nan, 1.02, 1.03]]])
         result = spectre.parallel.quantile(x, 5, dim=2)
         expected = pd.qcut(x[0, 0], 5, labels=False)
         assert_array_equal(expected, result[0, 0])

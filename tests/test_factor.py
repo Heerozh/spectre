@@ -527,6 +527,15 @@ class TestFactorLib(unittest.TestCase):
         expected = pd.qcut(data[1], 5, labels=False)
         assert_array_equal(result[-1], expected)
 
+        data = spectre.parallel.Rolling(torch.tensor(data)[:, :3], 3)
+        f = spectre.factors.RollingQuantile(10)
+        result = f.compute(data, 5)
+        expected = [
+            np.nan,
+            pd.qcut(data.values[0, 1], 5, labels=False)[-1],
+            pd.qcut(data.values[0, 2], 5, labels=False)[-1]]
+        assert_array_equal(result[0], expected)
+
     def test_align_by_time(self):
         loader = spectre.data.CsvDirLoader(
             data_dir + '/daily/', calender_asset='AAPL',

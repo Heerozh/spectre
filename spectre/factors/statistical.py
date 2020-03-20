@@ -103,7 +103,7 @@ class RollingQuantile(CustomFactor):
 
     def compute(self, data, bins):
         def _quantile(_data):
-            return quantile(_data, bins, dim=2)
+            return quantile(_data, bins, dim=2)[:, :, -1]
         return data.agg(_quantile)
 
 
