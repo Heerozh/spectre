@@ -64,6 +64,8 @@ def plot_chart(df_prices, ohlcv, df_factor, trace_types=None, styles=None, inlin
         # add factors
         for col in factors.columns:
             trace_type = trace_types.get(col, 'Scatter')
+            if trace_type is None:
+                continue
             style = styles.get(col, {})
             style['name'] = style.get('name', col)
             fig.add_trace(go.__dict__[trace_type](x=index, y=factors[col], **style))
