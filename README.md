@@ -231,7 +231,7 @@ pf.create_full_tear_sheet(results.returns, positions=results.positions.value, tr
 ### Differences to common chart:
 * If there is adjustments data, the prices is re-adjusted every day, so the factor you got, like MA, 
   will be different from the stock chart software which only adjusted according to last day.
-  If you want adjusted by last day, use like 'AdjustedDataFactor(OHLCV.close)' as input data.
+  If you want adjusted by last day, use like 'AdjustedColumnDataFactor(OHLCV.close)' as input data.
   This will speeds up a lot because it only needs to be adjusted once, but brings Look-Ahead Bias.
 * Factors that uses the close data will be delayed by 1 bar.
 * spectre's `EMA` uses the algorithm same as `zipline` and `Dataframe.ewm(span=win)`, when `win` is 
@@ -454,7 +454,7 @@ engine.add(factors.MA(20), 'MA20')
 engine.add(rsi, 'RSI')
 engine.add(factors.OHLCV.close.filter(buy_signal), 'Buy')
 engine.to_cuda()
-engine.plot_chart('2017', '2018', styles={
+_ = engine.plot_chart('2017', '2018', styles={
     'MA20': {
               'line': {'dash': 'dash'}
             },
@@ -483,7 +483,7 @@ Not only run the engine, but also run factor analysis.
 
 ### FactorEngine.get_price_matrix
 
-`df_prices = engine.get_price_matrix(start_time, end_time, prices: DataFactor = OHLCV.close)`
+`df_prices = engine.get_price_matrix(start_time, end_time, prices: ColumnDataFactor = OHLCV.close)`
 
 Get the adjusted historical prices matrix which columns is all assets.
 
@@ -499,7 +499,14 @@ Run the engine to test if there is a lookahead bias.
 Fill random values to second half of the ohlcv data, and then check if there are differences between
 the two runs in the first half.
 
+## ColumnDataFactor
 
+You can use `ColumnDataFactor` to represents data from any column in the `DataLoader`, for example:
+
+`spectre.factors.ColumnDataFactor(inputs=['col_name'])`
+
+`factors.OHLCV.close` is just a sugar way to write 
+`spectre.factors.ColumnDataFactor (inputs = [data_loader.ohlcv[3]])`.
 
 ## Built-in Technical Indicator Factors list
 
@@ -549,7 +556,7 @@ new_filter = factor.bottom(n)
 new_filter = StaticAssets({'AAPL', 'MSFT'})
 
 # Local filter
-new_factor = factor.filter(some_filter)   # filter only this factor
+new_factor = factor.filter(some_filter)   # fills elements of self with NaN where mask is False
 
 # Multiple returns selecting
 new_factor = factor[0]
@@ -732,12 +739,22 @@ The `Market*` events has `offset_ns` parameter `MarketClose(self.any_function, o
 a negative value of `offset_ns` means 'before', in backtest mode, the magnitude of the value has no
 effect.
 
+
 ### CustomAlgorithm.schedule
 
 `self.schedule(event: Event)`
 **context:** *initialize*
    
 Schedule an event, callback is `callback(source: "Any class who fired this event")`
+
+
+### CustomAlgorithm.empty_cache_after_run
+
+`self.empty_cache_after_run = True`
+**context:** *initialize*
+
+Empty engine's cache after factor calculation. 
+If you need more VRMA in rebalance context, setting it to True will help.
 
 
 ### CustomAlgorithm.stop_event_manager
@@ -938,10 +955,19 @@ So `PnLDecayTrailingStopModel(-0.1, 0.1, callback)` means initial stop loss is -
 any drawdown will trigger a stop loss.
 
 #### TimeDecayTrailingStopModel
-`trading.TimeDecayTrailingStopModel(ratio, period_target： pd.Timedelta, callback, decay_rate=0.05, 
+`trading.TimeDecayTrailingStopModel(ratio, period_target: pd.Timedelta, callback, decay_rate=0.05, 
 max_decay=0)`
 
 Same as `PnLDecayTrailingStopModel`, but target is time period.
+
+
+### SimulationBlotter.get_returns
+
+`self.blotter.get_returns()`
+**context:** *rebalance, terminate*
+
+Get the portfolio returns, use `(self.blotter.get_returns() + 1).prod()` to get current cumulative
+return.
 
 
 ### SimulationBlotter.portfolio Read Only Properties
