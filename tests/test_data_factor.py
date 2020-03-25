@@ -21,7 +21,7 @@ class TestDataFactorLib(unittest.TestCase):
         assert_array_equal(df.loc[(slice(None), 'MSFT'), 'CpVol'].values,
                            (28627674, 28720936))
 
-        engine.add(spectre.factors.DataFactor(inputs=('changePercent',)), 'Chg')
+        engine.add(spectre.factors.ColumnDataFactor(inputs=('changePercent',)), 'Chg')
         df = engine.run('2019-01-11', '2019-01-15')
         assert_array_equal(df.loc[(slice(None), 'AAPL'), 'Chg'].values,
                            (-0.9835, -1.5724))

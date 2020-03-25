@@ -10,13 +10,13 @@ from .factor import BaseFactor, CustomFactor
 import torch
 
 
-class DataFactor(BaseFactor):
+class ColumnDataFactor(BaseFactor):
     def __init__(self, inputs: Optional[Sequence[str]] = None, should_delay=True) -> None:
         super().__init__()
         if inputs:
             self.inputs = inputs
         assert (3 > len(self.inputs) > 0), \
-            "DataFactor's `inputs` can only contains one data column and corresponding " \
+            "ColumnDataFactor's `inputs` can only contains one data column and corresponding " \
             "adjustments column"
         self._data = None
         self._multi = None
@@ -54,8 +54,8 @@ class DataFactor(BaseFactor):
         pass
 
 
-class AdjustedDataFactor(CustomFactor):
-    def __init__(self, data: DataFactor):
+class AdjustedColumnDataFactor(CustomFactor):
+    def __init__(self, data: ColumnDataFactor):
         super().__init__(1, (data,))
         self.parent = data
 

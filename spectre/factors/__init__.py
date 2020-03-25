@@ -11,8 +11,8 @@ from .factor import (
 )
 
 from .datafactor import (
-    DataFactor,
-    AdjustedDataFactor,
+    ColumnDataFactor,
+    AdjustedColumnDataFactor,
     AssetClassifierDataFactor,
     DatetimeDataFactor,
 )

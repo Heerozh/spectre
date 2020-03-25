@@ -10,7 +10,7 @@ from itertools import cycle, islice
 def plot_factor_diagram(factor):
     import plotly.graph_objects as go
     from ..factors import BaseFactor, CustomFactor
-    from ..factors import DataFactor
+    from ..factors import ColumnDataFactor, DatetimeDataFactor
 
     color = [
         "rgba(31, 119, 180, 0.8)", "rgba(255, 127, 14, 0.8)", "rgba(44, 160, 44, 0.8)",
@@ -45,8 +45,10 @@ def plot_factor_diagram(factor):
             this_label_id = factor_id[class_id]
         else:
             this_label_id = len(label)
-            if isinstance(this, DataFactor):
+            if isinstance(this, ColumnDataFactor):
                 label.append(this.inputs[0])
+            if isinstance(this, DatetimeDataFactor):
+                label.append(this.attr)
             else:
                 label.append(type(this).__name__)
 

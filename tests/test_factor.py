@@ -722,14 +722,14 @@ class TestFactorLib(unittest.TestCase):
         engine.add(TestMultiProcessing(
             win=10,
             core=3,
-            inputs=[spectre.factors.AdjustedDataFactor(spectre.factors.OHLCV.open),
-                    spectre.factors.AdjustedDataFactor(spectre.factors.OHLCV.close)],
+            inputs=[spectre.factors.AdjustedColumnDataFactor(spectre.factors.OHLCV.open),
+                    spectre.factors.AdjustedColumnDataFactor(spectre.factors.OHLCV.close)],
             multiprocess=True
         ), 'f')
         engine.add(spectre.factors.MA(
             win=10,
-            inputs=[spectre.factors.AdjustedDataFactor(spectre.factors.OHLCV.open) *
-                    spectre.factors.AdjustedDataFactor(spectre.factors.OHLCV.close)],
+            inputs=[spectre.factors.AdjustedColumnDataFactor(spectre.factors.OHLCV.open) *
+                    spectre.factors.AdjustedColumnDataFactor(spectre.factors.OHLCV.close)],
         ), 'f2')
         result = engine.run("2018-12-25", "2019-01-05")
         assert_almost_equal(result.f.values, result.f2.values)

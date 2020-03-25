@@ -77,8 +77,8 @@ class TestDataLoaderLib(unittest.TestCase):
 
         # test adjustments in engine
         engine = spectre.factors.FactorEngine(loader)
-        engine.add(spectre.factors.AdjustedDataFactor(spectre.factors.OHLCV.volume), 'vol')
-        engine.add(spectre.factors.AdjustedDataFactor(spectre.factors.OHLCV.open), 'open')
+        engine.add(spectre.factors.AdjustedColumnDataFactor(spectre.factors.OHLCV.volume), 'vol')
+        engine.add(spectre.factors.AdjustedColumnDataFactor(spectre.factors.OHLCV.open), 'open')
         df = engine.run(start, end, delay_factor=False)
 
         expected_msft_open = [1526.24849, 1548.329113, 1536.244448, 1541.16783, 1563.696033,
@@ -123,7 +123,7 @@ class TestDataLoaderLib(unittest.TestCase):
             prices_index='date',
             parse_dates=True, )
         engine = spectre.factors.FactorEngine(loader)
-        engine.add(spectre.factors.DataFactor(inputs=['uOpen']), 'open')
+        engine.add(spectre.factors.ColumnDataFactor(inputs=['uOpen']), 'open')
         engine.run(start, end, delay_factor=False)
 
     @unittest.skipUnless(os.getenv('COVERAGE_RUNNING'), "too slow, run manually")

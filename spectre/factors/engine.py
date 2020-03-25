@@ -8,7 +8,7 @@ from typing import Union, Iterable, Tuple
 import warnings
 from .factor import BaseFactor
 from .filter import FilterFactor, StaticAssets
-from .datafactor import DataFactor, AdjustedDataFactor
+from .datafactor import ColumnDataFactor, AdjustedColumnDataFactor
 from ..plotting import plot_quantile_and_cumulative_returns, plot_chart
 from ..data import DataLoader
 from ..parallel import ParallelGroupBy
@@ -18,11 +18,11 @@ import torch
 
 
 class OHLCV:
-    open = DataFactor(inputs=('',), should_delay=False)
-    high = DataFactor(inputs=('',))
-    low = DataFactor(inputs=('',))
-    close = DataFactor(inputs=('',))
-    volume = DataFactor(inputs=('',))
+    open = ColumnDataFactor(inputs=('',), should_delay=False)
+    high = ColumnDataFactor(inputs=('',))
+    low = ColumnDataFactor(inputs=('',))
+    close = ColumnDataFactor(inputs=('',))
+    volume = ColumnDataFactor(inputs=('',))
 
 
 class FactorEngine:
@@ -356,7 +356,7 @@ class FactorEngine:
     def get_price_matrix(self,
                          start: Union[str, pd.Timestamp],
                          end: Union[str, pd.Timestamp],
-                         prices: DataFactor = OHLCV.close,
+                         prices: ColumnDataFactor = OHLCV.close,
                          ) -> pd.DataFrame:
         """
         Get the price data for Factor Return Analysis.
@@ -366,7 +366,7 @@ class FactorEngine:
                        to OHLCV.open.
         """
         factors_backup = self._factors
-        self._factors = {'price': AdjustedDataFactor(prices)}
+        self._factors = {'price': AdjustedColumnDataFactor(prices)}
 
         # get tickers first
         assets = None
@@ -459,11 +459,11 @@ class FactorEngine:
             column_names[c + '_q_'] = (c, 'factor_quantile')
             column_names[c + '_w_'] = (c, 'factor_weight')
 
-        # add the rolling returns of each period, use AdjustedDataFactor for best performance
+        # add the rolling returns of each period, use AdjustedColumnDataFactor for best performance
         shift = -1
-        inputs = (AdjustedDataFactor(OHLCV.close),)
+        inputs = (AdjustedColumnDataFactor(OHLCV.close),)
         if trade_at == 'open':
-            inputs = (AdjustedDataFactor(OHLCV.open),)
+            inputs = (AdjustedColumnDataFactor(OHLCV.open),)
         elif trade_at == 'current_close':
             shift = 0
         from .basic import Returns

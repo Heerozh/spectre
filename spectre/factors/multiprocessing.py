@@ -6,7 +6,7 @@
 """
 from typing import Optional, Sequence
 from .factor import BaseFactor, CustomFactor
-from .datafactor import DataFactor
+from .datafactor import ColumnDataFactor
 from ..parallel import Rolling
 import pandas as pd
 import numpy as np
@@ -47,9 +47,9 @@ class CPUParallelFactor(CustomFactor):
         super().__init__(win, inputs)
 
         for data in inputs:
-            if isinstance(data, DataFactor):
-                raise ValueError('Cannot use DataFactor in CPUParallelFactor, '
-                                 'please use AdjustedDataFactor instead.')
+            if isinstance(data, ColumnDataFactor):
+                raise ValueError('Cannot use ColumnDataFactor in CPUParallelFactor, '
+                                 'please use AdjustedColumnDataFactor instead.')
         if multiprocess:
             self.pool = Pool
         else:
