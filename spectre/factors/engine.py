@@ -191,7 +191,7 @@ class FactorEngine:
     def add(self,
             factor: Union[Iterable[BaseFactor], BaseFactor],
             name: Union[Iterable[str], str],
-            ) -> None:
+            replace=False) -> None:
         """
         Add factor or filter to engine, as a column.
         """
@@ -199,7 +199,7 @@ class FactorEngine:
             for i, fct in enumerate(factor):
                 self.add(fct, name and name[i] or None)
         else:
-            if name in self._factors:
+            if name in self._factors and not replace:
                 raise KeyError('A factor with the name {} already exists.'
                                'please specify a new name by engine.add(factor, new_name)'
                                .format(name))
@@ -213,6 +213,10 @@ class FactorEngine:
 
     def get_factor(self, name):
         return self._factors[name]
+
+    @property
+    def factors(self):
+        return self._factors.copy()
 
     def clear(self):
         self.remove_all_factors()

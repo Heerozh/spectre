@@ -120,18 +120,21 @@ class BaseFactor:
     # --------------- helper functions ---------------
 
     def top(self, n, mask: 'BaseFactor' = None):
+        """Cross-section top values"""
         return self.rank(ascending=False, mask=mask) <= n
 
     def bottom(self, n, mask: 'BaseFactor' = None):
         return self.rank(ascending=True, mask=mask) <= n
 
     def rank(self, ascending=True, mask: 'BaseFactor' = None):
+        """Cross-section rank"""
         factor = RankFactor(inputs=(self,), mask=mask)
         # factor.method = method
         factor.ascending = ascending
         return factor
 
     def zscore(self, groupby: str = 'date', mask: 'BaseFactor' = None):
+        """Cross-section zscore"""
         factor = ZScoreFactor(inputs=(self,))
         factor.set_mask(mask)
         factor.groupby = groupby
@@ -140,10 +143,10 @@ class BaseFactor:
 
     def demean(self, groupby: Union[str, dict] = None, mask: 'BaseFactor' = None):
         """
+        Cross-section demean.
         Set `groupby` to the name of a column, like 'sector'.
-        `groupby` also can be a dictionary like groupby={'name': group_id}, `group_id` must > 0
-        dict groupby will interrupt the parallelism of cuda, it is recommended to add group key to
-        the Dataloader as a column, or use it only in the last step.
+        `groupby` also can be a dictionary like groupby={'name': group_id}, `group_id` must > 0.
+        Group by dict is implemented by pandas, not in GPU.
         """
         factor = DemeanFactor(inputs=(self,), mask=mask)
         if isinstance(groupby, str):
@@ -155,6 +158,7 @@ class BaseFactor:
         return factor
 
     def quantile(self, bins=5, mask: 'BaseFactor' = None, groupby: str = 'date'):
+        """Cross-section quantiles to which the factor belongs"""
         factor = QuantileClassifier(inputs=(self,))
         factor.set_mask(mask)
         factor.groupby = groupby
@@ -162,6 +166,7 @@ class BaseFactor:
         return factor
 
     def to_weight(self, demean=True, mask: 'BaseFactor' = None):
+        """factor value to portfolio weight, which sum(abs(weight)) == 1"""
         factor = ToWeightFactor(inputs=(self,), mask=mask)
         factor.demean = demean
         return factor
