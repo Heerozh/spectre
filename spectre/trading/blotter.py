@@ -190,7 +190,7 @@ class SimulationBlotter(BaseBlotter, EventReceiver):
     Order = namedtuple("Order", ['date', 'asset', 'amount', 'price',
                                  'fill_price', 'commission', 'realized'])
 
-    def __init__(self, dataloader, capital_base=100000, daily_curb=None):
+    def __init__(self, dataloader, capital_base=100000, daily_curb=None, start=None):
         """
         :param dataloader: dataloader for get prices
         :param daily_curb: How many fluctuations to prohibit trading, in return.
@@ -203,7 +203,7 @@ class SimulationBlotter(BaseBlotter, EventReceiver):
         self.capital_base = capital_base
         self._portfolio.update_cash(capital_base)
 
-        df = dataloader.load(None, None, 0).copy()
+        df = dataloader.load(start, None, 0).copy()
         df['__pct_chg'] = df[dataloader.ohlcv[3]].groupby(level=1).pct_change()
         self._data = df
         self._prices = DataLoaderFastGetter(df[list(dataloader.ohlcv) + ['__pct_chg']])

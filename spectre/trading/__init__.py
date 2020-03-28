@@ -152,9 +152,10 @@ def run_backtest(loader: 'DataLoader', alg_type: 'Type[CustomAlgorithm]', start,
                  delay_factor=True):
     # force python to free memory, else may be encountering cuda out of memory
     import gc
+    import pandas as pd
     gc.collect()
 
-    _blotter = SimulationBlotter(loader)
+    _blotter = SimulationBlotter(loader, start=pd.Timestamp(start, tz='UTC'))
     evt_mgr = SimulationEventManager()
     alg = alg_type(_blotter, main=loader)
     evt_mgr.subscribe(_blotter)
