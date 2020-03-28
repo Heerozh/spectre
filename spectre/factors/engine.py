@@ -348,6 +348,8 @@ class FactorEngine:
         if delays:
             index = ret.index.levels[0]
             start_ind = index.get_loc(start, 'bfill')
+            if (start_ind + 1) >= len(index):
+                raise ValueError('There is no data between start and end.')
             start = index[start_ind + 1]
         return ret.loc[start:]
 
