@@ -481,6 +481,9 @@ class TimeGroupFactor(CustomFactor, ABC):
         self.set_mask(mask)
         assert self.win == 1, 'TimeGroupFactor.win can only be 1'
 
+    def __getitem__(self, key):
+        return MultiRetSelectorTG(inputs=(self, key))
+
 
 # --------------- helper factors ---------------
 
@@ -494,6 +497,10 @@ class MultiRetSelector(CustomFactor):
             raise KeyError('OutOfBounds: factor has only {} return values, and slice is [{}].'.
                            format(data.shape[2], key))
         return data[:, :, key]
+
+
+class MultiRetSelectorTG(MultiRetSelector, TimeGroupFactor):
+    pass
 
 
 class ShiftFactor(CustomFactor):
