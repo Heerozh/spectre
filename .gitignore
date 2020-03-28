@@ -106,3 +106,4 @@ venv.bak/
 /.idea
 /.note.md
 /tests/data/yahoo
+/private_factors
