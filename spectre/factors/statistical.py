@@ -6,10 +6,9 @@
 """
 import torch
 import math
-import numpy as np
-from .factor import CustomFactor
+from .factor import CustomFactor, RankFactor
 from .engine import OHLCV
-from ..parallel import linear_regression_1d, quantile
+from ..parallel import linear_regression_1d, quantile, pearsonr
 
 
 class StandardDeviation(CustomFactor):
@@ -118,10 +117,24 @@ class HalfLifeMeanReversion(CustomFactor):
         super().__init__(win=win, inputs=[lag, diff, math.log(2)])
 
     def compute(self, lag, diff, ln2):
-        def calc_h(x_, y_):
-            _lambda, _ = linear_regression_1d(x_, y_, dim=2)
+        def calc_h(_x, _y):
+            _lambda, _ = linear_regression_1d(_x, _y, dim=2)
             return -ln2 / _lambda
         return lag.agg(calc_h, diff)
+
+
+class RollingRankIC(CustomFactor):
+    _min_win = 2
+
+    def __init__(self, win, rank_x, rank_y):
+        assert isinstance(rank_x, RankFactor)
+        assert isinstance(rank_y, RankFactor)
+        super().__init__(win=win, inputs=[rank_x, rank_y])
+
+    def compute(self, rank_x, rank_y):
+        def _pearsonr(_x, _y):
+            return pearsonr(_x, _y, dim=2, ddof=1)
+        return rank_x.agg(_pearsonr, rank_y)
 
 
 STDDEV = StandardDeviation

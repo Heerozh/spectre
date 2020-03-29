@@ -155,9 +155,9 @@ def covariance(x, y, dim=1, ddof=0):
     return e / ((~isnan).sum(dim=dim) - ddof)
 
 
-def pearsonr(x, y, dim=1):
-    cov = covariance(x, y, dim)
-    return cov / (nanstd(x) * nanstd(y))
+def pearsonr(x, y, dim=1, ddof=0):
+    cov = covariance(x, y, dim, ddof)
+    return cov / (nanstd(x, dim, ddof) * nanstd(y, dim, ddof))
 
 
 def linear_regression_1d(x, y, dim=1):
