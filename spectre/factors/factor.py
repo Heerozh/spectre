@@ -210,6 +210,9 @@ class BaseFactor:
     def all(self, win):
         return AllFactor(win, inputs=(self,))
 
+    def clamp(self, left, right):
+        return ClampFactor(self, left, right)
+
     # --------------- main methods ---------------
     @property
     def adjustments(self):
@@ -614,6 +617,17 @@ class ToWeightFactor(TimeGroupFactor):
         if self.demean:
             data = data - nanmean(data)[:, None]
         return data / nansum(data.abs(), dim=1)[:, None]
+
+
+class ClampFactor(CustomFactor):
+    """Simple Winsorizing"""
+    _min_win = 1
+
+    def __init__(self, data, left, right):
+        super().__init__(win=1, inputs=[data, left, right])
+
+    def compute(self, data, left, right):
+        return data.clamp(left, right)
 
 
 # --------------- op factors ---------------
