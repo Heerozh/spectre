@@ -473,7 +473,7 @@ class CustomFactor(BaseFactor):
         raise NotImplementedError("abstractmethod")
 
 
-class TimeGroupFactor(CustomFactor, ABC):
+class CrossSectionFactor(CustomFactor, ABC):
     """Class that inputs and return value is grouped by datetime"""
     groupby = 'date'
     win = 1
@@ -482,10 +482,10 @@ class TimeGroupFactor(CustomFactor, ABC):
                  mask: Optional[BaseFactor] = None):
         super().__init__(win, inputs)
         self.set_mask(mask)
-        assert self.win == 1, 'TimeGroupFactor.win can only be 1'
+        assert self.win == 1, 'CrossSectionFactor.win can only be 1'
 
     def __getitem__(self, key):
-        return MultiRetSelectorTG(inputs=(self, key))
+        return MultiRetSelectorCS(inputs=(self, key))
 
 
 # --------------- helper factors ---------------
@@ -502,7 +502,7 @@ class MultiRetSelector(CustomFactor):
         return data[:, :, key]
 
 
-class MultiRetSelectorTG(MultiRetSelector, TimeGroupFactor):
+class MultiRetSelectorCS(MultiRetSelector, CrossSectionFactor):
     pass
 
 
@@ -565,7 +565,7 @@ class DoNothingFactor(CustomFactor):
         return data
 
 
-class RankFactor(TimeGroupFactor):
+class RankFactor(CrossSectionFactor):
     ascending = True,
 
     def compute(self, data: torch.Tensor) -> torch.Tensor:
@@ -581,7 +581,7 @@ class RankFactor(TimeGroupFactor):
         return rank
 
 
-class DemeanFactor(TimeGroupFactor):
+class DemeanFactor(CrossSectionFactor):
     group_dict = None
 
     def compute(self, data: torch.Tensor) -> torch.Tensor:
@@ -610,7 +610,7 @@ class QuantileClassifier(CustomFactor):
         return quantile(data, self.bins, dim=1)
 
 
-class ToWeightFactor(TimeGroupFactor):
+class ToWeightFactor(CrossSectionFactor):
     demean = True
 
     def compute(self, data: torch.Tensor) -> torch.Tensor:

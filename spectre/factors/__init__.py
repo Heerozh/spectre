@@ -6,7 +6,7 @@ from .engine import (
 from .factor import (
     BaseFactor,
     CustomFactor,
-    TimeGroupFactor,
+    CrossSectionFactor,
     RankFactor,
     QuantileClassifier,
 )

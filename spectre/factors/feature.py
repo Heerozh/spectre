@@ -6,7 +6,7 @@
 """
 import warnings
 from .datafactor import DatetimeDataFactor
-from .factor import TimeGroupFactor, CustomFactor
+from .factor import CrossSectionFactor, CustomFactor
 from .basic import Returns
 from ..parallel import nanstd, nanmean, nansum
 
@@ -14,7 +14,7 @@ from ..parallel import nanstd, nanmean, nansum
 # ----------- Common Market Features -----------
 
 
-class MarketDispersion(TimeGroupFactor):
+class MarketDispersion(CrossSectionFactor):
     """Cross-section standard deviation of universe stocks returns."""
     inputs = (Returns(), )
     win = 1
@@ -24,7 +24,7 @@ class MarketDispersion(TimeGroupFactor):
         return ret.repeat(1, returns.shape[1])
 
 
-class MarketReturn(TimeGroupFactor):
+class MarketReturn(CrossSectionFactor):
     """Cross-section mean returns of universe stocks."""
     inputs = (Returns(), )
     win = 1
@@ -44,7 +44,7 @@ class MarketVolatility(CustomFactor):
         return (returns.nanvar() * annualization_factor) ** 0.5
 
 
-class AdvanceDeclineRatio(TimeGroupFactor):
+class AdvanceDeclineRatio(CrossSectionFactor):
     """Need to work with MA, and could be applied to volume too"""
     inputs = (Returns(), )
     win = 1
