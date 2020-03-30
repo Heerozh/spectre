@@ -71,29 +71,35 @@ class ParallelGroupBy:
         return ret
 
 
-def _nansum(data: torch.Tensor, dim=1) -> Tuple[torch.Tensor, torch.Tensor]:
+def masked_sum(data: torch.Tensor, mask: torch.Tensor, dim=1) -> torch.Tensor:
     data = data.clone()
-    isnan = torch.isnan(data)
-    data.masked_fill_(isnan, 0)  # much faster than data[isnan] = 0
-    return data.sum(dim=dim), isnan
+    data.masked_fill_(mask, 0)  # much faster than data[isnan] = 0
+    return data.sum(dim=dim)
 
 
 def nansum(data: torch.Tensor, dim=1) -> torch.Tensor:
-    return _nansum(data, dim)[0]
+    mask = torch.isnan(data)
+    return masked_sum(data, mask, dim)
+
+
+def masked_mean(data, mask, dim=1):
+    total = masked_sum(data, mask, dim)
+    return total / (~mask).sum(dim=dim)
 
 
 def nanmean(data: torch.Tensor, dim=1) -> torch.Tensor:
-    total, isnan = _nansum(data, dim)
-    return total / (~isnan).sum(dim=dim)
+    mask = torch.isnan(data)
+    return masked_mean(data, mask, dim)
 
 
 def nanvar(data: torch.Tensor, dim=1, ddof=0) -> torch.Tensor:
-    total, isnan = _nansum(data, dim)
-    n = (~isnan).sum(dim=dim)
+    mask = torch.isnan(data)
+    total = masked_sum(data, mask, dim)
+    n = (~mask).sum(dim=dim)
     mean = total / n
     mean.unsqueeze_(-1)
     var = (data - mean) ** 2 / (n.unsqueeze(-1) - ddof)
-    var.masked_fill_(isnan, 0)
+    var.masked_fill_(mask, 0)
     return var.sum(dim=dim)
 
 
@@ -151,8 +157,10 @@ def covariance(x, y, dim=1, ddof=0):
     y_bar = nanmean(y, dim=dim).unsqueeze(-1)
     demean_x = x - x_bar
     demean_y = y - y_bar
-    e, isnan = _nansum(demean_x * demean_y, dim=dim)
-    return e / ((~isnan).sum(dim=dim) - ddof)
+    xy = demean_x * demean_y
+    mask = torch.isnan(xy)
+    e = masked_sum(xy, mask, dim=dim)
+    return e / ((~mask).sum(dim=dim) - ddof)
 
 
 def pearsonr(x, y, dim=1, ddof=0):

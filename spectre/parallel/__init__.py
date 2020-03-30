@@ -1,8 +1,8 @@
 from .algorithmic import (
     ParallelGroupBy,
     Rolling,
-    nansum,
-    nanmean,
+    nansum, masked_sum,
+    nanmean, masked_mean,
     nanvar,
     nanstd,
     masked_last,
