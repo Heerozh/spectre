@@ -300,6 +300,10 @@ class SimulationEventManager(EventManager):
             gc.collect()
             torch.cuda.empty_cache()
 
+        # infer freq
+        delta = min(ticks[1:] - ticks[:-1])
+        data_freq = delta.resolution_string
+
         # loop factor data
         last_day = None
         for dt in tqdm(ticks):
@@ -315,7 +319,7 @@ class SimulationEventManager(EventManager):
             alg.set_datetime(dt)
 
             # fire daily data event
-            if dt.hour == 0:
+            if data_freq == 'D':
                 self.fire_event(self, EveryBarData)
 
             # fire open event
@@ -324,7 +328,7 @@ class SimulationEventManager(EventManager):
                 last_day = dt.day
 
             # fire intraday data event
-            if dt.hour != 0:
+            if data_freq != 'D':
                 alg.blotter.set_price('close')
                 self.fire_event(self, EveryBarData)
 
