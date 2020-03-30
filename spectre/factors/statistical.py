@@ -6,9 +6,9 @@
 """
 import torch
 import math
-from .factor import CustomFactor, RankFactor
+from .factor import CustomFactor, RankFactor, CrossSectionFactor
 from .engine import OHLCV
-from ..parallel import linear_regression_1d, quantile, pearsonr
+from ..parallel import linear_regression_1d, quantile, pearsonr, masked_mean, masked_sum
 
 
 class StandardDeviation(CustomFactor):
@@ -135,6 +135,18 @@ class RollingRankIC(CustomFactor):
         def _pearsonr(_x, _y):
             return pearsonr(_x, _y, dim=2, ddof=1)
         return rank_x.agg(_pearsonr, rank_y)
+
+
+class CrossSectionR2(CrossSectionFactor):
+    def __init__(self, y_hat, y):
+        super().__init__(win=1, inputs=[y_hat, y])
+
+    def compute(self, y_hat, y):
+        mask = torch.isnan(y_hat) | torch.isnan(y)
+        y_bar = masked_mean(y, mask, dim=1).unsqueeze(-1)
+        ss_tot = masked_sum((y - y_bar) ** 2, mask, dim=1)
+        ss_reg = masked_sum((y_hat - y_bar) ** 2, mask, dim=1)
+        return (ss_reg / ss_tot).unsqueeze(-1).repeat(1, y.shape[1])
 
 
 STDDEV = StandardDeviation
