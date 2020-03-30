@@ -23,11 +23,11 @@ class FilterFactor(CustomFactor, ABC):
 
     def sum(self, win):
         raise ValueError("FilterFactor does not support `.sum()` method, "
-                         "please convert to float by using `filter_factor * 1.0`")
+                         "please convert to float by using `filter_factor.float()`")
 
     def filter(self, mask):
         raise ValueError("FilterFactor does not support local filtering `.filter()` method, "
-                         "please convert to float by using `filter_factor * 1.0`")
+                         "please convert to float by using `filter_factor.float()`")
 
     def any(self, win):
         return AnyFilter(win, inputs=(self,))

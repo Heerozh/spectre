@@ -133,9 +133,12 @@ class BaseFactor:
         factor.ascending = ascending
         return factor
 
-    def zscore(self, groupby: str = 'date', mask: 'BaseFactor' = None):
+    def zscore(self, groupby: str = 'date', mask: 'BaseFactor' = None, weight: 'BaseFactor' = None):
         """Cross-section zscore"""
-        factor = ZScoreFactor(inputs=(self,))
+        inputs = [self]
+        if weight is not None:
+            inputs.append(weight)
+        factor = ZScoreFactor(inputs=inputs)
         factor.set_mask(mask)
         factor.groupby = groupby
 
@@ -212,6 +215,13 @@ class BaseFactor:
 
     def clamp(self, left, right):
         return ClampFactor(self, left, right)
+
+    def float32(self):
+        factor = TypeCastFactor(inputs=(self,))
+        factor.dtype = torch.float32
+        return factor
+
+    float = float32
 
     # --------------- main methods ---------------
     @property
@@ -512,7 +522,7 @@ class ShiftFactor(CustomFactor):
     def compute(self, data: torch.Tensor) -> torch.Tensor:
         if data.dtype in {torch.int8, torch.int16, torch.int32, torch.int64}:
             raise ValueError('factor.shift() does not support `int` type, '
-                             'please convert to float by using `factor * 1.0`, upstreams: {}'
+                             'please convert to float by using `factor.float()`, upstreams: {}'
                              .format(self.inputs))
 
         shift = data.roll(self.periods, dims=1)
@@ -547,6 +557,14 @@ class AllFactor(CustomFactor):
 
     def compute(self, data: Rolling) -> torch.Tensor:
         return ~torch.isnan(data.values).all(dim=2)
+
+
+class TypeCastFactor(CustomFactor):
+    _min_win = 1
+    dtype = torch.float32
+
+    def compute(self, data: torch.Tensor) -> torch.Tensor:
+        return data.type(self.dtype)
 
 
 class PadFactor(CustomFactor):
@@ -596,13 +614,17 @@ class DemeanFactor(CrossSectionFactor):
             return data - nanmean(data)[:, None]
 
 
-class ZScoreFactor(CustomFactor):
+class ZScoreFactor(CrossSectionFactor):
 
-    def compute(self, data: torch.Tensor) -> torch.Tensor:
-        return (data - nanmean(data)[:, None]) / nanstd(data)[:, None]
+    def compute(self, data: torch.Tensor, weight=None) -> torch.Tensor:
+        if weight is None:
+            mean = nanmean(data)
+        else:
+            mean = nansum(data * weight) / nansum(weight)
+        return (data - mean.unsqueeze(-1)) / nanstd(data)[:, None]
 
 
-class QuantileClassifier(CustomFactor):
+class QuantileClassifier(CrossSectionFactor):
     """Returns the quantile of the factor at each datetime"""
     bins = 5
 
