@@ -611,7 +611,7 @@ class DemeanFactor(CrossSectionFactor):
             ret = g.transform(lambda x: x - x.mean())
             return self._regroup(ret)
         else:
-            return data - nanmean(data)[:, None]
+            return data - nanmean(data).unsqueeze(-1)
 
 
 class ZScoreFactor(CrossSectionFactor):
@@ -621,7 +621,7 @@ class ZScoreFactor(CrossSectionFactor):
             mean = nanmean(data)
         else:
             mean = nansum(data * weight) / nansum(weight)
-        return (data - mean.unsqueeze(-1)) / nanstd(data)[:, None]
+        return (data - mean.unsqueeze(-1)) / nanstd(data).unsqueeze(-1)
 
 
 class QuantileClassifier(CrossSectionFactor):
@@ -637,8 +637,8 @@ class ToWeightFactor(CrossSectionFactor):
 
     def compute(self, data: torch.Tensor) -> torch.Tensor:
         if self.demean:
-            data = data - nanmean(data)[:, None]
-        return data / nansum(data.abs(), dim=1)[:, None]
+            data = data - nanmean(data).unsqueeze(-1)
+        return data / nansum(data.abs(), dim=1).unsqueeze(-1)
 
 
 class ClampFactor(CustomFactor):
