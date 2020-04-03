@@ -6,9 +6,10 @@
 """
 import torch
 import math
-from .factor import CustomFactor, RankFactor, CrossSectionFactor
+from .factor import CustomFactor, CrossSectionFactor
 from .engine import OHLCV
-from ..parallel import linear_regression_1d, quantile, pearsonr, masked_mean, masked_sum
+from ..parallel import (linear_regression_1d, quantile, pearsonr, masked_mean, masked_sum,
+                        nanmean, nanstd)
 
 
 class StandardDeviation(CustomFactor):
@@ -123,18 +124,22 @@ class HalfLifeMeanReversion(CustomFactor):
         return lag.agg(calc_h, diff)
 
 
-class RollingRankIC(CustomFactor):
-    _min_win = 2
+class InformationCoefficient(CrossSectionFactor):
+    def __init__(self, x, y):
+        super().__init__(win=1, inputs=[x, y])
 
-    def __init__(self, win, rank_x, rank_y):
-        assert isinstance(rank_x, RankFactor)
-        assert isinstance(rank_y, RankFactor)
-        super().__init__(win=win, inputs=[rank_x, rank_y])
+    def compute(self, x, y):
+        ic = pearsonr(x, y, dim=1, ddof=1)
+        return ic.unsqueeze(-1).repeat(1, y.shape[1])
 
-    def compute(self, rank_x, rank_y):
-        def _pearsonr(_x, _y):
-            return pearsonr(_x, _y, dim=2, ddof=1)
-        return rank_x.agg(_pearsonr, rank_y)
+    def to_ir(self, win):
+        class RollingIC2IR(CustomFactor):
+            def compute(self, ic):
+                def _to_ir(_ic):
+                    # Fundamental Law of Active Management: ir = ic * sqrt(b), 1/sqrt(b) = std(ic)
+                    return nanmean(_ic, dim=2) / nanstd(_ic, dim=2, ddof=1)
+                return ic.agg(_to_ir)
+        return RollingIC2IR(win=win, inputs=[self])
 
 
 class CrossSectionR2(CrossSectionFactor):

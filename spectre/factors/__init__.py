@@ -55,7 +55,7 @@ from .statistical import (
     RollingMomentum,
     RollingQuantile,
     HalfLifeMeanReversion,
-    RollingRankIC,
+    InformationCoefficient,
     CrossSectionR2,
 )
 
