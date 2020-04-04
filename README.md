@@ -130,7 +130,7 @@ engine.to_cuda()
 You can also view your factor structure graphically:
 
 ```python
-bb_cross_factor.show_graph()
+factors.BBANDS(win=5).normalized().rank().zscore().show_graph()
 ```
 
 <img src="https://github.com/Heerozh/spectre/raw/media/factor_diagram.png" width="800" height="360">
