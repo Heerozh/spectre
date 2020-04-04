@@ -94,21 +94,30 @@ df
 
 ```python
 from spectre import factors
+import math
+
+risk_free_rate = 0.04
+excess_logret = factors.LogReturns() - math.log(1 + risk_free_rate)
+universe = factors.AverageDollarVolume(win=120).top(100)
+
+# Barra MOMENTUM
+ema126 = factors.EMA(half_life=126, inputs=[excess_logret])
+rstr = ema126.shift(11).sum(252)
+MOMENTUM = rstr
+
+# Barra Volatility
+ema42 = factors.EMA(half_life=42, inputs=[excess_logret])
+dastd = factors.STDDEV(252, inputs=[ema42])
+VOLATILITY = dastd
+
+# run engine
 from spectre.data import ArrowLoader
 loader = ArrowLoader('./prices/yahoo/yahoo.feather')
 engine = factors.FactorEngine(loader)
-universe = factors.AverageDollarVolume(win=120).top(100)
+
 engine.set_filter( universe )
-
-ma_cross = (factors.MA(5)-factors.MA(10)-factors.MA(30))
-bb_cross = -factors.BBANDS(win=5).normalized()
-bb_cross = bb_cross.filter(bb_cross < 0.7)  # p-hacking
-
-ma_cross_factor = ma_cross.rank(mask=universe).zscore()
-bb_cross_factor = bb_cross.rank(mask=universe).zscore()
-
-engine.add( ma_cross_factor, 'ma_cross' )
-engine.add( bb_cross_factor, 'bb_cross' )
+engine.add( MOMENTUM, 'MOMENTUM' )
+engine.add( VOLATILITY, 'VOLATILITY' )
 
 engine.to_cuda()
 %time factor_data, mean_return = engine.full_run("2013-01-02", "2018-01-19", periods=(1,5,10,))
@@ -152,22 +161,31 @@ You can find other examples in the `./examples` directory.
 ```python
 from spectre import factors, trading
 from spectre.data import ArrowLoader
-import pandas as pd
+import pandas as pd, math
 
 
 class MyAlg(trading.CustomAlgorithm):
     def initialize(self):
+        # your factors
+        risk_free_rate = 0.04
+        excess_logret = factors.LogReturns() - math.log(1 + risk_free_rate)
+        universe = factors.AverageDollarVolume(win=120).top(100)
+
+        # Barra MOMENTUM Risk Factor
+        ema126 = factors.EMA(half_life=126, inputs=[excess_logret])
+        rstr = ema126.shift(11).sum(252)
+        MOMENTUM = rstr.zscore(mask=universe)
+
+        # Barra Volatility Risk Factor
+        ema42 = factors.EMA(half_life=42, inputs=[excess_logret])
+        dastd = factors.STDDEV(252, inputs=[ema42])
+        VOLATILITY = dastd.zscore(mask=universe)
+
         # setup engine
         engine = self.get_factor_engine()
         engine.to_cuda()
-        universe = factors.AverageDollarVolume(win=120).top(100)
         engine.set_filter( universe )
-
-        # add your factors
-        bb_cross = -factors.BBANDS(win=5).normalized()
-        bb_cross = bb_cross.filter(bb_cross < 0.7)  # p-hacking
-        bb_cross_factor = bb_cross.rank(mask=universe).zscore()
-        engine.add( bb_cross_factor.to_weight(), 'bb_weight' )
+        engine.add( (MOMENTUM + VOLATILITY).to_weight(), 'alpha_weight' )
 
         # schedule rebalance before market close
         self.schedule_rebalance(trading.event.MarketClose(self.rebalance, offset_ns=-10000))
@@ -179,14 +197,14 @@ class MyAlg(trading.CustomAlgorithm):
 
     def rebalance(self, data: 'pd.DataFrame', history: 'pd.DataFrame'):
         data = data.fillna(0)
-        self.blotter.batch_order_target_percent(data.index, data.bb_weight)
+        self.blotter.batch_order_target_percent(data.index, data.alpha_weight)
 
         # closing asset position that are no longer in our universe.
         removes = self.blotter.portfolio.positions.keys() - set(data.index)
         self.blotter.batch_order_target_percent(removes, [0] * len(removes))
 
         # record data for debugging / plotting
-        self.record(aapl_weight=data.loc['AAPL', 'bb_weight'],
+        self.record(aapl_weight=data.loc['AAPL', 'alpha_weight'],
                     aapl_price=self.blotter.get_price('AAPL'))
 
     def terminate(self, records: 'pd.DataFrame'):
@@ -196,10 +214,10 @@ class MyAlg(trading.CustomAlgorithm):
         # plotting the relationship between AAPL price and weight
         ax1 = records.aapl_price.plot()
         ax2 = ax1.twinx()
-        records.aapl_weight.plot(ax=ax2, style='g-', secondary_y=True)
+        records.aapl_weight.plot(ax=ax2, style='g-')
 
 loader = ArrowLoader('./prices/yahoo/yahoo.feather')
-%time results = trading.run_backtest(loader, MyAlg, '2013-01-01', '2018-01-01')
+%time results = trading.run_backtest(loader, MyAlg, '2014-01-01', '2019-01-01')
 ```
 
 <img src="https://github.com/Heerozh/spectre/raw/media/backtest.png" width="800" height="630">
@@ -234,9 +252,73 @@ pf.create_full_tear_sheet(results.returns, positions=results.positions.value, tr
   If you want adjusted by last day, use like 'AdjustedColumnDataFactor(OHLCV.close)' as input data.
   This will speeds up a lot because it only needs to be adjusted once, but brings Look-Ahead Bias.
 * Factors that uses the close data will be delayed by 1 bar.
-* spectre's `EMA` uses the algorithm same as `zipline` and `Dataframe.ewm(span=win)`, when `win` is 
+* spectre's `EMA` uses the algorithm same as `zipline` and `Dataframe.ewm(span=...)`, when `span` is 
   greater than 100, it will be slightly different from common EMA.
 * spectre's `RSI` uses the algorithm same as `zipline`, for consistency in benchmarks. 
+
+
+## Factors
+
+## Built-in Technical Indicator Factors list
+
+```python
+Returns(inputs=[OHLCV.close])
+LogReturns(inputs=[OHLCV.close])
+SimpleMovingAverage = MA = SMA(win=5, inputs=[OHLCV.close])
+VWAP(inputs=[OHLCV.close, OHLCV.volume])
+ExponentialWeightedMovingAverage = EMA(span=5, inputs=[OHLCV.close])
+AverageDollarVolume(win=5, inputs=[OHLCV.close, OHLCV.volume])
+AnnualizedVolatility(win=20, inputs=[Returns(win=2), 252])
+BollingerBands = BBANDS(win=20, inputs=[OHLCV.close, 2])
+MovingAverageConvergenceDivergenceSignal = MACD(12, 26, 9, inputs=[OHLCV.close])
+TrueRange = TRANGE(inputs=[OHLCV.high, OHLCV.low, OHLCV.close])
+RSI(win=14, inputs=[OHLCV.close])
+FastStochasticOscillator = STOCHF(win=14, inputs=[OHLCV.high, OHLCV.low, OHLCV.close])
+
+StandardDeviation = STDDEV(win=5, inputs=[OHLCV.close])
+RollingHigh = MAX(win=5, inputs=[OHLCV.close])
+RollingLow = MIN(win=5, inputs=[OHLCV.close])
+```
+
+## Factors Common Methods
+
+```python
+# Standardization
+new_factor = factor.rank(mask=filter)   
+new_factor = factor.demean(mask=filter, groupby: 'dict or column_name'=None)
+new_factor = factor.zscore(mask=filter)
+new_factor = factor.to_weight(mask=filter, demean=True)  # return a weight that sum(abs(weight)) = 1
+
+# Quick computation
+new_factor = factor1 + factor1
+new_factor = factor.abs()
+new_factor = factor.sum()
+
+# To filter (Comparison operator):
+new_filter = (factor1 < factor2) | (factor1 > 0)
+new_filter[n_features] = factor.one_hot()  # one-hot encoding
+new_filter = factor.any(win=5)
+new_filter = factor.all(win=5)
+# Rank filter
+new_filter = factor.top(n)
+new_filter = factor.bottom(n)
+# Specific assets
+new_filter = StaticAssets({'AAPL', 'MSFT'})
+
+# Local filter
+new_factor = factor.filter(some_filter)   # fills elements of self with NaN where mask is False
+
+# Multiple returns selecting
+new_factor = factor[0]
+
+# Others
+new_factor = factor.shift(1)
+new_factor = factor.quantile(bins=5)  # factor value quantile groupby datetime
+new_factor = factor.fill_na(0)
+new_factor = factor.fill_na(ffill=True)  # propagate last valid observation forward to next valid
+
+```
+
 
 ## Dataloader
 
@@ -423,9 +505,9 @@ Run the engine to calculate the factor data, return a DataFrame. The column is e
 
 #### *Auto Delay
 By default, `delay_factor` is True, it means enable auto-delay. If 'high, low, close, volume' data 
-is used by a terminal factor (including its upstream), that factor will be delayed by `shift(1)`, 
-because in theory you can't trade on this factor before it generated. Others will not be delayed, 
-in order to provide the latest data as much as possible.
+is used by a terminal factor (including its upstream), that factor will be delayed by `shift(1)` 
+in the last step, because in theory you can't trade on this factor before it generated. Others
+will not be delayed, in order to provide the latest data as much as possible.
 
 Set to `False` to force engine not delay any factors.
 
@@ -508,66 +590,6 @@ You can use `ColumnDataFactor` to represents data from any column in the `DataLo
 `factors.OHLCV.close` is just a sugar way to write 
 `spectre.factors.ColumnDataFactor (inputs = [data_loader.ohlcv[3]])`.
 
-## Built-in Technical Indicator Factors list
-
-```python
-# All technical factors passed comparison test with TA-Lib
-Returns(inputs=[OHLCV.close])
-LogReturns(inputs=[OHLCV.close])
-SimpleMovingAverage = MA = SMA(win=5, inputs=[OHLCV.close])
-VWAP(inputs=[OHLCV.close, OHLCV.volume])
-ExponentialWeightedMovingAverage = EMA(win=5, inputs=[OHLCV.close])
-AverageDollarVolume(win=5, inputs=[OHLCV.close, OHLCV.volume])
-AnnualizedVolatility(win=20, inputs=[Returns(win=2), 252])
-BollingerBands = BBANDS(win=20, inputs=[OHLCV.close, 2])
-MovingAverageConvergenceDivergenceSignal = MACD(12, 26, 9, inputs=[OHLCV.close])
-TrueRange = TRANGE(inputs=[OHLCV.high, OHLCV.low, OHLCV.close])
-RSI(win=14, inputs=[OHLCV.close])
-FastStochasticOscillator = STOCHF(win=14, inputs=[OHLCV.high, OHLCV.low, OHLCV.close])
-
-StandardDeviation = STDDEV(win=5, inputs=[OHLCV.close])
-RollingHigh = MAX(win=5, inputs=[OHLCV.close])
-RollingLow = MIN(win=5, inputs=[OHLCV.close])
-```
-
-## Factors Common Methods
-
-```python
-# Standardization
-new_factor = factor.rank(mask=filter)   
-new_factor = factor.demean(mask=filter, groupby: 'dict or column_name'=None)
-new_factor = factor.zscore(mask=filter)
-new_factor = factor.to_weight(mask=filter, demean=True)  # return a weight that sum(abs(weight)) = 1
-
-# Quick computation
-new_factor = factor1 + factor1
-new_factor = factor.abs()
-new_factor = factor.sum()
-
-# To filter (Comparison operator):
-new_filter = (factor1 < factor2) | (factor1 > 0)
-new_filter[n_features] = factor.one_hot()  # one-hot encoding
-new_filter = factor.any(win=5)
-new_filter = factor.all(win=5)
-# Rank filter
-new_filter = factor.top(n)
-new_filter = factor.bottom(n)
-# Specific assets
-new_filter = StaticAssets({'AAPL', 'MSFT'})
-
-# Local filter
-new_factor = factor.filter(some_filter)   # fills elements of self with NaN where mask is False
-
-# Multiple returns selecting
-new_factor = factor[0]
-
-# Others
-new_factor = factor.shift(1)
-new_factor = factor.quantile(bins=5)  # factor value quantile groupby datetime
-new_factor = factor.fill_na(0)
-new_factor = factor.fill_na(ffill=True)  # propagate last valid observation forward to next valid
-
-```
 
 ## How to write your own factor
 
@@ -754,7 +776,8 @@ Schedule an event, callback is `callback(source: "Any class who fired this event
 **context:** *initialize*
 
 Empty engine's cache after factor calculation. 
-If you need more VRMA in rebalance context, setting it to True will help.
+If you need more VRMA in rebalance context, or wanna play 3D game when backtesting, set it to 
+True will help.
 
 
 ### CustomAlgorithm.stop_event_manager
