@@ -4,12 +4,13 @@
 @license: Apache 2.0
 @email: heeroz@gmail.com
 """
-from typing import Optional, Sequence
+from typing import Sequence
+import numpy as np
+import torch
+import math
 from .factor import BaseFactor, CustomFactor
 from ..parallel import nansum, nanmean
 from .engine import OHLCV
-import numpy as np
-import torch
 
 
 class Returns(CustomFactor):
@@ -59,15 +60,19 @@ class ExponentialWeightedMovingAverage(CustomFactor):
     win = 2
     _min_win = 2
 
-    def __init__(self, win: Optional[int] = None, inputs: Optional[Sequence[BaseFactor]] = None,
-                 adjust=False):
-        super().__init__(win, inputs)
-        self.span = self.win
-        self.alpha = (2.0 / (1.0 + self.span))
+    def __init__(self, span: int = None, inputs: Sequence[BaseFactor] = None,
+                 adjust=False, half_life: float = None):
+        if span is not None:
+            self.alpha = (2.0 / (1.0 + span))
+            # Length required to achieve 99.97% accuracy, np.log(1-99.97/100) / np.log(alpha)
+            # simplification to 4 * (span+1). 3.45 achieve 99.90%, 2.26 99.00%
+            self.win = int(4.5 * (span + 1))
+        else:
+            self.alpha = 1 - math.exp(math.log(0.5)/half_life)
+            self.win = 15 * half_life
+
+        super().__init__(None, inputs)
         self.adjust = adjust
-        # Length required to achieve 99.97% accuracy, np.log(1-99.97/100) / np.log(alpha)
-        # simplification to 4 * (span+1). 3.45 achieve 99.90%, 2.26 99.00%
-        self.win = int(4.5 * (self.span + 1))
         self.weight = np.full(self.win, 1 - self.alpha) ** np.arange(self.win - 1, -1, -1)
         if self.adjust:
             self.weight = self.weight / sum(self.weight)  # to sum one

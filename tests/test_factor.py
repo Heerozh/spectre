@@ -363,7 +363,7 @@ class TestFactorLib(unittest.TestCase):
         # test reused factor only compute once, and nest factor window
         engine.run('2019-01-11', '2019-01-15')  # let pre_compute_ test executable
         f1 = spectre.factors.BBANDS(win=20, inputs=[spectre.factors.OHLCV.close, 2]).normalized()
-        f2 = spectre.factors.EMA(win=10, inputs=[f1])
+        f2 = spectre.factors.EMA(span=10, inputs=[f1])
         fa = spectre.factors.STDDEV(win=15, inputs=[f2])
         fb = spectre.factors.MACD(12, 26, 9, inputs=[f2])
         engine.remove_all_factors()

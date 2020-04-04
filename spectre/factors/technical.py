@@ -61,7 +61,7 @@ class MovingAverageConvergenceDivergenceSignal(EMA):
     def __init__(self, fast=12, slow=26, sign=9, inputs: Optional[Sequence[BaseFactor]] = None,
                  adjust=False):
         super().__init__(sign, inputs, adjust)
-        self.inputs = (EMA(inputs=self.inputs, win=fast) - EMA(inputs=self.inputs, win=slow),)
+        self.inputs = (EMA(inputs=self.inputs, span=fast) - EMA(inputs=self.inputs, span=slow),)
 
     def normalized(self):
         # In order not to double the calculation, reuse `inputs` factor here
