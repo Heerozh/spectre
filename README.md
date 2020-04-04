@@ -96,7 +96,7 @@ df
 from spectre import factors
 import math
 
-risk_free_rate = 0.04
+risk_free_rate = 0.04 / 252
 excess_logret = factors.LogReturns() - math.log(1 + risk_free_rate)
 universe = factors.AverageDollarVolume(win=120).top(100)
 
@@ -167,7 +167,7 @@ import pandas as pd, math
 class MyAlg(trading.CustomAlgorithm):
     def initialize(self):
         # your factors
-        risk_free_rate = 0.04
+        risk_free_rate = 0.04 / 252
         excess_logret = factors.LogReturns() - math.log(1 + risk_free_rate)
         universe = factors.AverageDollarVolume(win=120).top(100)
 
