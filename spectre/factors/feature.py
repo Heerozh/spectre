@@ -52,7 +52,8 @@ class AdvanceDeclineRatio(CrossSectionFactor):
     def compute(self, returns):
         advancing = nansum(returns > 0, dim=1)
         declining = nansum(returns < 0, dim=1)
-        return advancing / declining
+        ratio = (advancing / declining).unsqueeze(-1)
+        return ratio.repeat(1, returns.shape[1])
 
 
 # ----------- Asset-specific data -----------

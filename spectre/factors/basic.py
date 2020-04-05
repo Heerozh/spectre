@@ -112,6 +112,34 @@ class AnnualizedVolatility(CustomFactor):
         return returns.nanstd() * (annualization_factor ** .5)
 
 
+class ElementWiseMax(CustomFactor):
+    _min_win = 1
+
+    def compute(self, a, b):
+        a = a.clone()
+        b = b.clone()
+        a.masked_fill_(torch.isnan(a), -np.inf)
+        b.masked_fill_(torch.isnan(b), -np.inf)
+
+        ret = torch.max(a, b)
+        ret.masked_fill_(torch.isinf(ret), np.nan)
+        return ret
+
+
+class ElementWiseMin(CustomFactor):
+    _min_win = 1
+
+    def compute(self, a, b):
+        a = a.clone()
+        b = b.clone()
+        a.masked_fill_(torch.isnan(a), np.inf)
+        b.masked_fill_(torch.isnan(b), np.inf)
+
+        ret = torch.min(a, b)
+        ret.masked_fill_(torch.isinf(ret), np.nan)
+        return ret
+
+
 MA = SimpleMovingAverage
 SMA = SimpleMovingAverage
 EMA = ExponentialWeightedMovingAverage
