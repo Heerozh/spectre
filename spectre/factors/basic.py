@@ -115,13 +115,20 @@ class AnnualizedVolatility(CustomFactor):
 class ElementWiseMax(CustomFactor):
     _min_win = 1
 
-    def compute(self, a, b):
+    @classmethod
+    def binary_fill_na(cls, a, b, value):
         a = a.clone()
         b = b.clone()
-        a.masked_fill_(torch.isnan(a), -np.inf)
-        b.masked_fill_(torch.isnan(b), -np.inf)
+        if a.dtype != b.dtype or a.dtype not in (torch.float32, torch.float64, torch.float16):
+            a = a.type(torch.float32)
+            b = b.type(torch.float32)
 
-        ret = torch.max(a, b)
+        a.masked_fill_(torch.isnan(a), value)
+        b.masked_fill_(torch.isnan(b), value)
+        return a, b
+
+    def compute(self, a, b):
+        ret = torch.max(*ElementWiseMax.binary_fill_na(a, b, -np.inf))
         ret.masked_fill_(torch.isinf(ret), np.nan)
         return ret
 
@@ -130,12 +137,7 @@ class ElementWiseMin(CustomFactor):
     _min_win = 1
 
     def compute(self, a, b):
-        a = a.clone()
-        b = b.clone()
-        a.masked_fill_(torch.isnan(a), np.inf)
-        b.masked_fill_(torch.isnan(b), np.inf)
-
-        ret = torch.min(a, b)
+        ret = torch.min(*ElementWiseMax.binary_fill_na(a, b, np.inf))
         ret.masked_fill_(torch.isinf(ret), np.nan)
         return ret
 

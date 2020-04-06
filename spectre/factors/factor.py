@@ -280,6 +280,7 @@ class CustomFactor(BaseFactor):
     _cache_stream = None
     _mask = None
     _force_delay = None
+    _keep_cache = False
 
     def __init__(self, win: Optional[int] = None, inputs: Optional[Sequence[BaseFactor]] = None):
         """
@@ -368,6 +369,10 @@ class CustomFactor(BaseFactor):
 
         if self._mask is not None:
             self._mask.pre_compute_(engine, start, end)
+
+        if self._keep_cache:
+            # ref count +1 so this factor's cache will not cleanup
+            self._ref_count += 1
 
     def _format_input(self, upstream, upstream_out, mask_factor, mask_out):
         # If input.groupby not equal self.groupby, convert it
