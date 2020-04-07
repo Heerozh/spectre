@@ -302,6 +302,15 @@ class CustomFactor(BaseFactor):
 
         assert (self.win >= (self._min_win or 1))
 
+    @classmethod
+    def sequential(cls, *args):
+        """ Helper method for fast initialization """
+        if isinstance(args[0], int):
+            win = max(args[0], cls._min_win)
+            return cls(win, inputs=[*args[1:]])
+        else:
+            return cls(inputs=[*args[0:]])
+
     def set_mask(self, mask: BaseFactor = None):
         """ Mask fill all **INPUT** data to NaN """
         self._mask = mask
