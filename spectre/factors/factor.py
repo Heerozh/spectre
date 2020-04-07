@@ -348,8 +348,9 @@ class CustomFactor(BaseFactor):
 
     def clean_up_(self) -> None:
         super().clean_up_()
-        self._cache = None
-        self._cache_stream = None
+        if not self._keep_cache:
+            self._cache = None
+            self._cache_stream = None
         self._ref_count = 0
 
         if self.inputs:
@@ -365,8 +366,6 @@ class CustomFactor(BaseFactor):
         Called when engine run but before compute.
         """
         super().pre_compute_(engine, start, end)
-        self._cache = None
-        self._cache_stream = None
 
         self._ref_count += 1
         if self._ref_count > 1:  # already pre_compute_ed, skip child
