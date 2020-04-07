@@ -43,6 +43,10 @@ class TestFactorLib(unittest.TestCase):
         df_aapl_open = df.loc[(slice(None), 'AAPL'), 'open']
         df_msft_open = df.loc[(slice(None), 'MSFT'), 'open']
 
+        # test raw data
+        raw_tensors = engine.run_raw('2018-01-01', '2019-01-15', False)
+        assert_almost_equal(df.open.values, raw_tensors['open'])
+
         def test_expected(factor, _expected_aapl, _expected_msft, _len=8, decimal=7,
                           delay=True, check_bias=True):
             engine.remove_all_factors()
