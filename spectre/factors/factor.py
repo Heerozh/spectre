@@ -216,6 +216,12 @@ class BaseFactor:
     def clamp(self, left, right):
         return ClampFactor(self, left, right)
 
+    def mad_clamp(self, z, mask: 'BaseFactor' = None):
+        factor = MADClampFactor(inputs=(self,))
+        factor.z = z
+        factor.set_mask(mask)
+        return factor
+
     def float32(self):
         factor = TypeCastFactor(inputs=(self,))
         factor.dtype = torch.float32
@@ -655,7 +661,7 @@ class ToWeightFactor(CrossSectionFactor):
 
 
 class ClampFactor(CustomFactor):
-    """Simple Winsorizing"""
+    """ Simple Winsorizing """
     _min_win = 1
 
     def __init__(self, data, left, right):
@@ -663,6 +669,26 @@ class ClampFactor(CustomFactor):
 
     def compute(self, data, left, right):
         return data.clamp(left, right)
+
+
+class MADClampFactor(CustomFactor):
+    """ Mean Absolute Deviation Clamping """
+    z = 5
+
+    def compute(self, data):
+        median = data.median(dim=1).values.unsqueeze(-1)
+        mad = (data - median).abs().median(dim=1).values.unsqueeze(-1)
+        ret = data.clone()
+        upper = median + self.z * mad
+        lower = median - self.z * mad
+        upper_mask = data > upper
+        lower_mask = data < lower
+        upper = upper.repeat(1, data.shape[1])
+        lower = lower.repeat(1, data.shape[1])
+
+        ret[upper_mask] = upper[upper_mask]
+        ret[lower_mask] = lower[lower_mask]
+        return ret
 
 
 # --------------- op factors ---------------

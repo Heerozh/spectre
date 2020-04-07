@@ -364,6 +364,18 @@ class TestFactorLib(unittest.TestCase):
         expected_msft = np.array([np.nan, np.nan, np.nan, np.nan, np.nan, np.nan, np.nan, np.nan])
         test_expected(signal_ret, expected_aapl, expected_msft, 10)
 
+        # test mad_clamp
+        factor = spectre.factors.WEEKDAY.mad_clamp(1)
+        expected_aapl = np.array([3., 3., 1, 1, 2, 3., 3., 1, 1])
+        expected_msft = np.delete(expected_aapl, 5)
+        test_expected(factor, expected_aapl, expected_msft, 10)
+
+        factor = spectre.factors.OHLCV.close.mad_clamp(2)
+        # pyTorch median does not take mean on odd array
+        expected_aapl = np.array([158.61, 147.07, 149., 149., 151.55, 156.03, 160.31, 153.69, 157.])
+        expected_msft = np.array([101.3, 102.28, 104.39, 103.2, 105.22, 105.61, 103.2, 103.39])
+        test_expected(factor, expected_aapl, expected_msft, 10, check_bias=False)
+
         # test reused factor only compute once, and nest factor window
         engine.run('2019-01-11', '2019-01-15')  # let pre_compute_ test executable
         f1 = spectre.factors.BBANDS(win=20, inputs=[spectre.factors.OHLCV.close, 2]).normalized()

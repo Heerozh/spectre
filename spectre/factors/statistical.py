@@ -125,8 +125,8 @@ class HalfLifeMeanReversion(CustomFactor):
 
 
 class InformationCoefficient(CrossSectionFactor):
-    def __init__(self, x, y):
-        super().__init__(win=1, inputs=[x, y])
+    def __init__(self, x, y, mask=None):
+        super().__init__(win=1, inputs=[x, y], mask=mask)
 
     def compute(self, x, y):
         ic = pearsonr(x, y, dim=1, ddof=1)
@@ -143,8 +143,8 @@ class InformationCoefficient(CrossSectionFactor):
 
 
 class CrossSectionR2(CrossSectionFactor):
-    def __init__(self, y_hat, y):
-        super().__init__(win=1, inputs=[y_hat, y])
+    def __init__(self, y_hat, y, mask=None):
+        super().__init__(win=1, inputs=[y_hat, y], mask=mask)
 
     def compute(self, y_hat, y):
         mask = torch.isnan(y_hat) | torch.isnan(y)
