@@ -124,6 +124,15 @@ class HalfLifeMeanReversion(CustomFactor):
         return lag.agg(calc_h, diff)
 
 
+class RollingCorrelation(CustomFactor):
+    _min_win = 2
+
+    def compute(self, x, y):
+        def _corr(_x, _y):
+            return pearsonr(_x, _y, dim=2, ddof=1)
+        return x.agg(_corr, y)
+
+
 class InformationCoefficient(CrossSectionFactor):
     def __init__(self, x, y, mask=None):
         super().__init__(win=1, inputs=[x, y], mask=mask)
