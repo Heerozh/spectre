@@ -182,6 +182,9 @@ class BaseFactor:
     def abs(self):
         return AbsFactor(inputs=(self,))
 
+    def log(self):
+        return LogFactor(inputs=(self,))
+
     def sum(self, win):
         return SumFactor(win, inputs=(self,))
 
@@ -562,6 +565,11 @@ class SumFactor(CustomFactor):
 
     def compute(self, data: Rolling) -> torch.Tensor:
         return data.nansum()
+
+
+class LogFactor(CustomFactor):
+    def compute(self, data: torch.Tensor) -> torch.Tensor:
+        return data.log()
 
 
 class AnyFactor(CustomFactor):
