@@ -355,6 +355,17 @@ class TestFactorLib(unittest.TestCase):
         test_expected(factor.fill_na(ffill=True), expected_aapl, expected_msft, 10)
         engine.to_cpu()
 
+        # test masked fill
+        factor = spectre.factors.WEEKDAY.masked_fill(mask, spectre.factors.WEEKDAY*2)
+        expected_aapl = np.array([6., 8., 0, 1, 2, 6., 8., 0, 1])
+        expected_msft = np.delete(expected_aapl, 5)
+        test_expected(factor, expected_aapl, expected_msft, 10)
+
+        factor = spectre.factors.WEEKDAY.masked_fill(mask, -1)
+        expected_aapl = np.array([-1., -1., 0, 1, 2, -1., -1., 0, 1])
+        expected_msft = np.delete(expected_aapl, 5)
+        test_expected(factor, expected_aapl, expected_msft, 10)
+
         # test ForwardSignalData
         signal = spectre.factors.OHLCV.close > 150
         signal_price = spectre.factors.ForwardSignalData(4, spectre.factors.OHLCV.close, signal)

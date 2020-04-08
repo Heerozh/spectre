@@ -210,6 +210,9 @@ class BaseFactor:
 
     fill_nan = fill_na
 
+    def masked_fill(self, mask, fill):
+        return MaskedFillFactor(inputs=(self, mask, fill))
+
     def any(self, win):
         return AnyFactor(win, inputs=(self,))
 
@@ -603,6 +606,15 @@ class FillNANFactor(CustomFactor):
     def compute(self, data: torch.Tensor, value) -> torch.Tensor:
         mask = torch.isnan(data)
         return data.masked_fill(mask, value)
+
+
+class MaskedFillFactor(CustomFactor):
+    def compute(self, data, mask, fill) -> torch.Tensor:
+        if isinstance(fill, (int, float, bool)):
+            return data.masked_fill(mask, fill)
+        ret = data.clone()
+        ret[mask] = fill[mask]
+        return ret
 
 
 class DoNothingFactor(CustomFactor):
