@@ -188,6 +188,9 @@ class BaseFactor:
     def sum(self, win):
         return SumFactor(win, inputs=(self,))
 
+    def prod(self, win):
+        return ProdFactor(win, inputs=(self,))
+
     def filter(self, mask):
         """Local filter, fills elements of self with NaN where mask is False."""
         mf = DoNothingFactor(inputs=(self,))
@@ -568,6 +571,13 @@ class SumFactor(CustomFactor):
 
     def compute(self, data: Rolling) -> torch.Tensor:
         return data.nansum()
+
+
+class ProdFactor(CustomFactor):
+    _min_win = 2
+
+    def compute(self, data: Rolling) -> torch.Tensor:
+        return data.nanprod()
 
 
 class LogFactor(CustomFactor):

@@ -77,9 +77,20 @@ def masked_sum(data: torch.Tensor, mask: torch.Tensor, dim=1) -> torch.Tensor:
     return data.sum(dim=dim)
 
 
+def masked_prod(data: torch.Tensor, mask: torch.Tensor, dim=1) -> torch.Tensor:
+    data = data.clone()
+    data.masked_fill_(mask, 1)
+    return data.prod(dim=dim)
+
+
 def nansum(data: torch.Tensor, dim=1) -> torch.Tensor:
     mask = torch.isnan(data)
     return masked_sum(data, mask, dim)
+
+
+def nanprod(data: torch.Tensor, dim=1) -> torch.Tensor:
+    mask = torch.isnan(data)
+    return masked_prod(data, mask, dim)
 
 
 def masked_mean(data, mask, dim=1):
@@ -291,6 +302,9 @@ class Rolling:
 
     def nansum(self, axis=2):
         return self.agg(lambda x: nansum(x, dim=axis))
+
+    def nanprod(self, axis=2):
+        return self.agg(lambda x: nanprod(x, dim=axis))
 
     def mean(self, axis=2):
         return self.agg(lambda x: x.sum(dim=axis) / self.win)

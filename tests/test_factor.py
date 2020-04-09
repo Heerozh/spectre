@@ -172,6 +172,7 @@ class TestFactorLib(unittest.TestCase):
         engine.set_filter(spectre.factors.OHLCV.open.top(2))
         test_expected(spectre.factors.OHLCV.open.zscore().shift(1),
                       expected_aapl, expected_msft, total_rows, delay=False)
+        engine.set_filter(None)
 
         # test quantile get factors from engine._factors nan bug
         expected_aapl = [4.] * 9
@@ -181,6 +182,7 @@ class TestFactorLib(unittest.TestCase):
         engine.add(spectre.factors.OHLCV.close.zscore(), 'pre')
         f = engine.get_factor('pre')
         test_expected(f.quantile(), expected_aapl, expected_msft, total_rows)
+        engine.set_filter(None)
 
         import talib  # pip install --no-deps d:\doc\Download\TA_Lib-0.4.17-cp37-cp37m-win_amd64.whl
 
@@ -297,25 +299,28 @@ class TestFactorLib(unittest.TestCase):
         # test AssetData features
         expected_msft = df_msft_close[-8:].values
         expected_aapl = df_msft_close[-8:].values
+        # because align_by_time = True, They will all have data
         expected_aapl = np.insert(expected_aapl, 6, np.nan)
+        expected_msft = np.insert(expected_msft, 6, np.nan)
         engine.align_by_time = True
         test_expected(spectre.factors.AssetData('MSFT', spectre.factors.OHLCV.close),
                       expected_aapl, expected_msft, 10)
         engine.align_by_time = False
 
         # test IS_JANUARY,DatetimeDataFactor,etc features
-        expected_aapl = [True] * 9
+        # DatetimeDataFactors are un-delayed, so there is 10 data points
+        expected_aapl = [True] * 10
         expected_msft = expected_aapl.copy()
-        del expected_msft[6]
+        del expected_msft[7]
         test_expected(spectre.factors.IS_JANUARY, expected_aapl, expected_msft, 10)
 
-        expected_aapl = [False] * 9
+        expected_aapl = [False] * 10
         expected_msft = expected_aapl.copy()
-        del expected_msft[6]
+        del expected_msft[7]
         test_expected(spectre.factors.IS_DECEMBER, expected_aapl, expected_msft, 10)
 
-        expected_aapl = np.array([3., 4., 0., 1., 2., 3., 4., 0., 1.])
-        expected_msft = np.delete(expected_aapl, 5)  # 5 because DatetimeDataFactor no delay
+        expected_aapl = np.array([2, 3., 4., 0., 1., 2., 3., 4., 0., 1.])
+        expected_msft = np.delete(expected_aapl, 6)
         test_expected(spectre.factors.WEEKDAY, expected_aapl, expected_msft, 10)
 
         # test timezone
@@ -329,41 +334,48 @@ class TestFactorLib(unittest.TestCase):
 
         # test AssetClassifierDataFactor and one_hot features
         test_sector = {'AAPL': 2, }
-        expected_aapl = [2] * 9
-        expected_msft = [-1] * 8
+        expected_aapl = [2] * 10
+        expected_msft = [-1] * 9
         test_expected(spectre.factors.AssetClassifierDataFactor(test_sector, -1),
                       expected_aapl, expected_msft, 10)
 
         one_hot = spectre.factors.AssetClassifierDataFactor(test_sector, -1).one_hot()
-        expected_aapl = [True] * 9
-        expected_msft = [False] * 8
+        expected_aapl = [True] * 10
+        expected_msft = [False] * 9
         test_expected(one_hot[0], expected_aapl, expected_msft, 10)
-        expected_aapl = [False] * 9
-        expected_msft = [True] * 8
+        expected_aapl = [False] * 10
+        expected_msft = [True] * 9
         test_expected(one_hot[1], expected_aapl, expected_msft, 10)
 
         # test ffill_na
         mask = spectre.factors.WEEKDAY >= 3
         factor = spectre.factors.WEEKDAY.filter(mask)
-        expected_aapl = np.array([3., 4., np.nan, np.nan, np.nan, 3., 4., np.nan, np.nan])
-        expected_msft = np.delete(expected_aapl, 5)
+        expected_aapl = np.array([np.nan, 3., 4., np.nan, np.nan, np.nan, 3., 4., np.nan, np.nan])
+        expected_msft = np.delete(expected_aapl, 6)
         test_expected(factor, expected_aapl, expected_msft, 10)
 
-        expected_aapl = np.array([3., 4., 4, 4, 4, 3., 4., 4, 4])
-        expected_msft = np.delete(expected_aapl, 5)
+        expected_aapl = np.array([np.nan, 3., 4., 4, 4, 4, 3., 4., 4, 4])
+        expected_msft = np.delete(expected_aapl, 6)
         engine.to_cuda()
         test_expected(factor.fill_na(ffill=True), expected_aapl, expected_msft, 10)
         engine.to_cpu()
+        spectre.factors.WEEKDAY.filter(None)
 
         # test masked fill
         factor = spectre.factors.WEEKDAY.masked_fill(mask, spectre.factors.WEEKDAY*2)
-        expected_aapl = np.array([6., 8., 0, 1, 2, 6., 8., 0, 1])
-        expected_msft = np.delete(expected_aapl, 5)
+        expected_aapl = np.array([2, 6., 8., 0, 1, 2, 6., 8., 0, 1])
+        expected_msft = np.delete(expected_aapl, 6)
         test_expected(factor, expected_aapl, expected_msft, 10)
 
         factor = spectre.factors.WEEKDAY.masked_fill(mask, -1)
-        expected_aapl = np.array([-1., -1., 0, 1, 2, -1., -1., 0, 1])
-        expected_msft = np.delete(expected_aapl, 5)
+        expected_aapl = np.array([2, -1., -1., 0, 1, 2, -1., -1., 0, 1])
+        expected_msft = np.delete(expected_aapl, 6)
+        test_expected(factor, expected_aapl, expected_msft, 10)
+
+        # test prod
+        factor = spectre.factors.WEEKDAY.prod(3)
+        expected_aapl = np.array([0, 0, 24., 0, 0, 0, 6., 24., 0, 0])
+        expected_msft = np.array([0, 0, 24., 0, 0, 0, 8., 0, 0])
         test_expected(factor, expected_aapl, expected_msft, 10)
 
         # test ForwardSignalData
@@ -377,8 +389,8 @@ class TestFactorLib(unittest.TestCase):
 
         # test mad_clamp
         factor = spectre.factors.WEEKDAY.mad_clamp(1)
-        expected_aapl = np.array([3., 3., 1, 1, 2, 3., 3., 1, 1])
-        expected_msft = np.delete(expected_aapl, 5)
+        expected_aapl = np.array([2, 3., 3., 1, 1, 2, 3., 3., 1, 1])
+        expected_msft = np.delete(expected_aapl, 6)
         test_expected(factor, expected_aapl, expected_msft, 10)
 
         factor = spectre.factors.OHLCV.close.mad_clamp(2)
