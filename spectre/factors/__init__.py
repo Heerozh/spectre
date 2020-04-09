@@ -9,6 +9,7 @@ from .factor import (
     CrossSectionFactor,
     RankFactor,
     QuantileClassifier,
+    SumFactor, ProdFactor,
 )
 
 from .datafactor import (

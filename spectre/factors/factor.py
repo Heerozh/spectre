@@ -321,7 +321,9 @@ class CustomFactor(BaseFactor):
     def sequential(cls, *args):
         """ Helper method for fast initialization """
         if isinstance(args[0], int):
-            win = max(args[0], cls._min_win)
+            win = args[0]
+            if cls._min_win is not None:
+                win = max(args[0], cls._min_win)
             return cls(win, inputs=[*args[1:]])
         else:
             return cls(inputs=[*args[0:]])
@@ -548,8 +550,8 @@ class ShiftFactor(CustomFactor):
     periods = 1
 
     def compute(self, data: torch.Tensor) -> torch.Tensor:
-        if data.dtype in {torch.int8, torch.int16, torch.int32, torch.int64}:
-            raise ValueError('factor.shift() does not support `int` type, '
+        if data.dtype in {torch.bool, torch.int8, torch.int16, torch.int32, torch.int64}:
+            raise ValueError('factor.shift() does not support `int` or `bool` type, '
                              'please convert to float by using `factor.float()`, upstreams: {}'
                              .format(self.inputs))
 
