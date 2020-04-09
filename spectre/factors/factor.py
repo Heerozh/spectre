@@ -315,7 +315,9 @@ class CustomFactor(BaseFactor):
         assert isinstance(self.inputs, (list, tuple, type(None))), '`factor.inputs` must be a list.'
         assert isinstance(self.win, int), '`factor.win` must be a integer.'
 
-        assert (self.win >= (self._min_win or 1))
+        if not (self.win >= (self._min_win or 1)):
+            raise ValueError('factor({}) win ({}) must  >= [_min_win({}) and 1]'.format(
+                str(self), self.win, self._min_win))
 
     @classmethod
     def sequential(cls, *args):
