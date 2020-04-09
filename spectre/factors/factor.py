@@ -612,6 +612,8 @@ class MaskedFillFactor(CustomFactor):
     def compute(self, data, mask, fill) -> torch.Tensor:
         if isinstance(fill, (int, float, bool)):
             return data.masked_fill(mask, fill)
+        if data.dtype != fill.dtype:
+            fill = fill.type(data.dtype)
         ret = data.clone()
         ret[mask] = fill[mask]
         return ret
