@@ -399,6 +399,17 @@ class TestFactorLib(unittest.TestCase):
         expected_msft = np.array([101.3, 102.28, 104.39, 103.2, 105.22, 105.61, 103.2, 103.39])
         test_expected(factor, expected_aapl, expected_msft, 10, check_bias=False)
 
+        # test winsorizing
+        factor = spectre.factors.WEEKDAY.winsorizing(0.2)
+        expected_aapl = np.array([2, 3., 3., 1, 1, 2, 3., 3., 1, 1])
+        expected_msft = np.array([2, 2., 2., 1, 1, 2, 2, 1, 1])
+        test_expected(factor, expected_aapl, expected_msft, 10)
+
+        factor = spectre.factors.OHLCV.close.winsorizing(0.2, by_row=False)
+        expected_aapl = np.array([153.69, 145.23, 149., 149., 151.55, 153.69, 153.69, 153.69, 153.69])
+        expected_msft = np.array([103.2, 103.2, 104.39, 103.2, 105.22, 106, 103.2, 103.39])
+        test_expected(factor, expected_aapl, expected_msft, 10, check_bias=False)
+
         # test reused factor only compute once, and nest factor window
         engine.run('2019-01-11', '2019-01-15')  # let pre_compute_ test executable
         f1 = spectre.factors.BBANDS(win=20, inputs=[spectre.factors.OHLCV.close, 2]).normalized()

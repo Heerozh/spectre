@@ -231,6 +231,14 @@ class BaseFactor:
         factor.set_mask(mask)
         return factor
 
+    def winsorizing(self, z: float = 0.05, by_row=True, mask: 'BaseFactor' = None):
+        factor = WinsorizingFactor(inputs=(self,))
+        assert 0 < z < 1
+        factor.z = z
+        factor.by_row = by_row
+        factor.set_mask(mask)
+        return factor
+
     def float32(self):
         factor = TypeCastFactor(inputs=(self,))
         factor.dtype = torch.float32
@@ -719,6 +727,40 @@ class MADClampFactor(CustomFactor):
         lower = median - self.z * mad
         upper_mask = data > upper
         lower_mask = data < lower
+        upper = upper.repeat(1, data.shape[1])
+        lower = lower.repeat(1, data.shape[1])
+
+        ret[upper_mask] = upper[upper_mask]
+        ret[lower_mask] = lower[lower_mask]
+        return ret
+
+
+class WinsorizingFactor(CustomFactor):
+    z = 0.05
+    by_row = True
+
+    def compute(self, data):
+        if self.by_row:
+            upper_k = int(data.shape[1] * (1 - self.z)) - 1
+            lower_k = int(data.shape[1] * self.z) + 1
+            nans = torch.isnan(data)
+            upper, _ = torch.kthvalue(data.masked_fill(nans, -np.inf), upper_k, dim=1)
+            lower, _ = torch.kthvalue(data.masked_fill(nans, np.inf), lower_k, dim=1)
+            upper.unsqueeze_(-1)
+            lower.unsqueeze_(-1)
+        else:
+            fattened = data.flatten()
+            fattened = fattened[~torch.isnan(fattened)]
+            upper_k = int(fattened.shape[0] * (1 - self.z)) - 1
+            lower_k = int(fattened.shape[0] * self.z) + 1
+            upper, _ = torch.kthvalue(fattened, upper_k, dim=0)
+            lower, _ = torch.kthvalue(fattened, lower_k, dim=0)
+            upper = upper.repeat(data.shape[0]).unsqueeze(-1)
+            lower = lower.repeat(data.shape[0]).unsqueeze(-1)
+        upper_mask = data > upper
+        lower_mask = data < lower
+
+        ret = data.clone()
         upper = upper.repeat(1, data.shape[1])
         lower = lower.repeat(1, data.shape[1])
 
