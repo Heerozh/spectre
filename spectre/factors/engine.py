@@ -542,20 +542,23 @@ class FactorEngine:
         factor_data.sort_index(axis=1, inplace=True)
 
         # mean return, return std err
-        mean_return = pd.DataFrame(columns=pd.MultiIndex.from_arrays([[], []]))
+        mean_returns = []
         for fact_name, _ in factors.items():
+            mean_return = pd.DataFrame(columns=pd.MultiIndex.from_arrays([[], []]))
             group = [(fact_name, 'factor_quantile'), 'date']
             grouped_mean = factor_data[['Demeaned', fact_name]].groupby(group).agg('mean')
-            for n, period_col in period_cols.items():
+            for _, period_col in period_cols.items():
                 demean_col = ('Demeaned', period_col)
                 mean_col = (fact_name, period_col)
                 mean_return[mean_col] = grouped_mean[demean_col]
-        mean_return.index.set_names('quantile', level=0)
-        mean_return = mean_return.groupby(level=0).agg(['mean', 'sem'])
-        mean_return.sort_index(axis=1, inplace=True)
+            mean_return.index.set_names('quantile', level=0, inplace=True)
+            mean_return = mean_return.groupby(level=0).agg(['mean', 'sem'])
+            mean_return.sort_index(axis=1, inplace=True)
+            mean_returns.append(mean_return)
+        mean_returns = pd.concat(mean_returns, axis=1)
 
         # plot
         if preview:
-            plot_quantile_and_cumulative_returns(factor_data, mean_return)
+            plot_quantile_and_cumulative_returns(factor_data, mean_returns)
 
-        return factor_data, mean_return
+        return factor_data, mean_returns
