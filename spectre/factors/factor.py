@@ -119,11 +119,11 @@ class BaseFactor:
 
     # --------------- helper functions ---------------
 
-    def top(self, n, mask: 'BaseFactor' = None):
+    def top(self, n: int, mask: 'BaseFactor' = None):
         """Cross-section top values"""
         return self.rank(ascending=False, mask=mask) <= n
 
-    def bottom(self, n, mask: 'BaseFactor' = None):
+    def bottom(self, n: int, mask: 'BaseFactor' = None):
         return self.rank(ascending=True, mask=mask) <= n
 
     def rank(self, ascending=True, mask: 'BaseFactor' = None):
@@ -185,13 +185,13 @@ class BaseFactor:
     def log(self):
         return LogFactor(inputs=(self,))
 
-    def sum(self, win):
+    def sum(self, win: int):
         return SumFactor(win, inputs=(self,))
 
-    def prod(self, win):
+    def prod(self, win: int):
         return ProdFactor(win, inputs=(self,))
 
-    def filter(self, mask):
+    def filter(self, mask: 'BaseFactor'):
         """Local filter, fills elements of self with NaN where mask is False."""
         mf = DoNothingFactor(inputs=(self,))
         mf.set_mask(mask)
@@ -202,7 +202,7 @@ class BaseFactor:
         factor = OneHotEncoder(self)
         return factor
 
-    def fill_na(self, value=None, ffill=None):
+    def fill_na(self, value: float = None, ffill: bool = None):
         if value is not None:
             factor = FillNANFactor(inputs=(self, value))
         elif ffill:
@@ -213,19 +213,19 @@ class BaseFactor:
 
     fill_nan = fill_na
 
-    def masked_fill(self, mask, fill):
+    def masked_fill(self, mask: 'BaseFactor', fill: Union['BaseFactor', float, int, bool]):
         return MaskedFillFactor(inputs=(self, mask, fill))
 
-    def any(self, win):
+    def any(self, win: int):
         return AnyFactor(win, inputs=(self,))
 
-    def all(self, win):
+    def all(self, win: int):
         return AllFactor(win, inputs=(self,))
 
-    def clamp(self, left, right):
+    def clamp(self, left: Union[float, int], right: Union[float, int]):
         return ClampFactor(self, left, right)
 
-    def mad_clamp(self, z, mask: 'BaseFactor' = None):
+    def mad_clamp(self, z: float, mask: 'BaseFactor' = None):
         factor = MADClampFactor(inputs=(self,))
         factor.z = z
         factor.set_mask(mask)
