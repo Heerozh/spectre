@@ -51,6 +51,23 @@ class WeightedAverageValue(CustomFactor):
         return base.agg(_weight_mean, weight)
 
 
+class LinearWeightedAverage(CustomFactor):
+    _min_win = 2
+
+    def __init__(self, win, inputs):
+        super().__init__(win, inputs)
+        self.weight = torch.arange(1, win + 1).float()
+        self.weight = self.weight / self.weight.sum()
+
+    def compute(self, base):
+        self.weight = self.weight.to(device=base.values.device, copy=False)
+
+        def _weight_mean(_base):
+            return nansum(_base * self.weight, dim=2)
+
+        return base.agg(_weight_mean)
+
+
 class VWAP(WeightedAverageValue):
     inputs = (OHLCV.close, OHLCV.volume)
 

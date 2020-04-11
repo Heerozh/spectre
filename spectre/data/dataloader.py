@@ -159,11 +159,11 @@ class DataLoader:
             end = index[-1]
 
         if index[0] > start:
-            raise ValueError("`start` time cannot less than earliest time of data: {}."
-                             .format(index[0]))
+            raise ValueError("`start` ({}) time cannot less than earliest time of data: {}."
+                             .format(start, index[0]))
         if index[-1] < end:
-            raise ValueError("`end` time cannot greater than latest time of data: {}."
-                             .format(index[-1]))
+            raise ValueError("`end` ({}) time cannot greater than latest time of data: {}."
+                             .format(end, index[-1]))
 
         start_loc = index.get_loc(start, 'bfill')
         backward_loc = max(start_loc - backwards, 0)

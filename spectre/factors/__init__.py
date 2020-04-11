@@ -34,6 +34,7 @@ from .basic import (
     LogReturns,
     SimpleMovingAverage, MA, SMA,
     WeightedAverageValue,
+    LinearWeightedAverage,
     VWAP,
     ExponentialWeightedMovingAverage, EMA,
     AverageDollarVolume,
