@@ -78,7 +78,12 @@ def plot_quantile_and_cumulative_returns(factor_data, mean_ret):
             open_period = period
             if period.endswith('D'):
                 open_period = 'b' + open_period
-            cum_ret = factor_return[period].resample(open_period).mean().dropna()
+            try:
+                cum_ret = factor_return[period].resample(open_period).mean().dropna()
+            except ValueError as e:
+                print("pandas re-sampling failed, try set "
+                      "`engine.timezone = 'your local timezone'`")
+                raise e
             cum_ret = (cum_ret + 1).cumprod() * 100 - 100
             fig.add_trace(go.Scatter(
                 x=cum_ret.index, y=cum_ret.values, yaxis='y2', **cumulative_styles[period]
