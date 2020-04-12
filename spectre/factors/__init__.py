@@ -10,6 +10,7 @@ from .factor import (
     RankFactor,
     QuantileClassifier,
     SumFactor, ProdFactor,
+    WinsorizingFactor,
 )
 
 from .datafactor import (

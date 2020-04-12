@@ -410,6 +410,19 @@ class TestFactorLib(unittest.TestCase):
         expected_msft = np.array([103.2, 103.2, 104.39, 103.2, 105.22, 106, 103.2, 103.39])
         test_expected(factor, expected_aapl, expected_msft, 10, check_bias=False)
 
+        # -- inf bug
+        wsz = spectre.factors.WinsorizingFactor()
+        wsz.z = 0.2
+        test_data = torch.tensor([[np.nan, np.nan, np.nan, np.nan, np.nan, np.nan, np.nan,
+                                  5, 2, 1, np.nan, np.nan, np.nan, np.nan, np.nan, np.nan],
+                                  [np.nan, np.nan, np.nan, 6, np.nan, np.nan, np.nan,
+                                   3, 2, np.nan, np.nan, np.nan, np.nan, np.nan, np.nan, np.nan]
+                                  ])
+        test_data = test_data.repeat(2, 1)
+        ret = wsz.compute(test_data)
+        assert_almost_equal(test_data.numpy(), ret.numpy())
+        self.assertFalse(torch.isinf(ret).any())
+
         # test reused factor only compute once, and nest factor window
         engine.run('2019-01-11', '2019-01-15')  # let pre_compute_ test executable
         f1 = spectre.factors.BBANDS(win=20, inputs=[spectre.factors.OHLCV.close, 2]).normalized()

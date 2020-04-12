@@ -746,6 +746,12 @@ class WinsorizingFactor(CustomFactor):
             nans = torch.isnan(data)
             upper, _ = torch.kthvalue(data.masked_fill(nans, -np.inf), upper_k, dim=1)
             lower, _ = torch.kthvalue(data.masked_fill(nans, np.inf), lower_k, dim=1)
+
+            inf_mask = torch.isinf(upper)
+            upper[inf_mask] = torch.max(data, dim=1).values[inf_mask]
+            inf_mask = torch.isinf(lower)
+            lower[inf_mask] = torch.min(data, dim=1).values[inf_mask]
+
             upper.unsqueeze_(-1)
             lower.unsqueeze_(-1)
         else:
