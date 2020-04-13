@@ -110,7 +110,7 @@ def plot_quantile_and_cumulative_returns(factor_data, mean_ret):
         fig.update_yaxes(row=row, col=2, secondary_y=False, matches='y2')
 
     fig.update_layout(height=300 * rows, barmode='group', bargap=0.5, margin={'t': 50})
-    fig.show()
+    return fig
 
 
 def plot_cumulative_returns(returns, positions, transactions, benchmark, annual_risk_free):

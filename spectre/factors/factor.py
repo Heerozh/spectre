@@ -185,6 +185,9 @@ class BaseFactor:
     def log(self):
         return LogFactor(inputs=(self,))
 
+    def sign(self):
+        return SignFactor(inputs=(self,))
+
     def sum(self, win: int):
         return SumFactor(win, inputs=(self,))
 
@@ -599,6 +602,11 @@ class ProdFactor(CustomFactor):
 class LogFactor(CustomFactor):
     def compute(self, data: torch.Tensor) -> torch.Tensor:
         return data.log()
+
+
+class SignFactor(CustomFactor):
+    def compute(self, data: torch.Tensor) -> torch.Tensor:
+        return data.sign()
 
 
 class TypeCastFactor(CustomFactor):
