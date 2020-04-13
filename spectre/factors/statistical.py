@@ -9,7 +9,7 @@ import math
 from .factor import CustomFactor, CrossSectionFactor
 from .engine import OHLCV
 from ..parallel import (linear_regression_1d, quantile, pearsonr, masked_mean, masked_sum,
-                        nanmean, nanstd)
+                        nanmean, nanstd, covariance)
 
 
 class StandardDeviation(CustomFactor):
@@ -131,6 +131,15 @@ class RollingCorrelation(CustomFactor):
         def _corr(_x, _y):
             return pearsonr(_x, _y, dim=2, ddof=1)
         return x.agg(_corr, y)
+
+
+class RollingCovariance(CustomFactor):
+    _min_win = 2
+
+    def compute(self, x, y):
+        def _cov(_x, _y):
+            return covariance(_x, _y, dim=2, ddof=1)
+        return x.agg(_cov, y)
 
 
 class InformationCoefficient(CrossSectionFactor):

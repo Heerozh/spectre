@@ -233,7 +233,7 @@ class TestFactorLib(unittest.TestCase):
         expected_msft = talib.BBANDS(df_msft_close.values, timeperiod=20)
         test_expected(spectre.factors.BBANDS()[0], expected_aapl[0], expected_msft[0])
         # normalized
-        expected_aapl_normal = (df_aapl_close.values - expected_aapl[1]) /\
+        expected_aapl_normal = (df_aapl_close.values - expected_aapl[1]) / \
                                (expected_aapl[0] - expected_aapl[1])
         expected_msft_normal = (df_msft_close.values - expected_msft[1]) / \
                                (expected_msft[0] - expected_msft[1])
@@ -283,8 +283,8 @@ class TestFactorLib(unittest.TestCase):
         test_expected(spectre.factors.MarketDispersion(), expected_aapl, expected_msft, 10)
 
         # test MarketReturn features
-        expected_aapl = [-0.030516, -0.0373418,  0.0232942, -0.0056998,  0.0183439,
-                         0.0184871,  0.0318528, -0.0359094,  0.011689]
+        expected_aapl = [-0.030516, -0.0373418, 0.0232942, -0.0056998, 0.0183439,
+                         0.0184871, 0.0318528, -0.0359094, 0.011689]
         expected_msft = expected_aapl.copy()
         del expected_msft[6]
         test_expected(spectre.factors.MarketReturn(), expected_aapl, expected_msft, 10)
@@ -362,7 +362,7 @@ class TestFactorLib(unittest.TestCase):
         spectre.factors.WEEKDAY.filter(None)
 
         # test masked fill
-        factor = spectre.factors.WEEKDAY.masked_fill(mask, spectre.factors.WEEKDAY*2)
+        factor = spectre.factors.WEEKDAY.masked_fill(mask, spectre.factors.WEEKDAY * 2)
         expected_aapl = np.array([2, 6., 8., 0, 1, 2, 6., 8., 0, 1])
         expected_msft = np.delete(expected_aapl, 6)
         test_expected(factor, expected_aapl, expected_msft, 10)
@@ -406,7 +406,8 @@ class TestFactorLib(unittest.TestCase):
         test_expected(factor, expected_aapl, expected_msft, 10)
 
         factor = spectre.factors.OHLCV.close.winsorizing(0.2, by_row=False)
-        expected_aapl = np.array([153.69, 145.23, 149., 149., 151.55, 153.69, 153.69, 153.69, 153.69])
+        expected_aapl = np.array(
+            [153.69, 145.23, 149., 149., 151.55, 153.69, 153.69, 153.69, 153.69])
         expected_msft = np.array([103.2, 103.2, 104.39, 103.2, 105.22, 106, 103.2, 103.39])
         test_expected(factor, expected_aapl, expected_msft, 10, check_bias=False)
 
@@ -414,7 +415,7 @@ class TestFactorLib(unittest.TestCase):
         wsz = spectre.factors.WinsorizingFactor()
         wsz.z = 0.2
         test_data = torch.tensor([[np.nan, np.nan, np.nan, np.nan, np.nan, np.nan, np.nan,
-                                  5, 2, 1, np.nan, np.nan, np.nan, np.nan, np.nan, np.nan],
+                                   5, 2, 1, np.nan, np.nan, np.nan, np.nan, np.nan, np.nan],
                                   [np.nan, np.nan, np.nan, 6, np.nan, np.nan, np.nan,
                                    3, 2, np.nan, np.nan, np.nan, np.nan, np.nan, np.nan, np.nan]
                                   ])
@@ -422,6 +423,16 @@ class TestFactorLib(unittest.TestCase):
         ret = wsz.compute(test_data)
         assert_almost_equal(test_data.numpy(), ret.numpy())
         self.assertFalse(torch.isinf(ret).any())
+
+        # test RollingCovariance
+        factor = spectre.factors.RollingCovariance(
+            win=3, inputs=[spectre.factors.WEEKDAY, spectre.factors.DatetimeDataFactor('day')])
+        # cov = np.diag(np.cov(np.vstack(x), np.vstack(y), rowvar=True), k=24)
+        expected_aapl = np.array([-3., -23.5, 1., -3.83333333, -3.83333333, 1.,
+                                  1., 1., -3.83333333, -3.83333333])
+        expected_msft = np.array([-3., -23.5, 1., -3.83333333, -3.83333333, 1.,
+                                  2.33333333, -3., -3.83333333])
+        test_expected(factor, expected_aapl, expected_msft, 10, decimal=6)
 
         # test reused factor only compute once, and nest factor window
         engine.run('2019-01-11', '2019-01-15')  # let pre_compute_ test executable
@@ -644,7 +655,7 @@ class TestFactorLib(unittest.TestCase):
         result = df.loc[(slice(None), 'AAPL'), 'slope']
         assert_almost_equal(
             [-0.555879, -0.710545, -0.935697, -1.04103, -1.232, -1.704182,
-             -0.873212, -0.640606,  0.046424], result, decimal=5)
+             -0.873212, -0.640606, 0.046424], result, decimal=5)
         assert_array_equal(['slope', 'intcp'], df.columns)
 
         # test RollingMomentum
