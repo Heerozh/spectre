@@ -30,9 +30,11 @@ class FilterFactor(CustomFactor, ABC):
                          "please convert to float by using `filter_factor.float()`")
 
     def any(self, win):
+        """ Return True if Rolling window contains any True """
         return AnyFilter(win, inputs=(self,))
 
     def all(self, win):
+        """ Return True if Rolling window all are True """
         return AllFilter(win, inputs=(self,))
 
 
@@ -97,6 +99,20 @@ class AllFilter(FilterFactor):
 
     def compute(self, data: Rolling) -> torch.Tensor:
         return data.values.all(dim=2)
+
+
+class AnyNonNaNFactor(FilterFactor):
+    _min_win = 2
+
+    def compute(self, data: Rolling) -> torch.Tensor:
+        return ~torch.isnan(data.values).any(dim=2)
+
+
+class AllNonNaNFactor(FilterFactor):
+    _min_win = 2
+
+    def compute(self, data: Rolling) -> torch.Tensor:
+        return ~torch.isnan(data.values).all(dim=2)
 
 
 class InvertFactor(FilterFactor):

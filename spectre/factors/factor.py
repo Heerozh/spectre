@@ -217,10 +217,14 @@ class BaseFactor:
         return MaskedFillFactor(inputs=(self, mask, fill))
 
     def any(self, win: int):
-        return AnyFactor(win, inputs=(self,))
+        """ Return True if Rolling window contains any Non-NaNs """
+        from .filter import AnyNonNaNFactor
+        return AnyNonNaNFactor(win, inputs=(self,))
 
     def all(self, win: int):
-        return AllFactor(win, inputs=(self,))
+        """ Return True if Rolling window all are Non-NaNs """
+        from .filter import AllNonNaNFactor
+        return AllNonNaNFactor(win, inputs=(self,))
 
     def clamp(self, left: Union[float, int], right: Union[float, int]):
         return ClampFactor(self, left, right)
@@ -595,20 +599,6 @@ class ProdFactor(CustomFactor):
 class LogFactor(CustomFactor):
     def compute(self, data: torch.Tensor) -> torch.Tensor:
         return data.log()
-
-
-class AnyFactor(CustomFactor):
-    _min_win = 2
-
-    def compute(self, data: Rolling) -> torch.Tensor:
-        return ~torch.isnan(data.values).any(dim=2)
-
-
-class AllFactor(CustomFactor):
-    _min_win = 2
-
-    def compute(self, data: Rolling) -> torch.Tensor:
-        return ~torch.isnan(data.values).all(dim=2)
 
 
 class TypeCastFactor(CustomFactor):
