@@ -279,8 +279,11 @@ class FactorEngine:
         if len(self._factors) == 0:
             raise ValueError('Please add at least one factor to engine, then run again.')
 
-        delays = {col for col, fct in self._factors.items() if fct.should_delay()}
-        if not delay_factor and len(delays) > 0:
+        if delay_factor == 'all':
+            delays = self._factors
+        else:
+            delays = {col for col, fct in self._factors.items() if fct.should_delay()}
+        if delay_factor is False and len(delays) > 0:
             warnings.warn("Warning!! delay_factor is set to False, "
                           "but {} factors uses data that is only available "
                           "after the market is closed.".format(str(delays)),
@@ -297,8 +300,9 @@ class FactorEngine:
 
         # shift factors if necessary
         filter_ = self._filter
-        if filter_ and filter_.should_delay() and delay_factor:
-            filter_ = filter_.shift(1)
+        if filter_ and delay_factor:
+            if filter_.should_delay() or delay_factor == 'all':
+                filter_ = filter_.shift(1)
         factors = {col: col in delays and fct.shift(1) or fct
                    for col, fct in self._factors.items()}
 
