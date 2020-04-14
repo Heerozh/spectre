@@ -71,13 +71,13 @@ class ParallelGroupBy:
         return ret
 
 
-def masked_sum(data: torch.Tensor, mask: torch.Tensor, dim=1) -> torch.Tensor:
+def unmasked_sum(data: torch.Tensor, mask: torch.Tensor, dim=1) -> torch.Tensor:
     data = data.clone()
     data.masked_fill_(mask, 0)  # much faster than data[isnan] = 0
     return data.sum(dim=dim)
 
 
-def masked_prod(data: torch.Tensor, mask: torch.Tensor, dim=1) -> torch.Tensor:
+def unmasked_prod(data: torch.Tensor, mask: torch.Tensor, dim=1) -> torch.Tensor:
     data = data.clone()
     data.masked_fill_(mask, 1)
     return data.prod(dim=dim)
@@ -85,27 +85,27 @@ def masked_prod(data: torch.Tensor, mask: torch.Tensor, dim=1) -> torch.Tensor:
 
 def nansum(data: torch.Tensor, dim=1) -> torch.Tensor:
     mask = torch.isnan(data)
-    return masked_sum(data, mask, dim)
+    return unmasked_sum(data, mask, dim)
 
 
 def nanprod(data: torch.Tensor, dim=1) -> torch.Tensor:
     mask = torch.isnan(data)
-    return masked_prod(data, mask, dim)
+    return unmasked_prod(data, mask, dim)
 
 
-def masked_mean(data, mask, dim=1):
-    total = masked_sum(data, mask, dim)
+def unmasked_mean(data, mask, dim=1):
+    total = unmasked_sum(data, mask, dim)
     return total / (~mask).sum(dim=dim)
 
 
 def nanmean(data: torch.Tensor, dim=1) -> torch.Tensor:
     mask = torch.isnan(data)
-    return masked_mean(data, mask, dim)
+    return unmasked_mean(data, mask, dim)
 
 
 def nanvar(data: torch.Tensor, dim=1, ddof=0) -> torch.Tensor:
     mask = torch.isnan(data)
-    total = masked_sum(data, mask, dim)
+    total = unmasked_sum(data, mask, dim)
     n = (~mask).sum(dim=dim)
     mean = total / n
     mean.unsqueeze_(-1)
@@ -170,7 +170,7 @@ def covariance(x, y, dim=1, ddof=0):
     demean_y = y - y_bar
     xy = demean_x * demean_y
     mask = torch.isnan(xy)
-    e = masked_sum(xy, mask, dim=dim)
+    e = unmasked_sum(xy, mask, dim=dim)
     return e / ((~mask).sum(dim=dim) - ddof)
 
 
