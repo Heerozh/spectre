@@ -149,7 +149,11 @@ def masked_first(data: torch.Tensor, mask: torch.Tensor, dim=1) -> torch.Tensor:
     return masked_last(data, mask, dim, reverse=True)
 
 
-def nanlast(data: torch.Tensor, dim=1) -> torch.Tensor:
+def nanlast(data: torch.Tensor, dim=1, offset=0) -> torch.Tensor:
+    if offset > 0:
+        s = [slice(None)] * len(data.shape)
+        s[dim] = slice(offset, None)
+        data = data[s]
     mask = ~torch.isnan(data)
     return masked_last(data, mask, dim)
 
@@ -291,8 +295,8 @@ class Rolling:
     def last(self):
         return self.loc(-1)
 
-    def last_nonnan(self):
-        return self.agg(lambda x: nanlast(x, dim=2))
+    def last_nonnan(self, offset=0):
+        return self.agg(lambda x: nanlast(x, dim=2, offset=offset))
 
     def first(self):
         return self.loc(0)

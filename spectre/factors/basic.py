@@ -21,7 +21,7 @@ class Returns(CustomFactor):
 
     def compute(self, closes):
         # missing data considered as delisted, calculated on the last day's data.
-        return closes.last_nonnan() / closes.first() - 1
+        return closes.last_nonnan(offset=1) / closes.first() - 1
 
 
 class LogReturns(CustomFactor):
