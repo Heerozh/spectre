@@ -6,9 +6,10 @@
 """
 import torch
 import math
+import numpy as np
 from .factor import CustomFactor, CrossSectionFactor
 from .engine import OHLCV
-from ..parallel import (linear_regression_1d, quantile, pearsonr, masked_mean, masked_sum,
+from ..parallel import (linear_regression_1d, quantile, pearsonr, unmasked_mean, unmasked_sum,
                         nanmean, nanstd, covariance)
 
 
@@ -161,15 +162,17 @@ class InformationCoefficient(CrossSectionFactor):
 
 
 class CrossSectionR2(CrossSectionFactor):
-    def __init__(self, y_hat, y, mask=None):
-        super().__init__(win=1, inputs=[y_hat, y], mask=mask)
+    def __init__(self, y, y_pred, mask):
+        super().__init__(win=1, inputs=[y, y_pred], mask=mask)
 
-    def compute(self, y_hat, y):
-        mask = torch.isnan(y_hat) | torch.isnan(y)
-        y_bar = masked_mean(y, mask, dim=1).unsqueeze(-1)
-        ss_tot = masked_sum((y - y_bar) ** 2, mask, dim=1)
-        ss_reg = masked_sum((y_hat - y_bar) ** 2, mask, dim=1)
-        return (ss_reg / ss_tot).unsqueeze(-1).repeat(1, y.shape[1])
+    def compute(self, y, y_pred):
+        mask = torch.isnan(y_pred) | torch.isnan(y)
+        y_bar = unmasked_mean(y, mask, dim=1).unsqueeze(-1)
+        ss_err = unmasked_sum((y - y_pred) ** 2, mask, dim=1)
+        ss_tot = unmasked_sum((y - y_bar) ** 2, mask, dim=1)
+        r2 = -ss_err / ss_tot + 1
+        r2[(~mask).float().sum(dim=1) < 2] = np.nan
+        return r2.unsqueeze(-1).repeat(1, y.shape[1])
 
 
 STDDEV = StandardDeviation

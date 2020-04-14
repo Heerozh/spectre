@@ -434,6 +434,17 @@ class TestFactorLib(unittest.TestCase):
                                   2.33333333, -3., -3.83333333])
         test_expected(factor, expected_aapl, expected_msft, 10, decimal=6)
 
+        # test CrossSectionR2
+        y = torch.tensor([[1., 3, 2, 4, 6, 5, 7, 9],
+                          [1., np.nan, np.nan, np.nan, np.nan, np.nan, np.nan, np.nan]])
+        y_hat = torch.tensor([1., 2, 3, 4, 5, 6, 7, 8]).repeat(2, 1)
+        ret = spectre.factors.CrossSectionR2.compute(None, y, y_hat)
+        from sklearn.metrics import r2_score
+        expected = r2_score(y[0], y_hat[0])
+        assert_almost_equal(expected, ret[0, 0])
+        expected = r2_score(y[1, :1], y_hat[1, :1])
+        assert_almost_equal(expected, ret[1, 0])
+
         # test reused factor only compute once, and nest factor window
         engine.run('2019-01-11', '2019-01-15')  # let pre_compute_ test executable
         f1 = spectre.factors.BBANDS(win=20, inputs=[spectre.factors.OHLCV.close, 2]).normalized()
@@ -550,7 +561,7 @@ class TestFactorLib(unittest.TestCase):
         ])
         result = f.compute(spectre.parallel.Rolling(data, win=3))
         expected = [[np.nan, np.nan, 1, 1, np.nan, 1],
-                    [np.nan, np.nan, 0.5, 0.5, 1 / 3, 0]]
+                    [np.nan, np.nan, 0.5, 0.5, 1 / 3, np.nan]]
         assert_almost_equal(result, expected)
         # test on cuda
         data = data.cuda()
