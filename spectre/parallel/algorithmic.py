@@ -57,7 +57,7 @@ class ParallelGroupBy:
             if tuple(split_data.shape[:2]) == self._data_shape[:2]:
                 raise ValueError('The downstream needs shape{2}, and the input factor "{1}" is '
                                  'shape{0}. Look like this factor has multiple return values, '
-                                 'use slice to select a value before using it, for example: '
+                                 'using slice to select a value before using it, for example: '
                                  '`factor[0]`.'
                                  .format(tuple(split_data.shape), dbg_str, self._data_shape))
             else:
@@ -103,8 +103,7 @@ def nanmean(data: torch.Tensor, dim=1) -> torch.Tensor:
     return unmasked_mean(data, mask, dim)
 
 
-def nanvar(data: torch.Tensor, dim=1, ddof=0) -> torch.Tensor:
-    mask = torch.isnan(data)
+def unmasked_var(data: torch.Tensor, mask, dim=1, ddof=0) -> torch.Tensor:
     total = unmasked_sum(data, mask, dim)
     n = (~mask).sum(dim=dim)
     mean = total / n
@@ -112,6 +111,11 @@ def nanvar(data: torch.Tensor, dim=1, ddof=0) -> torch.Tensor:
     var = (data - mean) ** 2 / (n.unsqueeze(-1) - ddof)
     var.masked_fill_(mask, 0)
     return var.sum(dim=dim)
+
+
+def nanvar(data: torch.Tensor, dim=1, ddof=0) -> torch.Tensor:
+    mask = torch.isnan(data)
+    return unmasked_var(data, mask, dim, ddof)
 
 
 def nanstd(data: torch.Tensor, dim=1, ddof=0) -> torch.Tensor:
@@ -167,20 +171,27 @@ def pad_2d(data: torch.Tensor) -> torch.Tensor:
     return torch.gather(data, 1, idx)
 
 
-def covariance(x, y, dim=1, ddof=0):
-    x_bar = nanmean(x, dim=dim).unsqueeze(-1)
-    y_bar = nanmean(y, dim=dim).unsqueeze(-1)
+def unmasked_covariance(x, y, mask, dim=1, ddof=0):
+    x_bar = unmasked_mean(x, dim=dim, mask=mask).unsqueeze(-1)
+    y_bar = unmasked_mean(y, dim=dim, mask=mask).unsqueeze(-1)
     demean_x = x - x_bar
     demean_y = y - y_bar
     xy = demean_x * demean_y
-    mask = torch.isnan(xy)
     e = unmasked_sum(xy, mask, dim=dim)
     return e / ((~mask).sum(dim=dim) - ddof)
 
 
+def covariance(x, y, dim=1, ddof=0):
+    mask = torch.isnan(x * y)
+    return unmasked_covariance(x, y, mask, dim, ddof)
+
+
 def pearsonr(x, y, dim=1, ddof=0):
-    cov = covariance(x, y, dim, ddof)
-    return cov / (nanstd(x, dim, ddof) * nanstd(y, dim, ddof))
+    mask = torch.isnan(x * y)
+    cov = unmasked_covariance(x, y, mask, dim, ddof)
+    x_var = unmasked_var(x, mask, dim, ddof)
+    y_var = unmasked_var(y, mask, dim, ddof)
+    return cov / (x_var.sqrt() * y_var.sqrt())
 
 
 def linear_regression_1d(x, y, dim=1):
