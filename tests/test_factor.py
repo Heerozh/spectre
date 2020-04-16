@@ -432,6 +432,16 @@ class TestFactorLib(unittest.TestCase):
         expected_msft = np.delete(expected_aapl, 6)
         test_expected(factor, expected_aapl, expected_msft, 10)
 
+        # test RollingArgMax
+        factor = spectre.factors.RollingArgMax(5, inputs=[spectre.factors.WEEKDAY])
+        expected_aapl = np.array([3/5, 2/5, 5/5, 4/5, 3/5, 2/5, 1/5, 5/5, 4/5, 3/5])
+        expected_msft = np.delete(expected_aapl, 6)
+        test_expected(factor, expected_aapl, expected_msft, 10)
+
+        factor = spectre.factors.RollingArgMin(5, inputs=[spectre.factors.WEEKDAY])
+        expected_aapl = np.array([4/5, 3/5, 2/5, 5/5, 4/5, 3/5, 2/5, 1/5, 5/5, 4/5])
+        expected_msft = np.array([4/5, 3/5, 2/5, 5/5, 4/5, 3/5, 2/5, 5/5, 4/5])
+        test_expected(factor, expected_aapl, expected_msft, 10)
 
         # -- inf bug
         wsz = spectre.factors.WinsorizingFactor()
