@@ -54,9 +54,9 @@ class WeightedAverageValue(CustomFactor):
 class LinearWeightedAverage(CustomFactor):
     _min_win = 2
 
-    def __init__(self, win, inputs):
+    def __init__(self, win=None, inputs=None):
         super().__init__(win, inputs)
-        self.weight = torch.arange(1, win + 1).float()
+        self.weight = torch.arange(1, self.win + 1).float()
         self.weight = self.weight / self.weight.sum()
 
     def compute(self, base):
@@ -85,7 +85,7 @@ class ExponentialWeightedMovingAverage(CustomFactor):
             # simplification to 4 * (span+1). 3.45 achieve 99.90%, 2.26 99.00%
             self.win = int(4.5 * (span + 1))
         else:
-            self.alpha = 1 - math.exp(math.log(0.5)/half_life)
+            self.alpha = 1 - math.exp(math.log(0.5) / half_life)
             self.win = 15 * half_life
 
         super().__init__(None, inputs)
@@ -132,6 +132,10 @@ class AnnualizedVolatility(CustomFactor):
 class ElementWiseMax(CustomFactor):
     _min_win = 1
 
+    def __init__(self, win=None, inputs=None):
+        super().__init__(win, inputs)
+        assert self.win == 1
+
     @classmethod
     def binary_fill_na(cls, a, b, value):
         a = a.clone()
@@ -153,6 +157,10 @@ class ElementWiseMax(CustomFactor):
 class ElementWiseMin(CustomFactor):
     _min_win = 1
 
+    def __init__(self, win=None, inputs=None):
+        super().__init__(win, inputs)
+        assert self.win == 1
+
     def compute(self, a, b):
         ret = torch.min(*ElementWiseMax.binary_fill_na(a, b, np.inf))
         ret.masked_fill_(torch.isinf(ret), np.nan)
@@ -164,7 +172,7 @@ class RollingArgMax(CustomFactor):
 
     def compute(self, data):
         def _argmax(_data):
-            ret = _data.argmax(dim=2) / self.win
+            ret = (_data.argmax(dim=2) + 1.) / self.win
             return ret.float()
 
         return data.agg(_argmax)
@@ -175,7 +183,7 @@ class RollingArgMin(CustomFactor):
 
     def compute(self, data):
         def _argmin(_data):
-            ret = _data.argmin(dim=2) / self.win
+            ret = (_data.argmin(dim=2) + 1.) / self.win
             return ret.float()
 
         return data.agg(_argmin)

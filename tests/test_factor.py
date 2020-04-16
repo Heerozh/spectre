@@ -411,6 +411,28 @@ class TestFactorLib(unittest.TestCase):
         expected_msft = np.array([103.2, 103.2, 104.39, 103.2, 105.22, 106, 103.2, 103.39])
         test_expected(factor, expected_aapl, expected_msft, 10, check_bias=False)
 
+        # test LinearWeightedAverage
+        factor = spectre.factors.LinearWeightedAverage(5, inputs=[spectre.factors.WEEKDAY])
+        expected_aapl = np.array([2., 2.2666667, 2.8000002, 1.9333334, 1.6666667, 1.6666667, 2,
+                                  2.666667, 2, 1.6666667])
+        expected_msft = np.array([2., 2.2666667, 2.8000002, 1.9333334, 1.6666667, 1.6666667,
+                                  2.3333335, 1.6000001, 1.4666667])
+        test_expected(factor, expected_aapl, expected_msft, 10)
+
+        # test ElementWiseMax
+        factor = spectre.factors.ElementWiseMax(inputs=[spectre.factors.WEEKDAY,
+                                                        spectre.factors.DatetimeDataFactor('day')])
+        expected_aapl = np.array([2., 3, 4, 7, 8, 9, 10, 11, 14, 15])
+        expected_msft = np.delete(expected_aapl, 6)
+        test_expected(factor, expected_aapl, expected_msft, 10)
+
+        factor = spectre.factors.ElementWiseMin(inputs=[
+            spectre.factors.WEEKDAY, spectre.factors.DatetimeDataFactor('day') - 1])  # -1 for utc
+        expected_aapl = np.array([1., 2, 3, 0, 1, 2, 3, 4, 0, 1])
+        expected_msft = np.delete(expected_aapl, 6)
+        test_expected(factor, expected_aapl, expected_msft, 10)
+
+
         # -- inf bug
         wsz = spectre.factors.WinsorizingFactor()
         wsz.z = 0.2

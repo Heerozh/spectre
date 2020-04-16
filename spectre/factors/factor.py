@@ -685,7 +685,7 @@ class RollingRankFactor(CustomFactor):
                 filled = _data
             _, indices = torch.sort(filled, dim=2, descending=not self.ascending)
             _, indices = torch.sort(indices, dim=2)
-            rank = indices.float() + 1.
+            rank = (indices.float() + 1.) / self.win
             rank.masked_fill_(torch.isnan(_data), np.nan)
             return rank[:, :, -1]
 
