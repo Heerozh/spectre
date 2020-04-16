@@ -159,6 +159,28 @@ class ElementWiseMin(CustomFactor):
         return ret
 
 
+class RollingArgMax(CustomFactor):
+    _min_win = 2
+
+    def compute(self, data):
+        def _argmax(_data):
+            ret = _data.argmax(dim=2) / self.win
+            return ret.float()
+
+        return data.agg(_argmax)
+
+
+class RollingArgMin(CustomFactor):
+    _min_win = 2
+
+    def compute(self, data):
+        def _argmin(_data):
+            ret = _data.argmin(dim=2) / self.win
+            return ret.float()
+
+        return data.agg(_argmin)
+
+
 MA = SimpleMovingAverage
 SMA = SimpleMovingAverage
 EMA = ExponentialWeightedMovingAverage

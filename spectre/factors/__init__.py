@@ -41,6 +41,7 @@ from .basic import (
     AverageDollarVolume,
     AnnualizedVolatility,
     ElementWiseMax, ElementWiseMin,
+    RollingArgMax, RollingArgMin,
 )
 
 from .technical import (
