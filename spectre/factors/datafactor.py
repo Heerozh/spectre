@@ -42,8 +42,8 @@ class ColumnDataFactor(BaseFactor):
         else:
             self._multi = None
 
-    def clean_up_(self) -> None:
-        super().clean_up_()
+    def clean_up_(self, force=False) -> None:
+        super().clean_up_(force)
         self._data = None
         self._multi = None
 
@@ -89,8 +89,8 @@ class AssetClassifierDataFactor(BaseFactor):
         data = torch.tensor(data, device=engine.device, dtype=torch.float32)
         self._data = engine.group_by_(data, self.groupby)
 
-    def clean_up_(self) -> None:
-        super().clean_up_()
+    def clean_up_(self, force=False) -> None:
+        super().clean_up_(force)
         self._data = None
 
     def compute_(self, stream: Union[torch.cuda.Stream, None]) -> torch.Tensor:
@@ -128,8 +128,8 @@ class DatetimeDataFactor(BaseFactor):
                 device=engine.device, dtype=torch.float32, non_blocking=True)
             self._data = engine.group_by_(data, self.groupby)
 
-    def clean_up_(self) -> None:
-        super().clean_up_()
+    def clean_up_(self, force=False) -> None:
+        super().clean_up_(force)
         self._data = None
 
     def compute_(self, stream: Union[torch.cuda.Stream, None]) -> torch.Tensor:

@@ -283,7 +283,7 @@ class BaseFactor:
         self._engine = engine
         engine.column_to_parallel_groupby_(self.groupby)
 
-    def clean_up_(self) -> None:
+    def clean_up_(self, force=False) -> None:
         self._engine = None
 
     def compute_(self, stream: Union[torch.cuda.Stream, None]) -> torch.Tensor:
@@ -311,6 +311,8 @@ class CustomFactor(BaseFactor):
     _mask = None
     _force_delay = None
     _keep_cache = False
+    _clean_required = False
+    _total_backwards = None
 
     def __init__(self, win: Optional[int] = None, inputs: Optional[Sequence[BaseFactor]] = None):
         """
@@ -348,8 +350,12 @@ class CustomFactor(BaseFactor):
     def set_mask(self, mask: BaseFactor = None):
         """ Mask fill all **INPUT** data to NaN """
         self._mask = mask
+        self._total_backwards = None
 
     def get_total_backwards_(self) -> int:
+        if self._total_backwards is not None:
+            return self._total_backwards
+
         backwards = 0
         if self.inputs:
             backwards = max([up.get_total_backwards_() for up in self.inputs
@@ -358,9 +364,10 @@ class CustomFactor(BaseFactor):
 
         if self._mask:
             mask_backward = self._mask.get_total_backwards_()
-            return max(mask_backward, backwards)
+            self._total_backwards = max(mask_backward, backwards)
         else:
-            return backwards
+            self._total_backwards = backwards
+        return self._total_backwards
 
     def should_delay(self) -> bool:
         ret = super().should_delay()
@@ -380,9 +387,13 @@ class CustomFactor(BaseFactor):
     def show_graph(self):
         plot_factor_diagram(self)
 
-    def clean_up_(self) -> None:
-        super().clean_up_()
-        if not self._keep_cache:
+    def clean_up_(self, force=False) -> None:
+        super().clean_up_(force)
+        if not self._clean_required and not force:
+            return
+        self._clean_required = False
+
+        if not self._keep_cache or force:
             self._cache = None
             self._cache_stream = None
         self._ref_count = 0
@@ -390,16 +401,17 @@ class CustomFactor(BaseFactor):
         if self.inputs:
             for upstream in self.inputs:
                 if isinstance(upstream, BaseFactor):
-                    upstream.clean_up_()
+                    upstream.clean_up_(force)
 
         if self._mask is not None:
-            self._mask.clean_up_()
+            self._mask.clean_up_(force)
 
     def pre_compute_(self, engine, start, end) -> None:
         """
         Called when engine run but before compute.
         """
         super().pre_compute_(engine, start, end)
+        self._clean_required = True
 
         self._ref_count += 1
         if self._ref_count > 1:  # already pre_compute_ed, skip child

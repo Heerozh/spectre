@@ -93,7 +93,7 @@ class FactorEngine:
         # with same date range.
         if start == self._last_load[0] and end == self._last_load[1] \
                 and max_backwards <= self._last_load[2]:
-            return
+            return False
         self._groups = dict()
 
         # Get data
@@ -141,6 +141,7 @@ class FactorEngine:
             self._last_load = [None, None, None]
         else:
             self._last_load = [start, end, max_backwards]
+        return True
 
     def _compute_and_revert(self, f: BaseFactor, name) -> torch.Tensor:
         stream = None
@@ -311,14 +312,14 @@ class FactorEngine:
         if filter_:
             max_backwards = max(max_backwards, filter_.get_total_backwards_())
 
-        # copy data to tensor
-        self._prepare_tensor(start, end, max_backwards)
+        # copy data to tensor, if any data copied,  return True
+        force_cleanup = self._prepare_tensor(start, end, max_backwards)
 
-        # clean up before start (may be keyboard interrupted)
+        # clean up before start
         if filter_:
-            filter_.clean_up_()
+            filter_.clean_up_(force_cleanup)
         for f in factors.values():
-            f.clean_up_()
+            f.clean_up_(force_cleanup)
 
         # some pre-work
         if filter_:
