@@ -51,9 +51,6 @@ class BaseFactor:
     def __mod__(self, other):
         return ModFactor(inputs=(self, other))
 
-    def __rmod__(self, other):
-        return ModFactor(inputs=(other, self))
-
     # op: **
     def __pow__(self, other):
         return PowFactor(inputs=(self, other))
@@ -70,18 +67,10 @@ class BaseFactor:
         from .filter import AndFactor
         return AndFactor(inputs=(self, other))
 
-    def __rand__(self, other):
-        from .filter import AndFactor
-        return AndFactor(inputs=(other, self))
-
     # op: or
     def __or__(self, other):
         from .filter import OrFactor
         return OrFactor(inputs=(self, other))
-
-    def __ror__(self, other):
-        from .filter import OrFactor
-        return OrFactor(inputs=(other, self))
 
     # op: <=>==!=
     def __lt__(self, other):

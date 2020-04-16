@@ -779,6 +779,7 @@ class TestFactorLib(unittest.TestCase):
         engine = spectre.factors.FactorEngine(loader)
         f = spectre.factors.OHLCV.close
         f2 = f ** 2
+        rf2 = 2 ** f
         engine.add(f, 'f')
         engine.add(f2, 'f^2')
         engine.add(-f, '-f')
@@ -786,6 +787,7 @@ class TestFactorLib(unittest.TestCase):
         engine.add(f - f2, 'f-f2')
         engine.add(f * f2, 'f*f2')
         engine.add(f / f2, 'f/f2')
+        engine.add(f % f2, 'f%f2')
 
         engine.add(f > f2, 'f>f2')
         engine.add(f < f2, 'f<f2')
@@ -794,6 +796,21 @@ class TestFactorLib(unittest.TestCase):
         engine.add(f == f2, 'f==f2')
         engine.add(f != f2, 'f!=f2')
 
+        engine.add(2 + f, '2+f')
+        engine.add(2 - f, '2-f')
+        engine.add(2 * f, '2*f')
+        engine.add(2 / rf2, '2/rf2')
+
+        import operator
+        self.assertRaises(TypeError, operator.mod, 2., f)
+
+        engine.add(2 > f, '2>f')
+        engine.add(2 < f, '2<f')
+        engine.add(2 >= f, '2>=f')
+        engine.add(2 <= f, '2<=f')
+        engine.add(2 == f, '2==f')
+        engine.add(2 != f, '2!=f')
+
         t = spectre.factors.OHLCV.volume.top(1)
         b = spectre.factors.OHLCV.volume.bottom(1)
         engine.add(t, 't')
@@ -801,16 +818,26 @@ class TestFactorLib(unittest.TestCase):
         engine.add(t | b, 't|b')
         engine.add(~t, '~t')
 
+        self.assertRaises(TypeError, operator.and_, 2., b)
+        self.assertRaises(TypeError, operator.or_, 2., b)
+
         result = engine.run("2019-01-01", "2019-01-05")
 
         f = np.array([158.61, 101.30, 145.23, 102.28, 104.39])
         f2 = f ** 2
+        rf2 = 2 ** f
         assert_array_equal(result['f^2'], f2)
         assert_array_equal(result['-f'], -f)
         assert_array_equal(result['f+f2'], f + f2)
         assert_array_equal(result['f-f2'], f - f2)
         assert_array_equal(result['f*f2'], f * f2)
         assert_array_equal(result['f/f2'], f / f2)
+        assert_array_equal(result['f%f2'], f % f2)
+
+        assert_array_equal(result['2+f'], 2 + f)
+        assert_array_equal(result['2-f'], 2 - f)
+        assert_array_equal(result['2*f'], 2 * f)
+        assert_almost_equal(result['2/rf2'], 2 / rf2)
 
         assert_array_equal(result['f>f2'], f > f2)
         assert_array_equal(result['f<f2'], f < f2)
@@ -818,6 +845,13 @@ class TestFactorLib(unittest.TestCase):
         assert_array_equal(result['f<=f2'], f <= f2)
         assert_array_equal(result['f==f2'], f == f2)
         assert_array_equal(result['f!=f2'], f != f2)
+
+        assert_array_equal(result['2>f'], 2 > f)
+        assert_array_equal(result['2<f'], 2 < f)
+        assert_array_equal(result['2>=f'], 2 >= f)
+        assert_array_equal(result['2<=f'], 2 <= f)
+        assert_array_equal(result['2==f'], 2 == f)
+        assert_array_equal(result['2!=f'], 2 != f)
 
         t = np.array([False, True, True, False, False])
         b = ~t
