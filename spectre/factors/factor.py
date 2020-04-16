@@ -672,6 +672,26 @@ class RankFactor(CrossSectionFactor):
         return rank
 
 
+class RollingRankFactor(CustomFactor):
+    ascending = True,
+    _min_win = 2
+
+    def compute(self, data) -> torch.Tensor:
+        def _rolling_rank(_data):
+            if not self.ascending:
+                filled = _data.clone()
+                filled.masked_fill_(torch.isnan(_data), -np.inf)
+            else:
+                filled = _data
+            _, indices = torch.sort(filled, dim=2, descending=not self.ascending)
+            _, indices = torch.sort(indices, dim=2)
+            rank = indices.float() + 1.
+            rank.masked_fill_(torch.isnan(_data), np.nan)
+            return rank[:, :, -1]
+
+        return data.agg(_rolling_rank)
+
+
 class DemeanFactor(CrossSectionFactor):
     group_dict = None
 

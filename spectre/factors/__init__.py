@@ -7,7 +7,7 @@ from .factor import (
     BaseFactor,
     CustomFactor,
     CrossSectionFactor,
-    RankFactor,
+    RankFactor, RollingRankFactor,
     QuantileClassifier,
     SumFactor, ProdFactor,
     WinsorizingFactor,
