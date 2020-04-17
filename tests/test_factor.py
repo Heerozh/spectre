@@ -443,6 +443,48 @@ class TestFactorLib(unittest.TestCase):
         expected_msft = np.array([4/5, 3/5, 2/5, 5/5, 4/5, 3/5, 2/5, 5/5, 4/5])
         test_expected(factor, expected_aapl, expected_msft, 10)
 
+        # test log abs etc...
+        factor = spectre.factors.WEEKDAY.log()
+        expected_aapl = np.log([2, 3., 4., 0, 1, 2, 3., 4., 0, 1])
+        expected_msft = np.delete(expected_aapl, 6)
+        test_expected(factor, expected_aapl, expected_msft, 10)
+
+        factor = spectre.factors.Returns()
+        expected_aapl = np.array([-0.0311526, -0.0843579,  0.0259588,  0.,  0.0171141,
+                                  0.0295612,  0.0318528, -0.0454037,  0.0215369])
+        expected_msft = np.array([-0.0298793,  0.0096742,  0.0206296, -0.0113996,  0.0195736,
+                                  0.007413, -0.0264151,  0.0018411])
+        test_expected(factor, expected_aapl, expected_msft, 10)
+
+        factor = spectre.factors.Returns().abs()
+        test_expected(factor, np.abs(expected_aapl), np.abs(expected_msft), 10)
+
+        factor = spectre.factors.Returns().sign()
+        test_expected(factor, np.sign(expected_aapl), np.sign(expected_msft), 10)
+
+        # test sum prod
+        factor = spectre.factors.LogReturns().sum(2)
+        expected_aapl = np.log(df_aapl_close) - np.log(df_aapl_close.shift(1))
+        expected_msft = np.log(df_msft_close) - np.log(df_msft_close.shift(1))
+        expected_aapl = expected_aapl.rolling(2).sum()
+        expected_msft = expected_msft.rolling(2).sum()
+        expected_aapl = expected_aapl[-9:]
+        expected_msft = expected_msft[-8:]
+        test_expected(factor, expected_aapl, expected_msft, 10)
+
+        factor = spectre.factors.OHLCV.close.prod(2).log()
+        expected_aapl = np.log(df_aapl_close) + np.log(df_aapl_close.shift(1))
+        expected_msft = np.log(df_msft_close) + np.log(df_msft_close.shift(1))
+        expected_aapl = expected_aapl[-9:]
+        expected_msft = expected_msft[-8:]
+        test_expected(factor, expected_aapl, expected_msft, 10)
+
+        # test RollingRankFactor
+        factor = spectre.factors.RollingRankFactor(5, inputs=[spectre.factors.WEEKDAY])
+        expected_aapl = np.array([3/5, 4/5, 5/5, 2/5, 2/5, 3/5, 4/5, 5/5, 1/5, 2/5])
+        expected_msft = np.array([3/5, 4/5, 5/5, 2/5, 2/5, 3/5, 5/5, 2/5, 3/5])
+        test_expected(factor, expected_aapl, expected_msft, 10)
+
         # -- inf bug
         wsz = spectre.factors.WinsorizingFactor()
         wsz.z = 0.2
