@@ -218,6 +218,10 @@ class BaseFactor:
         from .filter import AllNonNaNFactor
         return AllNonNaNFactor(win, inputs=(self,))
 
+    def count(self, win: int):
+        """ Return Non-NaN data count """
+        return NonNaNCountFactor(win, inputs=(self,))
+
     def clamp(self, left: Union[float, int], right: Union[float, int]):
         return ClampFactor(self, left, right)
 
@@ -608,6 +612,13 @@ class LogFactor(CustomFactor):
 class SignFactor(CustomFactor):
     def compute(self, data: torch.Tensor) -> torch.Tensor:
         return data.sign()
+
+
+class NonNaNCountFactor(CustomFactor):
+    _min_win = 2
+
+    def compute(self, data: Rolling) -> torch.Tensor:
+        return (~torch.isnan(data.values)).float().sum(dim=2)
 
 
 class TypeCastFactor(CustomFactor):

@@ -485,6 +485,14 @@ class TestFactorLib(unittest.TestCase):
         expected_msft = np.array([3/5, 4/5, 5/5, 2/5, 2/5, 3/5, 5/5, 2/5, 3/5])
         test_expected(factor, expected_aapl, expected_msft, 10)
 
+        # test count...
+        data = torch.tensor([[np.nan, 1, 2, 3, 4, 5],
+                             [0, 1, 2, 3, 4, 5]])
+        data = spectre.parallel.Rolling(data, win=3)
+        f = spectre.factors.CustomFactor().count(3)
+        result = f.compute(data)
+        assert_almost_equal([[0, 1, 2, ] + [3] * 3, [1, 2, ] + [3] * 4], result)
+
         # -- inf bug
         wsz = spectre.factors.WinsorizingFactor()
         wsz.z = 0.2
