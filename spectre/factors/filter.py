@@ -105,14 +105,14 @@ class AnyNonNaNFactor(FilterFactor):
     _min_win = 2
 
     def compute(self, data: Rolling) -> torch.Tensor:
-        return ~torch.isnan(data.values).any(dim=2)
+        return (~torch.isnan(data.values)).any(dim=2)
 
 
 class AllNonNaNFactor(FilterFactor):
     _min_win = 2
 
     def compute(self, data: Rolling) -> torch.Tensor:
-        return ~torch.isnan(data.values).all(dim=2)
+        return (~torch.isnan(data.values)).all(dim=2)
 
 
 class InvertFactor(FilterFactor):

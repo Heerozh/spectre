@@ -570,9 +570,9 @@ class TestFactorLib(unittest.TestCase):
         engine.set_filter(universe)
 
         result = engine.run("2019-01-01", "2019-01-15")
-        assert_array_equal(result.index.get_level_values(1).values,
-                           ['MSFT', 'AAPL', 'AAPL', 'AAPL', 'AAPL', 'AAPL', 'AAPL', 'MSFT',
-                            'AAPL'])
+        assert_array_equal(['MSFT', 'AAPL', 'AAPL', 'AAPL', 'AAPL', 'AAPL', 'AAPL', 'MSFT',
+                            'AAPL'],
+                           result.index.get_level_values(1).values,)
 
         # test ma5 with filter
         import talib
@@ -601,8 +601,8 @@ class TestFactorLib(unittest.TestCase):
         expected_msft = talib.SMA(df_msft_close.values, timeperiod=5)[-total_rows:]
         expected_aapl = np.delete(expected_aapl, [0, 1, 8])
         expected_msft = [expected_msft[2], expected_msft[8]]
-        assert_almost_equal(result_aapl, expected_aapl)
-        assert_almost_equal(result_msft, expected_msft)
+        assert_almost_equal(expected_aapl, result_aapl)
+        assert_almost_equal(expected_msft, result_msft)
 
         # test StaticAssets
         aapl_filter = spectre.factors.StaticAssets(['AAPL'])
@@ -617,6 +617,18 @@ class TestFactorLib(unittest.TestCase):
         mask = spectre.factors.OHLCV.close > 177
         self.assertRaisesRegex(ValueError, '.*does not support local filtering.*',
                                mask.filter, mask)
+
+        # test any
+        data = torch.tensor([[np.nan, 1, 2, 3, 4, 5],
+                             [0, 1, 2, 3, 4, 5]])
+        data = spectre.parallel.Rolling(data, win=3)
+        f = spectre.factors.CustomFactor().any(3)
+        result = f.compute(data)
+        assert_almost_equal([[False] + [True] * 5, [True] * 6], result)
+
+        f = spectre.factors.CustomFactor().all(3)
+        result = f.compute(data)
+        assert_almost_equal([[False] * 3 + [True] * 3, [False] * 2 + [True] * 4], result)
 
     def test_cuda(self):
         loader = spectre.data.CsvDirLoader(
