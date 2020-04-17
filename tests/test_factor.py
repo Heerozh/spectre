@@ -508,6 +508,15 @@ class TestFactorLib(unittest.TestCase):
                                   2.33333333, -3., -3.83333333])
         test_expected(factor, expected_aapl, expected_msft, 10, decimal=6)
 
+        # test RollingCorrelation
+        factor = spectre.factors.RollingCorrelation(
+            win=3, inputs=[spectre.factors.WEEKDAY, spectre.factors.DatetimeDataFactor('day')])
+        expected_aapl = np.array([-0.094057, -0.934533,  1., -0.884615, -0.884615,  1.,
+                                  1,  1, -0.884615, -0.884615])
+        expected_msft = np.array([-0.094057, -0.934533,  1, -0.884615, -0.884615,  1,
+                                  1, -0.59604, -0.884615])
+        test_expected(factor, expected_aapl, expected_msft, 10, decimal=6)
+
         # test CrossSectionR2
         y = torch.tensor([[1., 3, 2, 4, 6, 5, 7, 9],
                           [1., np.nan, np.nan, np.nan, np.nan, np.nan, np.nan, np.nan]])
