@@ -109,21 +109,21 @@ class BaseFactor:
     # --------------- helper functions ---------------
 
     def top(self, n: int, mask: 'BaseFactor' = None):
-        """Cross-section top values"""
+        """ Cross-section top values """
         return self.rank(ascending=False, mask=mask) <= n
 
     def bottom(self, n: int, mask: 'BaseFactor' = None):
         return self.rank(ascending=True, mask=mask) <= n
 
     def rank(self, ascending=True, mask: 'BaseFactor' = None):
-        """Cross-section rank"""
+        """ Cross-section rank """
         factor = RankFactor(inputs=(self,), mask=mask)
         # factor.method = method
         factor.ascending = ascending
         return factor
 
     def zscore(self, groupby: str = 'date', mask: 'BaseFactor' = None, weight: 'BaseFactor' = None):
-        """Cross-section zscore"""
+        """ Cross-section zscore """
         inputs = [self]
         if weight is not None:
             inputs.append(weight)
@@ -150,7 +150,7 @@ class BaseFactor:
         return factor
 
     def quantile(self, bins=5, mask: 'BaseFactor' = None, groupby: str = 'date'):
-        """Cross-section quantiles to which the factor belongs"""
+        """ Cross-section quantiles to which the factor belongs """
         factor = QuantileClassifier(inputs=(self,))
         factor.set_mask(mask)
         factor.groupby = groupby
@@ -158,7 +158,7 @@ class BaseFactor:
         return factor
 
     def to_weight(self, demean=True, mask: 'BaseFactor' = None):
-        """factor value to portfolio weight, which sum(abs(weight)) == 1"""
+        """ factor value to portfolio weight, which sum(abs(weight)) == 1 """
         factor = ToWeightFactor(inputs=(self,), mask=mask)
         factor.demean = demean
         return factor
@@ -184,7 +184,7 @@ class BaseFactor:
         return ProdFactor(win, inputs=(self,))
 
     def filter(self, mask: 'BaseFactor'):
-        """Local filter, fills elements of self with NaN where mask is False."""
+        """ Local filter, fills elements of self with NaN where mask is False. """
         mf = DoNothingFactor(inputs=(self,))
         mf.set_mask(mask)
         return mf
@@ -226,13 +226,17 @@ class BaseFactor:
         return ClampFactor(self, left, right)
 
     def mad_clamp(self, z: float, mask: 'BaseFactor' = None):
+        """ Cross-section MAD clamp """
         factor = MADClampFactor(inputs=(self,))
+        factor.groupby = CrossSectionFactor.groupby
         factor.z = z
         factor.set_mask(mask)
         return factor
 
     def winsorizing(self, z: float = 0.05, by_row=True, mask: 'BaseFactor' = None):
+        """ Cross-section winsorizing clamp """
         factor = WinsorizingFactor(inputs=(self,))
+        factor.groupby = CrossSectionFactor.groupby
         assert 0 < z < 1
         factor.z = z
         factor.by_row = by_row

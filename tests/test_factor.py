@@ -389,11 +389,13 @@ class TestFactorLib(unittest.TestCase):
 
         # test mad_clamp
         factor = spectre.factors.WEEKDAY.mad_clamp(1)
+        factor.groupby = 'asset'
         expected_aapl = np.array([2, 3., 3., 1, 1, 2, 3., 3., 1, 1])
         expected_msft = np.delete(expected_aapl, 6)
         test_expected(factor, expected_aapl, expected_msft, 10)
 
         factor = spectre.factors.OHLCV.close.mad_clamp(2)
+        factor.groupby = 'asset'
         # pyTorch median does not take mean on odd array
         expected_aapl = np.array([158.61, 147.07, 149., 149., 151.55, 156.03, 160.31, 153.69, 157.])
         expected_msft = np.array([101.3, 102.28, 104.39, 103.2, 105.22, 105.61, 103.2, 103.39])
@@ -401,11 +403,13 @@ class TestFactorLib(unittest.TestCase):
 
         # test winsorizing
         factor = spectre.factors.WEEKDAY.winsorizing(0.2)
+        factor.groupby = 'asset'
         expected_aapl = np.array([2, 3., 3., 1, 1, 2, 3., 3., 1, 1])
         expected_msft = np.array([2, 2., 2., 1, 1, 2, 2, 1, 1])
         test_expected(factor, expected_aapl, expected_msft, 10)
 
         factor = spectre.factors.OHLCV.close.winsorizing(0.2, by_row=False)
+        factor.groupby = 'asset'
         expected_aapl = np.array(
             [153.69, 145.23, 149., 149., 151.55, 153.69, 153.69, 153.69, 153.69])
         expected_msft = np.array([103.2, 103.2, 104.39, 103.2, 105.22, 106, 103.2, 103.39])
