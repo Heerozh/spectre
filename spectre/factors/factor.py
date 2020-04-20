@@ -718,6 +718,7 @@ class ZScoreFactor(CrossSectionFactor):
             mean = nanmean(data)
         else:
             mean = nansum(data * weight) / nansum(weight)
+            mean = mean.float()
         return (data - mean.unsqueeze(-1)) / nanstd(data).unsqueeze(-1)
 
 
