@@ -102,19 +102,19 @@ class CustomAlgorithm(EventReceiver, ABC):
 
     @property
     def long_only(self):
-        raise NotImplementedError('Please using self.blotter.long_only')
+        raise RuntimeError('Please using self.blotter.long_only')
 
     @long_only.setter
     def long_only(self, b):
-        raise NotImplementedError('Please using self.blotter.long_only')
+        raise RuntimeError('Please using self.blotter.long_only')
 
     @property
     def daily_curb(self):
-        raise NotImplementedError('Please using self.blotter.daily_curb')
+        raise RuntimeError('Please using self.blotter.daily_curb')
 
     @daily_curb.setter
     def daily_curb(self, b):
-        raise NotImplementedError('Please using self.blotter.daily_curb')
+        raise RuntimeError('Please using self.blotter.daily_curb')
 
     @property
     def results(self):
