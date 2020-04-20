@@ -207,4 +207,5 @@ class CsvDirLoader(DataLoader):
             # because there may be some one-line junk data in non-trading day,
             # causing extra row of nan to all others assets.
             df = self._align_to(df, self._calender, self._align_by_time)
+            df.sort_index(level=[0, 1], inplace=True)
         return df
