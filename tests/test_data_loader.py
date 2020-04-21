@@ -46,7 +46,8 @@ class TestDataLoaderLib(unittest.TestCase):
 
     def test_csv_split_loader_value(self):
         loader = spectre.data.CsvDirLoader(
-            data_dir + '/5mins/', prices_by_year=True, prices_index='Date', parse_dates=True, )
+            data_dir + '/5mins/', prices_by_year=True, prices_index='Date', parse_dates=True,
+            ohlcv=None)
         start = pd.Timestamp('2019-01-02 14:30:00', tz='UTC')
         end = pd.Timestamp('2019-01-15', tz='UTC')
         loader.load(start, end, 0)
@@ -203,7 +204,8 @@ class TestDataLoaderLib(unittest.TestCase):
 
         # test 5mins
         loader = spectre.data.CsvDirLoader(
-            data_dir + '/5mins/', prices_by_year=True, prices_index='Date', parse_dates=True, )
+            data_dir + '/5mins/', prices_by_year=True, prices_index='Date', parse_dates=True,
+            ohlcv=None)
         df = loader.load()
         getter = spectre.data.DataLoaderFastGetter(df)
         table = getter.get_as_dict(

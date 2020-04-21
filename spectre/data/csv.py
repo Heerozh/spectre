@@ -151,7 +151,8 @@ class CsvDirLoader(DataLoader):
         df = pd.concat(dfs, sort=False)
         df = df.rename_axis(['asset', 'date'])
 
-        df[list(self.ohlcv)] = df[list(self.ohlcv)].replace(to_replace=0, method='ffill')
+        if self.ohlcv is not None:
+            df[list(self.ohlcv)] = df[list(self.ohlcv)].replace(to_replace=0, method='ffill')
 
         if self._dividends_path is not None:
             dfs = self._walk_dir(self._dividends_path, self._dividends_index)
