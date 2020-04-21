@@ -306,6 +306,7 @@ class CustomFactor(BaseFactor):
     _ref_count = 0
     _cache_stream = None
     _mask = None
+    _mask_out = None
     _force_delay = None
     _keep_cache = False
     _clean_required = False
@@ -348,6 +349,10 @@ class CustomFactor(BaseFactor):
         """ Mask fill all **INPUT** data to NaN """
         self._mask = mask
         self._total_backwards = None
+
+    def _get_computed_mask(self):
+        """ Allow subclass get the current mask result in compute() """
+        return self._regroup_by_other(self._mask, self._mask_out)
 
     def get_total_backwards_(self) -> int:
         if self._total_backwards is not None:
@@ -472,6 +477,7 @@ class CustomFactor(BaseFactor):
         mask_out = None
         if self._mask:
             mask_out = self._mask.compute_(self_stream)
+            self._mask_out = mask_out
         # Calculate inputs
         inputs = []
         if self.inputs:
@@ -494,6 +500,7 @@ class CustomFactor(BaseFactor):
         else:
             out = self.compute(*inputs)
 
+        self._mask_out = None
         if self._ref_count > 0:
             self._cache = out
         return out
