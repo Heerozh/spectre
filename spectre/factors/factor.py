@@ -431,7 +431,10 @@ class CustomFactor(BaseFactor):
 
         if mask_out is not None:
             mask = self._regroup_by_other(mask_factor, mask_out)
-            ret = ret.masked_fill(~mask, np.nan)
+            if ret.dtype == torch.bool:
+                ret = ret.masked_fill(~mask, False)
+            else:
+                ret = ret.masked_fill(~mask, np.nan)
 
         # if need rolling and adjustment
         if self.win > 1:
