@@ -16,3 +16,5 @@ from .algorithmic import (
     linear_regression_1d,
     quantile,
 )
+
+from .constants import DeviceConstant

@@ -6,15 +6,15 @@
 """
 from typing import Union, Iterable, Tuple, Dict
 import warnings
+import pandas as pd
+import numpy as np
+import torch
 from .factor import BaseFactor
 from .filter import FilterFactor, StaticAssets
 from .datafactor import ColumnDataFactor, AdjustedColumnDataFactor
 from ..plotting import plot_quantile_and_cumulative_returns, plot_chart
 from ..data import DataLoader
 from ..parallel import ParallelGroupBy
-import pandas as pd
-import numpy as np
-import torch
 
 
 class OHLCV:

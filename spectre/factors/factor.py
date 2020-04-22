@@ -352,7 +352,10 @@ class CustomFactor(BaseFactor):
 
     def _get_computed_mask(self):
         """ Allow subclass get the current mask result in compute() """
-        return self._regroup_by_other(self._mask, self._mask_out)
+        if self._mask_out is None:
+            return None
+        else:
+            return self._regroup_by_other(self._mask, self._mask_out)
 
     def get_total_backwards_(self) -> int:
         if self._total_backwards is not None:
@@ -661,7 +664,7 @@ class MaskedFillFactor(CustomFactor):
         if data.dtype != fill.dtype:
             fill = fill.type(data.dtype)
         ret = data.clone()
-        ret[mask] = fill[mask]
+        ret[mask] = fill[mask]  # very slow
         return ret
 
 

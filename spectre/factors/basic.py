@@ -59,9 +59,11 @@ class LinearWeightedAverage(CustomFactor):
         self.weight = torch.arange(1, self.win + 1).float()
         self.weight = self.weight / self.weight.sum()
 
-    def compute(self, base):
-        self.weight = self.weight.to(device=base.values.device, copy=False)
+    def pre_compute_(self, engine, start, end) -> None:
+        super().pre_compute_(engine, start, end)
+        self.weight = self.weight.to(device=engine.device, copy=False)
 
+    def compute(self, base):
         def _weight_mean(_base):
             return nansum(_base * self.weight, dim=2)
 

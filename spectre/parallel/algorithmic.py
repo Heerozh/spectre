@@ -7,6 +7,7 @@
 from typing import Callable, Tuple
 import torch
 import numpy as np
+from .constants import DeviceConstant
 
 
 class ParallelGroupBy:
@@ -138,9 +139,10 @@ def nanmin(data: torch.Tensor, dim=1) -> torch.Tensor:
 
 def masked_last(data: torch.Tensor, mask: torch.Tensor, dim=1, reverse=False) -> torch.Tensor:
     if reverse:
-        w = torch.linspace(0.1, 0.0, mask.shape[-1], dtype=torch.float, device=mask.device)
+        w = DeviceConstant.get(data.device).r_linspace(mask.shape[-1], dtype=torch.float)
     else:
-        w = torch.linspace(0.0, 0.1, mask.shape[-1], dtype=torch.float, device=mask.device)
+        w = DeviceConstant.get(data.device).linspace(mask.shape[-1], dtype=torch.float)
+
     w = mask.float() + w
     last = w.argmax(dim=dim)
     ret = data.gather(dim, last.unsqueeze(-1)).squeeze(-1)

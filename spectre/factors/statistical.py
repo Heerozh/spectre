@@ -11,6 +11,7 @@ from .factor import CustomFactor, CrossSectionFactor
 from .engine import OHLCV
 from ..parallel import (linear_regression_1d, quantile, pearsonr, unmasked_mean, unmasked_sum,
                         nanmean, nanstd, covariance)
+from ..parallel import DeviceConstant
 
 
 class StandardDeviation(CustomFactor):
@@ -48,7 +49,7 @@ class RollingLinearRegression(CustomFactor):
     def compute(self, x, y):
         def lin_reg(_y, _x=None):
             if _x is None:
-                _x = torch.arange(_y.shape[2], device=_y.device, dtype=_y.dtype)
+                _x = DeviceConstant.get(_y.device).arange(_y.shape[2], dtype=_y.dtype)
                 _x = _x.repeat(_y.shape[0], _y.shape[1], 1)
             m, b = linear_regression_1d(_x, _y, dim=2)
             return torch.cat([m.unsqueeze(-1), b.unsqueeze(-1)], dim=-1)
@@ -73,7 +74,7 @@ class RollingMomentum(CustomFactor):
 
     def compute(self, prices):
         def polynomial_reg(_y):
-            x = torch.arange(_y.shape[2], device=_y.device, dtype=_y.dtype)
+            x = DeviceConstant.get(_y.device).arange(_y.shape[2], dtype=_y.dtype)
             ones = torch.ones(x.shape[0], device=_y.device, dtype=_y.dtype)
             x = torch.stack([ones, x, x ** 2]).T.repeat(_y.shape[0], _y.shape[1], 1, 1)
 

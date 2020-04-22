@@ -986,12 +986,14 @@ class TestFactorLib(unittest.TestCase):
         universe = None
         df_prices = None
         engine = None
+        spectre.parallel.DeviceConstant.clean()
 
         import gc
         import torch
         gc.collect(2)
         gc.collect(2)
         torch.cuda.empty_cache()
+
         self.assertEqual(0, torch.cuda.memory_allocated())
 
     @unittest.skipUnless(os.getenv('COVERAGE_RUNNING'), "too slow, run manually")
