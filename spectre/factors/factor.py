@@ -346,7 +346,7 @@ class CustomFactor(BaseFactor):
             return cls(inputs=[*args[0:]])
 
     def set_mask(self, mask: BaseFactor = None):
-        """ Mask fill all **INPUT** data to NaN """
+        """ Input data mask, fill all unmasked **INPUT** data to NaN """
         self._mask = mask
         self._total_backwards = None
 
