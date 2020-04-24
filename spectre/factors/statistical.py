@@ -50,7 +50,7 @@ class RollingLinearRegression(CustomFactor):
         def lin_reg(_y, _x=None):
             if _x is None:
                 _x = DeviceConstant.get(_y.device).arange(_y.shape[2], dtype=_y.dtype)
-                _x = _x.repeat(_y.shape[0], _y.shape[1], 1)
+                _x = _x.expand(_y.shape[0], _y.shape[1], _x.shape[0])
             m, b = linear_regression_1d(_x, _y, dim=2)
             return torch.cat([m.unsqueeze(-1), b.unsqueeze(-1)], dim=-1)
         if x is None:
@@ -76,7 +76,8 @@ class RollingMomentum(CustomFactor):
         def polynomial_reg(_y):
             x = DeviceConstant.get(_y.device).arange(_y.shape[2], dtype=_y.dtype)
             ones = torch.ones(x.shape[0], device=_y.device, dtype=_y.dtype)
-            x = torch.stack([ones, x, x ** 2]).T.repeat(_y.shape[0], _y.shape[1], 1, 1)
+            x = torch.stack([ones, x, x ** 2]).T
+            x = x.expand(_y.shape[0], _y.shape[1], x.shape[0], x.shape[1])
 
             xt = x.transpose(-2, -1)
             ret = (xt @ x).inverse() @ xt @ _y.unsqueeze(-1)
@@ -150,7 +151,7 @@ class InformationCoefficient(CrossSectionFactor):
 
     def compute(self, x, y):
         ic = pearsonr(x, y, dim=1, ddof=1)
-        return ic.unsqueeze(-1).repeat(1, y.shape[1])
+        return ic.unsqueeze(-1).expand(ic.shape[0], y.shape[1])
 
     def to_ir(self, win):
         class RollingIC2IR(CustomFactor):
@@ -173,7 +174,7 @@ class CrossSectionR2(CrossSectionFactor):
         ss_tot = unmasked_sum((y - y_bar) ** 2, mask, dim=1)
         r2 = -ss_err / ss_tot + 1
         r2[(~mask).float().sum(dim=1) < 2] = np.nan
-        return r2.unsqueeze(-1).repeat(1, y.shape[1])
+        return r2.unsqueeze(-1).expand(r2.shape[0], y.shape[1])
 
 
 STDDEV = StandardDeviation

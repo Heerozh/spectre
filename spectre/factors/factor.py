@@ -309,7 +309,7 @@ class CustomFactor(BaseFactor):
     _mask_out = None
     _force_delay = None
     _keep_cache = False
-    _clean_required = False
+    _clean_required = None
     _total_backwards = None
 
     def __init__(self, win: Optional[int] = None, inputs: Optional[Sequence[BaseFactor]] = None):
@@ -333,6 +333,13 @@ class CustomFactor(BaseFactor):
         if not (self.win >= (self._min_win or 1)):
             raise ValueError('factor({}) win ({}) must  >= [_min_win({}) and 1]'.format(
                 str(self), self.win, self._min_win))
+
+        if self.inputs:
+            for ipt in self.inputs:
+                if isinstance(ipt, CustomFactor):
+                    if ipt._clean_required is not None:
+                        self._clean_required = ipt._clean_required
+                        break
 
     @classmethod
     def sequential(cls, *args):
@@ -394,6 +401,10 @@ class CustomFactor(BaseFactor):
 
     def clean_up_(self, force=False) -> None:
         super().clean_up_(force)
+        # brand new factor, no need to clean up
+        if self._clean_required is None:
+            return
+        # if not brand new, then maybe some child kept cache. force tell us cache expired.
         if not self._clean_required and not force:
             return
         self._clean_required = False
@@ -775,8 +786,8 @@ class MADClampFactor(CustomFactor):
         lower = median - self.z * mad
         upper_mask = data > upper
         lower_mask = data < lower
-        upper = upper.repeat(1, data.shape[1])
-        lower = lower.repeat(1, data.shape[1])
+        upper = upper.expand(upper.shape[0], data.shape[1])
+        lower = lower.expand(lower.shape[0], data.shape[1])
 
         ret[upper_mask] = upper[upper_mask]
         ret[lower_mask] = lower[lower_mask]
@@ -809,14 +820,14 @@ class WinsorizingFactor(CustomFactor):
             lower_k = int(fattened.shape[0] * self.z) + 1
             upper, _ = torch.kthvalue(fattened, upper_k, dim=0)
             lower, _ = torch.kthvalue(fattened, lower_k, dim=0)
-            upper = upper.repeat(data.shape[0]).unsqueeze(-1)
-            lower = lower.repeat(data.shape[0]).unsqueeze(-1)
+            upper = upper.expand(data.shape[0]).unsqueeze(-1)
+            lower = lower.expand(data.shape[0]).unsqueeze(-1)
         upper_mask = data > upper
         lower_mask = data < lower
 
         ret = data.clone()
-        upper = upper.repeat(1, data.shape[1])
-        lower = lower.repeat(1, data.shape[1])
+        upper = upper.expand(upper.shape[0], data.shape[1])
+        lower = lower.expand(lower.shape[0], data.shape[1])
 
         ret[upper_mask] = upper[upper_mask]
         ret[lower_mask] = lower[lower_mask]

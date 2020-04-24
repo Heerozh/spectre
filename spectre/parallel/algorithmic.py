@@ -166,7 +166,7 @@ def nanlast(data: torch.Tensor, dim=1, offset=0) -> torch.Tensor:
 
 def pad_2d(data: torch.Tensor) -> torch.Tensor:
     mask = torch.isnan(data)
-    idx = torch.arange(0, mask.shape[1], device=data.device).repeat(mask.shape[0], 1)
+    idx = torch.arange(0, mask.shape[1], device=data.device).expand(mask.shape[0], mask.shape[1])
     idx = idx.masked_fill(mask, 0)
     idx = np.maximum.accumulate(idx.cpu(), axis=1)  # replace to idx.cummax when pytorch 1.5 release
     idx = idx.to(device=data.device)

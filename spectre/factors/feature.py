@@ -21,7 +21,7 @@ class MarketDispersion(CrossSectionFactor):
 
     def compute(self, returns):
         ret = nanstd(returns, dim=1).unsqueeze(-1)
-        return ret.repeat(1, returns.shape[1])
+        return ret.expand(ret.shape[0], returns.shape[1])
 
 
 class MarketReturn(CrossSectionFactor):
@@ -31,7 +31,7 @@ class MarketReturn(CrossSectionFactor):
 
     def compute(self, returns):
         ret = nanmean(returns, dim=1).unsqueeze(-1)
-        return ret.repeat(1, returns.shape[1])
+        return ret.expand(ret.shape[0], returns.shape[1])
 
 
 class MarketVolatility(CustomFactor):
@@ -53,7 +53,7 @@ class AdvanceDeclineRatio(CrossSectionFactor):
         advancing = nansum(returns > 0, dim=1)
         declining = nansum(returns < 0, dim=1)
         ratio = (advancing / declining).unsqueeze(-1)
-        return ratio.repeat(1, returns.shape[1])
+        return ratio.expand(ratio.shape[0], returns.shape[1])
 
 
 # ----------- Asset-specific data -----------
@@ -75,7 +75,7 @@ class AssetData(CustomFactor):
 
     def compute(self, data):
         ret = data[self.asset_ind]
-        return ret.repeat(data.shape[0], 1)
+        return ret.expand(data.shape[0], ret.shape[0])
 
 
 # ----------- Common Calendar Features -----------

@@ -312,10 +312,11 @@ class FactorEngine:
         if filter_:
             max_backwards = max(max_backwards, filter_.get_total_backwards_())
 
-        # copy data to tensor, if any data copied,  return True
+        # copy data to tensor, if any data copied, return True
         force_cleanup = self._prepare_tensor(start, end, max_backwards)
 
-        # clean up before start
+        # clean up before start, and if _prepare_tensor returns new data,
+        # then force clean up any caches in sub factors
         if filter_:
             filter_.clean_up_(force_cleanup)
         for f in factors.values():
