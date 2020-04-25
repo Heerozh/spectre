@@ -17,6 +17,7 @@ from .datafactor import (
     ColumnDataFactor,
     AdjustedColumnDataFactor,
     AssetClassifierDataFactor,
+    SeriesDataFactor,
     DatetimeDataFactor,
 )
 

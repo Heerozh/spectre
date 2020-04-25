@@ -4,10 +4,12 @@
 @license: Apache 2.0
 @email: heeroz@gmail.com
 """
+import torch
+import pandas as pd
+
 from typing import Optional, Sequence, Union
 from ..parallel import nanlast
 from .factor import BaseFactor, CustomFactor
-import torch
 
 
 class ColumnDataFactor(BaseFactor):
@@ -67,7 +69,7 @@ class AdjustedColumnDataFactor(CustomFactor):
 
 
 class AssetClassifierDataFactor(BaseFactor):
-    """Dict to categorical output for asset, slow"""
+    """ Dict to categorical output for asset, slow """
     def __init__(self, sector: dict, default: int):
         super().__init__()
         self.sector = sector
@@ -100,8 +102,26 @@ class AssetClassifierDataFactor(BaseFactor):
         pass
 
 
+class SeriesDataFactor(ColumnDataFactor):
+    """ Add series to engine, slow """
+    def __init__(self, series: pd.Series, fill_na=None, should_delay=True):
+        self.series = series
+        self.fill_na = fill_na
+        assert series.index.names == ['date', 'asset'], \
+            "df.index.names should be ['date', 'asset'] "
+        super().__init__(inputs=[str(series.name)], should_delay=should_delay)
+
+    def pre_compute_(self, engine, start, end) -> None:
+        if self.series.name not in engine.dataframe_.columns:
+            engine._dataframe = engine.dataframe_.join(self.series)
+            if self.fill_na is not None:
+                engine._dataframe[self.series.name] = engine._dataframe[self.series.name].\
+                    groupby(level=1).fillna(method=self.fill_na)
+        super().pre_compute_(engine, start, end)
+
+
 class DatetimeDataFactor(BaseFactor):
-    """Datetime's attr to DataFactor"""
+    """ Datetime's attr to DataFactor """
     _instance = {}
 
     def __new__(cls, attr):
