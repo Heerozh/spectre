@@ -184,7 +184,7 @@ class BaseFactor:
         return ProdFactor(win, inputs=(self,))
 
     def filter(self, mask: 'BaseFactor'):
-        """ Local filter, fills elements of self with NaN where mask is False. """
+        """ Local filter, fill unmasked elements with NaNs. """
         mf = DoNothingFactor(inputs=(self,))
         mf.set_mask(mask)
         return mf

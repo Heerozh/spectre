@@ -138,7 +138,7 @@ factors.BBANDS(win=5).normalized().rank().zscore().show_graph()
 The thickness of the line represents the length of the Rolling Window, kind of like "bandwidth".
 
 If `engine.to_cuda(enable_stream=True)`, the calculation of the branches will be performed
-simultaneously, but the VRAM usage will increase proportionally. 
+simultaneously, but the VRAM usage will increase proportionally.
 
 ### Compatible with alphalens
 
@@ -236,25 +236,25 @@ pf.create_full_tear_sheet(results.returns, positions=results.positions.value, tr
 ## Note
 
 ### Differences to zipline:
-* In order to GPU optimize, the `CustomFactor.compute` function calculates the results of all bars 
-  at once, so you need to be careful to prevent Look-Ahead Bias, because the inputs are not just 
+* In order to GPU optimize, the `CustomFactor.compute` function calculates the results of all bars
+  at once, so you need to be careful to prevent Look-Ahead Bias, because the inputs are not just
   historical data. Also using `engine.test_lookahead_bias` do some tests.
 * spectre's normally using float32 data type for GPU performance.
-* spectre FactorEngine arranges data by bars, so `Return(win=10)` means 10 bars return, may 
-  actually be more than 10 days if some assets not open trading in period. You can change this 
-  behavior by aligning data: filling missing bars with NaNs in your DataLoader, please refer to the 
+* spectre FactorEngine arranges data by bars, so `Return(win=10)` means 10 bars return, may
+  actually be more than 10 days if some assets not open trading in period. You can change this
+  behavior by aligning data: filling missing bars with NaNs in your DataLoader, please refer to the
   `align_by_time` parameter of `CsvDirLoader`.
 
 
 ### Differences to common chart:
-* If there is adjustments data, the prices is re-adjusted every day, so the factor you got, like MA, 
+* If there is adjustments data, the prices is re-adjusted every day, so the factor you got, like MA,
   will be different from the stock chart software which only adjusted according to last day.
   If you want adjusted by last day, use like 'AdjustedColumnDataFactor(OHLCV.close)' as input data.
   This will speeds up a lot because it only needs to be adjusted once, but brings Look-Ahead Bias.
 * Factors that uses the close data will be delayed by 1 bar.
-* spectre's `EMA` uses the algorithm same as `zipline` and `Dataframe.ewm(span=...)`, when `span` is 
+* spectre's `EMA` uses the algorithm same as `zipline` and `Dataframe.ewm(span=...)`, when `span` is
   greater than 100, it will be slightly different from common EMA.
-* spectre's `RSI` uses the algorithm same as `zipline`, for consistency in benchmarks. 
+* spectre's `RSI` uses the algorithm same as `zipline`, for consistency in benchmarks.
 
 
 ## Factors
@@ -284,7 +284,7 @@ RollingLow = MIN(win=5, inputs=[OHLCV.close])
 
 ```python
 # Standardization
-new_factor = factor.rank(mask=filter)   
+new_factor = factor.rank(mask=filter)
 new_factor = factor.demean(mask=filter, groupby: 'dict or column_name'=None)
 new_factor = factor.zscore(mask=filter)
 new_factor = factor.to_weight(mask=filter, demean=True)  # return a weight that sum(abs(weight)) = 1
@@ -306,14 +306,14 @@ new_filter = factor.bottom(n)
 new_filter = StaticAssets({'AAPL', 'MSFT'})
 
 # Local filter
-new_factor = factor.filter(some_filter)   # fills elements of self with NaN where mask is False
+new_factor = factor.filter(mask=filter_factor)   # fill self unmasked elements with NaNs
 
 # Multiple returns selecting
 new_factor = factor[0]
 
 # Others
 new_factor = factor.shift(1)
-new_factor = factor.quantile(bins=5)  # factor value quantile groupby datetime
+new_factor = factor.quantile(bins=5)  # factor value cross section quantile
 new_factor = factor.fill_na(0)
 new_factor = factor.fill_na(ffill=True)  # propagate last valid observation forward to next valid
 
@@ -333,7 +333,7 @@ Read CSV files in the directory, each file represents an asset.
 
 Reading csv is very slow, so you also need to use [ArrowLoader](#arrowloader).
 
-**prices_path:** Prices csv folder. When encountering duplicate datetime in `prices_index`, 
+**prices_path:** Prices csv folder. When encountering duplicate datetime in `prices_index`,
     Loader will keep the last, drop others.\
 **prices_index:** `index_col`for csv in `prices_path`\
 **prices_by_year:** If prices file name like 'spy_2017.csv', set this to True\
@@ -359,8 +359,8 @@ Reading csv is very slow, so you also need to use [ArrowLoader](#arrowloader).
 **earliest_date:** Data before this date will not be read, save memory.\
 **calender_asset:** Asset name as trading calendar, like 'SPY', for clean up non-trading
     time data.\
-**align_by_time:** If True and `calender_asset` is not None, the index of datetime will be the same 
-   for all assets, if some assets have no data at that time, NaNs will be filled. The benefit is 
+**align_by_time:** If True and `calender_asset` is not None, the index of datetime will be the same
+   for all assets, if some assets have no data at that time, NaNs will be filled. The benefit is
    that the columns of data matrix in `CustomFactor.compute` will also be aligned.\
 **\*\*read_csv:** Parameters for all csv when calling `pd.read_csv`.
  `parse_dates` or `date_parser` is required.
@@ -370,13 +370,13 @@ Example for load [IEX](https://github.com/Heerozh/iex_fetcher) CSV files:
 ```python
 usecols = {'date', 'uOpen', 'uHigh', 'uLow', 'uClose', 'uVolume', 'exDate', 'amount', 'ratio'}
 csv_loader = spectre.data.CsvDirLoader(
-    './iex/daily/', calender_asset='SPY', 
-    dividends_path='./iex/dividends/', 
+    './iex/daily/', calender_asset='SPY',
+    dividends_path='./iex/dividends/',
     splits_path='./iex/splits/',
     ohlcv=('uOpen', 'uHigh', 'uLow', 'uClose', 'uVolume'), adjustments=('amount', 'ratio'),
-    prices_index='date', dividends_index='exDate', splits_index='exDate', 
+    prices_index='date', dividends_index='exDate', splits_index='exDate',
     parse_dates=True, usecols=lambda x: x in usecols,
-    dtype={'uOpen': np.float32, 'uHigh': np.float32, 'uLow': np.float32, 'uClose': np.float32, 
+    dtype={'uOpen': np.float32, 'uHigh': np.float32, 'uLow': np.float32, 'uClose': np.float32,
            'uVolume': np.float64, 'amount': np.float64, 'ratio': np.float64})
 ```
 
@@ -407,9 +407,9 @@ ArrowLoader.ingest(source=QuandlLoader('WIKI_PRICES.zip'),
 
 ### How to write your own DataLoader
 
-Inherit from `DataLoader`, overriding the `_load` method, read data into a large `DataFrame`, 
-index is `MultiIndex ['date', 'asset']`, where date is `Datetime` type, `asset` is `string` type, 
-and then call `self._format(df, split_ratio_is_inverse)` to format the data. 
+Inherit from `DataLoader`, overriding the `_load` method, read data into a large `DataFrame`,
+index is `MultiIndex ['date', 'asset']`, where date is `Datetime` type, `asset` is `string` type,
+and then call `self._format(df, split_ratio_is_inverse)` to format the data.
 Also call `test_load` in your test case to do basic format testing.
 
 For example, suppose you have a csv file that contains data for all assets:
@@ -462,7 +462,7 @@ Add a factor to engine.
 
 `engine.set_filter(factor: FilterFactor or None)`
 
-Set the Global Filter, engine deletes rows which Global Filter returns as False at the last step, 
+Set the Global Filter, engine deletes rows which Global Filter returns as False at the last step,
 affect all factors.
 
 
@@ -470,8 +470,8 @@ affect all factors.
 
 `engine.align_by_time = bool`
 
-Same as `CsvDirLoader(align_by_time=True)`, but it's dynamic. Notes: Very slow on large amounts of 
-data, and if the data source is already aligned, this method cannot make it return to unaligned. 
+Same as `CsvDirLoader(align_by_time=True)`, but it's dynamic. Notes: Very slow on large amounts of
+data, and if the data source is already aligned, this method cannot make it return to unaligned.
 
 
 ### FactorEngine.clear
@@ -504,8 +504,8 @@ Switch to CPU mode.
 Run the engine to calculate the factor data, return a DataFrame. The column is each added factor.
 
 #### *Auto Delay
-By default, `delay_factor` is True, it means enable auto-delay. If 'high, low, close, volume' data 
-is used by a terminal factor (including its upstream), that factor will be delayed by `shift(1)` 
+By default, `delay_factor` is True, it means enable auto-delay. If 'high, low, close, volume' data
+is used by a terminal factor (including its upstream), that factor will be delayed by `shift(1)`
 in the last step, because in theory you can't trade on this factor before it generated. Others
 will not be delayed, in order to provide the latest data as much as possible.
 
@@ -515,13 +515,13 @@ Set to `False` to force engine not delay any factors.
 ### FactorEngine.plot_chart
 
 `engine.plot_chart(start_time, end_time, trace_types=None, styles=None, delay_factor=True)`
-    
+
 Plotting common stock price chart for researching.
 
-`trace_types`: `dict(factor_name=plotly_trace_type)`, trace type can be 'Bar', or 'Scatter', 
+`trace_types`: `dict(factor_name=plotly_trace_type)`, trace type can be 'Bar', or 'Scatter',
 default is 'Scatter'.
 
-`styles`: `dict(factor_name=plotly_trace_styles)`, add the trace styles, please refer 
+`styles`: `dict(factor_name=plotly_trace_styles)`, add the trace styles, please refer
 to plotly documentation: [Scatter traces](https://plot.ly/python/reference/#scatter)
 
 
@@ -544,8 +544,8 @@ _ = engine.plot_chart('2017', '2018', styles={
               'yaxis': 'y3',  # y1: price axis, y2: volume axis, yN: add new y-axis
               'line': {'width': 1}
            },
-    'Buy': { 
-              'mode': 'markers', 
+    'Buy': {
+              'mode': 'markers',
               'marker': { 'symbol': 'triangle-up', 'size': 10, 'color': 'rgba(0, 0, 255, 0.5)' }
            }
 })
@@ -559,7 +559,7 @@ _ = engine.plot_chart('2017', '2018', styles={
 `factor_data, mean_returns = engine.full_run(
     start_time, end_time, trade_at='close', periods=(1, 4, 9),
     quantiles=5, filter_zscore=20, demean=True, preview=True)`
-    
+
 Not only run the engine, but also run factor analysis.
 
 
@@ -587,7 +587,7 @@ You can use `ColumnDataFactor` to represents data from any column in the `DataLo
 
 `spectre.factors.ColumnDataFactor(inputs=['col_name'])`
 
-`factors.OHLCV.close` is just a sugar way to write 
+`factors.OHLCV.close` is just a sugar way to write
 `spectre.factors.ColumnDataFactor (inputs = [data_loader.ohlcv[3]])`.
 
 
@@ -598,9 +598,9 @@ Inherit from `factors.CustomFactor`, write `compute` function.
 All `inputs` will pass to compute function.
 
 ### win = 1
-When `win = 1`, the `inputs` data is tensor type, the first dimension of data is the asset, the 
-second dimension is each bar price data. Note that if the data is `align_by_time=False`, the number 
-of bars for each asset is different and not aligned (for example, the time for each price in bar_t3 
+When `win = 1`, the `inputs` data is tensor type, the first dimension of data is the asset, the
+second dimension is each bar price data. Note that if the data is `align_by_time=False`, the number
+of bars for each asset is different and not aligned (for example, the time for each price in bar_t3
 column may be inconsistent).
 
         +-----------------------------------+
@@ -612,7 +612,7 @@ column may be inconsistent).
         +-----------------------------------+
 Example of LogReturns:
 ```python
-from spectre import factors 
+from spectre import factors
 import torch
 class LogReturns(factors.CustomFactor):
     inputs = [factors.Returns(2, inputs=[factors.OHLCV.close])]
@@ -641,7 +641,7 @@ class OvernightReturn(factors.CustomFactor):
 ```
 The `closes.first()` above is just a helper method for `closes.agg(lambda x: x[:, :, 0])`,
 where `x[:, :, 0]` return the first element of rolling window. The first dimension of `x` is the
-asset, the second dimension is each bar, and the third dimension is the bar price and historical 
+asset, the second dimension is each bar, and the third dimension is the bar price and historical
 price with `win` length, and `Rolling.agg` runs on all the chunks and combines them.
 
         +------------------win=3-------------------+
@@ -708,7 +708,7 @@ Called when back-testing ends.
 `rebalance(self, data: pd.DataFrame, history: pd.DataFrame)` **Callback**
 
 The function name does not have to be 'rebalance', it can be specified in `schedule_rebalance`.
-`data` is the factors data of last bar returned by `FactorEngine`; 
+`data` is the factors data of last bar returned by `FactorEngine`;
 `history` same as `data`, but contains previous data, please refer to `set_history_window`.
 
 Put calculations into the `FactorEngine` as much as possible can improve backtest performance.
@@ -719,7 +719,7 @@ Put calculations into the `FactorEngine` as much as possible can improve backtes
 `self.get_factor_engine(name: str = None)`
 **context:** *initialize, rebalance, terminate*
 
-Get the factor engine of this trading algorithm. But note that you can add factors or filter only 
+Get the factor engine of this trading algorithm. But note that you can add factors or filter only
 during `initialize`, otherwise it will cause unexpected effects.
 
 The algorithm has a default engine, `name` can be None.
@@ -757,7 +757,7 @@ For example:
 alg.schedule_rebalance(trading.event.MarketClose(self.any_function))
 ```
 
-The `Market*` events has `offset_ns` parameter `MarketClose(self.any_function, offset_ns=-1000)`, 
+The `Market*` events has `offset_ns` parameter `MarketClose(self.any_function, offset_ns=-1000)`,
 a negative value of `offset_ns` means 'before', in backtest mode, the magnitude of the value has no
 effect.
 
@@ -766,7 +766,7 @@ effect.
 
 `self.schedule(event: Event)`
 **context:** *initialize*
-   
+
 Schedule an event, callback is `callback(source: "Any class who fired this event")`
 
 
@@ -775,8 +775,8 @@ Schedule an event, callback is `callback(source: "Any class who fired this event
 `self.empty_cache_after_run = True`
 **context:** *initialize*
 
-Empty engine's cache after factor calculation. 
-If you need more VRMA in rebalance context, or wanna play 3D game when backtesting, set it to 
+Empty engine's cache after factor calculation.
+If you need more VRMA in rebalance context, or wanna play 3D game when backtesting, set it to
 True will help.
 
 
@@ -793,7 +793,7 @@ Stop backtesting or live trading.
 `alg.fire_event(event_type: Type[Event])`
 **context:** *all*
 
-Trigger a type of event (any subclasses that inherit from `Event`）, 
+Trigger a type of event (any subclasses that inherit from `Event`）,
 for example: `alg.fire_event(MarketClose)`, (do not do this, do not fire built-in events)
 
 
@@ -872,7 +872,7 @@ Set the transaction fees which only charged for sell orders.
 
 ### SimulationBlotter.daily_curb
 
-`self.blotter.daily_curb = float` 
+`self.blotter.daily_curb = float`
 **context:** *initialize, rebalance*
 
 Limit on trading a specific asset if today to previous day return >= ±value. **SLOW**
@@ -880,7 +880,7 @@ Limit on trading a specific asset if today to previous day return >= ±value. **
 
 ### SimulationBlotter.order_target
 
-`self.blotter.order_target(asset: str, target: number)` 
+`self.blotter.order_target(asset: str, target: number)`
 **context:** *rebalance*
 
 Place an order on an asset to target number of shares in position, negative number means short.
@@ -890,18 +890,18 @@ If asset cannot be traded or limited by `daily_curb`, it will return False.
 
 ### SimulationBlotter.batch_order_target
 
-`self.blotter.batch_order_target(asset: Iterable[str], target: Iterable[float])` 
+`self.blotter.batch_order_target(asset: Iterable[str], target: Iterable[float])`
 **context:** *rebalance*
 
 Same as `SimulationBlotter.order_target`, but for multiple assets.
 
-Return value is a list of skipped assets, which indicate that they cannot be traded or limited by 
+Return value is a list of skipped assets, which indicate that they cannot be traded or limited by
 `daily_curb`.
 
 
 ### SimulationBlotter.order_target_percent
 
-`self.blotter.order_target_percent(asset: str, pct: float)` 
+`self.blotter.order_target_percent(asset: str, pct: float)`
 **context:** *rebalance*
 
 Place an order on an asset to target percentage of portfolio net value, negative number means short.
@@ -911,18 +911,18 @@ If asset cannot be traded or limited by `daily_curb`, it will return False.
 
 ### SimulationBlotter.batch_order_target_percent
 
-`self.blotter.batch_order_target_percent(asset: Iterable[str], pct: Iterable[float])` 
+`self.blotter.batch_order_target_percent(asset: Iterable[str], pct: Iterable[float])`
 **context:** *rebalance*
 
 Same as `SimulationBlotter.order_target_percent`, but for multiple assets and better performance.
 
-Return value is a list of skipped assets, which indicate that they cannot be traded or limited by 
+Return value is a list of skipped assets, which indicate that they cannot be traded or limited by
 `daily_curb`.
 
 
 ### SimulationBlotter.order
 
-`self.blotter.order(asset: str, amount: int)` 
+`self.blotter.order(asset: str, amount: int)`
 **context:** *rebalance*
 
 Order a certain amount of an asset, negative number means short.
@@ -932,17 +932,17 @@ If asset cannot be traded or limited by `daily_curb`, it will return False.
 
 ### SimulationBlotter.get_price
 
-`float = self.blotter.get_price(asset: Union[str, Iterable])` 
+`float = self.blotter.get_price(asset: Union[str, Iterable])`
 **context:** *rebalance*
 
-Get current price of assert. 
+Get current price of assert.
 *Notice: Batch calls are slow, You can add prices as factor to get the price,
 like: `engine.add(OHLCV.close, 'prices')`*
 
 
 ### SimulationBlotter.portfolio.set_stop_model
 
-`self.blotter.portfolio.set_stop_model(model: StopModel)` 
+`self.blotter.portfolio.set_stop_model(model: StopModel)`
 **context:** *initialize*
 
 Set stop tracking model for positions, models are:
@@ -972,13 +972,13 @@ class Backtester(trading.CustomAlgorithm):
 
 This is a model that can stop gain and stop loss at the same time.
 
-Exponential decay to the stop ratio: `ratio * decay_rate ^ (PnL% / PnL_target%)`, 
-So `PnLDecayTrailingStopModel(-0.1, 0.1, callback)` means initial stop loss is -10%, and the 
-`ratio` will decrease when profit% approaches the target +10%. If recorded high profit% exceeds 10%, 
+Exponential decay to the stop ratio: `ratio * decay_rate ^ (PnL% / PnL_target%)`,
+So `PnLDecayTrailingStopModel(-0.1, 0.1, callback)` means initial stop loss is -10%, and the
+`ratio` will decrease when profit% approaches the target +10%. If recorded high profit% exceeds 10%,
 any drawdown will trigger a stop loss.
 
 #### TimeDecayTrailingStopModel
-`trading.TimeDecayTrailingStopModel(ratio, period_target: pd.Timedelta, callback, decay_rate=0.05, 
+`trading.TimeDecayTrailingStopModel(ratio, period_target: pd.Timedelta, callback, decay_rate=0.05,
 max_decay=0)`
 
 Same as `PnLDecayTrailingStopModel`, but target is time period.
