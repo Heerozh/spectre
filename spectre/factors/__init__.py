@@ -64,7 +64,7 @@ from .statistical import (
     RollingCorrelation,
     RollingCovariance,
     InformationCoefficient,
-    CrossSectionR2,
+    CrossSectionR2, CrossSectionTotalR2,
 )
 
 from .feature import (

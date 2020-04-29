@@ -177,6 +177,16 @@ class CrossSectionR2(CrossSectionFactor):
         return r2.unsqueeze(-1).expand(r2.shape[0], y.shape[1])
 
 
+class CrossSectionTotalR2(CrossSectionR2):
+    def compute(self, y, y_pred):
+        mask = torch.isnan(y_pred) | torch.isnan(y)
+        ss_err = unmasked_sum((y - y_pred) ** 2, mask, dim=1)
+        ss_tot = unmasked_sum(y ** 2, mask, dim=1)
+        r2 = -ss_err / ss_tot + 1
+        r2[(~mask).float().sum(dim=1) < 2] = np.nan
+        return r2.unsqueeze(-1).expand(r2.shape[0], y.shape[1])
+
+
 STDDEV = StandardDeviation
 MAX = RollingHigh
 MIN = RollingLow
