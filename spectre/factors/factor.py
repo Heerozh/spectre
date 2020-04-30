@@ -674,9 +674,7 @@ class MaskedFillFactor(CustomFactor):
             return data.masked_fill(mask, fill)
         if data.dtype != fill.dtype:
             fill = fill.type(data.dtype)
-        ret = data.clone()
-        ret[mask] = fill[mask]  # very slow
-        return ret
+        return data.masked_scatter(mask, fill[mask])
 
 
 class DoNothingFactor(CustomFactor):
@@ -789,8 +787,8 @@ class MADClampFactor(CustomFactor):
         upper = upper.expand(upper.shape[0], data.shape[1])
         lower = lower.expand(lower.shape[0], data.shape[1])
 
-        ret[upper_mask] = upper[upper_mask]
-        ret[lower_mask] = lower[lower_mask]
+        ret.masked_scatter_(upper_mask, upper[upper_mask])
+        ret.masked_scatter_(lower_mask, lower[lower_mask])
         return ret
 
 
@@ -829,8 +827,8 @@ class WinsorizingFactor(CustomFactor):
         upper = upper.expand(upper.shape[0], data.shape[1])
         lower = lower.expand(lower.shape[0], data.shape[1])
 
-        ret[upper_mask] = upper[upper_mask]
-        ret[lower_mask] = lower[lower_mask]
+        ret.masked_scatter_(upper_mask, upper[upper_mask])
+        ret.masked_scatter_(lower_mask, lower[lower_mask])
         return ret
 
 
