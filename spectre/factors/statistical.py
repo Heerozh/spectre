@@ -164,24 +164,18 @@ class InformationCoefficient(CrossSectionFactor):
 
 
 class CrossSectionR2(CrossSectionFactor):
-    def __init__(self, y, y_pred, mask):
+    def __init__(self, y, y_pred, mask, total_r2=False):
         super().__init__(win=1, inputs=[y, y_pred], mask=mask)
+        self.total_r2 = total_r2
 
     def compute(self, y, y_pred):
         mask = torch.isnan(y_pred) | torch.isnan(y)
-        y_bar = unmasked_mean(y, mask, dim=1).unsqueeze(-1)
         ss_err = unmasked_sum((y - y_pred) ** 2, mask, dim=1)
-        ss_tot = unmasked_sum((y - y_bar) ** 2, mask, dim=1)
-        r2 = -ss_err / ss_tot + 1
-        r2[(~mask).float().sum(dim=1) < 2] = np.nan
-        return r2.unsqueeze(-1).expand(r2.shape[0], y.shape[1])
-
-
-class CrossSectionTotalR2(CrossSectionR2):
-    def compute(self, y, y_pred):
-        mask = torch.isnan(y_pred) | torch.isnan(y)
-        ss_err = unmasked_sum((y - y_pred) ** 2, mask, dim=1)
-        ss_tot = unmasked_sum(y ** 2, mask, dim=1)
+        if self.total_r2:
+            ss_tot = unmasked_sum(y ** 2, mask, dim=1)
+        else:
+            y_bar = unmasked_mean(y, mask, dim=1).unsqueeze(-1)
+            ss_tot = unmasked_sum((y - y_bar) ** 2, mask, dim=1)
         r2 = -ss_err / ss_tot + 1
         r2[(~mask).float().sum(dim=1) < 2] = np.nan
         return r2.unsqueeze(-1).expand(r2.shape[0], y.shape[1])

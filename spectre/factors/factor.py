@@ -575,7 +575,7 @@ class CrossSectionFactor(CustomFactor, ABC):
         assert self.win == 1, 'CrossSectionFactor.win can only be 1'
 
     def __getitem__(self, key):
-        return MultiRetSelectorCS(inputs=(self, key))
+        return MultiRetSelectorXS(inputs=(self, key))
 
 
 # --------------- helper factors ---------------
@@ -592,7 +592,7 @@ class MultiRetSelector(CustomFactor):
         return data[:, :, key]
 
 
-class MultiRetSelectorCS(MultiRetSelector, CrossSectionFactor):
+class MultiRetSelectorXS(MultiRetSelector, CrossSectionFactor):
     pass
 
 
