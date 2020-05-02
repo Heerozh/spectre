@@ -800,6 +800,8 @@ class WinsorizingFactor(CustomFactor):
         if self.by_row:
             upper_k = int(data.shape[1] * (1 - self.z)) - 1
             lower_k = int(data.shape[1] * self.z) + 1
+            if not (0 < upper_k < data.shape[1]) or not (0 < lower_k < data.shape[1]):
+                return data
             nans = torch.isnan(data)
             upper, _ = torch.kthvalue(data.masked_fill(nans, -np.inf), upper_k, dim=1)
             lower, _ = torch.kthvalue(data.masked_fill(nans, np.inf), lower_k, dim=1)
@@ -816,6 +818,8 @@ class WinsorizingFactor(CustomFactor):
             fattened = fattened[~torch.isnan(fattened)]
             upper_k = int(fattened.shape[0] * (1 - self.z)) - 1
             lower_k = int(fattened.shape[0] * self.z) + 1
+            if not (0 < upper_k < fattened.shape[0]) or not (0 < lower_k < fattened.shape[0]):
+                return data
             upper, _ = torch.kthvalue(fattened, upper_k, dim=0)
             lower, _ = torch.kthvalue(fattened, lower_k, dim=0)
             upper = upper.expand(data.shape[0]).unsqueeze(-1)

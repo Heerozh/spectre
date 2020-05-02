@@ -91,8 +91,8 @@ class FactorEngine:
     def _prepare_tensor(self, start, end, max_backwards):
         # Check cache, just in case, if use some ML techniques, engine may be called repeatedly
         # with same date range.
-        if start == self._last_load[0] and end == self._last_load[1] \
-                and max_backwards <= self._last_load[2]:
+        if start == self._last_loaded[0] and end == self._last_loaded[1] \
+                and max_backwards <= self._last_loaded[2]:
             return False
         self._groups = dict()
 
@@ -138,9 +138,9 @@ class FactorEngine:
         self._column_cache = {}
         if isinstance(self._filter, StaticAssets):
             # if pre-screened, don't cache data, only cache full data.
-            self._last_load = [None, None, None]
+            self._last_loaded = [None, None, None]
         else:
-            self._last_load = [start, end, max_backwards]
+            self._last_loaded = [start, end, max_backwards]
         return True
 
     def _compute_and_revert(self, f: BaseFactor, name) -> torch.Tensor:
@@ -157,7 +157,7 @@ class FactorEngine:
         self._dataframe = None
         self._dataframe_index = None
         self._groups = dict()
-        self._last_load = [None, None, None]
+        self._last_loaded = [None, None, None]
         self._column_cache = {}
         self._factors = {}
         self._filter = None
@@ -224,7 +224,7 @@ class FactorEngine:
         self.set_filter(None)
 
     def empty_cache(self):
-        self._last_load = [None, None, None]
+        self._last_loaded = [None, None, None]
         self._column_cache = {}
         self._groups = dict()
         self._dataframe = None
@@ -261,10 +261,7 @@ class FactorEngine:
             self._dataframe.loc[mid_right:, col] = np.random.randn(length)
         self._column_cache = {}
         # hack to disable reload _dataframe
-        max_backwards = max([f.get_total_backwards_() for f in self._factors.values()])
-        if self._filter:
-            max_backwards = max(max_backwards, self._filter.get_total_backwards_())
-        self._last_load = [start, end, max_backwards]
+        self._last_loaded = [start, end, np.inf]
         # check if results are consistent
         df = self.run(start, end)
         # clean
