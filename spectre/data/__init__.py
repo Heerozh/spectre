@@ -8,6 +8,9 @@ from .arrow import (
 from .csv import (
     CsvDirLoader,
 )
+from .memory import (
+    MemoryLoader,
+)
 from .quandl import (
     QuandlLoader,
 )

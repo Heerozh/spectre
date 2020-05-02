@@ -146,11 +146,22 @@ class RollingCovariance(CustomFactor):
 
 
 class InformationCoefficient(CrossSectionFactor):
-    def __init__(self, x, y, mask=None):
-        super().__init__(win=1, inputs=[x, y], mask=mask)
+    def __init__(self, x, y, mask=None, weight=None):
+        super().__init__(win=1, inputs=[x, y, weight], mask=mask)
 
-    def compute(self, x, y):
-        ic = pearsonr(x, y, dim=1, ddof=1)
+    def compute(self, x, y, weight):
+        if weight is None:
+            ic = pearsonr(x, y, dim=1, ddof=1)
+        else:
+            xy = x * y
+            mask = torch.isnan(x * y)
+            w = weight / unmasked_sum(weight, mask=mask, dim=1).unsqueeze(-1)
+            x_bar = unmasked_sum(w * x, mask=mask, dim=1)
+            y_bar = unmasked_sum(w * y, mask=mask, dim=1)
+            cov_xy = unmasked_sum(w * xy, mask=mask, dim=1) - x_bar * y_bar
+            var_x = unmasked_sum(w * x ** 2, mask=mask, dim=1) - x_bar ** 2
+            var_y = unmasked_sum(w * y ** 2, mask=mask, dim=1) - y_bar ** 2
+            ic = cov_xy / (var_x * var_y) ** 0.5
         return ic.unsqueeze(-1).expand(ic.shape[0], y.shape[1])
 
     def to_ir(self, win):
@@ -161,6 +172,14 @@ class InformationCoefficient(CrossSectionFactor):
                     return nanmean(_ic, dim=2) / nanstd(_ic, dim=2, ddof=1)
                 return ic.agg(_to_ir)
         return RollingIC2IR(win=win, inputs=[self])
+
+
+class RankWeightedInformationCoefficient(InformationCoefficient):
+    def __init__(self, x, y, half_life, mask=None):
+        alpha = np.exp((np.log(0.5) / half_life))
+        y_rank = y.rank(ascending=False) - 1
+        weight = alpha ** y_rank
+        super().__init__(x, y, mask=mask, weight=weight)
 
 
 class CrossSectionR2(CrossSectionFactor):

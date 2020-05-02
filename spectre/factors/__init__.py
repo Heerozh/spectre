@@ -63,7 +63,7 @@ from .statistical import (
     HalfLifeMeanReversion,
     RollingCorrelation,
     RollingCovariance,
-    InformationCoefficient,
+    InformationCoefficient, RankWeightedInformationCoefficient,
     CrossSectionR2,
 )
 

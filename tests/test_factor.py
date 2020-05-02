@@ -533,7 +533,8 @@ class TestFactorLib(unittest.TestCase):
         y = torch.tensor([[1., 3, 2, 4, 6, 5, 7, 9],
                           [1., np.nan, np.nan, np.nan, np.nan, np.nan, np.nan, np.nan]])
         y_hat = torch.tensor([1., 2, 3, 4, 5, 6, 7, 8]).repeat(2, 1)
-        ret = spectre.factors.CrossSectionR2.compute(None, y, y_hat)
+        xsr2 = spectre.factors.CrossSectionR2(None, None, None)
+        ret = xsr2.compute(y, y_hat)
         from sklearn.metrics import r2_score
         expected = r2_score(y[0], y_hat[0])
         assert_almost_equal(expected, ret[0, 0])
@@ -727,6 +728,45 @@ class TestFactorLib(unittest.TestCase):
             pd.qcut(data.values[0, 1], 5, labels=False)[-1],
             pd.qcut(data.values[0, 2], 5, labels=False)[-1]]
         assert_array_equal(result[0], expected)
+
+    def test_ic(self):
+        # test InformationCoefficient
+        data = np.array([
+            [0.7, 0.3, 0, 0.1, 0.2, -0.1, -0.3, 0.4, -0.5, -0.3],
+            [0.1, 0.4, 0.3, 0.4, -0.2, 0.2, 0.5, -0.3, -0.7, -0.9],
+            [-0.1, -0.4, -0.3, -0.4, 0.2, -0.2, -0.5, 0.3, 0.7, 0.9],
+            [5, 4, 3, 2, 1, 0, -1, -2, -3, -4]
+        ])
+        # shuffle data
+        idx = np.tile(np.random.rand(data.shape[1]).argsort(), (4, 1))
+        data = np.take_along_axis(data, idx, axis=1)
+        # create data loader
+        now = pd.Timestamp.now(tz='UTC').normalize()
+        index = [[now]*data.shape[1], list('abcdefghij')]
+        index = pd.MultiIndex.from_arrays(index, names=('date', 'asset'))
+        df_ab = pd.DataFrame(data.T, columns=['a', 'b', 'c', 'r'], index=index)
+        temp_loader = spectre.data.MemoryLoader(df_ab)
+        # calc ic
+        engine = spectre.factors.FactorEngine(temp_loader)
+        a = spectre.factors.ColumnDataFactor(inputs=['a'])
+        b = spectre.factors.ColumnDataFactor(inputs=['b'])
+        c = spectre.factors.ColumnDataFactor(inputs=['c'])
+        r = spectre.factors.ColumnDataFactor(inputs=['r'])
+        ica = spectre.factors.InformationCoefficient(a, r)
+        icb = spectre.factors.InformationCoefficient(b, r)
+        icc = spectre.factors.InformationCoefficient(c, r)
+        ica_weighted = spectre.factors.RankWeightedInformationCoefficient(a, r, 5)
+        icb_weighted = spectre.factors.RankWeightedInformationCoefficient(b, r, 5)
+        icc_weighted = spectre.factors.RankWeightedInformationCoefficient(c, r, 5)
+        engine.add([ica, icb, icc, ica_weighted, icb_weighted, icc_weighted],
+                   ['ica', 'icb', 'icc', 'ica_weighted', 'icb_weighted', 'icc_weighted'])
+        df_ret = engine.run(now, now, delay_factor=False)
+        self.assertAlmostEqual(0.707, df_ret.ica[0], 3)
+        self.assertAlmostEqual(0.716, df_ret.icb[0], 3)
+        self.assertAlmostEqual(-0.716, df_ret.icc[0], 3)
+        self.assertAlmostEqual(0.747, df_ret.ica_weighted[0], 3)
+        self.assertAlmostEqual(0.633, df_ret.icb_weighted[0], 3)
+        self.assertAlmostEqual(-0.633, df_ret.icc_weighted[0], 3)
 
     def test_align_by_time(self):
         loader = spectre.data.CsvDirLoader(
