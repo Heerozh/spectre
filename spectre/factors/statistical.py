@@ -177,7 +177,7 @@ class InformationCoefficient(CrossSectionFactor):
 class RankWeightedInformationCoefficient(InformationCoefficient):
     def __init__(self, x, y, half_life, mask=None):
         alpha = np.exp((np.log(0.5) / half_life))
-        y_rank = y.rank(ascending=False) - 1
+        y_rank = y.rank(ascending=False, mask=mask) - 1
         weight = alpha ** y_rank
         super().__init__(x, y, mask=mask, weight=weight)
 

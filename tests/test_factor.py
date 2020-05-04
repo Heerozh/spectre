@@ -768,6 +768,14 @@ class TestFactorLib(unittest.TestCase):
         self.assertAlmostEqual(0.633, df_ret.icb_weighted[0], 3)
         self.assertAlmostEqual(-0.633, df_ret.icc_weighted[0], 3)
 
+        # test nans
+        ica_weighted = spectre.factors.RankWeightedInformationCoefficient(a, r, 3, mask=a > 0)
+        engine.remove_all_factors()
+        engine.add(ica_weighted, 'ica_weighted')
+        df_ret = engine.run(now, now, delay_factor=False)
+        self.assertAlmostEqual(0.518, df_ret.ica_weighted[0], 3)
+        print(df_ret)
+
     def test_align_by_time(self):
         loader = spectre.data.CsvDirLoader(
             data_dir + '/daily/', calender_asset='AAPL',
