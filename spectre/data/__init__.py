@@ -17,3 +17,6 @@ from .quandl import (
 from .yahoo import (
     YahooDownloader,
 )
+from .tdx import (
+    TDXLoader,
+)

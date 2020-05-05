@@ -674,7 +674,7 @@ class MaskedFillFactor(CustomFactor):
             return data.masked_fill(mask, fill)
         if data.dtype != fill.dtype:
             fill = fill.type(data.dtype)
-        return data.masked_scatter(mask, fill[mask])
+        return data.masked_scatter(mask, fill.masked_select(mask))
 
 
 class DoNothingFactor(CustomFactor):
@@ -831,8 +831,8 @@ class WinsorizingFactor(CustomFactor):
         upper = upper.expand(upper.shape[0], data.shape[1])
         lower = lower.expand(lower.shape[0], data.shape[1])
 
-        ret.masked_scatter_(upper_mask, upper[upper_mask])
-        ret.masked_scatter_(lower_mask, lower[lower_mask])
+        ret.masked_scatter_(upper_mask, upper.masked_select(upper_mask))
+        ret.masked_scatter_(lower_mask, lower.masked_select(lower_mask))
         return ret
 
 
