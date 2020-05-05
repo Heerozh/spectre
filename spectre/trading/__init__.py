@@ -155,7 +155,7 @@ def run_backtest(loader: 'DataLoader', alg_type: 'Type[CustomAlgorithm]', start,
     import pandas as pd
     gc.collect()
 
-    _blotter = SimulationBlotter(loader, start=pd.Timestamp(start, tz='UTC'))
+    _blotter = SimulationBlotter(loader, start=pd.to_datetime(start, utc=True))
     evt_mgr = SimulationEventManager()
     alg = alg_type(_blotter, main=loader)
     evt_mgr.subscribe(_blotter)
@@ -163,3 +163,18 @@ def run_backtest(loader: 'DataLoader', alg_type: 'Type[CustomAlgorithm]', start,
     evt_mgr.run(start, end, delay_factor)
 
     return alg.results
+
+
+def get_algorithm_data(loader: 'DataLoader', alg_type: 'Type[CustomAlgorithm]',
+                       start, end, delay_factor=True):
+    import pandas as pd
+    start, end = pd.to_datetime(start, utc=True), pd.to_datetime(end, utc=True)
+
+    _blotter = SimulationBlotter(loader, start=start)
+    evt_mgr = SimulationEventManager()
+    alg = alg_type(_blotter, main=loader)
+    evt_mgr.subscribe(_blotter)
+    evt_mgr.subscribe(alg)
+    alg.on_run()
+
+    return alg.run_engine(start, end, delay_factor)
