@@ -187,10 +187,27 @@ class TDXLoader(DataLoader):
 
         ret_df = pd.concat(price_dfs, sort=False)
         ret_df = ret_df.rename_axis(['asset', 'date'])
+        ret_df = ret_df.swaplevel(0, 1).sort_index()
+
+        print('Extend date to next trading day (for live trading) ...')
+        # infer next trading day, and add nan rows:
+        delta = min(ret_df.index.levels[0][1:] - ret_df.index.levels[0][:-1])
+        unit = delta.resolution_string
+        freq = int(delta / pd.Timedelta(1, unit))
+        if unit == 'D':
+            unit = 'B'
+        last = ret_df.index.levels[0][-1]
+        next_date = last.tz_convert('Asia/Shanghai') + pd.DateOffset(freq, unit)
+        new_section = ret_df.xs(last, drop_level=False).copy()
+        new_section[:] = np.nan
+        new_section['ex-dividend'] = 0
+        new_section['split_ratio'] = 1
+        new_section.index = new_section.index.remove_unused_levels()
+        new_section.index = new_section.index.set_levels([next_date], level=0)
+        ret_df = ret_df.append(new_section)
 
         # formatting
         print('Formatting data...')
-        ret_df = ret_df.swaplevel(0, 1).sort_index()
         ret_df = self._format(ret_df, split_ratio_is_inverse=True)
         if self._calender:
             ret_df = self._align_to(ret_df, self._calender, self._align_by_time)
