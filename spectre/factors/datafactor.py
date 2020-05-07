@@ -10,6 +10,7 @@ import pandas as pd
 from typing import Optional, Sequence, Union
 from ..parallel import nanlast
 from .factor import BaseFactor, CustomFactor
+from ..config import Global
 
 
 class ColumnDataFactor(BaseFactor):
@@ -88,7 +89,7 @@ class AssetClassifierDataFactor(BaseFactor):
         sector = self.sector
         default = self.default
         data = [sector.get(asset, default) for asset in assets]  # slow
-        data = torch.tensor(data, device=engine.device, dtype=torch.float32)
+        data = torch.tensor(data, device=engine.device, dtype=Global.float_type)
         self._data = engine.group_by_(data, self.groupby)
 
     def clean_up_(self, force=False) -> None:
@@ -145,7 +146,7 @@ class DatetimeDataFactor(BaseFactor):
         if self._data is None:
             data = getattr(engine.dataframe_index[0], self.attr)  # slow
             data = torch.from_numpy(data.values).to(
-                device=engine.device, dtype=torch.float32, non_blocking=True)
+                device=engine.device, dtype=Global.float_type, non_blocking=True)
             self._data = engine.group_by_(data, self.groupby)
 
     def clean_up_(self, force=False) -> None:

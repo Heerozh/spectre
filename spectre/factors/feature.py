@@ -9,6 +9,7 @@ from .datafactor import DatetimeDataFactor
 from .factor import CrossSectionFactor, CustomFactor
 from .basic import Returns
 from ..parallel import nanstd, nanmean, nansum
+from ..config import Global
 
 
 # ----------- Common Market Features -----------
@@ -50,8 +51,8 @@ class AdvanceDeclineRatio(CrossSectionFactor):
     win = 1
 
     def compute(self, returns):
-        advancing = nansum(returns > 0, dim=1).float()
-        declining = nansum(returns < 0, dim=1).float()
+        advancing = nansum(returns > 0, dim=1).to(Global.float_type)
+        declining = nansum(returns < 0, dim=1).to(Global.float_type)
         ratio = (advancing / declining).unsqueeze(-1)
         return ratio.expand(ratio.shape[0], returns.shape[1])
 

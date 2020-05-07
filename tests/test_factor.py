@@ -421,7 +421,7 @@ class TestFactorLib(unittest.TestCase):
                                   2.666667, 2, 1.6666667])
         expected_msft = np.array([2., 2.2666667, 2.8000002, 1.9333334, 1.6666667, 1.6666667,
                                   2.3333335, 1.6000001, 1.4666667])
-        test_expected(factor, expected_aapl, expected_msft, 10)
+        test_expected(factor, expected_aapl, expected_msft, 10, decimal=6)
 
         # test ElementWiseMax
         factor = spectre.factors.ElementWiseMax(inputs=[spectre.factors.WEEKDAY,

@@ -10,6 +10,7 @@ import numpy as np
 import torch
 from ..parallel import nansum, nanmean, nanstd, pad_2d, Rolling, quantile
 from ..plotting import plot_factor_diagram
+from ..config import Global
 
 
 class BaseFactor:
@@ -243,12 +244,10 @@ class BaseFactor:
         factor.set_mask(mask)
         return factor
 
-    def float32(self):
+    def float(self):
         factor = TypeCastFactor(inputs=(self,))
-        factor.dtype = torch.float32
+        factor.dtype = Global.float_type
         return factor
-
-    float = float32
 
     # --------------- main methods ---------------
     @property
@@ -651,7 +650,7 @@ class NonNaNCountFactor(CustomFactor):
 
 class TypeCastFactor(CustomFactor):
     _min_win = 1
-    dtype = torch.float32
+    dtype = None
 
     def compute(self, data: torch.Tensor) -> torch.Tensor:
         return data.type(self.dtype)

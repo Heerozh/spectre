@@ -4,10 +4,11 @@
 @license: Apache 2.0
 @email: heeroz@gmail.com
 """
-from typing import Callable, Tuple
+from typing import Callable
 import torch
 import numpy as np
 from .constants import DeviceConstant
+from ..config import Global
 
 
 class ParallelGroupBy:
@@ -213,7 +214,7 @@ def quantile(data, bins, dim=1):
     if data.dtype == torch.bool:
         data = data.char()
     if data.shape[1] == 1:  # if only one asset in universe
-        return data.new_full(data.shape, 0, dtype=torch.float32)
+        return data.new_full(data.shape, 0, dtype=Global.float_type)
 
     x, _ = torch.sort(data, dim=dim)
     # get non-nan size of each row
@@ -241,7 +242,7 @@ def quantile(data, bins, dim=1):
     b[0] -= 1
     b = b.unsqueeze(-1)
 
-    ret = data.new_full(data.shape, np.nan, dtype=torch.float32)
+    ret = data.new_full(data.shape, np.nan, dtype=Global.float_type)
     for start, end, tile in zip(b[:-1], b[1:], range(bins)):
         ret[(data > start) & (data <= end)] = tile
     return ret

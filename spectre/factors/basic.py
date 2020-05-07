@@ -11,6 +11,7 @@ import math
 from .factor import BaseFactor, CustomFactor
 from ..parallel import nansum, nanmean
 from .engine import OHLCV
+from ..config import Global
 
 
 class Returns(CustomFactor):
@@ -56,7 +57,7 @@ class LinearWeightedAverage(CustomFactor):
 
     def __init__(self, win=None, inputs=None):
         super().__init__(win, inputs)
-        self.weight = torch.arange(1, self.win + 1).float()
+        self.weight = torch.arange(1, self.win + 1, dtype=Global.float_type)
         self.weight = self.weight / self.weight.sum()
 
     def pre_compute_(self, engine, start, end) -> None:
@@ -99,7 +100,7 @@ class ExponentialWeightedMovingAverage(CustomFactor):
     def pre_compute_(self, engine, start, end) -> None:
         super().pre_compute_(engine, start, end)
         if not isinstance(self.weight, torch.Tensor):
-            self.weight = torch.tensor(self.weight, dtype=torch.float32, device=engine.device)
+            self.weight = torch.tensor(self.weight, dtype=Global.float_type, device=engine.device)
 
     def compute(self, data):
         weighted_mean = data.agg(lambda x: nansum(x * self.weight, dim=2))
@@ -143,8 +144,8 @@ class ElementWiseMax(CustomFactor):
         a = a.clone()
         b = b.clone()
         if a.dtype != b.dtype or a.dtype not in (torch.float32, torch.float64, torch.float16):
-            a = a.type(torch.float32)
-            b = b.type(torch.float32)
+            a = a.to(Global.float_type)
+            b = b.to(Global.float_type)
 
         a.masked_fill_(torch.isnan(a), value)
         b.masked_fill_(torch.isnan(b), value)
@@ -175,7 +176,7 @@ class RollingArgMax(CustomFactor):
     def compute(self, data):
         def _argmax(_data):
             ret = (_data.argmax(dim=2) + 1.) / self.win
-            return ret.float()
+            return ret.to(Global.float_type)
 
         return data.agg(_argmax)
 
