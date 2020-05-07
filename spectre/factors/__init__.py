@@ -10,6 +10,7 @@ from .factor import (
     RankFactor, RollingRankFactor,
     QuantileClassifier,
     SumFactor, ProdFactor,
+    MADClampFactor,
     WinsorizingFactor,
 )
 

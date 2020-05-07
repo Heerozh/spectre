@@ -776,8 +776,18 @@ class MADClampFactor(CustomFactor):
     z = 5
 
     def compute(self, data):
-        median = data.median(dim=1).values.unsqueeze(-1)
-        mad = (data - median).abs().median(dim=1).values.unsqueeze(-1)
+        universe_mask = self._get_computed_mask()
+        nans = torch.isnan(data)
+        if universe_mask is None:
+            median_k = int(0.5 * data.shape[1] + 0.6)
+        else:
+            # warning: not work with very "unstable" universe
+            median_k = (0.5 * universe_mask.sum(dim=1) + 0.6).mean().int()
+        median = torch.kthvalue(data.masked_fill(nans, np.inf), median_k, dim=1
+                                ).values.unsqueeze(-1)
+        mad = (data - median).abs()
+        mad = torch.kthvalue(mad.masked_fill(nans, np.inf), median_k, dim=1).values.unsqueeze(-1)
+
         ret = data.clone()
         upper = median + self.z * mad
         lower = median - self.z * mad

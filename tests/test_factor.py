@@ -401,6 +401,19 @@ class TestFactorLib(unittest.TestCase):
         expected_msft = np.array([101.3, 102.28, 104.39, 103.2, 105.22, 105.61, 103.2, 103.39])
         test_expected(factor, expected_aapl, expected_msft, 10, check_bias=False)
 
+        # test nans bug
+        x = torch.tensor([[-999, np.nan, np.nan, 2, np.nan, 3, np.nan, np.nan, 999, np.nan],
+                          [1, np.nan, np.nan, 2, np.nan, 3, np.nan, np.nan, 4, np.nan]],
+                         dtype=torch.float64).cuda()
+        mad_fct = spectre.factors.MADClampFactor()
+        mad_fct._mask = mad_fct
+        mad_fct._mask_out = ~torch.isnan(x)
+        result = mad_fct.compute(x)
+        expected = x.cpu().numpy()
+        expected[0, 0] = -3
+        expected[0, -2] = 7
+        assert_almost_equal(expected, result.cpu().numpy())
+
         # test winsorizing
         factor = spectre.factors.WEEKDAY.winsorizing(0.2)
         factor.groupby = 'asset'

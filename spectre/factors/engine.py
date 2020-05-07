@@ -129,7 +129,8 @@ class FactorEngine:
 
         # asset group
         cat = self._dataframe_index[1].codes
-        keys = torch.tensor(cat, device=self._device, dtype=torch.int32)
+        # cat.copy() for suppress torch readonly numpy array warning
+        keys = torch.tensor(cat.copy(), device=self._device, dtype=torch.int32)
         self._groups['asset'] = ParallelGroupBy(keys)
 
         # time group prepare
