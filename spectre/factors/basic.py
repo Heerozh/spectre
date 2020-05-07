@@ -187,7 +187,7 @@ class RollingArgMin(CustomFactor):
     def compute(self, data):
         def _argmin(_data):
             ret = (_data.argmin(dim=2) + 1.) / self.win
-            return ret.float()
+            return ret.to(Global.float_type)
 
         return data.agg(_argmin)
 

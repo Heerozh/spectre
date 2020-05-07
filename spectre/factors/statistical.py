@@ -12,6 +12,7 @@ from .engine import OHLCV
 from ..parallel import (linear_regression_1d, quantile, pearsonr, unmasked_mean, unmasked_sum,
                         nanmean, nanstd, covariance)
 from ..parallel import DeviceConstant
+from ..config import Global
 
 
 class StandardDeviation(CustomFactor):
@@ -196,7 +197,7 @@ class CrossSectionR2(CrossSectionFactor):
             y_bar = unmasked_mean(y, mask, dim=1).unsqueeze(-1)
             ss_tot = unmasked_sum((y - y_bar) ** 2, mask, dim=1)
         r2 = -ss_err / ss_tot + 1
-        r2[(~mask).float().sum(dim=1) < 2] = np.nan
+        r2[(~mask).to(Global.float_type).sum(dim=1) < 2] = np.nan
         return r2.unsqueeze(-1).expand(r2.shape[0], y.shape[1])
 
 

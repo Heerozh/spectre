@@ -645,7 +645,7 @@ class NonNaNCountFactor(CustomFactor):
     _min_win = 2
 
     def compute(self, data: Rolling) -> torch.Tensor:
-        return (~torch.isnan(data.values)).float().sum(dim=2)
+        return (~torch.isnan(data.values)).to(Global.float_type).sum(dim=2)
 
 
 class TypeCastFactor(CustomFactor):
@@ -692,7 +692,7 @@ class RankFactor(CrossSectionFactor):
             filled = data
         _, indices = torch.sort(filled, dim=1, descending=not self.ascending)
         _, indices = torch.sort(indices, dim=1)
-        rank = indices.float() + 1.
+        rank = indices.to(Global.float_type) + 1.
         rank.masked_fill_(torch.isnan(data), np.nan)
         return rank
 
@@ -710,7 +710,7 @@ class RollingRankFactor(CustomFactor):
                 filled = _data
             _, indices = torch.sort(filled, dim=2, descending=not self.ascending)
             _, indices = torch.sort(indices, dim=2)
-            rank = (indices.float() + 1.) / self.win
+            rank = (indices.to(Global.float_type) + 1.) / self.win
             rank.masked_fill_(torch.isnan(_data), np.nan)
             return rank[:, :, -1]
 
@@ -739,7 +739,7 @@ class ZScoreFactor(CrossSectionFactor):
             mean = nanmean(data)
         else:
             mean = nansum(data * weight) / nansum(weight)
-            mean = mean.float()
+            mean = mean.to(Global.float_type)
         return (data - mean.unsqueeze(-1)) / nanstd(data).unsqueeze(-1)
 
 
