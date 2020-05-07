@@ -14,7 +14,8 @@ from ..config import Global
 
 
 class ColumnDataFactor(BaseFactor):
-    def __init__(self, inputs: Optional[Sequence[str]] = None, should_delay=True) -> None:
+    def __init__(self, inputs: Optional[Sequence[str]] = None,
+                 should_delay=True, dtype=None) -> None:
         super().__init__()
         if inputs:
             self.inputs = inputs
@@ -24,6 +25,7 @@ class ColumnDataFactor(BaseFactor):
         self._data = None
         self._multi = None
         self._should_delay = should_delay
+        self.dtype = dtype
 
     @property
     def adjustments(self):
@@ -39,9 +41,13 @@ class ColumnDataFactor(BaseFactor):
         super().pre_compute_(engine, start, end)
         self._data = engine.column_to_tensor_(self.inputs[0])
         self._data = engine.group_by_(self._data, self.groupby)
+        if self.dtype is not None:
+            self._data = self._data.to(self.dtype)
         if len(self.inputs) > 1 and self.inputs[1] in engine.dataframe_:
             self._multi = engine.column_to_tensor_(self.inputs[1])
             self._multi = engine.group_by_(self._multi, self.groupby)
+            if self.dtype is not None:
+                self._multi = self._multi.to(self.dtype)
         else:
             self._multi = None
 
