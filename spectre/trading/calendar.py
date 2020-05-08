@@ -18,33 +18,27 @@ class Calendar:
     US holiday calendar can found at https://iextrading.com/trading/
     """
 
-    def __init__(self, csv_file=None) -> None:
-        # todo: read from file
-        if csv_file is not None:
-            pass
-        else:
-            self.events = defaultdict(list)
+    def __init__(self) -> None:
+        self.events = defaultdict(list)
 
-    def to_csv(self):
-        # todo save to file
-        pass
+    def build(self, end: str, daily_events: Dict[str, str], tz='UTC', freq='B'):
+        """ build("2020", {'Open': '9:00:00', 'Close': '15:00:00'}) """
+        days = pd.date_range(pd.Timestamp.now(tz=tz).normalize(), pd.Timestamp(end, tz=tz),
+                             tz=tz, freq=freq)
+        self.events = {name: [day + pd.Timedelta(time) for day in days]
+                       for name, time in daily_events.items()}
 
-    def build(self, end, events: Dict[str, pd.Timestamp], tz='UTC', freq='B'):
-        """ build("2020", {'Open': pd.Timestamp(9:00), 'Close': pd.Timestamp(15:00)}) """
-        days = pd.date_range(pd.Timestamp.now(), end, tz=tz, freq=freq)
-        self.events = {name: days + time for name, time in events.items()}
-
-    def add_event(self, event: str, date_time: pd.Timestamp):
-        self.events[event].append(date_time)
+    def add_event(self, event: str, datetime: pd.Timestamp):
+        self.events[event].append(datetime)
         self.events[event].sort()
 
-    def remove_events(self, date):
+    def remove_events(self, date: pd.Timestamp):
         self.events = {
-            event: [time for time in times if times.date != date]
-            for event, times in self.events.items()
+            event: [dt for dt in dts if dt.normalize() != date]
+            for event, dts in self.events.items()
         }
 
-    def set_as_holiday(self, date):
+    def set_as_holiday(self, date: pd.Timestamp):
         # 要考虑下calendar设错的情况，比如下单到关闭还没成交的话，订单都默认会取消的，
         # 下个日期重新算就是了，加个测试用例
         return self.remove_events(date)
@@ -53,3 +47,29 @@ class Calendar:
         """return the next time of this event"""
         # todo, remove pasted times, and return next
         pass
+
+
+class CNCalendar(Calendar):
+    """
+    CN holiday calendar: http://www.sse.com.cn/disclosure/dealinstruc/closed/
+    """
+    timezone = 'Asia/Shanghai'
+    # yearly manually update
+    closed = [
+        *pd.date_range('2020-06-25', '2020-06-28', freq='D'),
+        *pd.date_range('2020-10-01', '2020-10-08', freq='D'),
+    ]
+
+    def __init__(self):
+        super().__init__()
+        self.build(
+            end=str(pd.Timestamp.now(tz=CNCalendar.timezone).year + 1),
+            daily_events={
+                'Open': '9:30:00',
+                'Lunch': '11:30:00',
+                'LunchEnd': '13:00:00',
+                'Close': '15:00:00'
+            },
+            tz=self.timezone)
+        for d in CNCalendar.closed:
+            self.set_as_holiday(d.tz_localize(CNCalendar.timezone))
