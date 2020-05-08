@@ -39,6 +39,7 @@ class BaseBlotter:
         self.slippage = CommissionModel(0, 0, 0)
         self.short_fee = CommissionModel(0, 0, 0)
         self.long_only = False
+        self.order_multiplier = 1
 
     @property
     def positions(self):
@@ -101,12 +102,14 @@ class BaseBlotter:
         if self.long_only and (amount + opened) < 0:
             raise ValueError("Long only blotter, order amount {}, opened {}.".format(
                 amount, opened))
-
+        if (amount % self.order_multiplier) != 0:
+            raise ValueError("Order amount must be placed in multiples of {}".format(
+                self.order_multiplier))
         return self._order(asset, amount)
 
     def _order_target(self, asset: str, target: Union[int, float]):
         opened = self._portfolio.shares(asset)
-        amount = int(target - opened)
+        amount = target - opened
 
         if abs(amount) > self.max_shares:
             raise OverflowError(
@@ -149,6 +152,7 @@ class BaseBlotter:
         if price is None:
             return False
         target = (self._portfolio.value * pct) / price
+        target = int(target / self.order_multiplier) * self.order_multiplier
         return self._order_target(asset, target)
 
     def batch_order_target_percent(self, assets: Iterable[str], weights: Iterable[float]):
@@ -165,7 +169,12 @@ class BaseBlotter:
                 price = prices[asset]
                 if price != price:
                     raise KeyError("")
+                if price == 0:
+                    raise RuntimeError('{} price on {} is zero, you have a data error'.format(
+                        asset, self._current_dt
+                    ))
                 target = (pf_value * pct) / price
+                target = int(target / self.order_multiplier) * self.order_multiplier
             except KeyError:
                 skipped.append([asset, self._portfolio.shares(asset)])
                 continue

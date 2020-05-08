@@ -145,7 +145,7 @@ class TestTradingAlgorithm(unittest.TestCase):
         msft_weight2 = 1268.466 / (155.854+1268.466)
         value_bod2 = aapl_shares1 * 150.81 + cash1
         aapl_shares_change = aapl_weight2 * value_bod2 / 150.81
-        aapl_shares_change = int(aapl_shares_change - aapl_shares1)
+        aapl_shares_change = int(aapl_shares_change) - aapl_shares1
         aapl_shares2 = aapl_shares1 + aapl_shares_change
         aapl_basis = (155.19 * aapl_shares1 + aapl_shares_change * 150.81) / aapl_shares2
         aapl_value2 = aapl_shares2 * 156.94
