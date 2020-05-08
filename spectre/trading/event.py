@@ -6,6 +6,8 @@
 """
 import time
 from typing import Type
+import pandas as pd
+from .calendar import Calendar
 
 
 class Event:
@@ -38,19 +40,22 @@ class CalendarEvent(Event):
         self.offset = offset_ns
         self.calendar = None
         self.event_name = calendar_event_name
-        self.trigger_time = 0
+        self.trigger_time = None
 
     def on_schedule(self, evt_mgr):
         try:
             self.calendar = evt_mgr.calendar
+            self.calculate_range()
         except AttributeError:
             pass
 
     def calculate_range(self):
-        self.trigger_time = self.calendar.events[self.event_name].first() + self.offset
+        self.trigger_time = self.calendar.events[self.event_name][0] + \
+                            pd.Timedelta(self.offset, unit='ns')
 
     def should_trigger(self) -> bool:
         if self.calendar.hr_now() >= self.trigger_time:
+            self.calendar.pop_passed(self.event_name)
             self.calculate_range()
             return True
         return False
@@ -58,12 +63,12 @@ class CalendarEvent(Event):
 
 class MarketOpen(CalendarEvent):
     def __init__(self, callback, offset_ns=0) -> None:
-        super().__init__('open', callback, offset_ns)
+        super().__init__('Open', callback, offset_ns)
 
 
 class MarketClose(CalendarEvent):
     def __init__(self, callback, offset_ns=0) -> None:
-        super().__init__('close', callback, offset_ns)
+        super().__init__('Close', callback, offset_ns)
 
 
 # ----------------------------------------------------------------
@@ -144,6 +149,8 @@ class EventManager:
 # ----------------------------------------------------------------
 
 
-# class MarketEventManager(EventManager):
-#     def __init__(self, calendar: MarketCalendar) -> None:
-#         self.calendar = calendar
+class MarketEventManager(EventManager):
+    def __init__(self, calendar: Calendar) -> None:
+        self.calendar = calendar
+        super().__init__()
+

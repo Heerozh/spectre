@@ -1,6 +1,7 @@
 import unittest
 import spectre
 from os.path import dirname
+import pandas as pd
 
 data_dir = dirname(__file__) + '/data/'
 
@@ -45,3 +46,30 @@ class TestTradingEvent(unittest.TestCase):
 
         evt_mgr.run()
         self.assertEqual(2, rcv.fired)
+
+    def test_calendar(self):
+        tz = 'America/New_York'
+        end = pd.Timestamp.now(tz=tz) + pd.DateOffset(days=10)
+        holiday = pd.Timestamp.now(tz=tz) + pd.DateOffset(days=3)
+        test_now = pd.Timestamp.now(tz=tz) + pd.DateOffset(days=2)
+
+        calendar = spectre.trading.Calendar()
+        calendar.build(end=str(end.date()),
+                       daily_events={'Open': '9:00:00', 'Close': '15:00:00'},
+                       tz=tz)
+        calendar.set_as_holiday(holiday)
+
+        self.assertEqual(pd.Timestamp.now(tz=tz).normalize() + pd.Timedelta("9:00:00"),
+                         calendar.events['Open'][0])
+
+        calendar.hr_now = lambda: test_now
+
+        calendar.pop_passed('Open')
+
+        self.assertEqual(test_now.normalize() + pd.Timedelta("1days 9:00:00"),
+                         calendar.events['Open'][0])
+
+        # test assert
+        self.assertRaises(ValueError, calendar.build, end='2019',
+                          daily_events={'Open': '9:00:00', 'Close': '15:00:00'},
+                          tz=tz)

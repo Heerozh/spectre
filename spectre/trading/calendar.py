@@ -20,11 +20,17 @@ class Calendar:
 
     def __init__(self) -> None:
         self.events = defaultdict(list)
+        self.timezone = None
 
     def build(self, end: str, daily_events: Dict[str, str], tz='UTC', freq='B'):
         """ build("2020", {'Open': '9:00:00', 'Close': '15:00:00'}) """
+        self.timezone = tz
         days = pd.date_range(pd.Timestamp.now(tz=tz).normalize(), pd.Timestamp(end, tz=tz),
                              tz=tz, freq=freq)
+        if len(days) == 0:
+            raise ValueError("Empty date range between now({}) to end({})".format(
+                pd.Timestamp.now(tz=tz).normalize(), end))
+
         self.events = {name: [day + pd.Timedelta(time) for day in days]
                        for name, time in daily_events.items()}
 
@@ -39,21 +45,29 @@ class Calendar:
         }
 
     def set_as_holiday(self, date: pd.Timestamp):
-        # 要考虑下calendar设错的情况，比如下单到关闭还没成交的话，订单都默认会取消的，
-        # 下个日期重新算就是了，加个测试用例
         return self.remove_events(date)
 
-    def next(self, event_name):
-        """return the next time of this event"""
-        # todo, remove pasted times, and return next
-        pass
+    def hr_now(self):
+        """ Return now time """
+        # todo high res
+        return pd.Timestamp.now(self.timezone)
+
+    def pop_passed(self, event_name):
+        """ Remove passed events """
+        now = self.hr_now()
+        # every event is daily, so will not be overkilled
+        dts = self.events[event_name]
+        while True:
+            if dts[0] <= now:
+                del dts[0]
+            else:
+                break
 
 
 class CNCalendar(Calendar):
     """
     CN holiday calendar: http://www.sse.com.cn/disclosure/dealinstruc/closed/
     """
-    timezone = 'Asia/Shanghai'
     # yearly manually update
     closed = [
         *pd.date_range('2020-06-25', '2020-06-28', freq='D'),
@@ -62,8 +76,9 @@ class CNCalendar(Calendar):
 
     def __init__(self):
         super().__init__()
+        timezone = 'Asia/Shanghai'
         self.build(
-            end=str(pd.Timestamp.now(tz=CNCalendar.timezone).year + 1),
+            end=str(CNCalendar.closed[-1].year + 1),
             daily_events={
                 'Open': '9:30:00',
                 'Lunch': '11:30:00',
@@ -72,4 +87,4 @@ class CNCalendar(Calendar):
             },
             tz=self.timezone)
         for d in CNCalendar.closed:
-            self.set_as_holiday(d.tz_localize(CNCalendar.timezone))
+            self.set_as_holiday(d.tz_localize(timezone))
