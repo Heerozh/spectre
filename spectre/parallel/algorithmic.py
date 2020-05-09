@@ -51,7 +51,10 @@ class ParallelGroupBy:
         ret = torch.take(data, self._sorted_indices)
         assert ret.dtype not in {torch.int8, torch.int16, torch.int32, torch.int64}, \
             'tensor cannot be any type of int, recommended to use float32'
-        ret.masked_fill_(self._padding_mask, np.nan)
+        if ret.dtype == torch.bool:
+            ret.masked_fill_(self._padding_mask, False)
+        else:
+            ret.masked_fill_(self._padding_mask, np.nan)
         return ret
 
     def revert(self, split_data: torch.Tensor, dbg_str='None') -> torch.Tensor:
