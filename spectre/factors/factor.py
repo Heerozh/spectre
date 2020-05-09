@@ -165,6 +165,8 @@ class BaseFactor:
         return factor
 
     def shift(self, periods=1):
+        if periods == 0:
+            return self
         factor = ShiftFactor(inputs=(self,))
         factor.periods = periods
         return factor
@@ -607,8 +609,10 @@ class ShiftFactor(CustomFactor):
         shift = data.roll(self.periods, dims=1)
         if self.periods > 0:
             shift[:, 0:self.periods] = np.nan
-        else:
+        elif self.periods < 0:
             shift[:, self.periods:] = np.nan
+        else:
+            raise ValueError("Cannot shift with 0")
         return shift
 
 
