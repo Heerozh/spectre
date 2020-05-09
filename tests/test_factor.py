@@ -656,6 +656,20 @@ class TestFactorLib(unittest.TestCase):
         result = f.compute(data)
         assert_almost_equal([[False] * 3 + [True] * 3, [False] * 2 + [True] * 4], result)
 
+        # test filter in xs factor
+        aapl_filter = spectre.factors.StaticAssets(['AAPL'])
+        engine.remove_all_factors()
+
+        class TestFilterXS(spectre.factors.CrossSectionFactor):
+            def compute(self, x) -> torch.Tensor:
+                x_sum = x.sum(dim=1)
+                assert (x_sum == 1).all()
+                return x
+
+        engine.add(TestFilterXS(inputs=[aapl_filter]), 'aapl_filter')
+        engine.set_filter(None)
+        engine.run('2019-01-01', '2019-01-15')
+
     def test_cuda(self):
         loader = spectre.data.CsvDirLoader(
             data_dir + '/daily/', ohlcv=('uOpen', 'uHigh', 'uLow', 'uClose', 'uVolume'),
