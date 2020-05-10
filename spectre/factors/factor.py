@@ -361,7 +361,7 @@ class CustomFactor(BaseFactor):
     def _get_computed_mask(self):
         """ Allow subclass get the current mask result in compute() """
         if self._mask_out is None:
-            return None
+            return ~self._engine.get_group_padding_mask(self.groupby)
         else:
             return self._regroup_by_other(self._mask, self._mask_out)
 
@@ -778,30 +778,43 @@ class ClampFactor(CustomFactor):
 class MADClampFactor(CustomFactor):
     """ Mean Absolute Deviation Clamping """
     z = 5
+    treat_nan_as = 0  # or inf
 
     def compute(self, data):
-        universe_mask = self._get_computed_mask()
-        nans = torch.isnan(data)
-        if universe_mask is None:
-            median_k = int(0.5 * data.shape[1] + 0.6)
-        else:
-            # warning: not work with very "unstable" universe
-            median_k = (0.5 * universe_mask.sum(dim=1) + 0.6).mean().int()
-        median = torch.kthvalue(data.masked_fill(nans, np.inf), median_k, dim=1
-                                ).values.unsqueeze(-1)
-        mad = (data - median).abs()
-        mad = torch.kthvalue(mad.masked_fill(nans, np.inf), median_k, dim=1).values.unsqueeze(-1)
-
         ret = data.clone()
+
+        universe_mask = self._get_computed_mask()
+        half_universe = 0.5 * (universe_mask.sum(dim=1) - 1)
+        median_ks_odd = half_universe.long().unsqueeze(-1)
+        median_ks_even = (half_universe + 0.6).long().unsqueeze(-1)
+        nans = torch.isnan(data)
+
+        # fill nan with 0, and fill out of universe with inf
+        data = data.masked_fill(nans, self.treat_nan_as)
+        data.masked_fill_(~universe_mask, np.inf)
+        # sort
+        sorted_data, _ = data.sort(dim=1)
+        # gather median
+        median1 = sorted_data.gather(1, median_ks_odd)
+        median2 = sorted_data.gather(1, median_ks_even)
+        median = (median1 + median2) / 2
+
+        diff = (data - median).abs()
+        # sort mad
+        sorted_data, _ = diff.sort(dim=1)
+        mad1 = sorted_data.gather(1, median_ks_odd)
+        mad2 = sorted_data.gather(1, median_ks_even)
+        mad = (mad1 + mad2) / 2
+
         upper = median + self.z * mad
         lower = median - self.z * mad
-        upper_mask = data > upper
-        lower_mask = data < lower
-        upper = upper.expand(upper.shape[0], data.shape[1])
-        lower = lower.expand(lower.shape[0], data.shape[1])
+        upper_mask = ret > upper
+        lower_mask = ret < lower
+        upper = upper.expand(upper.shape[0], ret.shape[1])
+        lower = lower.expand(lower.shape[0], ret.shape[1])
 
-        ret.masked_scatter_(upper_mask, upper[upper_mask])
-        ret.masked_scatter_(lower_mask, lower[lower_mask])
+        ret.masked_scatter_(upper_mask, upper.masked_select(upper_mask))
+        ret.masked_scatter_(lower_mask, lower.masked_select(lower_mask))
         return ret
 
 

@@ -47,6 +47,10 @@ class ParallelGroupBy:
         self._groups = groups
         self._data_shape = (groups, width)
 
+    @property
+    def padding_mask(self):
+        return self._padding_mask
+
     def split(self, data: torch.Tensor) -> torch.Tensor:
         ret = torch.take(data, self._sorted_indices)
         assert ret.dtype not in {torch.int8, torch.int16, torch.int32, torch.int64}, \

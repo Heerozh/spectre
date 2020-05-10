@@ -86,6 +86,9 @@ class FactorEngine:
         else:
             raise ValueError('Invalid data type, should be tensor or series.')
 
+    def get_group_padding_mask(self, group: str) -> torch.Tensor:
+        return self._groups[group].padding_mask
+
     # private:
 
     def _prepare_tensor(self, start, end, max_backwards):
