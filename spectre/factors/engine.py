@@ -60,6 +60,7 @@ class FactorEngine:
             return
 
         series = self._dataframe[group_column]
+        assert not series.isna().any()
         if series.dtype.name == 'category':
             cat = series.cat.codes
         else:

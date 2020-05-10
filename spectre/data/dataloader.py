@@ -45,6 +45,18 @@ class DataLoader:
         df.index = df.index.remove_unused_levels()
         if align_by_time:
             df = df.reindex(pd.MultiIndex.from_product(df.index.levels))
+
+            def trim_nans(x):
+                dts = x.index.get_level_values(0)
+                first = x.first_valid_index()
+                last = x.last_valid_index()
+                if first is None:
+                    return None
+                mask = (dts >= first[0]) & (dts <= last[0])
+                return x[mask]
+
+            df = df.groupby(level=1, group_keys=False).apply(trim_nans)
+            df.sort_index(level=[0, 1], inplace=True)
         return df
 
     def _format(self, df, split_ratio_is_inverse=False) -> pd.DataFrame:
@@ -144,7 +156,8 @@ class DataLoader:
                 "There is nan value in ex-dividend column, should be filled with 0."
             assert not any(df[self.adjustments[1]].isna()), \
                 "There is nan value in split_ratio column, should be filled with 1."
-
+            assert not any(df[self.time_category].isna()), \
+                "There is nan value in time_category column, should be filled with time id."
         return df
 
     def load(self, start: Optional[pd.Timestamp] = None, end: Optional[pd.Timestamp] = None,

@@ -20,7 +20,7 @@ from spectre.data.dataloader import DataLoader
 class TDXLoader(DataLoader):
     """ China stock daily price loader """
 
-    def __init__(self, tdx_vipdoc_dir: str,
+    def __init__(self, tdx_vipdoc_dir: str, start=None,
                  universe=('^SH60.*', '^SZ00.*', 'SH000001'),
                  calender_asset='SH000001', align_by_time=False) -> None:
         """
@@ -34,6 +34,7 @@ class TDXLoader(DataLoader):
         self._calender = calender_asset
         self.universe = [re.compile(m) for m in universe]
         self._align_by_time = align_by_time
+        self.start = start
 
     @property
     def last_modified(self) -> float:
@@ -68,6 +69,8 @@ class TDXLoader(DataLoader):
             ret.set_index('date', inplace=True)
             ret.index = ret.index.tz_localize('Asia/Shanghai')
             ret.drop(columns=['unused'], inplace=True)
+            if self.start is not None:
+                ret = ret.loc[self.start:]
             return ret[~ret.index.duplicated(keep='last')]
 
         def read_adjustment(file_handle):
@@ -197,7 +200,8 @@ class TDXLoader(DataLoader):
         if unit == 'D':
             unit = 'B'
         last = ret_df.index.levels[0][-1]
-        next_date = last.tz_convert('Asia/Shanghai') + pd.DateOffset(freq, unit)
+        next_date = last.tz_convert('Asia/Shanghai') + \
+                    pd.tseries.frequencies.to_offset((freq, unit))
         new_section = ret_df.xs(last, drop_level=False).copy()
         new_section[:] = np.nan
         new_section['ex-dividend'] = 0
@@ -208,9 +212,12 @@ class TDXLoader(DataLoader):
 
         # formatting
         print('Formatting data...')
-        ret_df = self._format(ret_df, split_ratio_is_inverse=True)
         if self._calender:
             ret_df = self._align_to(ret_df, self._calender, self._align_by_time)
+            if self._align_by_time:
+                ret_df['ex-dividend'] = ret_df['ex-dividend'].fillna(0)
+                ret_df['split_ratio'] = ret_df['split_ratio'].fillna(1)
+        ret_df = self._format(ret_df, split_ratio_is_inverse=True)
 
         print('Loading fundamentals...')
         fund_dfs = []
