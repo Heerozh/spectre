@@ -50,8 +50,9 @@ class TestTradingEvent(unittest.TestCase):
     def test_calendar(self):
         tz = 'America/New_York'
         end = pd.Timestamp.now(tz=tz) + pd.DateOffset(days=10)
-        holiday = pd.Timestamp.now(tz=tz) + pd.DateOffset(days=3)
-        test_now = pd.Timestamp.now(tz=tz) + pd.DateOffset(days=2)
+        first = pd.date_range(pd.Timestamp.now(tz=tz).normalize(), end, freq='B')[0]
+        holiday = first + pd.DateOffset(days=2)
+        test_now = first + pd.DateOffset(days=1, hours=10)
 
         calendar = spectre.trading.Calendar()
         calendar.build(end=str(end.date()),
@@ -59,14 +60,14 @@ class TestTradingEvent(unittest.TestCase):
                        tz=tz)
         calendar.set_as_holiday(holiday)
 
-        self.assertEqual(pd.Timestamp.now(tz=tz).normalize() + pd.Timedelta("9:00:00"),
+        self.assertEqual(first + pd.Timedelta("9:00:00"),
                          calendar.events['Open'][0])
 
         calendar.hr_now = lambda: test_now
 
         calendar.pop_passed('Open')
 
-        self.assertEqual(test_now.normalize() + pd.Timedelta("1days 9:00:00"),
+        self.assertEqual(test_now.normalize() + pd.Timedelta("2days 9:00:00"),
                          calendar.events['Open'][0])
 
         # test assert

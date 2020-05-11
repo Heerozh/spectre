@@ -124,6 +124,7 @@ class FactorEngine:
             # but still very slow.
             # df = df.reindex(pd.MultiIndex.from_product(df.index.levels))
             df = df.unstack(level=1).stack(dropna=False)
+            df[self._loader.time_category].fillna(0, inplace=True)
         if self.timezone != 'UTC':
             df = df.reset_index('asset').tz_convert(self.timezone)\
                 .set_index(['asset'], append=True)

@@ -4,6 +4,7 @@ import os
 import numpy as np
 import pandas as pd
 import torch
+import scipy.stats
 from numpy.testing import assert_almost_equal, assert_array_equal
 from os.path import dirname
 
@@ -417,15 +418,28 @@ class TestFactorLib(unittest.TestCase):
         # test winsorizing
         factor = spectre.factors.WEEKDAY.winsorizing(0.2)
         factor.groupby = 'asset'
-        expected_aapl = np.array([2, 3., 3., 1, 1, 2, 3., 3., 1, 1])
-        expected_msft = np.array([2, 2., 2., 1, 1, 2, 2, 1, 1])
+        expected_aapl = scipy.stats.mstats.winsorize(
+            [2., 3., 4., 0., 1., 2., 3., 4., 0., 1.], [0.2, 0.2])
+        expected_msft = scipy.stats.mstats.winsorize(
+            [2., 3., 4., 0., 1., 2., 4., 0., 1.], [0.2, 0.2])
         test_expected(factor, expected_aapl, expected_msft, 10)
 
-        factor = spectre.factors.OHLCV.close.winsorizing(0.2, by_row=False)
+        factor = spectre.factors.WEEKDAY.winsorizing(0.001)
         factor.groupby = 'asset'
-        expected_aapl = np.array(
-            [153.69, 145.23, 149., 149., 151.55, 153.69, 153.69, 153.69, 153.69])
-        expected_msft = np.array([103.2, 103.2, 104.39, 103.2, 105.22, 106, 103.2, 103.39])
+        expected_aapl = scipy.stats.mstats.winsorize(
+            [2., 3., 4., 0., 1., 2., 3., 4., 0., 1.], [0.001, 0.001])
+        expected_msft = scipy.stats.mstats.winsorize(
+            [2., 3., 4., 0., 1., 2., 4., 0., 1.], [0.001, 0.001])
+        test_expected(factor, expected_aapl, expected_msft, 10)
+
+        factor = spectre.factors.OHLCV.close.winsorizing(0.2)
+        factor.groupby = 'asset'
+        expected_aapl = scipy.stats.mstats.winsorize(
+            [158.6100, 145.2300, 149.0000, 149.0000, 151.5500, 156.0300, 161.0000,
+             153.6900, 157.0000, 156.9400], [0.2, 0.2])[:-1]
+        expected_msft = scipy.stats.mstats.winsorize(
+            [101.3000, 102.2800, 104.3900, 103.2000, 105.2200, 106.0000, 103.2000,
+             103.3900, 108.8500], [0.2, 0.2])[:-1]
         test_expected(factor, expected_aapl, expected_msft, 10, check_bias=False)
 
         # test LinearWeightedAverage
@@ -519,6 +533,8 @@ class TestFactorLib(unittest.TestCase):
                                    3, 2, np.nan, np.nan, np.nan, np.nan, np.nan, np.nan, np.nan]
                                   ])
         test_data = test_data.repeat(2, 1)
+        wsz._mask = wsz
+        wsz._mask_out = ~torch.isnan(test_data)
         ret = wsz.compute(test_data)
         assert_almost_equal(test_data.numpy(), ret.numpy())
         self.assertFalse(torch.isinf(ret).any())

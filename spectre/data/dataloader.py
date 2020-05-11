@@ -56,7 +56,6 @@ class DataLoader:
                 return x[mask]
 
             df = df.groupby(level=1, group_keys=False).apply(trim_nans)
-            df.sort_index(level=[0, 1], inplace=True)
         return df
 
     def _format(self, df, split_ratio_is_inverse=False) -> pd.DataFrame:

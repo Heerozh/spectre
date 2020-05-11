@@ -8,7 +8,8 @@ from abc import ABC
 from typing import Optional, Sequence, Union
 import numpy as np
 import torch
-from ..parallel import nansum, nanmean, nanstd, pad_2d, Rolling, quantile
+from ..parallel import (nansum, nanmean, nanstd, pad_2d, Rolling, quantile,
+                        masked_kth_value_1d, clamp_1d_)
 from ..plotting import plot_factor_diagram
 from ..config import Global
 
@@ -236,13 +237,12 @@ class BaseFactor:
         factor.set_mask(mask)
         return factor
 
-    def winsorizing(self, z: float = 0.05, by_row=True, mask: 'BaseFactor' = None):
+    def winsorizing(self, z: float = 0.05, mask: 'BaseFactor' = None):
         """ Cross-section winsorizing clamp """
         factor = WinsorizingFactor(inputs=(self,))
         factor.groupby = CrossSectionFactor.groupby
         assert 0 < z < 1
         factor.z = z
-        factor.by_row = by_row
         factor.set_mask(mask)
         return factor
 
@@ -787,15 +787,9 @@ class MADClampFactor(CustomFactor):
         half_universe = 0.5 * (universe_mask.sum(dim=1) - 1)
         median_ks_odd = half_universe.long().unsqueeze(-1)
         median_ks_even = (half_universe + 0.6).long().unsqueeze(-1)
-        nans = torch.isnan(data)
 
-        # fill nan with 0, and fill out of universe with inf
-        data = data.masked_fill(nans, self.treat_nan_as)
-        data.masked_fill_(~universe_mask, np.inf)
-        # sort
-        sorted_data, _ = data.sort(dim=1)
-        # gather median
-        median1 = sorted_data.gather(1, median_ks_odd)
+        median1, sorted_data = masked_kth_value_1d(
+            data, universe_mask, median_ks_odd, treat_nan_as=self.treat_nan_as)
         median2 = sorted_data.gather(1, median_ks_even)
         median = (median1 + median2) / 2
 
@@ -808,57 +802,34 @@ class MADClampFactor(CustomFactor):
 
         upper = median + self.z * mad
         lower = median - self.z * mad
-        upper_mask = ret > upper
-        lower_mask = ret < lower
-        upper = upper.expand(upper.shape[0], ret.shape[1])
-        lower = lower.expand(lower.shape[0], ret.shape[1])
-
-        ret.masked_scatter_(upper_mask, upper.masked_select(upper_mask))
-        ret.masked_scatter_(lower_mask, lower.masked_select(lower_mask))
+        clamp_1d_(ret, lower, upper)
         return ret
 
 
 class WinsorizingFactor(CustomFactor):
     z = 0.05
-    by_row = True
+    treat_nan_as = 0  # or inf
 
     def compute(self, data):
-        if self.by_row:
-            upper_k = int(data.shape[1] * (1 - self.z)) - 1
-            lower_k = int(data.shape[1] * self.z) + 1
-            if not (0 < upper_k < data.shape[1]) or not (0 < lower_k < data.shape[1]):
-                return data
-            nans = torch.isnan(data)
-            upper, _ = torch.kthvalue(data.masked_fill(nans, -np.inf), upper_k, dim=1)
-            lower, _ = torch.kthvalue(data.masked_fill(nans, np.inf), lower_k, dim=1)
+        universe_mask = self._get_computed_mask()
+        n = universe_mask.sum(dim=1)
+        upper_k = n - (self.z * n).long() - 1
+        lower_k = (self.z * n).long()
 
-            inf_mask = torch.isinf(upper)
-            upper[inf_mask] = torch.max(data, dim=1).values[inf_mask]
-            inf_mask = torch.isinf(lower)
-            lower[inf_mask] = torch.min(data, dim=1).values[inf_mask]
+        upper_k.clamp_(0, data.shape[1]).unsqueeze_(-1)
+        lower_k.clamp_(0, data.shape[1]).unsqueeze_(-1)
 
-            upper.unsqueeze_(-1)
-            lower.unsqueeze_(-1)
-        else:
-            fattened = data.flatten()
-            fattened = fattened[~torch.isnan(fattened)]
-            upper_k = int(fattened.shape[0] * (1 - self.z)) - 1
-            lower_k = int(fattened.shape[0] * self.z) + 1
-            if not (0 < upper_k < fattened.shape[0]) or not (0 < lower_k < fattened.shape[0]):
-                return data
-            upper, _ = torch.kthvalue(fattened, upper_k, dim=0)
-            lower, _ = torch.kthvalue(fattened, lower_k, dim=0)
-            upper = upper.expand(data.shape[0]).unsqueeze(-1)
-            lower = lower.expand(data.shape[0]).unsqueeze(-1)
-        upper_mask = data > upper
-        lower_mask = data < lower
+        upper, sorted_data = masked_kth_value_1d(
+            data, universe_mask, upper_k, treat_nan_as=self.treat_nan_as)
+        lower = sorted_data.gather(1, lower_k)
+
+        # inf_mask = torch.isinf(upper)
+        # upper[inf_mask] = torch.max(data, dim=1).values[inf_mask]
+        # inf_mask = torch.isinf(lower)
+        # lower[inf_mask] = torch.min(data, dim=1).values[inf_mask]
 
         ret = data.clone()
-        upper = upper.expand(upper.shape[0], data.shape[1])
-        lower = lower.expand(lower.shape[0], data.shape[1])
-
-        ret.masked_scatter_(upper_mask, upper.masked_select(upper_mask))
-        ret.masked_scatter_(lower_mask, lower.masked_select(lower_mask))
+        clamp_1d_(ret, lower, upper)
         return ret
 
 

@@ -254,6 +254,29 @@ def quantile(data, bins, dim=1):
     return ret
 
 
+def masked_kth_value_1d(data, mask, k_array, treat_nan_as=0):
+    # fill nan with 0, and fill out of mask with inf
+    data = data.masked_fill(~mask, np.inf)
+    nans = torch.isnan(data)
+    data.masked_fill_(nans, treat_nan_as)
+    # sort
+    sorted_data, _ = data.sort(dim=1)
+    # gather median
+    value = sorted_data.gather(1, k_array)
+    return value, sorted_data
+
+
+def clamp_1d_(data, min_, max_):
+    min_mask = data < min_
+    max_mask = data > max_
+    min_ = min_.expand(min_.shape[0], data.shape[1])
+    max_ = max_.expand(max_.shape[0], data.shape[1])
+
+    data.masked_scatter_(min_mask, min_.masked_select(min_mask))
+    data.masked_scatter_(max_mask, max_.masked_select(max_mask))
+    return data
+
+
 class Rolling:
     _split_multi = 1  # 0.5-1 recommended, you can tune this for kernel performance
 

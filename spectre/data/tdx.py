@@ -217,6 +217,7 @@ class TDXLoader(DataLoader):
             if self._align_by_time:
                 ret_df['ex-dividend'] = ret_df['ex-dividend'].fillna(0)
                 ret_df['split_ratio'] = ret_df['split_ratio'].fillna(1)
+            ret_df.sort_index(level=[0, 1], inplace=True)
         ret_df = self._format(ret_df, split_ratio_is_inverse=True)
 
         print('Loading fundamentals...')

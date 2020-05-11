@@ -204,11 +204,11 @@ class CsvDirLoader(DataLoader):
 
         df = df.swaplevel(0, 1).sort_index(level=0)
 
-        df = self._format(df, self._split_ratio_is_inverse)
         if self._calender:
             # drop the data of the non-trading day by calender,
             # because there may be some one-line junk data in non-trading day,
             # causing extra row of nan to all others assets.
             df = self._align_to(df, self._calender, self._align_by_time)
             df.sort_index(level=[0, 1], inplace=True)
+        df = self._format(df, self._split_ratio_is_inverse)
         return df

@@ -43,8 +43,9 @@ class QuandlLoader(DataLoader):
 
         df.set_index(['date', 'ticker'], inplace=True)
         df.split_ratio.loc[("2001-09-12", 'GMT')] = 1  # fix nan
-        df = self._format(df, split_ratio_is_inverse=True)
         if self._calender:
             df = self._align_to(df, self._calender)
+            df.sort_index(level=[0, 1], inplace=True)
+        df = self._format(df, split_ratio_is_inverse=True)
 
         return df

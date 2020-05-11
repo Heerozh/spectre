@@ -15,6 +15,8 @@ from .algorithmic import (
     pearsonr,
     linear_regression_1d,
     quantile,
+    masked_kth_value_1d,
+    clamp_1d_,
 )
 
 from .constants import DeviceConstant
