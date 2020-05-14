@@ -577,8 +577,8 @@ class TestFactorLib(unittest.TestCase):
         corr = xs_corr.compute(*xs)
         expected1 = np.corrcoef(torch.stack([xs[0][0], xs[1][0]]))
         expected2 = np.corrcoef(torch.stack([xs[0][1], xs[1][1]]))
-        assert_almost_equal(expected1[0, 1], corr[0, 0])
-        assert_almost_equal(expected2[0, 1], corr[1, 0])
+        assert_almost_equal(expected1[0, 1], corr[0, 0, 0])
+        assert_almost_equal(expected2[0, 1], corr[1, 0, 0])
 
         # test reused factor only compute once, and nest factor window
         engine.run('2019-01-11', '2019-01-15')  # let pre_compute_ test executable

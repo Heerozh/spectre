@@ -155,6 +155,7 @@ class XSMaxCorrCoef(CrossSectionFactor):
         x = torch.stack(xs, dim=1)
         x_bar = nanmean(x, dim=2).unsqueeze(-1)
         demean = x - x_bar
+        demean.masked_fill_(torch.isnan(demean), 0)
         cov = demean @ demean.transpose(-2, -1)
         cov = cov / (x.shape[-1] - 1)
         diag = cov[:, range(len(xs)), range(len(xs)), None]
@@ -162,7 +163,8 @@ class XSMaxCorrCoef(CrossSectionFactor):
         corr = cov / std / std.transpose(-2, -1)
         # set auto corr to zero
         corr[:, range(len(xs)), range(len(xs))] = 0
-        return corr.max(dim=2).values
+        max_corr = corr.max(dim=2).values.unsqueeze(-2)
+        return max_corr.expand(x.shape[0], x.shape[2], x.shape[1])
 
 
 class InformationCoefficient(CrossSectionFactor):
