@@ -146,6 +146,25 @@ class RollingCovariance(CustomFactor):
         return x.agg(_cov, y)
 
 
+class XSMaxCorrCoef(CrossSectionFactor):
+    """
+    Returns the maximum correlation coefficient for each x to others
+    """
+
+    def compute(self, *xs):
+        x = torch.stack(xs, dim=1)
+        x_bar = nanmean(x, dim=2).unsqueeze(-1)
+        demean = x - x_bar
+        cov = demean @ demean.transpose(-2, -1)
+        cov = cov / (x.shape[-1] - 1)
+        diag = cov[:, range(len(xs)), range(len(xs)), None]
+        std = diag ** 0.5
+        corr = cov / std / std.transpose(-2, -1)
+        # set auto corr to zero
+        corr[:, range(len(xs)), range(len(xs))] = 0
+        return corr.max(dim=2).values
+
+
 class InformationCoefficient(CrossSectionFactor):
     def __init__(self, x, y, mask=None, weight=None):
         super().__init__(win=1, inputs=[x, y, weight], mask=mask)

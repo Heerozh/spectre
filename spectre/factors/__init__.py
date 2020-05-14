@@ -64,6 +64,7 @@ from .statistical import (
     HalfLifeMeanReversion,
     RollingCorrelation,
     RollingCovariance,
+    XSMaxCorrCoef,
     InformationCoefficient, RankWeightedInformationCoefficient,
     CrossSectionR2,
 )

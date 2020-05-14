@@ -570,6 +570,16 @@ class TestFactorLib(unittest.TestCase):
         expected = r2_score(y[1, :1], y_hat[1, :1])
         assert_almost_equal(expected, ret[1, 0])
 
+        # test max corr coef
+        xs_corr = spectre.factors.XSMaxCorrCoef()
+        xs = [torch.tensor([[1., 2, 3, 4, 5], [1., 2, 3, 4, 5]]),
+              torch.tensor([[1., 2, 3, 3, 4], [2., 1, 0, 4, 5]])]
+        corr = xs_corr.compute(*xs)
+        expected1 = np.corrcoef(torch.stack([xs[0][0], xs[1][0]]))
+        expected2 = np.corrcoef(torch.stack([xs[0][1], xs[1][1]]))
+        assert_almost_equal(expected1[0, 1], corr[0, 0])
+        assert_almost_equal(expected2[0, 1], corr[1, 0])
+
         # test reused factor only compute once, and nest factor window
         engine.run('2019-01-11', '2019-01-15')  # let pre_compute_ test executable
         f1 = spectre.factors.BBANDS(win=20, inputs=[spectre.factors.OHLCV.close, 2]).normalized()
@@ -817,7 +827,6 @@ class TestFactorLib(unittest.TestCase):
         engine.add(ica_weighted, 'ica_weighted')
         df_ret = engine.run(now, now, delay_factor=False)
         self.assertAlmostEqual(0.518, df_ret.ica_weighted[0], 3)
-        print(df_ret)
 
     def test_align_by_time(self):
         loader = spectre.data.CsvDirLoader(

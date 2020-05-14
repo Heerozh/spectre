@@ -204,7 +204,7 @@ class FactorEngine:
         """
         if isinstance(factor, Iterable):
             for i, fct in enumerate(factor):
-                self.add(fct, name and name[i] or None)
+                self.add(fct, name[i], replace)
         else:
             if name in self._factors and not replace:
                 raise KeyError('A factor with the name {} already exists.'
