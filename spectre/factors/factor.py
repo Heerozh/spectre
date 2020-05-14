@@ -586,7 +586,9 @@ class MultiRetSelector(CustomFactor):
 
     def compute(self, data: torch.Tensor, key) -> torch.Tensor:
         if len(data.shape) < 3:
-            raise KeyError('This factor has only one return value, cannot slice.')
+            raise KeyError('This factor({}) has only one return value, cannot slice.'.format(
+                type(self.inputs[0]).__name__
+            ))
         elif data.shape[2] <= key:
             raise KeyError('OutOfBounds: factor has only {} return values, and slice is [{}].'.
                            format(data.shape[2], key))
