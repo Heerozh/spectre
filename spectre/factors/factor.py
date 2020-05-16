@@ -198,13 +198,14 @@ class BaseFactor:
         factor = OneHotEncoder(self)
         return factor
 
-    def fill_na(self, value: float = None, ffill: bool = None):
+    def fill_na(self, value: float = None, ffill: bool = None, inf=False):
         if value is not None:
             factor = FillNANFactor(inputs=(self, value))
         elif ffill:
             factor = PadFactor(inputs=(self,))
         else:
             raise ValueError('Either `value=number` or `ffill=True` must be specified.')
+        factor.inf = inf
         return factor
 
     fill_nan = fill_na
@@ -663,13 +664,19 @@ class TypeCastFactor(CustomFactor):
 
 
 class PadFactor(CustomFactor):
+    inf = False
+
     def compute(self, data: torch.Tensor) -> torch.Tensor:
-        return pad_2d(data)
+        return pad_2d(data, including_inf=self.inf)
 
 
 class FillNANFactor(CustomFactor):
+    inf = False
+
     def compute(self, data: torch.Tensor, value) -> torch.Tensor:
         mask = torch.isnan(data)
+        if self.inf:
+            mask = mask | torch.isinf(data)
         return data.masked_fill(mask, value)
 
 
