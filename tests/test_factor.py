@@ -127,6 +127,13 @@ class TestFactorLib(unittest.TestCase):
         result = engine.run('2019-01-01', '2019-01-15')
         assert_array_equal([1.] * 9, result.test.values)
         engine.set_filter(None)
+        # test rank with tier
+        x = torch.tensor([[2, 3, 6, 8, 3, 6, 6], [2, 3, 6, np.nan, 3, 2, 9]])
+        result = spectre.parallel.rankdata(x)
+        assert_array_equal(scipy.stats.rankdata(x[0]), result[0])
+        expected = scipy.stats.rankdata(x[1])
+        expected[3] = np.nan
+        assert_array_equal(expected, result[1])
 
         # test zscore
         expected_aapl = [1.] * 9
@@ -512,8 +519,8 @@ class TestFactorLib(unittest.TestCase):
 
         # test RollingRankFactor
         factor = spectre.factors.RollingRankFactor(5, inputs=[spectre.factors.WEEKDAY])
-        expected_aapl = np.array([3/5, 4/5, 5/5, 2/5, 2/5, 3/5, 4/5, 5/5, 1/5, 2/5])
-        expected_msft = np.array([3/5, 4/5, 5/5, 2/5, 2/5, 3/5, 5/5, 2/5, 3/5])
+        expected_aapl = np.array([2.5/5, 3.5/5, 4.5/5, 1.5/5, 2/5, 3/5, 4/5, 5/5, 1/5, 2/5])
+        expected_msft = np.array([2.5/5, 3.5/5, 4.5/5, 1.5/5, 2/5, 3/5, 4.5/5, 1.5/5, 2.5/5])
         test_expected(factor, expected_aapl, expected_msft, 10)
 
         # test count...

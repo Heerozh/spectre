@@ -11,6 +11,7 @@ from .algorithmic import (
     nanmax,
     nanmin,
     pad_2d,
+    rankdata,
     covariance,
     pearsonr,
     linear_regression_1d,

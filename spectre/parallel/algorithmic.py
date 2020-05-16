@@ -182,6 +182,41 @@ def pad_2d(data: torch.Tensor, including_inf=False) -> torch.Tensor:
     return torch.gather(data, 1, idx)
 
 
+def rankdata(data: torch.Tensor, dim=1, ascending=True, method='average', normalize=False):
+    nans = torch.isnan(data)
+    if not ascending:
+        filled = data.masked_fill(nans, -np.inf)
+    else:
+        filled = data
+    arr, sorter = torch.sort(filled, dim=dim, descending=not ascending)
+    rank, inv = torch.sort(sorter, dim=dim)
+
+    if method == 'ordinal':
+        ret = (inv.to(Global.float_type) + 1.)
+    else:
+        flt = DeviceConstant.get(inv.device).arange(np.prod(inv.shape[:dim]), dtype=inv.dtype)
+        inv += (flt * inv.shape[dim]).view(*inv.shape[:dim], 1)
+
+        obs = arr != arr.roll(1, dims=dim)
+
+        if method == 'average':
+            lower = rank.masked_fill(~obs, 0)
+            lower = lower.cummax(dim=dim).values
+            upper = rank.masked_fill(~obs.roll(-1, dims=dim), rank.shape[dim]).flip(dims=[dim])
+            upper = upper.cummin(dim=dim).values.flip(dims=[dim])
+
+            avg = (upper + lower + 2) * .5
+            ret = torch.take(avg, inv)
+        elif method == 'dense':
+            dense = obs.cumsum(dim=1).to(Global.float_type)
+            ret = torch.take(dense, inv)
+
+    if normalize:
+        ret /= data.shape[dim]
+    ret.masked_fill_(nans, np.nan)
+    return ret
+
+
 def unmasked_covariance(x, y, mask, dim=1, ddof=0):
     x_bar = unmasked_mean(x, dim=dim, mask=mask).unsqueeze(-1)
     y_bar = unmasked_mean(y, dim=dim, mask=mask).unsqueeze(-1)

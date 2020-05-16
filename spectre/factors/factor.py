@@ -9,7 +9,7 @@ from typing import Optional, Sequence, Union
 import numpy as np
 import torch
 from ..parallel import (nansum, nanmean, nanstd, pad_2d, Rolling, quantile,
-                        masked_kth_value_1d, clamp_1d_)
+                        masked_kth_value_1d, clamp_1d_, rankdata)
 from ..plotting import plot_factor_diagram
 from ..config import Global
 
@@ -698,34 +698,18 @@ class RankFactor(CrossSectionFactor):
     ascending = True,
 
     def compute(self, data: torch.Tensor) -> torch.Tensor:
-        if not self.ascending:
-            filled = data.clone()
-            filled.masked_fill_(torch.isnan(data), -np.inf)
-        else:
-            filled = data
-        _, indices = torch.sort(filled, dim=1, descending=not self.ascending)
-        _, indices = torch.sort(indices, dim=1)
-        rank = indices.to(Global.float_type) + 1.
-        rank.masked_fill_(torch.isnan(data), np.nan)
-        return rank
+        return rankdata(data, 1, ascending=self.ascending, method='average')
 
 
 class RollingRankFactor(CustomFactor):
+    """ rank over rolling period, scaled to the interval [1/days, 1] """
     ascending = True,
     _min_win = 2
 
     def compute(self, data) -> torch.Tensor:
         def _rolling_rank(_data):
-            if not self.ascending:
-                filled = _data.clone()
-                filled.masked_fill_(torch.isnan(_data), -np.inf)
-            else:
-                filled = _data
-            _, indices = torch.sort(filled, dim=2, descending=not self.ascending)
-            _, indices = torch.sort(indices, dim=2)
-            rank = (indices.to(Global.float_type) + 1.) / self.win
-            rank.masked_fill_(torch.isnan(_data), np.nan)
-            return rank[:, :, -1]
+            ret = rankdata(_data, 2, ascending=self.ascending, method='average', normalize=True)
+            return ret[:, :, -1]
 
         return data.agg(_rolling_rank)
 
