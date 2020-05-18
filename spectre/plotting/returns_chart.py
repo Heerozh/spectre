@@ -54,7 +54,7 @@ def plot_quantile_and_cumulative_returns(factor_data, mean_ret):
     specs = [[{}, {"secondary_y": True}]] * rows
     fig = subplots.make_subplots(
         rows=rows, cols=2,
-        vertical_spacing=0.03,
+        vertical_spacing=0.06 / rows,
         horizontal_spacing=0.06,
         specs=specs,
         subplot_titles=['Quantile Return', 'Portfolio cumulative returns'],
