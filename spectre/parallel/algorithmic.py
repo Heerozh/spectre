@@ -53,8 +53,9 @@ class ParallelGroupBy:
 
     def split(self, data: torch.Tensor) -> torch.Tensor:
         ret = torch.take(data, self._sorted_indices)
-        assert ret.dtype not in {torch.int8, torch.int16, torch.int32, torch.int64}, \
-            'tensor cannot be any type of int, recommended to use float32'
+        if ret.dtype in {torch.int8, torch.int16, torch.int32, torch.int64}:
+            print(data)
+            raise ValueError('tensor cannot be any type of int, recommended to use float32')
         if ret.dtype == torch.bool:
             ret.masked_fill_(self._padding_mask, False)
         else:

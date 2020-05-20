@@ -39,17 +39,18 @@ class ColumnDataFactor(BaseFactor):
 
     def pre_compute_(self, engine, start, end) -> None:
         super().pre_compute_(engine, start, end)
-        self._data = engine.column_to_tensor_(self.inputs[0])
-        self._data = engine.group_by_(self._data, self.groupby)
-        if self.dtype is not None:
-            self._data = self._data.to(self.dtype)
-        if len(self.inputs) > 1 and self.inputs[1] in engine.dataframe_:
-            self._multi = engine.column_to_tensor_(self.inputs[1])
-            self._multi = engine.group_by_(self._multi, self.groupby)
+        if self._data is None:
+            self._data = engine.column_to_tensor_(self.inputs[0])
             if self.dtype is not None:
-                self._multi = self._multi.to(self.dtype)
-        else:
-            self._multi = None
+                self._data = self._data.to(self.dtype)
+            self._data = engine.group_by_(self._data, self.groupby)
+            if len(self.inputs) > 1 and self.inputs[1] in engine.dataframe_:
+                self._multi = engine.column_to_tensor_(self.inputs[1])
+                self._multi = engine.group_by_(self._multi, self.groupby)
+                if self.dtype is not None:
+                    self._multi = self._multi.to(self.dtype)
+            else:
+                self._multi = None
 
     def clean_up_(self, force=False) -> None:
         super().clean_up_(force)
