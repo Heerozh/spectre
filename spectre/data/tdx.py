@@ -260,6 +260,22 @@ class TDXLoader(DataLoader):
             ret_df[name] = ret_df[name].replace(to_replace=0, value=np.nan)
             print(name, ' weights OK.')
 
+        print('Merging sector data...')
+        html_dfs = pd.read_html(os.path.join(self._path, "SwClass"), encoding='GBK',
+                                converters={'股票代码': str})
+        sector_df = html_dfs[0]
+        sector_df['股票代码'] = sector_df['股票代码'].str.replace(r'^00(.*)', r'SZ00\1')
+        sector_df['股票代码'] = sector_df['股票代码'].str.replace(r'^30(.*)', r'SZ30\1')
+        sector_df['股票代码'] = sector_df['股票代码'].str.replace(r'^60(.*)', r'SH60\1')
+        sector_df['股票代码'] = sector_df['股票代码'].str.replace(r'^68(.*)', r'SH68\1')
+        sector_df = sector_df.set_index('股票代码')
+        unique_sector = sector_df['行业名称'].unique()
+        sector_cat = dict(zip(unique_sector, range(len(unique_sector))))
+        sector_dict = sector_df['行业名称'].map(sector_cat).to_dict()
+        ret_df['sector'] = ret_df.index.map(lambda x: sector_dict.get(x[1], -1))
+        name_dict = sector_df['股票名称'].to_dict()
+        ret_df['name'] = ret_df.index.map(lambda x: name_dict.get(x[1], 'UNKNOWN'))
+
         print('All ok')
 
         return ret_df
