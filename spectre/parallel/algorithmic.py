@@ -15,6 +15,7 @@ class ParallelGroupBy:
     """Fast parallel group by"""
 
     def __init__(self, keys: torch.Tensor):
+        assert keys.min() >= 0
         n = keys.shape[0]
         # sort by key (keep key in GPU device)
         relative_key = keys + torch.linspace(0, 0.9, n, dtype=torch.double, device=keys.device)

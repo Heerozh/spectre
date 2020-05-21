@@ -54,18 +54,28 @@ class FactorEngine:
         return data
 
     def column_to_parallel_groupby_(self, group_column: str, as_group_name=None):
+        # todo refactor: group_column change to ClassifierFactor type
         if as_group_name is None:
             as_group_name = group_column
         if as_group_name in self._groups:
             return
 
-        series = self._dataframe[group_column]
-        assert not series.isna().any()
-        if series.dtype.name == 'category':
-            cat = series.cat.codes
-        else:
-            cat = series.values
-        keys = torch.tensor(cat, device=self._device, dtype=torch.int32)
+        cols = group_column.split(',')
+        keys = None
+        for col in cols:
+            if col:
+                series = self._dataframe[col]
+                assert not series.isna().any()
+                if series.dtype.name == 'category':
+                    cat = series.cat.codes
+                else:
+                    cat = series.values
+                cat = cat - min(cat)  # shrink value space
+                if keys is not None:
+                    keys *= 10 ** len(str(max(abs(cat))))
+                    keys += torch.tensor(cat, device=self._device, dtype=torch.int32)
+                else:
+                    keys = torch.tensor(cat, device=self._device, dtype=torch.int32)
         self._groups[as_group_name] = ParallelGroupBy(keys)
 
     def revert_(self, data: torch.Tensor, group: str, factor_name: str) -> torch.Tensor:
