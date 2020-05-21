@@ -51,7 +51,7 @@ class TDXLoader(DataLoader):
                     return True
             return False
 
-        def read_daily_price(file_handle):
+        def read_daily_price(file_handle, price_divisor):
             data = []
             while True:
                 binary = file_handle.read(4 * 5 + 4 * 3)
@@ -62,7 +62,7 @@ class TDXLoader(DataLoader):
             ret = pd.DataFrame(data, columns=['date', 'open', 'high', 'low', 'close', 'turnover',
                                               'volume', 'unused'])
             price_cols = ['open', 'high', 'low', 'close']
-            ret[price_cols] /= 100
+            ret[price_cols] /= price_divisor
             ret[price_cols] = ret[price_cols].astype(np.float32)
             ret['volume'] = ret['volume'].astype(np.float64)
             ret['date'] = pd.to_datetime(ret['date'].astype(str), format='%Y%m%d')
@@ -143,7 +143,11 @@ class TDXLoader(DataLoader):
                 if not tick_in_universe(ticker):
                     continue
                 with io.open(fn, 'rb') as f:
-                    df = read_daily_price(f)
+                    price_divisor = 100
+                    # 基金，债券，逆回购等除数是1000，这里只考虑了基金
+                    if ticker.startswith('SH5') or ticker.startswith('SZ1'):
+                        price_divisor = 1000
+                    df = read_daily_price(f, price_divisor)
                     price_dfs[ticker] = df
 
         print('Loading adjustments...')
