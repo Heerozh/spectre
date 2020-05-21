@@ -19,7 +19,7 @@ class CommissionModel:
         self.per_share = per_share
         self.minimum = minimum
 
-    def calculate(self, price: float, shares: int):
+    def calculate(self, asset: str, price: float, shares: int):
         commission = price * abs(shares) * self.percentage
         commission += abs(shares) * self.per_share
         return max(commission, self.minimum)
@@ -322,10 +322,10 @@ class SimulationBlotter(BaseBlotter, EventReceiver):
                 return False
 
         # commission, slippage
-        commission = self.commission.calculate(price, amount)
-        slippage = self.slippage.calculate(price, 1)
+        commission = self.commission.calculate(asset, price, amount)
+        slippage = self.slippage.calculate(asset, price, 1)
         if amount < 0:
-            commission += self.short_fee.calculate(price, amount)
+            commission += self.short_fee.calculate(asset, price, amount)
             fill_price = price - slippage
         else:
             fill_price = price + slippage
