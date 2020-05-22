@@ -18,6 +18,7 @@ class BaseFactor:
     """ Basic factor class, only helper methods """
     groupby = 'asset'  # indicates inputs and return value of this factor are grouped by what
     _engine = None
+    _clean_required = None  # If your factor caches data, this should be set to True when caching
 
     # --------------- overload ops ---------------
 
@@ -311,7 +312,6 @@ class CustomFactor(BaseFactor):
     _mask_out = None
     _force_delay = None
     _keep_cache = False
-    _clean_required = None
     _total_backwards = None
 
     def __init__(self, win: Optional[int] = None, inputs: Optional[Sequence[BaseFactor]] = None):
@@ -338,7 +338,7 @@ class CustomFactor(BaseFactor):
 
         if self.inputs:
             for ipt in self.inputs:
-                if isinstance(ipt, CustomFactor):
+                if isinstance(ipt, BaseFactor):
                     if ipt._clean_required is not None:
                         self._clean_required = ipt._clean_required
                         break

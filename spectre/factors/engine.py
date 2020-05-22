@@ -330,6 +330,8 @@ class FactorEngine:
 
         # clean up before start, and if _prepare_tensor returns new data,
         # then force clean up any caches in sub factors
+        # For heavily nested factors, iterate factor tree will very slow, so here we try not to
+        # clean up new factors.
         if filter_:
             filter_.clean_up_(force_cleanup)
         for f in factors.values():

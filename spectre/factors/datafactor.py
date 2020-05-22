@@ -51,11 +51,13 @@ class ColumnDataFactor(BaseFactor):
                     self._multi = self._multi.to(self.dtype)
             else:
                 self._multi = None
+            self._clean_required = True
 
     def clean_up_(self, force=False) -> None:
         super().clean_up_(force)
         self._data = None
         self._multi = None
+        self._clean_required = False
 
     def compute_(self, stream: Union[torch.cuda.Stream, None]) -> torch.Tensor:
         return self._data
@@ -155,10 +157,12 @@ class DatetimeDataFactor(BaseFactor):
             data = torch.from_numpy(data.values).to(
                 device=engine.device, dtype=Global.float_type, non_blocking=True)
             self._data = engine.group_by_(data, self.groupby)
+            self._clean_required = True
 
     def clean_up_(self, force=False) -> None:
         super().clean_up_(force)
         self._data = None
+        self._clean_required = False
 
     def compute_(self, stream: Union[torch.cuda.Stream, None]) -> torch.Tensor:
         return self._data
