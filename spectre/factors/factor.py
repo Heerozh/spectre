@@ -360,17 +360,23 @@ class CustomFactor(BaseFactor):
         else:
             return cls(inputs=[*args[0:]])
 
-    def set_mask(self, mask: BaseFactor = None):
+    def set_mask(self, mask: Union[BaseFactor, str] = None):
         """ Input data mask, fill all unmasked **INPUT** data to NaN """
         self._mask = mask
         self._total_backwards = None
+
+    def _get_mask_factor(self):
+        if type(self._mask) is str and (self._mask == 'universe') is True:
+            return self._engine.get_filter()
+        else:
+            return self._mask
 
     def _get_computed_mask(self):
         """ Allow subclass get the current mask result in compute() """
         if self._mask_out is None:
             return ~self._engine.get_group_padding_mask(self.groupby)
         else:
-            return self._regroup_by_other(self._mask, self._mask_out)
+            return self._regroup_by_other(self._get_mask_factor(), self._mask_out)
 
     def get_total_backwards_(self) -> int:
         if self._total_backwards is not None:
@@ -382,8 +388,9 @@ class CustomFactor(BaseFactor):
                              if isinstance(up, BaseFactor)] or (0,))
         backwards = backwards + self.win - 1
 
-        if self._mask:
-            mask_backward = self._mask.get_total_backwards_()
+        if isinstance(self._mask, BaseFactor):
+            # 'universe' str mask backward already calculated in engine
+            mask_backward = self._get_mask_factor().get_total_backwards_()
             self._total_backwards = max(mask_backward, backwards)
         else:
             self._total_backwards = backwards
@@ -427,8 +434,9 @@ class CustomFactor(BaseFactor):
                 if isinstance(upstream, BaseFactor):
                     upstream.clean_up_(force)
 
-        if self._mask is not None:
-            self._mask.clean_up_(force)
+        if isinstance(self._mask, BaseFactor):
+            # if mask is 'universe', engine will do clean up
+            self._get_mask_factor().clean_up_(force)
 
     def pre_compute_(self, engine, start, end) -> None:
         """
@@ -445,8 +453,9 @@ class CustomFactor(BaseFactor):
                 if isinstance(upstream, BaseFactor):
                     upstream.pre_compute_(engine, start, end)
 
-        if self._mask is not None:
-            self._mask.pre_compute_(engine, start, end)
+        mask_factor = self._get_mask_factor()
+        if mask_factor is not None:
+            mask_factor.pre_compute_(engine, start, end)
 
         if self._keep_cache:
             # ref count +1 so this factor's cache will not cleanup
@@ -497,8 +506,9 @@ class CustomFactor(BaseFactor):
 
         # Calculate mask
         mask_out = None
-        if self._mask:
-            mask_out = self._mask.compute_(self_stream)
+        mask_factor = self._get_mask_factor()
+        if mask_factor is not None:
+            mask_out = mask_factor.compute_(self_stream)
             self._mask_out = mask_out
         # Calculate inputs
         inputs = []
@@ -508,9 +518,9 @@ class CustomFactor(BaseFactor):
                     out = upstream.compute_(self_stream)
                     if self_stream:
                         with torch.cuda.stream(self_stream):
-                            out = self._format_input(upstream, out, self._mask, mask_out)
+                            out = self._format_input(upstream, out, mask_factor, mask_out)
                     else:
-                        out = self._format_input(upstream, out, self._mask, mask_out)
+                        out = self._format_input(upstream, out, mask_factor, mask_out)
                     inputs.append(out)
                 else:
                     inputs.append(upstream)
@@ -832,11 +842,6 @@ class WinsorizingFactor(CustomFactor):
         upper, sorted_data = masked_kth_value_1d(
             data, universe_mask, upper_k, treat_nan_as=self.treat_nan_as)
         lower = sorted_data.gather(1, lower_k)
-
-        # inf_mask = torch.isinf(upper)
-        # upper[inf_mask] = torch.max(data, dim=1).values[inf_mask]
-        # inf_mask = torch.isinf(lower)
-        # lower[inf_mask] = torch.min(data, dim=1).values[inf_mask]
 
         ret = data.clone()
         clamp_1d_(ret, lower, upper)

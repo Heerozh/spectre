@@ -64,6 +64,8 @@ class FactorEngine:
         keys = None
         for col in cols:
             if col:
+                if col == 'date':
+                    col = self._loader.time_category
                 series = self._dataframe[col]
                 assert not series.isna().any()
                 if series.dtype.name == 'category':
