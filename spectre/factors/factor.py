@@ -8,7 +8,7 @@ from abc import ABC
 from typing import Optional, Sequence, Union
 import numpy as np
 import torch
-from ..parallel import (nansum, nanmean, nanstd, pad_2d, Rolling, quantile,
+from ..parallel import (nansum, nanmean, nanstd, nanmax, pad_2d, Rolling, quantile,
                         masked_kth_value_1d, clamp_1d_, rankdata)
 from ..plotting import plot_factor_diagram
 from ..config import Global
@@ -118,11 +118,12 @@ class BaseFactor:
     def bottom(self, n: int, mask: 'BaseFactor' = None):
         return self.rank(ascending=True, mask=mask) <= n
 
-    def rank(self, ascending=True, mask: 'BaseFactor' = None):
+    def rank(self, ascending=True, mask: 'BaseFactor' = None, normalize=False):
         """ Cross-section rank """
         factor = RankFactor(inputs=(self,), mask=mask)
         # factor.method = method
         factor.ascending = ascending
+        factor.normalize = normalize
         return factor
 
     def zscore(self, groupby: str = 'date', mask: 'BaseFactor' = None, weight: 'BaseFactor' = None):
@@ -251,6 +252,11 @@ class BaseFactor:
     def float(self):
         factor = TypeCastFactor(inputs=(self,))
         factor.dtype = Global.float_type
+        return factor
+
+    def double(self):
+        factor = TypeCastFactor(inputs=(self,))
+        factor.dtype = torch.float64
         return factor
 
     # --------------- main methods ---------------
@@ -695,10 +701,14 @@ class DoNothingFactor(CustomFactor):
 
 
 class RankFactor(CrossSectionFactor):
-    ascending = True,
+    ascending = True
+    normalize = False
 
     def compute(self, data: torch.Tensor) -> torch.Tensor:
-        return rankdata(data, 1, ascending=self.ascending, method='average')
+        ret = rankdata(data, 1, ascending=self.ascending, method='average')
+        if self.normalize:
+            ret /= nanmax(ret, dim=1).unsqueeze(-1)
+        return ret
 
 
 class RollingRankFactor(CustomFactor):
@@ -726,7 +736,14 @@ class DemeanFactor(CrossSectionFactor):
             ret = g.transform(lambda x: x - x.mean())
             return self._regroup(ret)
         else:
-            return data - nanmean(data).unsqueeze(-1)
+            # Why double?
+            # Assuming that all values are same, after demean should be zero,
+            # and then rank it, results should be the same value.
+            # But if you demean by sector, and due to the float precision,
+            # demean results will slightly different, so you got a random ranking results.
+            double = data.to(torch.float64)
+            ret = double - nanmean(double).unsqueeze(-1)
+            return ret.to(data.dtype)
 
 
 class ZScoreFactor(CrossSectionFactor):
