@@ -697,7 +697,9 @@ class NonNaNCountFactor(CustomFactor):
     _min_win = 2
 
     def compute(self, data: Rolling) -> torch.Tensor:
-        return (~torch.isnan(data.values)).to(Global.float_type).sum(dim=2)
+        def _nan_count(_data):
+            return (~torch.isnan(_data)).to(Global.float_type).sum(dim=2)
+        return data.agg(_nan_count)
 
 
 class TypeCastFactor(CustomFactor):
