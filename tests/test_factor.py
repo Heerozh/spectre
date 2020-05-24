@@ -835,6 +835,21 @@ class TestFactorLib(unittest.TestCase):
         df_ret = engine.run(now, now, delay_factor=False)
         self.assertAlmostEqual(0.518, df_ret.ica_weighted[0], 3)
 
+        # test IR
+        ir_fct = ica.to_ir(3)
+        x = torch.tensor([
+            [1, 1, 1, 1, 1],
+            [2, 2, 2, 2, 2],
+            [np.nan, np.nan, np.nan, np.nan, np.nan],
+            [3, 3, 3, 3, 3],
+            [1, 1, 1, 1, 1],
+        ])
+        ir = ir_fct.compute(x)
+
+        expected = np.array([np.nan, 2.1213, 2.1213, 3.5355, 1.4142])[:, None].repeat(5, 1)
+        assert_almost_equal(expected, ir, decimal=4)
+
+
     def test_align_by_time(self):
         loader = spectre.data.CsvDirLoader(
             data_dir + '/daily/', calender_asset='AAPL',

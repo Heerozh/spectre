@@ -187,13 +187,24 @@ class InformationCoefficient(CrossSectionFactor):
         return ic.unsqueeze(-1).expand(ic.shape[0], y.shape[1])
 
     def to_ir(self, win):
-        class RollingIC2IR(CustomFactor):
+        # Use CrossSectionFactor and unfold by self, because if use CustomFactor, the ir value
+        # will inconsistent when some assets have no data (like newly listed), the ir value should
+        # not be related to assets.
+        class RollingIC2IR(CrossSectionFactor):
+            def __init__(self, win_, inputs):
+                super().__init__(1, inputs)
+                self.rolling_win = win_
+
             def compute(self, ic):
-                def _to_ir(_ic):
-                    # Fundamental Law of Active Management: ir = ic * sqrt(b), 1/sqrt(b) = std(ic)
-                    return nanmean(_ic, dim=2) / nanstd(_ic, dim=2, ddof=1)
-                return ic.agg(_to_ir)
-        return RollingIC2IR(win=win, inputs=[self])
+                x = ic[:, 0]
+                nan_stack = x.new_full((self.rolling_win - 1,), np.nan)
+                new_x = torch.cat((nan_stack, x), dim=0)
+                rolling_ic = new_x.unfold(0, self.rolling_win, 1)
+
+                # Fundamental Law of Active Management: ir = ic * sqrt(b), 1/sqrt(b) = std(ic)
+                ir = nanmean(rolling_ic, dim=1) / nanstd(rolling_ic, dim=1, ddof=1)
+                return ir.unsqueeze(-1).expand(ic.shape)
+        return RollingIC2IR(win_=win, inputs=[self])
 
 
 class RankWeightedInformationCoefficient(InformationCoefficient):
