@@ -113,15 +113,15 @@ class BaseFactor:
 
     def top(self, n: int, mask: 'BaseFactor' = None):
         """ Cross-section top values """
-        return self.rank(ascending=False, mask=mask) <= n
+        return self.rank(ascending=False, mask=mask, method='ordinal') <= n
 
     def bottom(self, n: int, mask: 'BaseFactor' = None):
-        return self.rank(ascending=True, mask=mask) <= n
+        return self.rank(ascending=True, mask=mask, method='ordinal') <= n
 
-    def rank(self, ascending=True, mask: 'BaseFactor' = None, normalize=False):
+    def rank(self, ascending=True, mask: 'BaseFactor' = None, normalize=False, method='average'):
         """ Cross-section rank """
         factor = RankFactor(inputs=(self,), mask=mask)
-        # factor.method = method
+        factor.method = method
         factor.ascending = ascending
         factor.normalize = normalize
         return factor
@@ -742,9 +742,10 @@ class DoNothingFactor(CustomFactor):
 class RankFactor(CrossSectionFactor):
     ascending = True
     normalize = False
+    method = 'average'
 
     def compute(self, data: torch.Tensor) -> torch.Tensor:
-        ret = rankdata(data, 1, ascending=self.ascending, method='average')
+        ret = rankdata(data, 1, ascending=self.ascending, method=self.method)
         if self.normalize:
             ret /= nanmax(ret, dim=1).unsqueeze(-1)
         return ret
