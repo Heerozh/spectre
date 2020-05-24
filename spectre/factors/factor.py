@@ -364,8 +364,11 @@ class CustomFactor(BaseFactor):
         """ Input data mask, fill all unmasked **INPUT** data to NaN """
         self._mask = mask
         self._total_backwards = None
+        if isinstance(mask, BaseFactor) and mask._clean_required is not None:
+            self._clean_required = max(self._clean_required or False, mask._clean_required)
 
     def _get_mask_factor(self):
+        # todo add a placeholder factor for universe
         if type(self._mask) is str and (self._mask == 'universe') is True:
             return self._engine.get_filter()
         else:
@@ -405,11 +408,30 @@ class CustomFactor(BaseFactor):
                 if isinstance(upstream, BaseFactor):
                     up_ret = upstream.should_delay()
                     ret = max(ret, up_ret)
+                    if ret is True:
+                        return True
+        if isinstance(self._mask, BaseFactor):
+            ret = max(ret, self._mask.should_delay())
         return ret
 
     def set_delay(self, delay):
         """None: Auto delay. False: Force not to delay. True: Force to delay."""
         self._force_delay = delay
+
+    def is_keep_cache(self) -> bool:
+        if self._keep_cache:
+            return True
+
+        if self.inputs:
+            for upstream in self.inputs:
+                if isinstance(upstream, CustomFactor):
+                    if upstream.is_keep_cache():
+                        return True
+
+        if isinstance(self._mask, CustomFactor):
+            if self._mask.is_keep_cache():
+                return True
+        return False
 
     def show_graph(self):
         plot_factor_diagram(self)
@@ -420,9 +442,16 @@ class CustomFactor(BaseFactor):
         if self._clean_required is None:
             return
         # if not brand new, then maybe some child kept cache. force tell us cache expired.
+        # _clean_required: None=not to clean, True=require clean, False=only force clean
+        # todo build a dependencies tree for loop factor tree, prevent circular references and
+        #  reduce the number of iterations
         if not self._clean_required and not force:
             return
-        self._clean_required = False
+
+        if force:
+            self._clean_required = None
+        else:
+            self._clean_required = False
 
         if not self._keep_cache or force:
             self._cache = None
