@@ -34,7 +34,7 @@ class Always(Event):
 
 
 class CalendarEvent(Event):
-    """TODO: The following code is prepared for live trading in future, no effect on back-testing"""
+    """ The following code is for live trading, will not work on back-testing """
     def __init__(self, calendar_event_name, callback, offset_ns=0) -> None:
         super().__init__(callback)
         self.offset = offset_ns
@@ -62,11 +62,13 @@ class CalendarEvent(Event):
 
 
 class MarketOpen(CalendarEvent):
+    """ Works on both live and backtest """
     def __init__(self, callback, offset_ns=0) -> None:
         super().__init__('Open', callback, offset_ns)
 
 
 class MarketClose(CalendarEvent):
+    """ Works on both live and backtest """
     def __init__(self, callback, offset_ns=0) -> None:
         super().__init__('Close', callback, offset_ns)
 
@@ -126,7 +128,7 @@ class EventManager:
     def stop(self):
         self._stop = True
 
-    def run(self, *params):
+    def _beg_run(self):
         if not self._subscribers:
             raise ValueError("At least one subscriber.")
 
@@ -135,15 +137,24 @@ class EventManager:
             events.clear()
             r.on_run()
 
-        while not self._stop:
-            time.sleep(0.001)
-            for r, events in self._subscribers.items():
-                for event in events:
-                    if event.should_trigger():
-                        event.callback(self)
-
+    def _end_run(self):
         for r in self._subscribers.keys():
             r.on_end_of_run()
+
+    def _run_once(self):
+        for r, events in self._subscribers.items():
+            for event in events:
+                if event.should_trigger():
+                    event.callback(self)
+
+    def run(self, *params):
+        self._beg_run()
+
+        while not self._stop:
+            time.sleep(0.001)
+            self._run_once()
+
+        self._end_run()
 
 
 # ----------------------------------------------------------------
