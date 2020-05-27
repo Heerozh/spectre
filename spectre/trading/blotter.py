@@ -159,9 +159,9 @@ class BaseBlotter:
         pf_value = self._portfolio.value
         prices = self.get_price(assets)
         skipped = []
-        if None in assets or np.nan in assets:
+        if None in assets or np.any([not(a == a) for a in assets]):
             raise ValueError('None/NaN in `assets: ' + str(assets))
-        if None in weights or np.nan in weights:
+        if None in weights or np.any([not(w == w) for w in weights]):
             raise ValueError('None/NaN in `weights: ' + str(weights))
         assets = list(assets)  # copy for preventing del items in loop
         for asset, pct in zip(assets, weights):
