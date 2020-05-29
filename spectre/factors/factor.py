@@ -8,7 +8,7 @@ from abc import ABC
 from typing import Optional, Sequence, Union
 import numpy as np
 import torch
-from ..parallel import (nansum, nanmean, nanstd, nanmax, pad_2d, Rolling, quantile,
+from ..parallel import (nansum, nanmean, nanstd, nanmax, nanmin, pad_2d, Rolling, quantile,
                         masked_kth_value_1d, clamp_1d_, rankdata)
 from ..plotting import plot_factor_diagram
 from ..config import Global
@@ -111,12 +111,22 @@ class BaseFactor:
 
     # --------------- helper functions ---------------
 
-    def top(self, n: int, mask: 'BaseFactor' = None):
+    def top(self, n: Union[int, float], mask: 'BaseFactor' = None):
         """ Cross-section top values """
-        return self.rank(ascending=False, mask=mask, method='ordinal') <= n
+        rank_data = self.rank(ascending=False, mask=mask, method='ordinal')
+        if type(n) is float:
+            assert 0 < n < 1
+            return rank_data <= (XSMax(inputs=[rank_data]) * n)
+        else:
+            return rank_data <= n
 
-    def bottom(self, n: int, mask: 'BaseFactor' = None):
-        return self.rank(ascending=True, mask=mask, method='ordinal') <= n
+    def bottom(self, n: Union[int, float], mask: 'BaseFactor' = None):
+        rank_data = self.rank(ascending=True, mask=mask, method='ordinal')
+        if type(n) is float:
+            assert 0 < n < 1
+            return rank_data <= (XSMax(inputs=[rank_data]) * n)
+        else:
+            return rank_data <= n
 
     def rank(self, ascending=True, mask: 'BaseFactor' = None, normalize=False, method='average'):
         """ Cross-section rank """
@@ -800,6 +810,18 @@ class MeanFactor(CrossSectionFactor):
 
     def compute(self, data: torch.Tensor) -> torch.Tensor:
         return nanmean(data).unsqueeze(-1).expand(data.shape[0], data.shape[1])
+
+
+class XSMax(CrossSectionFactor):
+
+    def compute(self, data: torch.Tensor) -> torch.Tensor:
+        return nanmax(data).unsqueeze(-1).expand(data.shape[0], data.shape[1])
+
+
+class XSMin(CrossSectionFactor):
+
+    def compute(self, data: torch.Tensor) -> torch.Tensor:
+        return nanmin(data).unsqueeze(-1).expand(data.shape[0], data.shape[1])
 
 
 class ZScoreFactor(CrossSectionFactor):
