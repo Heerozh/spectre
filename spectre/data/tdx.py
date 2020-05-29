@@ -280,6 +280,21 @@ class TDXLoader(DataLoader):
         name_dict = sector_df['股票名称'].to_dict()
         ret_df['name'] = ret_df.index.map(lambda x: name_dict.get(x[1], 'UNKNOWN'))
 
+        print('Merging ST tag...')
+        st_df = pd.read_csv(os.path.join(self._path, "ST_tag.csv"), parse_dates=['tradeDate'])
+        st_df.secID = st_df.secID.str.replace(r'(.*)(.XSHG)', r'SH\1')
+        st_df.secID = st_df.secID.str.replace(r'(.*)(.XSHE)', r'SZ\1')
+        st_df = st_df.set_index(['tradeDate', 'secID'])
+        st_df.STflg = pd.factorize(st_df.STflg)[0] + 1
+
+        st_s = st_df.STflg
+        st_s.name = 'st_tag'
+        st_s.index = st_s.index.set_names(['date', 'asset'])
+        ret_df = ret_df.join(st_s)
+
+        # 填充Nan
+        ret_df.st_tag = ret_df.st_tag.fillna(0)
+
         print('All ok')
 
         return ret_df
