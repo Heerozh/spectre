@@ -153,6 +153,14 @@ class BaseFactor:
             raise ValueError()
         return factor
 
+    def mean(self, groupby: str, mask: 'BaseFactor' = None):
+        """
+        Cross-section mean.
+        """
+        factor = MeanFactor(inputs=(self,), mask=mask)
+        factor.groupby = groupby
+        return factor
+
     def quantile(self, bins=5, mask: 'BaseFactor' = None, groupby: str = 'date'):
         """ Cross-section quantiles to which the factor belongs """
         factor = QuantileClassifier(inputs=(self,))
@@ -786,6 +794,12 @@ class DemeanFactor(CrossSectionFactor):
             double = data.to(torch.float64)
             ret = double - nanmean(double).unsqueeze(-1)
             return ret.to(data.dtype)
+
+
+class MeanFactor(CrossSectionFactor):
+
+    def compute(self, data: torch.Tensor) -> torch.Tensor:
+        return nanmean(data).unsqueeze(-1).expand(data.shape[0], data.shape[1])
 
 
 class ZScoreFactor(CrossSectionFactor):
