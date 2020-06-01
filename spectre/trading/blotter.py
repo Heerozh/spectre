@@ -417,8 +417,8 @@ class ManualBlotter(BaseBlotter):
     def _rebuild_from_orders(self):
         self._portfolio.clear()
 
-        for date, df in self.orders.groupby(pd.Grouper(freq='D')):
-            for row in df.iterrows():
+        for date, df in self.orders.groupby(pd.Grouper(key='date', freq='D')):
+            for i, row in df.iterrows():
                 self._portfolio.set_datetime(date.normalize())
                 if row.status == 'Cash':
                     self._portfolio.update_cash(row.filled_amount)
@@ -434,43 +434,44 @@ class ManualBlotter(BaseBlotter):
                                                 row.commission)
 
     def load(self):
-        """ Reload portfolio/orders, for updating account and order stats """
+        """ Reload portfolio/orders from working_dir, for updating account and order status """
         pattern = os.path.join(self.working_dir, 'orders_*.csv')
         files = glob.glob(pattern)
         if len(files) == 0:
             self.orders = pd.DataFrame(columns=[
-                'id', 'date', 'status', 'symbol', 'target_value', 'limit_price',
+                'id', 'date', 'status', 'symbol', 'target_percent', 'limit_price',
                 'filled_amount', 'filled_price', 'filled_percent', 'commission', 'realized'])
             self.orders.set_index('id', inplace=True)
             return
         else:
             col_types = {
-                'id': np.int32, 'date': pd.Timestamp, 'target_value': np.float64,
-                'limit_price': np.float32, 'filled_amount': np.float64, 'filled_price': np.float32,
+                'id': np.int32, 'target_percent': np.float32,
+                'limit_price': str, 'filled_amount': np.float64, 'filled_price': np.float32,
                 'filled_percent': np.float32, 'commission': np.float32, 'realized': np.float32
             }
-            self.orders = pd.concat([pd.read_csv(fn, index_col='id', dtype=col_types)
-                                     for fn in files])
-            self.orders.set_index('id', inplace=True)
-
+            self.orders = pd.concat([
+                pd.read_csv(fn, index_col='id', dtype=col_types, parse_dates=['date'])
+                for fn in files
+            ])
             self._rebuild_from_orders()
 
     def save(self):
         """
-        Save orders to working_dir,
+        Save orders and changes to working_dir.
         """
-        for n, g in self.orders.groupby(pd.Grouper(freq='D')):
+        self.orders.index.name = 'id'
+        for n, g in self.orders.groupby(pd.Grouper(key='date', freq='D')):
             name = n.strftime('orders_%Y-%m-%d.csv')
             g.to_csv(os.path.join(self.working_dir, name))
 
-    def cash_change(self, amount):
-        oid = len(self.orders)
-        order = dict(date=self._current_dt, id=oid, status='Cash',
-                     symbol='cash', target_value=0, limit_price='/',
-                     filled_amount=amount, filled_price=0, filled_percent=0,
-                     commission=0, realized=0)
-
-        self.orders.append(order)
+    def transfer_funds(self, amount):
+        """ Call this after you transfer funds to broker """
+        order = pd.Series(dict(
+            date=self._current_dt, status='Cash', symbol='cash', target_percent=0,
+            limit_price='/', filled_amount=amount, filled_price=0, filled_percent=0, commission=0,
+            realized=0))
+        self.orders = self.orders.append(order, ignore_index=True)
+        self._portfolio.update_cash(amount)
 
     def _order(self, asset, amount, price=None):
         raise NotImplementedError("not support")
@@ -484,19 +485,11 @@ class ManualBlotter(BaseBlotter):
     def batch_order_target(self, assets: Iterable[str], targets: Iterable[float]):
         raise NotImplementedError("not support")
 
-    def order_target_value(self, asset, target_value):
-        if target_value == 0:
-            return True
-
-        oid = len(self.orders)
-        order = dict(date=self._current_dt, id=oid, status='PendingSubmit',
-                     symbol=asset, target_value=target_value, limit_price='Market',
-                     filled_amount=0, filled_price=0, filled_percent=0, commission=0, realized=0)
-
-        self.orders.append(order)
-        return True
-
     def order_target_percent(self, asset: str, pct: float):
+        """
+        Call by trading algorithm, only generate orders csv, you need to manually place real order
+        to your broker, and call `order_filled` after broker tell you order filled.
+        """
         if not isinstance(asset, str):
             raise KeyError("`asset` must be a string")
         if not isinstance(pct, float):
@@ -504,47 +497,75 @@ class ManualBlotter(BaseBlotter):
         if self.long_only and pct < 0:
             raise ValueError("Long only blotter, `pct` must greater than 0.")
 
-        target_value = self._portfolio.value * pct
-        return self.order_target_value(asset, target_value)
+        if pct == 0. and asset not in self.positions:
+            return None
+
+        order = pd.Series(dict(
+            date=self._current_dt, status='PendingSubmit',
+            symbol=asset, target_percent=pct, limit_price='Market',
+            filled_amount=0, filled_price=0, filled_percent=0, commission=0, realized=0))
+        self.orders = self.orders.append(order, ignore_index=True)
+
+        return self.orders.index[-1]
 
     def batch_order_target_percent(self, assets: Iterable[str], weights: Iterable[float]):
+        """
+        Call by trading algorithm, only generate orders csv, you need to manually place real order
+        to your broker, and call `order_filled` after broker tell you order filled.
+        """
         if None in assets or np.any([not(a == a) for a in assets]):
             raise ValueError('None/NaN in `assets: ' + str(assets))
         if None in weights or np.any([not(w == w) for w in weights]):
             raise ValueError('None/NaN in `weights: ' + str(weights))
         pf_value = self._portfolio.value
         assets = list(assets)  # copy for preventing del items in loop
+        ret = dict()
         for asset, pct in zip(assets, weights):
             target_value = pf_value * pct
-            self.order_target_value(asset, target_value)
-        return True
+            oid = self.order_target_percent(asset, target_value)
+            ret[asset] = oid
+        return ret
 
     def order_filled(self, oid,  filled_amount, filled_price, commission):
-        self.orders.loc[oid].status = 'Filled'
-        self.orders.loc[oid].filled_amount = filled_amount
-        self.orders.loc[oid].filled_price = filled_price
-        self.orders.loc[oid].filled_percent = \
-            filled_price * filled_amount / self.orders.loc[oid].target_value
-        self.orders.loc[oid].commission = commission
+        """ Call this after you order filled by broker """
+        order = self.orders.loc[oid]
+        order.status = 'Filled'
+        order.filled_amount = filled_amount
+        order.filled_price = filled_price
+        order.filled_percent = filled_price * filled_amount / self.orders.loc[oid].action_value
+        order.commission = commission
+        self.orders.loc[oid] = order
+
+        self._portfolio.update(order.symbol, filled_amount, filled_price, commission)
+        self._portfolio.update_cash(-filled_amount * filled_price - commission)
 
     def order_cancelled(self, oid):
+        """ Call this after you cancelled one order """
         self.orders.loc[oid].status = 'Cancelled'
 
     def position_dividend(self, asset, amount):
-        oid = len(self.orders)
-        order = dict(date=self._current_dt, id=oid, status='Dividend',
-                     symbol=asset, target_value=0, limit_price='/',
-                     filled_amount=amount, filled_price=0, filled_percent=0,
-                     commission=0, realized=0)
-        self.orders.append(order)
+        """ Call this if your position has dividends """
+        order = pd.Series(dict(
+            date=self._current_dt, status='Dividend',
+            symbol=asset, target_percent=0, limit_price='/',
+            filled_amount=amount, filled_price=0, filled_percent=0, commission=0, realized=0))
+        self.orders = self.orders.append(order, ignore_index=True)
+        self._portfolio.process_dividend(asset, amount)
 
     def position_split(self, asset, inverse_ratio: float, last_price):
-        oid = len(self.orders)
-        order = dict(date=self._current_dt, id=oid, status='Split',
-                     symbol=asset, target_value=0, limit_price='/',
-                     filled_amount=inverse_ratio, filled_price=last_price, filled_percent=0,
-                     commission=0, realized=0)
-        self.orders.append(order)
+        """ Call this if your position has splits """
+        order = pd.Series(dict(
+            date=self._current_dt, status='Split',
+            symbol=asset, target_percent=0, limit_price='/',
+            filled_amount=inverse_ratio, filled_price=last_price, filled_percent=0,
+            commission=0, realized=0))
+        self.orders = self.orders.append(order, ignore_index=True)
+        self._portfolio.process_split(asset, inverse_ratio, last_price)
+
+    def update_portfolio_value(self, prices):
+        """ Call this nightly """
+        if len(self._portfolio.positions) > 0:
+            self._portfolio.update_value(prices)
 
     def get_price(self, asset: Union[str, Iterable]):
         raise NotImplementedError("not supported")
@@ -553,11 +574,11 @@ class ManualBlotter(BaseBlotter):
         orders = self.orders[self.orders.status == 'Filled']
         ret = pd.DataFrame(columns=['index', 'symbol', 'amount', 'price',
                                     'fill_price', 'commission', 'realized'])
-        ret.index = orders.date
+        ret['index'] = orders.date
         ret.symbol = orders.symbol
         ret.amount = orders.filled_amount
         ret.price = orders.filled_price
-        ret.fill_price = orders.fill_price + orders.commission
+        ret.fill_price = orders.filled_price + orders.commission
         ret.commission = orders.commission
         ret.realized = orders.realized
         ret = ret.set_index('index').sort_index()
