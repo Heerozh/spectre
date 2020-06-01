@@ -7,6 +7,8 @@
 from typing import Union, Iterable
 import pandas as pd
 import numpy as np
+import os
+import glob
 from collections import namedtuple, defaultdict
 from .event import *
 from .portfolio import Portfolio
@@ -86,10 +88,10 @@ class BaseBlotter:
     def get_price(self, asset: Union[str, Iterable]):
         raise NotImplementedError("abstractmethod")
 
-    def _order(self, asset, amount):
+    def _order(self, asset, amount, price=None):
         raise NotImplementedError("abstractmethod")
 
-    def order(self, asset: str, amount: int):
+    def order(self, asset: str, amount: int, price: str = None):
         if abs(amount) > self.max_shares:
             raise OverflowError(
                 'Cannot order more than ±{} shares: {}, set `blotter.max_shares` value '
@@ -105,7 +107,7 @@ class BaseBlotter:
         if (amount % self.order_multiplier) != 0:
             raise ValueError("Order amount must be placed in multiples of {}".format(
                 self.order_multiplier))
-        return self._order(asset, amount)
+        return self._order(asset, amount, price)
 
     def _order_target(self, asset: str, target: Union[int, float]):
         opened = self._portfolio.shares(asset)
@@ -299,7 +301,7 @@ class SimulationBlotter(BaseBlotter, EventReceiver):
         except KeyError:
             return None
 
-    def _order(self, asset, amount):
+    def _order(self, asset, amount, price=None):
         if not self.market_opened:
             raise RuntimeError('Out of market hours. Maybe you rebalance at AfterMarketClose; '
                                'or BeforeMarketOpen; or EveryBarData on daily data; '
@@ -376,7 +378,7 @@ class SimulationBlotter(BaseBlotter, EventReceiver):
                 current_adj = self._adjustments.get_as_dict(start, stop)
 
                 for asset, row in current_adj.items():
-                    self._portfolio.process_dividends(asset, row[div_col])
+                    self._portfolio.process_dividend(asset, row[div_col])
                     self._portfolio.process_split(asset, 1/row[sp_col], row[close_col])
             except KeyError:
                 pass
@@ -390,3 +392,176 @@ class SimulationBlotter(BaseBlotter, EventReceiver):
         self.schedule(MarketOpen(self.market_open, -1))  # -1 for grab priority
         self.schedule(MarketClose(self.market_close))
         self.schedule(EveryBarData(self.new_bars_data))
+
+
+class ManualBlotter(BaseBlotter):
+    """
+    This blotter will not actually place orders, but export orders to csv file.
+    Not support intraday trading.
+
+    Order status:
+    PendingSubmit - placed, but has not been submitted yet, you need to manually send all orders
+                    in this state to the broker.
+    Submitted - When you submitted this order to broker, you can set to this status (skip able).
+    Cancelled - When none filled of this order and cancelled, please set to this status.
+    Filled - When you order has been completely/partially filled, please set to this status.
+    Cash - Cash change
+    """
+
+    def __init__(self, working_dir):
+        super().__init__()
+        self.working_dir = working_dir
+        self.orders = None
+        self.load()
+
+    def _rebuild_from_orders(self):
+        self._portfolio.clear()
+
+        for date, df in self.orders.groupby(pd.Grouper(freq='D')):
+            for row in df.iterrows():
+                self._portfolio.set_datetime(date.normalize())
+                if row.status == 'Cash':
+                    self._portfolio.update_cash(row.filled_amount)
+                elif row.status == 'Dividend':
+                    self._portfolio.process_dividend(row.symbol, row.filled_amount)
+                elif row.status == 'Split':
+                    self._portfolio.process_split(row.symbol, row.filled_amount,
+                                                  row.filled_price)
+                elif row.status == 'Filled':
+                    self._portfolio.update(row.symbol, row.filled_amount, row.filled_price,
+                                           row.commission)
+                    self._portfolio.update_cash(-row.filled_amount * row.filled_price -
+                                                row.commission)
+
+    def load(self):
+        """ Reload portfolio/orders, for updating account and order stats """
+        pattern = os.path.join(self.working_dir, 'orders_*.csv')
+        files = glob.glob(pattern)
+        if len(files) == 0:
+            self.orders = pd.DataFrame(columns=[
+                'id', 'date', 'status', 'symbol', 'target_value', 'limit_price',
+                'filled_amount', 'filled_price', 'filled_percent', 'commission', 'realized'])
+            self.orders.set_index('id', inplace=True)
+            return
+        else:
+            col_types = {
+                'id': np.int32, 'date': pd.Timestamp, 'target_value': np.float64,
+                'limit_price': np.float32, 'filled_amount': np.float64, 'filled_price': np.float32,
+                'filled_percent': np.float32, 'commission': np.float32, 'realized': np.float32
+            }
+            self.orders = pd.concat([pd.read_csv(fn, index_col='id', dtype=col_types)
+                                     for fn in files])
+            self.orders.set_index('id', inplace=True)
+
+            self._rebuild_from_orders()
+
+    def save(self):
+        """
+        Save orders to working_dir,
+        """
+        for n, g in self.orders.groupby(pd.Grouper(freq='D')):
+            name = n.strftime('orders_%Y-%m-%d.csv')
+            g.to_csv(os.path.join(self.working_dir, name))
+
+    def cash_change(self, amount):
+        oid = len(self.orders)
+        order = dict(date=self._current_dt, id=oid, status='Cash',
+                     symbol='cash', target_value=0, limit_price='/',
+                     filled_amount=amount, filled_price=0, filled_percent=0,
+                     commission=0, realized=0)
+
+        self.orders.append(order)
+
+    def _order(self, asset, amount, price=None):
+        raise NotImplementedError("not support")
+
+    def order(self, asset: str, amount: int, price: str = None):
+        raise NotImplementedError("not support")
+
+    def order_target(self, asset: str, target: Union[int, float]):
+        raise NotImplementedError("not support")
+
+    def batch_order_target(self, assets: Iterable[str], targets: Iterable[float]):
+        raise NotImplementedError("not support")
+
+    def order_target_value(self, asset, target_value):
+        if target_value == 0:
+            return True
+
+        oid = len(self.orders)
+        order = dict(date=self._current_dt, id=oid, status='PendingSubmit',
+                     symbol=asset, target_value=target_value, limit_price='Market',
+                     filled_amount=0, filled_price=0, filled_percent=0, commission=0, realized=0)
+
+        self.orders.append(order)
+        return True
+
+    def order_target_percent(self, asset: str, pct: float):
+        if not isinstance(asset, str):
+            raise KeyError("`asset` must be a string")
+        if not isinstance(pct, float):
+            raise ValueError("`pct` must be float")
+        if self.long_only and pct < 0:
+            raise ValueError("Long only blotter, `pct` must greater than 0.")
+
+        target_value = self._portfolio.value * pct
+        return self.order_target_value(asset, target_value)
+
+    def batch_order_target_percent(self, assets: Iterable[str], weights: Iterable[float]):
+        if None in assets or np.any([not(a == a) for a in assets]):
+            raise ValueError('None/NaN in `assets: ' + str(assets))
+        if None in weights or np.any([not(w == w) for w in weights]):
+            raise ValueError('None/NaN in `weights: ' + str(weights))
+        pf_value = self._portfolio.value
+        assets = list(assets)  # copy for preventing del items in loop
+        for asset, pct in zip(assets, weights):
+            target_value = pf_value * pct
+            self.order_target_value(asset, target_value)
+        return True
+
+    def order_filled(self, oid,  filled_amount, filled_price, commission):
+        self.orders.loc[oid].status = 'Filled'
+        self.orders.loc[oid].filled_amount = filled_amount
+        self.orders.loc[oid].filled_price = filled_price
+        self.orders.loc[oid].filled_percent = \
+            filled_price * filled_amount / self.orders.loc[oid].target_value
+        self.orders.loc[oid].commission = commission
+
+    def order_cancelled(self, oid):
+        self.orders.loc[oid].status = 'Cancelled'
+
+    def position_dividend(self, asset, amount):
+        oid = len(self.orders)
+        order = dict(date=self._current_dt, id=oid, status='Dividend',
+                     symbol=asset, target_value=0, limit_price='/',
+                     filled_amount=amount, filled_price=0, filled_percent=0,
+                     commission=0, realized=0)
+        self.orders.append(order)
+
+    def position_split(self, asset, inverse_ratio: float, last_price):
+        oid = len(self.orders)
+        order = dict(date=self._current_dt, id=oid, status='Split',
+                     symbol=asset, target_value=0, limit_price='/',
+                     filled_amount=inverse_ratio, filled_price=last_price, filled_percent=0,
+                     commission=0, realized=0)
+        self.orders.append(order)
+
+    def get_price(self, asset: Union[str, Iterable]):
+        raise NotImplementedError("not supported")
+
+    def get_transactions(self):
+        orders = self.orders[self.orders.status == 'Filled']
+        ret = pd.DataFrame(columns=['index', 'symbol', 'amount', 'price',
+                                    'fill_price', 'commission', 'realized'])
+        ret.index = orders.date
+        ret.symbol = orders.symbol
+        ret.amount = orders.filled_amount
+        ret.price = orders.filled_price
+        ret.fill_price = orders.fill_price + orders.commission
+        ret.commission = orders.commission
+        ret.realized = orders.realized
+        ret = ret.set_index('index').sort_index()
+        return ret
+
+    def cancel_all_orders(self):
+        raise NotImplementedError("not supported")

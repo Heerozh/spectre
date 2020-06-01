@@ -85,6 +85,6 @@ class CNCalendar(Calendar):
                 'LunchEnd': '13:00:00',
                 'Close': '15:00:00'
             },
-            tz=self.timezone)
+            tz=timezone)
         for d in CNCalendar.closed:
             self.set_as_holiday(d.tz_localize(timezone))

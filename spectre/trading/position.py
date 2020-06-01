@@ -124,7 +124,7 @@ class Position:
             self.stop_tracker.process_split(last_price)
         return cash
 
-    def process_dividends(self, amount: float) -> float:
+    def process_dividend(self, amount: float) -> float:
         if amount != amount or amount == 0:
             return 0
         self._average_price -= amount

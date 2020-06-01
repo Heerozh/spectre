@@ -119,6 +119,11 @@ from .event import (
     MarketClose,
     EventReceiver,
     EventManager,
+    MarketEventManager,
+)
+from .calendar import (
+    Calendar,
+    CNCalendar,
 )
 from .algorithm import (
     CustomAlgorithm,
@@ -138,7 +143,8 @@ from .portfolio import (
 )
 from .blotter import (
     BaseBlotter,
-    SimulationBlotter
+    SimulationBlotter,
+    ManualBlotter,
 )
 from .metric import (
     drawdown,
