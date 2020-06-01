@@ -124,6 +124,9 @@ class TDXLoader(DataLoader):
                                                   'outstanding', 'floating'])
             ret['date'] = pd.to_datetime(ret['date'].astype(str), format='%Y%m%d') \
                 .dt.tz_localize('Asia/Shanghai')
+            ret['roe'] = ret['roe'].astype(np.float32)
+            ret['eps'] = ret['eps'].astype(np.float32)
+            ret['bvps'] = ret['bvps'].astype(np.float32)
             ret.asset = ret.asset.str.replace(r'^00', 'SZ00')
             ret.asset = ret.asset.str.replace(r'^60', 'SH60')
             ret.set_index(['date', 'asset'], inplace=True)
@@ -252,6 +255,7 @@ class TDXLoader(DataLoader):
             df = df.set_index(['effDate', 'consID'])
 
             s = df.weight / 100
+            s = s.astype(np.float32)
             # 对于移出的设为0，为了方便之后的pad na
             s = s.unstack().stack(dropna=False).fillna(0)
             s.index = s.index.set_names(['date', 'asset'])
@@ -277,6 +281,7 @@ class TDXLoader(DataLoader):
         sector_cat = dict(zip(unique_sector, range(len(unique_sector))))
         sector_dict = sector_df['行业名称'].map(sector_cat).to_dict()
         ret_df['sector'] = ret_df.index.map(lambda x: sector_dict.get(x[1], -1))
+        ret_df['sector'].astype('int32')
         name_dict = sector_df['股票名称'].to_dict()
         ret_df['name'] = ret_df.index.map(lambda x: name_dict.get(x[1], 'UNKNOWN'))
 
@@ -286,6 +291,7 @@ class TDXLoader(DataLoader):
         st_df.secID = st_df.secID.str.replace(r'(.*)(.XSHE)', r'SZ\1')
         st_df = st_df.set_index(['tradeDate', 'secID'])
         st_df.STflg = pd.factorize(st_df.STflg)[0] + 1
+        st_df.STflg = st_df.STflg.astype(np.float)
 
         st_s = st_df.STflg
         st_s.name = 'st_tag'
