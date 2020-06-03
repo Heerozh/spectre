@@ -448,6 +448,7 @@ class ManualBlotter(BaseBlotter):
             self.orders = pd.DataFrame(columns=[
                 'id', 'date', 'status', 'symbol', 'target_percent', 'limit_price',
                 'filled_amount', 'filled_price', 'filled_percent', 'commission', 'realized'])
+            print('Create ManualBlotter with empty orders.')
             for k, v in col_types.items():
                 self.orders[k] = self.orders[k].astype(v)
             self.orders.set_index('id', inplace=True)
@@ -458,6 +459,8 @@ class ManualBlotter(BaseBlotter):
                             date_parser=lambda col: pd.to_datetime(col, utc=True))
                 for fn in files
             ])
+            print('Orders loaded: {} - {}, total: {} orders'.format(
+                self.orders.date.iloc[0], self.orders.date.iloc[-1], len(self.orders)))
             self.orders['date'] = self.orders['date'].dt.tz_convert(self.time_zone)
             self._rebuild_from_orders()
 
@@ -507,6 +510,7 @@ class ManualBlotter(BaseBlotter):
         if self.long_only and pct < 0:
             raise ValueError("Long only blotter, `pct` must greater than 0.")
 
+        pct = round(pct, 4)
         if pct == 0. and asset not in self.positions:
             return None
 
