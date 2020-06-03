@@ -60,6 +60,7 @@ class CustomAlgorithm(EventReceiver, ABC):
         self._current_dt = None
         self._results = CustomAlgorithm.Results(None, None, None)
         self._rebalance_callback = None
+        self.delay_factor = True
 
     def clear(self):
         for engine in self._engines.values():
@@ -176,7 +177,6 @@ class CustomAlgorithm(EventReceiver, ABC):
     def run_engine(self, start, end, delay_factor=True):
         if start is None:
             start = self._current_dt
-            end = self._current_dt
         start = start - self._history_window
 
         if len(self._engines) == 1:
@@ -192,7 +192,7 @@ class CustomAlgorithm(EventReceiver, ABC):
 
     def _data_updated(self, event_source=None):
         # todo if in live, last row should return by inferred time
-        self._data, self._last_row = self.run_engine(None, None)
+        self._data, self._last_row = self.run_engine(None, None, delay_factor=self.delay_factor)
 
     def on_run(self):
         # schedule first, so it will run before rebalance
@@ -293,7 +293,7 @@ class SimulationEventManager(EventManager):
             raise ValueError("No data returned, please set `start`, `end` time correctly")
         data = self.wrap_data(data, DataLoaderFastGetter)
         # mock CustomAlgorithm
-        alg.run_engine = lambda *args: (self._mocked_data, self._mocked_last)
+        alg.run_engine = lambda *args, **kwargs: (self._mocked_data, self._mocked_last)
         if 'empty_cache_after_run' in alg.__dict__:
             for eng in alg._engines.values():
                 eng.empty_cache()

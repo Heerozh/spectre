@@ -63,6 +63,15 @@ class Calendar:
             else:
                 break
 
+    def today_next(self):
+        """ Return today next events """
+        now = self.hr_now()
+        return {
+            event: dts[0]
+            for event, dts in self.events.items()
+            if dts[0].normalize() == now.normalize()
+        }
+
 
 class CNCalendar(Calendar):
     """
@@ -77,6 +86,7 @@ class CNCalendar(Calendar):
     def __init__(self):
         super().__init__()
         timezone = 'Asia/Shanghai'
+        assert pd.Timestamp.now(self.timezone).year <= CNCalendar.closed[-1].year
         self.build(
             end=str(CNCalendar.closed[-1].year + 1),
             daily_events={
