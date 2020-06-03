@@ -1,6 +1,7 @@
 import unittest
 import spectre
 import pandas as pd
+import os
 from os.path import dirname
 from numpy import nan
 
@@ -31,8 +32,8 @@ class TestBlotter(unittest.TestCase):
 
         self.assertEqual(0, pf.positions['MSFT'].realized)
 
-        pf.process_dividends('AAPL', 2.0)
-        pf.process_dividends('MSFT', 2.0)
+        pf.process_dividend('AAPL', 2.0)
+        pf.process_dividend('MSFT', 2.0)
         pf.update_value(lambda x: x == 'AAPL' and 1.5 or 2)
 
         position_shares = {k: pos.shares for k, pos in pf.positions.items()}
@@ -340,3 +341,65 @@ index
 
         pos.current_dt = pd.Timestamp('2014-01-05', tz='UTC')
         self.assertEqual(9 * (1 - 0.1 * 0.05 ** 0.6), model.stop_price)
+
+    def test_manual_blotter(self):
+        try:
+            os.remove('./data/orders_2020-06-01.csv')
+            os.remove('./data/orders_2020-06-02.csv')
+        except FileNotFoundError:
+            pass
+
+        blotter = spectre.trading.ManualBlotter('./data/', 'Asia/Shanghai')
+
+        day1 = pd.Timestamp('2020-06-01', tz='Asia/Shanghai')
+        blotter.set_datetime(day1)
+        blotter.transfer_funds(10000)
+        test_oid = blotter.order_target_percent('test', 0.3)
+        batch_ids = blotter.batch_order_target_percent(['batch1', 'batch2'], [0.1, 0.2])
+        blotter.order_filled(batch_ids['batch2'], 10, 200, 5)
+        blotter.order_filled(test_oid, 5, 200, 5)
+
+        day2 = pd.Timestamp('2020-06-02', tz='Asia/Shanghai')
+        blotter.set_datetime(day2)
+        blotter.transfer_funds(20000)
+        blotter.order_cancelled(batch_ids['batch1'])
+        test_oid = blotter.order_target_percent('test', 0.0)
+        blotter.order_filled(test_oid, -5, 300, 5)
+        blotter.position_dividend('batch2', 1.5)
+        blotter.position_split('batch2', 1.5, 200)
+
+        # with pd.option_context('max_columns', None):
+        #     print(blotter.get_transactions())
+        #     print(blotter.portfolio)
+
+        # test transactions
+        expected_txn = pd.DataFrame([['test',    5., 200., 205., 5.,   0.],
+                                     ['batch2', 10., 200., 205., 5.,   0.],
+                                     ['test',   -5., 300., 305., 5., 490.]],
+                                    columns=['symbol', 'amount', 'price', 'fill_price', 'commission',
+                                             'realized'],
+                                    index=pd.DatetimeIndex([day1, day1, day2]))
+        expected_txn.index.name = 'index'
+        pd.testing.assert_frame_equal(expected_txn, blotter.get_transactions())
+
+        # test portfolio
+        expected_pos = pd.DataFrame([[200.5,      201., 10, 5.,  2000., 6990.,  1000.],
+                                     [132.666667, nan,  15, nan, 2000., 28500., nan]],
+                                    columns=pd.MultiIndex.from_tuples(
+                                        [('avg_px', 'batch2'), ('avg_px', 'test'),
+                                         ('shares', 'batch2'), ('shares', 'test'),
+                                         ('value', 'batch2'), ('value', 'cash'),
+                                         ('value', 'test')]),
+                                    index=pd.DatetimeIndex([day1, day2]))
+        expected_pos.index.name = 'index'
+        pd.testing.assert_frame_equal(expected_pos, blotter.portfolio.history)
+
+        # test save load
+        blotter.save()
+        del blotter
+
+        new_blotter = spectre.trading.ManualBlotter('./data/', 'Asia/Shanghai')
+
+        expected_pos[('shares', 'batch2')] = expected_pos[('shares', 'batch2')].astype('float')
+        pd.testing.assert_frame_equal(expected_txn, new_blotter.get_transactions())
+        pd.testing.assert_frame_equal(expected_pos, new_blotter.portfolio.history)

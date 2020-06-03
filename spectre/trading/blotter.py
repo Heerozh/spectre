@@ -408,9 +408,10 @@ class ManualBlotter(BaseBlotter):
     Cash - Cash change
     """
 
-    def __init__(self, working_dir):
+    def __init__(self, working_dir, time_zone):
         super().__init__()
         self.working_dir = working_dir
+        self.time_zone = time_zone
         self.orders = None
         self.load()
 
@@ -437,22 +438,27 @@ class ManualBlotter(BaseBlotter):
         """ Reload portfolio/orders from working_dir, for updating account and order status """
         pattern = os.path.join(self.working_dir, 'orders_*.csv')
         files = glob.glob(pattern)
+
+        col_types = {
+            'id': np.int64, 'target_percent': np.float64,
+            'limit_price': str, 'filled_amount': np.float64, 'filled_price': np.float64,
+            'filled_percent': np.float64, 'commission': np.float64, 'realized': np.float64
+        }
         if len(files) == 0:
             self.orders = pd.DataFrame(columns=[
                 'id', 'date', 'status', 'symbol', 'target_percent', 'limit_price',
                 'filled_amount', 'filled_price', 'filled_percent', 'commission', 'realized'])
+            for k, v in col_types.items():
+                self.orders[k] = self.orders[k].astype(v)
             self.orders.set_index('id', inplace=True)
             return
         else:
-            col_types = {
-                'id': np.int32, 'target_percent': np.float32,
-                'limit_price': str, 'filled_amount': np.float64, 'filled_price': np.float32,
-                'filled_percent': np.float32, 'commission': np.float32, 'realized': np.float32
-            }
             self.orders = pd.concat([
-                pd.read_csv(fn, index_col='id', dtype=col_types, parse_dates=['date'])
+                pd.read_csv(fn, index_col='id', dtype=col_types, parse_dates=['date'],
+                            date_parser=lambda col: pd.to_datetime(col, utc=True))
                 for fn in files
             ])
+            self.orders['date'] = self.orders['date'].dt.tz_convert(self.time_zone)
             self._rebuild_from_orders()
 
     def save(self):
@@ -463,6 +469,10 @@ class ManualBlotter(BaseBlotter):
         for n, g in self.orders.groupby(pd.Grouper(key='date', freq='D')):
             name = n.strftime('orders_%Y-%m-%d.csv')
             g.to_csv(os.path.join(self.working_dir, name))
+
+    def set_datetime(self, dt: pd.Timestamp) -> None:
+        assert str(dt.tz) == self.time_zone
+        super().set_datetime(dt)
 
     def transfer_funds(self, amount):
         """ Call this after you transfer funds to broker """
@@ -517,31 +527,30 @@ class ManualBlotter(BaseBlotter):
             raise ValueError('None/NaN in `assets: ' + str(assets))
         if None in weights or np.any([not(w == w) for w in weights]):
             raise ValueError('None/NaN in `weights: ' + str(weights))
-        pf_value = self._portfolio.value
-        assets = list(assets)  # copy for preventing del items in loop
         ret = dict()
         for asset, pct in zip(assets, weights):
-            target_value = pf_value * pct
-            oid = self.order_target_percent(asset, target_value)
+            oid = self.order_target_percent(asset, pct)
             ret[asset] = oid
         return ret
 
     def order_filled(self, oid,  filled_amount, filled_price, commission):
         """ Call this after you order filled by broker """
-        order = self.orders.loc[oid]
+        order = self.orders.loc[oid].copy()
+
+        realized = self._portfolio.update(order.symbol, filled_amount, filled_price, commission)
+        self._portfolio.update_cash(-filled_amount * filled_price - commission)
+
         order.status = 'Filled'
         order.filled_amount = filled_amount
         order.filled_price = filled_price
-        order.filled_percent = filled_price * filled_amount / self.orders.loc[oid].action_value
+        order.filled_percent = filled_price * filled_amount / self.portfolio.value
+        order.realized = realized
         order.commission = commission
         self.orders.loc[oid] = order
 
-        self._portfolio.update(order.symbol, filled_amount, filled_price, commission)
-        self._portfolio.update_cash(-filled_amount * filled_price - commission)
-
     def order_cancelled(self, oid):
         """ Call this after you cancelled one order """
-        self.orders.loc[oid].status = 'Cancelled'
+        self.orders.loc[oid, 'status'] = 'Cancelled'
 
     def position_dividend(self, asset, amount):
         """ Call this if your position has dividends """
