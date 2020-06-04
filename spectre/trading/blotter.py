@@ -493,7 +493,7 @@ class ManualBlotter(BaseBlotter):
         self.orders.index.name = 'id'
         for n, g in self.orders.groupby(pd.Grouper(key='date', freq='D')):
             name = n.strftime('orders_%Y-%m-%d.csv')
-            g.to_csv(os.path.join(self.working_dir, name))
+            g.round(4).to_csv(os.path.join(self.working_dir, name))
 
     def set_datetime(self, dt: pd.Timestamp) -> None:
         assert str(dt.tz) == self.time_zone
@@ -577,7 +577,7 @@ class ManualBlotter(BaseBlotter):
         order.status = 'Filled'
         order.filled_amount = filled_amount
         order.filled_price = filled_price
-        order.filled_percent = filled_price * filled_amount / order.action_value
+        order.filled_percent = round(filled_price * filled_amount / order.action_value, 3)
         order.realized = realized
         order.commission = commission
         self.orders.loc[oid] = order
