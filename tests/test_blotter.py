@@ -114,16 +114,16 @@ index
         blotter.update_portfolio_value()
 
         # check transactions
-        rzd = (157.41695 - 157.09960) * 384 - 1.92 * 2
-        expected = pd.DataFrame([['AAPL', 384, 155.92, 157.09960, 1.92, 0.0],
-                                 ['AAPL', -384, 158.61, 157.41695, 1.92, rzd]],
+        rzd = (157.41695 - 157.09960) * 385 - 1.92 * 2
+        expected = pd.DataFrame([['AAPL', 385, 155.92, 157.09960, 1.92, 0.0],
+                                 ['AAPL', -385, 158.61, 157.41695, 1.92, rzd]],
                                 columns=['symbol', 'amount', 'price',
                                          'fill_price', 'commission', 'realized'],
                                 index=[date, date])
         expected.index.name = 'index'
         pd.testing.assert_frame_equal(expected, blotter.get_transactions())
 
-        value = 200000 - 157.0996 * 384 - 1.92 + 157.41695 * 384 - 1.92
+        value = 200000 - 157.0996 * 385 - 1.92 + 157.41695 * 385 - 1.92
         expected = pd.DataFrame([[value]],
                                 columns=pd.MultiIndex.from_tuples(
                                     [('value', 'cash')]),
@@ -175,8 +175,8 @@ index
 
         # test on 01-11, 01-14 split
         self.assertEqual(int(969 / 15), blotter.positions['MSFT'].shares)
-        cash = cash + 651 * 152.52155 - 3.255 - 967 * 104.116 - 4.835
-        cash += (969 - int(969 / 15) * 15) * 103.2  # remaining split to cash
+        cash = cash + 651 * 152.52155 - 3.26 - 968 * 104.116 - 4.84
+        cash += (970 - int(970 / 15) * 15) * 103.2  # remaining split to cash
         self.assertAlmostEqual(cash, blotter.portfolio.cash)
 
         #

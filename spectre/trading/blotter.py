@@ -154,7 +154,7 @@ class BaseBlotter:
         if price is None:
             return False
         target = (self._portfolio.value * pct) / price
-        target = int(target / self.order_multiplier) * self.order_multiplier
+        target = int(round(target / self.order_multiplier)) * self.order_multiplier
         return self._order_target(asset, target)
 
     def batch_order_target_percent(self, assets: Iterable[str], weights: Iterable[float]):
@@ -176,7 +176,7 @@ class BaseBlotter:
                         asset, self._current_dt
                     ))
                 target = (pf_value * pct) / price
-                target = int(target / self.order_multiplier) * self.order_multiplier
+                target = int(round(target / self.order_multiplier)) * self.order_multiplier
             except KeyError:
                 skipped.append([asset, self._portfolio.shares(asset)])
                 continue
@@ -331,6 +331,7 @@ class SimulationBlotter(BaseBlotter, EventReceiver):
             fill_price = price - slippage
         else:
             fill_price = price + slippage
+        commission = round(commission, 2)
 
         # update portfolio, pay cash
         realized = self._portfolio.update(asset, amount, fill_price, commission)
@@ -576,7 +577,7 @@ class ManualBlotter(BaseBlotter):
         order.status = 'Filled'
         order.filled_amount = filled_amount
         order.filled_price = filled_price
-        order.filled_percent = filled_price * filled_amount / self.portfolio.value
+        order.filled_percent = filled_price * filled_amount / order.action_value
         order.realized = realized
         order.commission = commission
         self.orders.loc[oid] = order
