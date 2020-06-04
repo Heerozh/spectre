@@ -399,13 +399,35 @@ class ManualBlotter(BaseBlotter):
     This blotter will not actually place orders, but export orders to csv file.
     Not support intraday trading.
 
-    Order status:
-    PendingSubmit - placed, but has not been submitted yet, you need to manually send all orders
-                    in this state to the broker.
-    Submitted - When you submitted this order to broker, you can set to this status (skip able).
-    Cancelled - When none filled of this order and cancelled, please set to this status.
-    Filled - When you order has been completely/partially filled, please set to this status.
-    Cash - Cash change
+    Order columns:
+    date:
+        order created datetime
+    status:
+        PendingSubmit - placed, but has not been submitted yet, you need to manually send all orders
+                        in this state to the broker.
+        Submitted - When you submitted this order to broker, you can set to this status (skip able).
+        Cancelled - When none filled of this order and cancelled, please set to this status.
+        Filled - When you order has been completely/partially filled, please set to this status.
+        Cash - Cash transfer log
+    symbol:
+        underlay asset
+    target_percent:
+        Order size, target percent unit. If zero, means close position.
+    action_value:
+        How many value need to be fill. Calculated from last daily portfolio value.
+    limit_price:
+        float: price.
+        string: 'Market'
+    filled_amount:
+        If order filled, indicate the number of asset traded.
+    filled_price:
+        Average price of transactions.
+    filled_percent:
+        Percent of the target has been filled.
+    commission:
+        Commission
+    realized:
+        Realized gain/loss.
     """
 
     def __init__(self, working_dir, time_zone):
@@ -440,19 +462,18 @@ class ManualBlotter(BaseBlotter):
         files = glob.glob(pattern)
 
         col_types = {
-            'id': np.int64, 'target_percent': np.float64,
+            'id': np.int64, 'target_percent': np.float64, 'action_value': np.float64,
             'limit_price': str, 'filled_amount': np.float64, 'filled_price': np.float64,
             'filled_percent': np.float64, 'commission': np.float64, 'realized': np.float64
         }
         if len(files) == 0:
             self.orders = pd.DataFrame(columns=[
-                'id', 'date', 'status', 'symbol', 'target_percent', 'limit_price',
+                'id', 'date', 'status', 'symbol', 'target_percent', 'action_value', 'limit_price',
                 'filled_amount', 'filled_price', 'filled_percent', 'commission', 'realized'])
             print('Create ManualBlotter with empty orders.')
             for k, v in col_types.items():
                 self.orders[k] = self.orders[k].astype(v)
             self.orders.set_index('id', inplace=True)
-            return
         else:
             self.orders = pd.concat([
                 pd.read_csv(fn, index_col='id', dtype=col_types, parse_dates=['date'],
@@ -480,7 +501,7 @@ class ManualBlotter(BaseBlotter):
     def transfer_funds(self, amount):
         """ Call this after you transfer funds to broker """
         order = pd.Series(dict(
-            date=self._current_dt, status='Cash', symbol='cash', target_percent=0,
+            date=self._current_dt, status='Cash', symbol='cash', target_percent=0, action_value=0,
             limit_price='/', filled_amount=amount, filled_price=0, filled_percent=0, commission=0,
             realized=0))
         self.orders = self.orders.append(order, ignore_index=True)
@@ -514,9 +535,17 @@ class ManualBlotter(BaseBlotter):
         if pct == 0. and asset not in self.positions:
             return None
 
+        opened_value = 0
+        try:
+            opened_value = self._portfolio.positions[asset].value
+        except KeyError:
+            pass
+        target_value = self._portfolio.value * pct
+        action_value = target_value - opened_value
+
         order = pd.Series(dict(
             date=self._current_dt, status='PendingSubmit',
-            symbol=asset, target_percent=pct, limit_price='Market',
+            symbol=asset, target_percent=pct, action_value=action_value, limit_price='Market',
             filled_amount=0, filled_price=0, filled_percent=0, commission=0, realized=0))
         self.orders = self.orders.append(order, ignore_index=True)
 
@@ -537,7 +566,7 @@ class ManualBlotter(BaseBlotter):
             ret[asset] = oid
         return ret
 
-    def order_filled(self, oid,  filled_amount, filled_price, commission):
+    def order_filled(self, oid, filled_amount, filled_price, commission):
         """ Call this after you order filled by broker """
         order = self.orders.loc[oid].copy()
 
@@ -560,7 +589,7 @@ class ManualBlotter(BaseBlotter):
         """ Call this if your position has dividends """
         order = pd.Series(dict(
             date=self._current_dt, status='Dividend',
-            symbol=asset, target_percent=0, limit_price='/',
+            symbol=asset, target_percent=0, action_value=0, limit_price='/',
             filled_amount=amount, filled_price=0, filled_percent=0, commission=0, realized=0))
         self.orders = self.orders.append(order, ignore_index=True)
         self._portfolio.process_dividend(asset, amount)
@@ -569,7 +598,7 @@ class ManualBlotter(BaseBlotter):
         """ Call this if your position has splits """
         order = pd.Series(dict(
             date=self._current_dt, status='Split',
-            symbol=asset, target_percent=0, limit_price='/',
+            symbol=asset, target_percent=0, action_value=0, limit_price='/',
             filled_amount=inverse_ratio, filled_price=last_price, filled_percent=0,
             commission=0, realized=0))
         self.orders = self.orders.append(order, ignore_index=True)
@@ -596,6 +625,10 @@ class ManualBlotter(BaseBlotter):
         ret.realized = orders.realized
         ret = ret.set_index('index').sort_index()
         return ret
+
+    @property
+    def pendings(self):
+        return self.orders[self.orders.status == 'PendingSubmit']
 
     def cancel_all_orders(self):
         raise NotImplementedError("not supported")
