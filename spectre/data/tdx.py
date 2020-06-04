@@ -290,7 +290,8 @@ class TDXLoader(DataLoader):
         st_df.secID = st_df.secID.str.replace(r'(.*)(.XSHG)', r'SH\1')
         st_df.secID = st_df.secID.str.replace(r'(.*)(.XSHE)', r'SZ\1')
         st_df = st_df.set_index(['tradeDate', 'secID'])
-        st_df.STflg = pd.factorize(st_df.STflg)[0] + 1
+        st_value, st_value_index = pd.factorize(st_df.STflg, sort=True)
+        st_df.STflg = st_value + 1
         st_df.STflg = st_df.STflg.astype(np.float)
 
         st_s = st_df.STflg
@@ -298,7 +299,11 @@ class TDXLoader(DataLoader):
         st_s.index = st_s.index.set_names(['date', 'asset'])
         ret_df = ret_df.join(st_s)
 
-        # 填充Nan
+        # st数据影响幅度较大，所以Nan的行按最近的股票名来设定是否ST，注意有前视偏差
+        for tag in ['ST', 'SST', '*ST', 'S*ST', 'S', '*']:
+            mask = ret_df['name'].str.startswith(tag)
+            ret_df.st_tag = ret_df.st_tag.mask(
+                mask, ret_df.st_tag.fillna(st_value_index.searchsorted(tag) + 1))
         ret_df.st_tag = ret_df.st_tag.fillna(0)
 
         print('All ok')
