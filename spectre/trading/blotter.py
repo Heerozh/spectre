@@ -493,7 +493,8 @@ class ManualBlotter(BaseBlotter):
         self.orders.index.name = 'id'
         for n, g in self.orders.groupby(pd.Grouper(key='date', freq='D')):
             name = n.strftime('orders_%Y-%m-%d.csv')
-            g.round(4).to_csv(os.path.join(self.working_dir, name))
+            if not g.empty:
+                g.round(4).to_csv(os.path.join(self.working_dir, name))
 
     def set_datetime(self, dt: pd.Timestamp) -> None:
         assert str(dt.tz) == self.time_zone
