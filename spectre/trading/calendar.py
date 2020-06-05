@@ -34,6 +34,9 @@ class Calendar:
         self.events = {name: [day + pd.Timedelta(time) for day in days]
                        for name, time in daily_events.items()}
 
+        for k, _ in self.events.items():
+            self.pop_passed(k)
+
     def add_event(self, event: str, datetime: pd.Timestamp):
         self.events[event].append(datetime)
         self.events[event].sort()
@@ -62,6 +65,7 @@ class Calendar:
                 del dts[0]
             else:
                 break
+        return self
 
     def today_next(self):
         """ Return today next events """
