@@ -94,10 +94,12 @@ class CNCalendar(Calendar):
         self.build(
             end=str(CNCalendar.closed[-1].year + 1),
             daily_events={
+                'DayStart': '00:00:00',
                 'Open': '9:30:00',
                 'Lunch': '11:30:00',
                 'LunchEnd': '13:00:00',
-                'Close': '15:00:00'
+                'Close': '15:00:00',
+                'DayEnd': '23:59:59'
             },
             tz=timezone)
         for d in CNCalendar.closed:
