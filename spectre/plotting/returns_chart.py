@@ -113,7 +113,7 @@ def plot_quantile_and_cumulative_returns(factor_data, mean_ret):
     return fig
 
 
-def plot_cumulative_returns(returns, positions, transactions, benchmark, annual_risk_free):
+def cumulative_returns_fig(returns, positions, transactions, benchmark, annual_risk_free):
     from ..trading import turnover, sharpe_ratio, drawdown, annual_volatility
 
     import plotly.graph_objects as go
@@ -172,4 +172,4 @@ def plot_cumulative_returns(returns, positions, transactions, benchmark, annual_
     fig.update_xaxes(tickformat='%Y-%m-%d')
     fig.update_yaxes(title_text='cumulative return', ticksuffix='%', secondary_y=False)
     fig.update_yaxes(title_text='turnover', ticksuffix='%', secondary_y=True)
-    fig.show()
+    return fig

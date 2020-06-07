@@ -12,7 +12,7 @@ import gc
 import torch
 from collections import namedtuple
 from .event import Event, EventReceiver, EventManager, EveryBarData, MarketOpen, MarketClose
-from ..plotting import plot_cumulative_returns
+from ..plotting import cumulative_returns_fig
 from .blotter import BaseBlotter, SimulationBlotter
 from ..factors import FactorEngine, OHLCV, StaticAssets
 from ..data import DataLoader, DataLoaderFastGetter
@@ -132,7 +132,7 @@ class CustomAlgorithm(EventReceiver, ABC):
     def record(self, **kwargs):
         self._recorder.record(self._current_dt, kwargs)
 
-    def plot(self, annual_risk_free=0.04, benchmark: Union[pd.Series, str] = None) -> None:
+    def cumulative_returns_fig(self, annual_risk_free, benchmark):
         returns = self._results.returns
         if returns.shape[0] <= 1:
             print('plot failed: Insufficient data')
@@ -151,8 +151,12 @@ class CustomAlgorithm(EventReceiver, ABC):
             bench = bench.resample('D').last().dropna()
             bench = bench.pct_change()
 
-        plot_cumulative_returns(returns, self._results.positions,  self._results.transactions,
-                                bench, annual_risk_free)
+        fig = cumulative_returns_fig(returns, self._results.positions,  self._results.transactions,
+                                     bench, annual_risk_free)
+        return fig
+
+    def plot(self, annual_risk_free=0.04, benchmark: Union[pd.Series, str] = None) -> None:
+        self.cumulative_returns_fig(annual_risk_free, benchmark).show()
 
     def _call_rebalance(self, _):
         history = self._data

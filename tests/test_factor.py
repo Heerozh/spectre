@@ -192,7 +192,9 @@ class TestFactorLib(unittest.TestCase):
         test_expected(f.quantile(), expected_aapl, expected_msft, total_rows)
         engine.set_filter(None)
 
-        import talib  # pip install --no-deps d:\doc\Download\TA_Lib-0.4.17-cp37-cp37m-win_amd64.whl
+        # download: https://www.lfd.uci.edu/~gohlke/pythonlibs/#ta-lib
+        # pip install --no-deps d:\doc\Download\TA_Lib-0.4.18-cp37-cp37m-win_amd64.whl
+        import talib
 
         # test MA
         expected_aapl = talib.SMA(df_aapl_close.values, timeperiod=3)
