@@ -134,7 +134,7 @@ class CustomAlgorithm(EventReceiver, ABC):
 
     def cumulative_returns_fig(self, annual_risk_free, benchmark):
         returns = self._results.returns
-        if returns.shape[0] <= 1:
+        if returns.shape[0] <= 1 or returns.isna().all():
             print('plot failed: Insufficient data')
             return
 
