@@ -547,18 +547,21 @@ class ManualBlotter(BaseBlotter):
             return None
 
         opened_value = 0
+        oppend_shares = 0
         try:
             opened_value = self._portfolio.positions[asset].value
+            oppend_shares = self._portfolio.positions[asset].shares
         except KeyError:
             pass
         target_value = self._portfolio.value * pct
         action_value = target_value - opened_value
 
         if self.last_price is None:
-            return ValueError('call blotter.set_last_price(dict) first.')
+            raise ValueError('call blotter.set_last_price(dict) first.')
         last_close_price = self.last_price[asset]
-        target = target_value / last_close_price
-        amount = int(round(target / self.order_multiplier)) * self.order_multiplier
+        target_amount = target_value / last_close_price
+        target_amount = int(round(target_amount / self.order_multiplier)) * self.order_multiplier
+        amount = target_amount - oppend_shares
 
         order = pd.Series(dict(
             date=self._current_dt, status='PendingSubmit',
