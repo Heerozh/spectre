@@ -547,10 +547,10 @@ class ManualBlotter(BaseBlotter):
             return None
 
         opened_value = 0
-        oppend_shares = 0
+        opened_shares = 0
         try:
             opened_value = self._portfolio.positions[asset].value
-            oppend_shares = self._portfolio.positions[asset].shares
+            opened_shares = self._portfolio.positions[asset].shares
         except KeyError:
             pass
         target_value = self._portfolio.value * pct
@@ -561,7 +561,7 @@ class ManualBlotter(BaseBlotter):
         last_close_price = self.last_price[asset]
         target_amount = target_value / last_close_price
         target_amount = int(round(target_amount / self.order_multiplier)) * self.order_multiplier
-        amount = target_amount - oppend_shares
+        amount = target_amount - opened_shares
 
         order = pd.Series(dict(
             date=self._current_dt, status='PendingSubmit',
