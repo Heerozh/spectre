@@ -51,6 +51,8 @@ class TestTradingEvent(unittest.TestCase):
         tz = 'America/New_York'
         end = pd.Timestamp.now(tz=tz) + pd.DateOffset(days=10)
         first = pd.date_range(pd.Timestamp.now(tz=tz).normalize(), end, freq='B')[0]
+        if pd.Timestamp.now(tz=tz) > (first + pd.Timedelta("9:00:00")):
+            first = first + pd.offsets.BDay(1)
         holiday = first + pd.offsets.BDay(2)
         test_now = first + pd.offsets.BDay(1) + pd.Timedelta("10:00:00")
 
