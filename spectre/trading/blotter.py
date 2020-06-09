@@ -416,6 +416,8 @@ class ManualBlotter(BaseBlotter):
         Order size, target percent unit. If zero, means close position.
     action_value:
         How many value need to be fill. Calculated from last daily portfolio value.
+    amount:
+        Calculated based on yesterday's closing price.
     limit_price:
         float: price.
         string: 'Market'
@@ -436,6 +438,8 @@ class ManualBlotter(BaseBlotter):
         self.working_dir = working_dir
         self.time_zone = time_zone
         self.orders = None
+        self.order_multiplier = 100
+        self.last_price = None
         self.load()
 
     def _rebuild_from_orders(self):
@@ -464,13 +468,15 @@ class ManualBlotter(BaseBlotter):
 
         col_types = {
             'id': np.int64, 'target_percent': np.float64, 'action_value': np.float64,
-            'limit_price': str, 'filled_amount': np.float64, 'filled_price': np.float64,
-            'filled_percent': np.float64, 'commission': np.float64, 'realized': np.float64
+            'amount': np.float64, 'limit_price': str,
+            'filled_amount': np.float64, 'filled_price': np.float64, 'filled_percent': np.float64,
+            'commission': np.float64, 'realized': np.float64
         }
         if len(files) == 0:
             self.orders = pd.DataFrame(columns=[
-                'id', 'date', 'status', 'symbol', 'target_percent', 'action_value', 'limit_price',
-                'filled_amount', 'filled_price', 'filled_percent', 'commission', 'realized'])
+                'id', 'date', 'status', 'symbol', 'target_percent', 'action_value', 'amount',
+                'limit_price', 'filled_amount', 'filled_price', 'filled_percent', 'commission',
+                'realized'])
             print('Create ManualBlotter with empty orders.')
             for k, v in col_types.items():
                 self.orders[k] = self.orders[k].astype(v)
@@ -504,8 +510,8 @@ class ManualBlotter(BaseBlotter):
         """ Call this after you transfer funds to broker """
         order = pd.Series(dict(
             date=self._current_dt, status='Cash', symbol='cash', target_percent=0, action_value=0,
-            limit_price='/', filled_amount=amount, filled_price=0, filled_percent=0, commission=0,
-            realized=0))
+            amount=amount, limit_price='/', filled_amount=amount, filled_price=0, filled_percent=0,
+            commission=0, realized=0))
         self.orders = self.orders.append(order, ignore_index=True)
         self._portfolio.update_cash(amount)
 
@@ -520,6 +526,9 @@ class ManualBlotter(BaseBlotter):
 
     def batch_order_target(self, assets: Iterable[str], targets: Iterable[float]):
         raise NotImplementedError("not support")
+
+    def set_last_price(self, price_dict):
+        self.last_price = price_dict
 
     def order_target_percent(self, asset: str, pct: float):
         """
@@ -545,10 +554,17 @@ class ManualBlotter(BaseBlotter):
         target_value = self._portfolio.value * pct
         action_value = target_value - opened_value
 
+        if self.last_price is None:
+            return ValueError('call blotter.set_last_price(dict) first.')
+        last_close_price = self.last_price[asset]
+        target = target_value / last_close_price
+        amount = int(round(target / self.order_multiplier)) * self.order_multiplier
+
         order = pd.Series(dict(
             date=self._current_dt, status='PendingSubmit',
-            symbol=asset, target_percent=pct, action_value=action_value, limit_price='Market',
-            filled_amount=0, filled_price=0, filled_percent=0, commission=0, realized=0))
+            symbol=asset, target_percent=pct, action_value=action_value, amount=amount,
+            limit_price='Market', filled_amount=0, filled_price=0, filled_percent=0, commission=0,
+            realized=0))
         self.orders = self.orders.append(order, ignore_index=True)
 
         return self.orders.index[-1]
@@ -591,7 +607,7 @@ class ManualBlotter(BaseBlotter):
         """ Call this if your position has dividends """
         order = pd.Series(dict(
             date=self._current_dt, status='Dividend',
-            symbol=asset, target_percent=0, action_value=0, limit_price='/',
+            symbol=asset, target_percent=0, action_value=0, amount=amount, limit_price='/',
             filled_amount=amount, filled_price=0, filled_percent=0, commission=0, realized=0))
         self.orders = self.orders.append(order, ignore_index=True)
         self._portfolio.process_dividend(asset, amount)
@@ -600,7 +616,7 @@ class ManualBlotter(BaseBlotter):
         """ Call this if your position has splits """
         order = pd.Series(dict(
             date=self._current_dt, status='Split',
-            symbol=asset, target_percent=0, action_value=0, limit_price='/',
+            symbol=asset, target_percent=0, action_value=0, amount=inverse_ratio, limit_price='/',
             filled_amount=inverse_ratio, filled_price=last_price, filled_percent=0,
             commission=0, realized=0))
         self.orders = self.orders.append(order, ignore_index=True)

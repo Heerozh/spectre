@@ -354,6 +354,7 @@ index
         day1 = pd.Timestamp('2020-06-01', tz='Asia/Shanghai')
         blotter.set_datetime(day1)
         blotter.transfer_funds(10000)
+        blotter.set_last_price({'test': 1, 'batch1': 1, 'batch2': 2})
         test_oid = blotter.order_target_percent('test', 0.3)
         batch_ids = blotter.batch_order_target_percent(['batch1', 'batch2'], [0.1, 0.2])
         blotter.order_filled(batch_ids['batch2'], 10, 200, 5)
