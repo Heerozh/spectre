@@ -508,6 +508,7 @@ class ManualBlotter(BaseBlotter):
 
     def transfer_funds(self, amount):
         """ Call this after you transfer funds to broker """
+        assert self._current_dt is not None
         order = pd.Series(dict(
             date=self._current_dt, status='Cash', symbol='cash', target_percent=0, action_value=0,
             amount=amount, limit_price='/', filled_amount=amount, filled_price=0, filled_percent=0,
@@ -541,6 +542,7 @@ class ManualBlotter(BaseBlotter):
             raise ValueError("`pct` must be float")
         if self.long_only and pct < 0:
             raise ValueError("Long only blotter, `pct` must greater than 0.")
+        assert self._current_dt is not None
 
         pct = round(pct, 4)
         if pct == 0. and asset not in self.positions:
@@ -589,6 +591,8 @@ class ManualBlotter(BaseBlotter):
 
     def order_filled(self, oid, filled_amount, filled_price, commission):
         """ Call this after you order filled by broker """
+        assert self._current_dt is not None
+
         order = self.orders.loc[oid].copy()
 
         realized = self._portfolio.update(order.symbol, filled_amount, filled_price, commission)
@@ -608,6 +612,8 @@ class ManualBlotter(BaseBlotter):
 
     def position_dividend(self, asset, amount):
         """ Call this if your position has dividends """
+        assert self._current_dt is not None
+
         order = pd.Series(dict(
             date=self._current_dt, status='Dividend',
             symbol=asset, target_percent=0, action_value=0, amount=amount, limit_price='/',
@@ -617,6 +623,8 @@ class ManualBlotter(BaseBlotter):
 
     def position_split(self, asset, inverse_ratio: float, last_price):
         """ Call this if your position has splits """
+        assert self._current_dt is not None
+
         order = pd.Series(dict(
             date=self._current_dt, status='Split',
             symbol=asset, target_percent=0, action_value=0, amount=inverse_ratio, limit_price='/',
