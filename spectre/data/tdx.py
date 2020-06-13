@@ -306,6 +306,16 @@ class TDXLoader(DataLoader):
                 mask, ret_df.st_tag.fillna(st_value_index.searchsorted(tag) + 1))
         ret_df.st_tag = ret_df.st_tag.fillna(0)
 
+        print('Merging ShortAble Tag...')
+        short_able_df = pd.read_csv(os.path.join(
+            self._path, "short_able.csv"), dtype={'stockCode': str, 'converRate': int},
+            encoding='gbk')
+        short_able_df['asset'] = (short_able_df['marketCode'] + short_able_df['stockCode'])\
+            .str.upper()
+        short_able_df = short_able_df.set_index('asset')
+        short_able = short_able_df['converRate'].to_dict()
+        ret_df['short_able'] = ret_df.index.map(lambda x: short_able.get(x[1], 0))
+
         print('All ok')
 
         return ret_df
