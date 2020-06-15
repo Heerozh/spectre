@@ -102,7 +102,10 @@ class Position:
                 return True, realized
             else:
                 self._average_price = cum_cost / after_shares
-                realized = (before_avg_px - self._average_price) * abs(after_shares)
+                if after_shares < before_shares:
+                    realized = (before_avg_px - self._average_price) * abs(after_shares)
+                else:
+                    realized = 0
                 self._realized += realized
                 self.last_price = fill_price
                 return False, realized
