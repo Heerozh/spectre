@@ -502,6 +502,12 @@ class TestFactorLib(unittest.TestCase):
         factor = spectre.factors.Returns().sign()
         test_expected(factor, np.sign(expected_aapl), np.sign(expected_msft), 10)
 
+        factor = (spectre.factors.DatetimeDataFactor('day') / 1000).round(2)
+        expected_aapl = np.array([2.,  3.,  4.,  7.,  8.,  9., 10., 11., 14., 15.]) / 1000
+        expected_aapl = np.round(expected_aapl, 2)
+        expected_msft = np.delete(expected_aapl, 6)
+        test_expected(factor, expected_aapl, expected_msft, 10)
+
         # test sum prod
         factor = spectre.factors.LogReturns().sum(2)
         expected_aapl = np.log(df_aapl_close) - np.log(df_aapl_close.shift(1))

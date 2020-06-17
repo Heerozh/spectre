@@ -207,6 +207,9 @@ class BaseFactor:
     def prod(self, win: int):
         return ProdFactor(win, inputs=(self,))
 
+    def round(self, decimal):
+        return RoundFactor(inputs=(self, decimal))
+
     def filter(self, mask: 'BaseFactor'):
         """ Local filter, fill unmasked elements with NaNs. """
         mf = DoNothingFactor(inputs=(self,))
@@ -709,6 +712,12 @@ class LogFactor(CustomFactor):
 class SignFactor(CustomFactor):
     def compute(self, data: torch.Tensor) -> torch.Tensor:
         return data.sign()
+
+
+class RoundFactor(CustomFactor):
+    def compute(self, data: torch.Tensor, decimal) -> torch.Tensor:
+        digits = 10 ** decimal
+        return (data * digits).round() / digits
 
 
 class NonNaNCountFactor(CustomFactor):
