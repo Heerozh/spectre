@@ -483,21 +483,26 @@ class ManualBlotter(BaseBlotter):
         Realized gain/loss.
     """
 
-    def __init__(self, working_dir, time_zone):
+    def __init__(self, working_dir, time_zone, loader=None):
         super().__init__()
         self.working_dir = working_dir
         self.time_zone = time_zone
         self.orders = None
         self.order_multiplier = 100
         self.last_price = None
+        self.loader = loader
         self.load()
 
     def _rebuild_from_orders(self):
         self._portfolio.clear()
+        if self.loader is not None:
+            prices_df = self.loader.load()
+        else:
+            prices_df = None
 
         for date, df in self.orders.groupby(pd.Grouper(key='date', freq='D')):
+            self._portfolio.set_datetime(date.normalize())
             for i, row in df.iterrows():
-                self._portfolio.set_datetime(date.normalize())
                 if row.status == 'Cash':
                     self._portfolio.update_cash(row.filled_amount)
                 elif row.status == 'Dividend':
@@ -510,6 +515,13 @@ class ManualBlotter(BaseBlotter):
                                            row.commission)
                     self._portfolio.update_cash(-row.filled_amount * row.filled_price -
                                                 row.commission)
+            if prices_df is not None:
+                try:
+                    last_price_df = prices_df.xs(date.normalize())
+                    price_dict = last_price_df.close.to_dict()
+                    self.update_portfolio_value(price_dict)
+                except KeyError:
+                    pass
 
     def load(self):
         """ Reload portfolio/orders from working_dir, for updating account and order status """
@@ -563,7 +575,8 @@ class ManualBlotter(BaseBlotter):
             date=self._current_dt, status='Cash', symbol='cash', target_percent=0, action_value=0,
             amount=amount, limit_price='/', filled_amount=amount, filled_price=0, filled_percent=0,
             commission=0, realized=0))
-        self.orders = self.orders.append(order, ignore_index=True)
+        order.name = max(self.orders.index) + 1
+        self.orders = self.orders.append(order)
         self._portfolio.update_cash(amount)
 
     def _order(self, asset, amount, price=None):
@@ -620,7 +633,8 @@ class ManualBlotter(BaseBlotter):
             symbol=asset, target_percent=pct, action_value=action_value, amount=amount,
             limit_price='Market', filled_amount=0, filled_price=0, filled_percent=0, commission=0,
             realized=0))
-        self.orders = self.orders.append(order, ignore_index=True)
+        order.name = max(self.orders.index) + 1
+        self.orders = self.orders.append(order)
 
         return self.orders.index[-1]
 
@@ -668,7 +682,8 @@ class ManualBlotter(BaseBlotter):
             date=self._current_dt, status='Dividend',
             symbol=asset, target_percent=0, action_value=0, amount=amount, limit_price='/',
             filled_amount=amount, filled_price=0, filled_percent=0, commission=0, realized=0))
-        self.orders = self.orders.append(order, ignore_index=True)
+        order.name = max(self.orders.index) + 1
+        self.orders = self.orders.append(order)
         self._portfolio.process_dividend(asset, amount)
 
     def position_split(self, asset, inverse_ratio: float, last_price):
@@ -680,7 +695,8 @@ class ManualBlotter(BaseBlotter):
             symbol=asset, target_percent=0, action_value=0, amount=inverse_ratio, limit_price='/',
             filled_amount=inverse_ratio, filled_price=last_price, filled_percent=0,
             commission=0, realized=0))
-        self.orders = self.orders.append(order, ignore_index=True)
+        order.name = max(self.orders.index) + 1
+        self.orders = self.orders.append(order)
         self._portfolio.process_split(asset, inverse_ratio, last_price)
 
     def update_portfolio_value(self, prices):
