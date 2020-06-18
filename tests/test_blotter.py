@@ -150,11 +150,11 @@ index
         blotter.set_price("close")
         blotter.order_target_percent('MSFT', 0.5)
         # test curb
-        blotter.daily_curb = 0.01
+        blotter.daily_curb = spectre.trading.DailyCurbModel(0.01)
         blotter.order('AAPL', 1)
         self.assertEqual(0, blotter.portfolio.shares('AAPL'))
         self.assertEqual(False, 'AAPL' in blotter.positions)
-        blotter.daily_curb = 0.033
+        blotter.daily_curb = spectre.trading.DailyCurbModel(0.033)
         blotter.order('AAPL', 1)
         self.assertEqual(1, blotter.positions['AAPL'].shares)
         blotter.order('AAPL', -1)

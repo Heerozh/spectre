@@ -21,7 +21,7 @@ Dependencies:
 
 ```bash
 conda install pytorch torchvision cudatoolkit=10.1 -c pytorch
-conda install pyarrow pandas tqdm plotly requests
+conda install pyarrow pandas tqdm plotly requests bs4 lxml
 ```
 
 # Benchmarks
@@ -436,9 +436,10 @@ class YourLoader(spectre.data.DataLoader):
                          })
 
         df.set_index(['date', 'asset'], inplace=True)
-        df = self._format(df, split_ratio_is_inverse=True)
         if self._calender:
             df = self._align_to(df, self._calender)
+        df.sort_index(level=[0, 1], inplace=True)
+        df = self._format(df, split_ratio_is_inverse=True)
 
         return df
 ```
@@ -776,7 +777,7 @@ Schedule an event, callback is `callback(source: "Any class who fired this event
 **context:** *initialize*
 
 Empty engine's cache after factor calculation.
-If you need more VRMA in rebalance context, or wanna play 3D game when backtesting, set it to
+If you need more VRAM in rebalance context, or wanna play 3D game when backtesting, set it to
 True will help.
 
 
@@ -872,7 +873,7 @@ Set the transaction fees which only charged for sell orders.
 
 ### SimulationBlotter.daily_curb
 
-`self.blotter.daily_curb = float`
+`self.blotter.daily_curb = spectre.trading.DailyCurbModel(value)`
 **context:** *initialize, rebalance*
 
 Limit on trading a specific asset if today to previous day return >= ±value. **SLOW**

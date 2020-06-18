@@ -145,6 +145,8 @@ from .blotter import (
     BaseBlotter,
     SimulationBlotter,
     ManualBlotter,
+    CommissionModel,
+    DailyCurbModel,
 )
 from .metric import (
     drawdown,

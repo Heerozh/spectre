@@ -27,6 +27,30 @@ class CommissionModel:
         return max(commission, self.minimum)
 
 
+class DailyCurbModel:
+    def __init__(self, percentage: float):
+        self.percentage = percentage
+
+    def calculate(self, asset: str, current_price: float, shares: int,
+                  current_high: float, current_low: float,
+                  last_close: float, last_div: float, last_sp: float):
+        """
+        :param asset: asset
+        :param current_price: current price
+        :param shares: trading quantity
+        :param current_high: current bar high price, may be lookahead biased.
+        :param current_low: current bar low price, may be lookahead biased.
+        :param last_close: previous day close price
+        :param last_div: previous day dividend
+        :param last_sp: previous day split ratio
+        :return: float: filled price; None: not to trading
+        """
+        if abs(current_price / last_close - 1) >= self.percentage:
+            return None
+        else:
+            return current_price
+
+
 class BaseBlotter:
     """
     Base class for Order Management System.
@@ -209,15 +233,30 @@ class SimulationBlotter(BaseBlotter, EventReceiver):
         super().__init__()
         self.market_opened = False
         self.dataloader = dataloader
-        self.daily_curb = daily_curb
         self.orders = defaultdict(list)
         self.capital_base = capital_base
         self._portfolio.update_cash(capital_base)
 
+        if daily_curb is None:
+            self.daily_curb = None
+        elif type(daily_curb) is float:
+            self.daily_curb = DailyCurbModel(daily_curb)
+        else:
+            self.daily_curb = daily_curb
+
         df = dataloader.load(start, None, 0).copy()
-        df['__pct_chg'] = df[dataloader.ohlcv[3]].groupby(level=1).pct_change()
+        # add previous day close price for daily curb
+        curb_cols = ['__last_close']
+        df['__last_close'] = df[dataloader.ohlcv[3]].groupby(level=1).apply(
+            lambda x: x.fillna(method='pad').shift(1))
+        if dataloader.adjustments is not None:
+            df['__last_div'] = df[dataloader.adjustments[0]].groupby(level=1).apply(
+                lambda x: x.fillna(method='pad').shift(1))
+            df['__last_sp'] = df[dataloader.adjustments[1]].groupby(level=1).apply(
+                lambda x: x.fillna(method='pad').shift(1))
+            curb_cols += ['__last_div', '__last_sp']
         self._data = df
-        self._prices = DataLoaderFastGetter(df[list(dataloader.ohlcv) + ['__pct_chg']])
+        self._prices = DataLoaderFastGetter(df[list(dataloader.ohlcv) + curb_cols])
         self._current_prices_col = None
         self._current_prices = None
         if dataloader.adjustments is not None:
@@ -317,10 +356,21 @@ class SimulationBlotter(BaseBlotter, EventReceiver):
         # trading curb for daily return
         if self.daily_curb is not None:
             curr_prices = self._get_current_prices()
-            curr_changes = self._prices.get_as_dict(curr_prices.row_slice, column_id=-1)
-            change = curr_changes[asset]
+            curr_high = self._prices.get_as_dict(curr_prices.row_slice, column_id=1)
+            curr_low = self._prices.get_as_dict(curr_prices.row_slice, column_id=2)
+            if self._adjustments is None:
+                last_close = self._prices.get_as_dict(curr_prices.row_slice, column_id=-1)
+                last_div = defaultdict(float)
+                last_sp = defaultdict(lambda: 1.0)
+            else:
+                last_close = self._prices.get_as_dict(curr_prices.row_slice, column_id=-3)
+                last_div = self._prices.get_as_dict(curr_prices.row_slice, column_id=-2)
+                last_sp = self._prices.get_as_dict(curr_prices.row_slice, column_id=-1)
             # Detecting whether transactions are possible
-            if abs(change) > self.daily_curb:
+            price = self.daily_curb.calculate(
+                asset, price, amount, curr_high[asset], curr_low[asset],
+                last_close[asset], last_div[asset], last_sp[asset],)
+            if price is None:
                 return False
 
         # commission, slippage
