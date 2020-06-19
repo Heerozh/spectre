@@ -45,6 +45,8 @@ class DailyCurbModel:
         :param last_sp: previous day split ratio
         :return: float: filled price; None: not to trading
         """
+        last_close = (round(last_close, 2) - last_div) * last_sp
+        last_close = round(last_close, 2)
         if abs(current_price / last_close - 1) >= self.percentage:
             return None
         else:
