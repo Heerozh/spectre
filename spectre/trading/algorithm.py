@@ -289,6 +289,7 @@ class SimulationEventManager(EventManager):
         from tqdm.auto import tqdm
 
         alg.blotter.clear()
+
         # get factor data from algorithm
         run_engine = alg.run_engine
         data, _ = run_engine(start, end, delay_factor)
@@ -307,6 +308,9 @@ class SimulationEventManager(EventManager):
         # infer freq
         delta = min(ticks[1:] - ticks[:-1])
         data_freq = delta.resolution_string
+
+        # for portfolio recoding cash history
+        alg.blotter.portfolio.set_datetime(ticks[0] - pd.DateOffset(days=1))
 
         # loop factor data
         last_day = None
