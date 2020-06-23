@@ -66,6 +66,7 @@ class BaseBlotter:
         self.commission = CommissionModel(0, 0, 0)
         self.slippage = CommissionModel(0, 0, 0)
         self.short_fee = CommissionModel(0, 0, 0)
+        self.div_tax = CommissionModel(0, 0, 0)
         self.long_only = False
         self.order_multiplier = 1
 
@@ -431,7 +432,8 @@ class SimulationBlotter(BaseBlotter, EventReceiver):
                 current_adj = self._adjustments.get_as_dict(start, stop)
 
                 for asset, row in current_adj.items():
-                    self._portfolio.process_dividend(asset, row[div_col])
+                    div = row[div_col] - self.div_tax.calculate(asset, row[div_col], 1)
+                    self._portfolio.process_dividend(asset, div)
                     self._portfolio.process_split(asset, 1/row[sp_col], row[close_col])
             except KeyError:
                 pass
@@ -577,7 +579,10 @@ class ManualBlotter(BaseBlotter):
             date=self._current_dt, status='Cash', symbol='cash', target_percent=0, action_value=0,
             amount=amount, limit_price='/', filled_amount=amount, filled_price=0, filled_percent=0,
             commission=0, realized=0))
-        order.name = max(self.orders.index) + 1
+        if len(self.orders.index) == 0:
+            order.name = 1
+        else:
+            order.name = max(self.orders.index) + 1
         self.orders = self.orders.append(order)
         self._portfolio.update_cash(amount)
 
