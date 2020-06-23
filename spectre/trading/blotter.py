@@ -664,6 +664,15 @@ class ManualBlotter(BaseBlotter):
         realized = self._portfolio.update(order.symbol, filled_amount, filled_price, commission)
         self._portfolio.update_cash(-filled_amount * filled_price - commission)
 
+        if order.status == 'Filled':
+            total_turnover = (abs(order.filled_amount * order.filled_price) +
+                              abs(filled_amount * filled_price))
+
+            filled_amount += order.filled_amount
+            filled_price = total_turnover / abs(filled_amount)
+            commission += order.commission
+            realized += order.realized
+
         order.status = 'Filled'
         order.filled_amount = filled_amount
         order.filled_price = filled_price
