@@ -506,6 +506,16 @@ class ManualBlotter(BaseBlotter):
 
         for date, df in self.orders.groupby(pd.Grouper(key='date', freq='D')):
             self._portfolio.set_datetime(date.normalize())
+
+            # update by open prices / for stop model recode high/low prices
+            if prices_df is not None:
+                try:
+                    last_price_df = prices_df.xs(date.normalize())
+                    price_dict = last_price_df.open.to_dict()
+                    self.update_portfolio_value(price_dict)
+                except KeyError:
+                    pass
+
             for i, row in df.iterrows():
                 if row.status == 'Cash':
                     self._portfolio.update_cash(row.filled_amount)
@@ -519,6 +529,8 @@ class ManualBlotter(BaseBlotter):
                                            row.commission)
                     self._portfolio.update_cash(-row.filled_amount * row.filled_price -
                                                 row.commission)
+
+            # update by close prices
             if prices_df is not None:
                 try:
                     last_price_df = prices_df.xs(date.normalize())
