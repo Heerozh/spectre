@@ -15,6 +15,7 @@ import glob
 from tqdm.auto import tqdm
 
 from spectre.data.dataloader import DataLoader
+from spectre.trading import CNCalendar
 
 
 class TDXLoader(DataLoader):
@@ -207,8 +208,7 @@ class TDXLoader(DataLoader):
         if unit == 'D':
             unit = 'B'
         last = ret_df.index.levels[0][-1]
-        next_date = last.tz_convert('Asia/Shanghai') + \
-                    pd.tseries.frequencies.to_offset((freq, unit))
+        next_date = CNCalendar(pop_passed=True).events['Open'][0].normalize()
         new_section = ret_df.xs(last, drop_level=False).copy()
         new_section[:] = np.nan
         new_section['ex-dividend'] = 0
