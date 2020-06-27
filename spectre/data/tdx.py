@@ -269,6 +269,7 @@ class TDXLoader(DataLoader):
             print(name, ' weights OK.')
 
         print('Merging sector data...')
+        # 使用从申万主页下载的申万一级行业数据
         html_dfs = pd.read_html(os.path.join(self._path, "SwClass"), encoding='GBK',
                                 converters={'股票代码': str})
         sector_df = html_dfs[0]
@@ -277,13 +278,40 @@ class TDXLoader(DataLoader):
         sector_df['股票代码'] = sector_df['股票代码'].str.replace(r'^60(.*)', r'SH60\1')
         sector_df['股票代码'] = sector_df['股票代码'].str.replace(r'^68(.*)', r'SH68\1')
         sector_df = sector_df.set_index('股票代码')
-        unique_sector = sector_df['行业名称'].unique()
-        sector_cat = dict(zip(unique_sector, range(len(unique_sector))))
-        sector_dict = sector_df['行业名称'].map(sector_cat).to_dict()
-        ret_df['sector'] = ret_df.index.map(lambda x: sector_dict.get(x[1], -1))
-        ret_df['sector'].astype('int32')
+        # unique_sector = sector_df['行业名称'].unique()
+        # sector_cat = dict(zip(unique_sector, range(len(unique_sector))))
+        # sector_dict = sector_df['行业名称'].map(sector_cat).to_dict()
+        # ret_df['sector'] = ret_df.index.map(lambda x: sector_dict.get(x[1], -1))
+        # ret_df['sector'] = ret_df['sector'].astype('int32')
         name_dict = sector_df['股票名称'].to_dict()
         ret_df['name'] = ret_df.index.map(lambda x: name_dict.get(x[1], 'UNKNOWN'))
+        # 使用uqer的申万行业历史数据
+        sector = pd.read_csv(os.path.join(self._path, "sector.csv"), encoding='utf',
+                             parse_dates=['date'])
+        sector['asset'] = sector['asset'].str.replace(r'(.*)(.XSHG)', r'SH\1')
+        sector['asset'] = sector['asset'].str.replace(r'(.*)(.XSHE)', r'SZ\1')
+        sector.date = pd.to_datetime(sector.date, utc=True)
+        sector = sector.sort_values(by=['date', 'asset'])
+        # 还是不用他的name，因为申万的st标志更及时
+        sector = sector.drop(columns=['name'])
+
+        cols, new_cols = ['l1', 'l2', 'l3'], ['sector_l1', 'sector_l2', 'sector_l3']
+        for lv in cols:
+            unique_lv = sector[lv].unique()
+            lv_cat = dict(zip(unique_lv, range(len(unique_lv))))
+            sector[lv] = sector[lv].map(lv_cat)
+            sector[lv] = sector[lv].astype('int32')
+
+        sector.rename(columns={**dict(zip(cols, new_cols)), 'asset': 'str_asset'},
+                      inplace=True)
+
+        ret_df = ret_df.reset_index()
+        ret_df['str_asset'] = ret_df.asset.astype('str')
+        ret_df = pd.merge_asof(ret_df, sector, on='date', by='str_asset')
+        ret_df = ret_df.set_index(['date', 'asset']).sort_index(level=[0, 1]).\
+            drop(columns=['str_asset'])
+        # ret_df.name = ret_df.name.fillna('UNKNOWN')
+        ret_df[new_cols] = ret_df[new_cols].fillna(-1)
 
         print('Merging ST tag...')
         st_df = pd.read_csv(os.path.join(self._path, "ST_tag.csv"), parse_dates=['tradeDate'])
