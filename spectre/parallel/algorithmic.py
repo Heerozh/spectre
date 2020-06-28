@@ -191,7 +191,8 @@ def rankdata(data: torch.Tensor, dim=1, ascending=True, method='average', normal
     else:
         filled = data
     arr, sorter = torch.sort(filled, dim=dim, descending=not ascending)
-    rank, inv = torch.sort(sorter, dim=dim)
+    rank, inv = torch.sort(sorter.to(torch.int32), dim=dim)
+    del sorter
 
     if method == 'ordinal':
         ret = (inv.to(Global.float_type) + 1.)
@@ -200,11 +201,13 @@ def rankdata(data: torch.Tensor, dim=1, ascending=True, method='average', normal
         inv += (flt * inv.shape[dim]).view(*inv.shape[:dim], 1)
 
         obs = arr != arr.roll(1, dims=dim)
+        del arr
 
         if method == 'average':
             lower = rank.masked_fill(~obs, 0)
-            lower = lower.cummax(dim=dim).values
             upper = rank.masked_fill(~obs.roll(-1, dims=dim), rank.shape[dim]).flip(dims=[dim])
+            del rank, obs
+            lower = lower.cummax(dim=dim).values
             upper = upper.cummin(dim=dim).values.flip(dims=[dim])
 
             avg = (upper + lower + 2) * .5
