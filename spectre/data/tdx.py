@@ -327,7 +327,11 @@ class TDXLoader(DataLoader):
         st_s.index = st_s.index.set_names(['date', 'asset'])
         ret_df = ret_df.join(st_s)
 
-        # st数据影响幅度较大，所以Nan的行按最近的股票名来设定是否ST，注意有前视偏差
+        # 把有st数据之前的nan填充为0
+        last_st_date = st_s.index.get_level_values(0)[-1]
+        ret_df.loc[:last_st_date, 'st_tag'] = ret_df.st_tag[:last_st_date].fillna(0)
+
+        # st数据影响幅度较大，所以之后没有的st数据按最近的股票名来设定是否ST，注意有前视偏差
         for tag in ['ST', 'SST', '*ST', 'S*ST', 'S', '*']:
             mask = ret_df['name'].str.startswith(tag)
             ret_df.st_tag = ret_df.st_tag.mask(
