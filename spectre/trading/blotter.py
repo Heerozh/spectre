@@ -505,6 +505,11 @@ class ManualBlotter(BaseBlotter):
             prices_df = None
 
         for date, df in self.orders.groupby(pd.Grouper(key='date', freq='D')):
+            # skip holiday
+            if prices_df is not None:
+                if date.normalize() not in prices_df.index.levels[0] and df.empty:
+                    continue
+
             self._portfolio.set_datetime(date.normalize())
 
             # update by open prices / for stop model recode high/low prices
