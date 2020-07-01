@@ -119,7 +119,7 @@ class Position:
             remaining = int(self._shares - int(sp) / inverse_ratio)  # for more precise
             if remaining != 0:
                 cash = remaining * last_price
-        self._shares = round(sp, 5)
+        self._shares = int(round(sp, 5))
         self._average_price = self._average_price / inverse_ratio
         self.last_price = last_price / inverse_ratio
 
