@@ -649,12 +649,13 @@ class ManualBlotter(BaseBlotter):
             raise ValueError('call blotter.set_last_price(dict) first.')
         last_close_price = self.last_price[asset]
         target_amount = target_value / last_close_price
-        target_amount = int(round(target_amount / self.order_multiplier)) * self.order_multiplier
-        amount = target_amount - opened_shares
+        
+        multiplier = self.order_multiplier
+        action_amount = int(round((target_amount - opened_shares) / multiplier)) * multiplier
 
         order = pd.Series(dict(
             date=self._current_dt, status='PendingSubmit',
-            symbol=asset, target_percent=pct, action_value=action_value, amount=amount,
+            symbol=asset, target_percent=pct, action_value=action_value, amount=action_amount,
             limit_price='Market', filled_amount=0, filled_price=0, filled_percent=0, commission=0,
             realized=0))
         order.name = max(self.orders.index) + 1

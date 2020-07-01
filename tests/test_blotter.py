@@ -404,3 +404,18 @@ index
         expected_pos[('shares', 'batch2')] = expected_pos[('shares', 'batch2')].astype('float')
         pd.testing.assert_frame_equal(expected_txn, new_blotter.get_transactions())
         pd.testing.assert_frame_equal(expected_pos, new_blotter.portfolio.history)
+
+        # test order_multiplier
+        new_blotter.order_multiplier = 10
+        new_blotter.set_datetime(pd.Timestamp('2020-06-03', tz='Asia/Shanghai'))
+        new_blotter.set_last_price({'test': 1, 'batch1': 1, 'batch2': 2})
+        new_blotter.transfer_funds(-30000)
+        # target shares = 0.06 * 500 / 2 = 15, same as position
+        new_blotter.order_target_percent('batch2', 0.06)
+        self.assertEqual(new_blotter.orders.iloc[-1].amount, 0)
+        # target shares = 0.072 * 500 / 2 = 18, buy 3, not meet multiplier
+        new_blotter.order_target_percent('batch2', 0.072)
+        self.assertEqual(new_blotter.orders.iloc[-1].amount, 0)
+        # target shares = 0.084 * 500 / 2 = 21, buy 6, round to 10 (after position=10+15=25)
+        new_blotter.order_target_percent('batch2', 0.084)
+        self.assertEqual(new_blotter.orders.iloc[-1].amount, 10)
