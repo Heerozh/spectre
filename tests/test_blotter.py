@@ -13,12 +13,12 @@ class TestBlotter(unittest.TestCase):
     def test_portfolio(self):
         pf = spectre.trading.Portfolio()
         pf.set_datetime("2019-01-01")
-        pf.update_cash(10000)
+        pf.update_cash(10000, is_funds=True)
 
         pf.set_datetime("2019-01-03")
         pf.update('AAPL', 10, 9, 10)
         pf.update('MSFT', -25, 9, 25)
-        pf.update_cash(-5000)
+        pf.update_cash(-5000, is_funds=True)
         pf.process_split('AAPL', 2.0, 3)
 
         pf.set_datetime("2019-01-04")
@@ -28,7 +28,7 @@ class TestBlotter(unittest.TestCase):
 
         pf.set_datetime("2019-01-05 23:00:00")
         pf.update('MSFT', 30, 7, 30)
-        pf.update_cash(2000)
+        pf.update_cash(2000, is_funds=True)
 
         self.assertEqual(0, pf.positions['MSFT'].realized)
 
@@ -65,7 +65,7 @@ index
         self.assertEqual(25 / 7055, pf.leverage)
 
         pf.set_datetime("2019-01-06")
-        pf.update_cash(-6830)
+        pf.update_cash(-6830, is_funds=True)
         pf.update('AAPL', -100, 1, 0)
         pf.update('MSFT', 50, 1, 0)
         self.assertEqual(200, pf.cash)
@@ -74,10 +74,10 @@ index
         self.assertEqual(245 / 175, pf.leverage)
 
         pf.set_datetime("2019-01-07")
-        pf.update_cash(-200)
+        pf.update_cash(-200, is_funds=True)
         pf.update('AAPL', 400, 1.5, 0)
         pf.update('MSFT', 50, 2, 0)
-        pf.update_cash(-337.5)
+        pf.update_cash(-337.5, is_funds=True)
         pf.update_value(lambda x: None)
         self.assertEqual(2, pf.leverage)
 

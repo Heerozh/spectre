@@ -203,6 +203,7 @@ class BaseBlotter:
                         asset, self._current_dt
                     ))
                 target = (pf_value * pct) / price
+                # todo 碎股情况，持有160股并不能再买40股，影响不大但最好弄掉, 不过现在交易股数方式就已经不一样了，所以也无所谓？
                 target = int(round(target / self.order_multiplier)) * self.order_multiplier
             except KeyError:
                 skipped.append([asset, self._portfolio.shares(asset)])
@@ -238,7 +239,7 @@ class SimulationBlotter(BaseBlotter, EventReceiver):
         self.dataloader = dataloader
         self.orders = defaultdict(list)
         self.capital_base = capital_base
-        self._portfolio.update_cash(capital_base)
+        self._portfolio.update_cash(capital_base, is_funds=True)
 
         if daily_curb is None:
             self.daily_curb = None
@@ -278,7 +279,7 @@ class SimulationBlotter(BaseBlotter, EventReceiver):
     def clear(self):
         self.orders = defaultdict(list)
         self._portfolio.clear()
-        self._portfolio.update_cash(self.capital_base)
+        self._portfolio.update_cash(self.capital_base, is_funds=True)
 
     def set_datetime(self, dt: pd.Timestamp) -> None:
         self._current_prices_col = None
@@ -523,7 +524,7 @@ class ManualBlotter(BaseBlotter):
 
             for i, row in df.iterrows():
                 if row.status == 'Cash':
-                    self._portfolio.update_cash(row.filled_amount)
+                    self._portfolio.update_cash(row.filled_amount, is_funds=True)
                 elif row.status == 'Dividend':
                     self._portfolio.process_dividend(row.symbol, row.filled_amount)
                 elif row.status == 'Split':
@@ -601,7 +602,7 @@ class ManualBlotter(BaseBlotter):
         else:
             order.name = max(self.orders.index) + 1
         self.orders = self.orders.append(order)
-        self._portfolio.update_cash(amount)
+        self._portfolio.update_cash(amount, is_funds=True)
 
     def _order(self, asset, amount, price=None):
         raise NotImplementedError("not support")

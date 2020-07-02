@@ -16,6 +16,7 @@ class Portfolio:
         self._history = []
         self._positions = dict()
         self._cash = 0
+        self._funds_change = []
         self._current_dt = None
         self.stop_model = stop_model
 
@@ -35,7 +36,14 @@ class Portfolio:
 
     @property
     def returns(self):
-        return self.history.value.sum(axis=1).pct_change()
+        if self._funds_change:
+            value = self.history.value.sum(axis=1)
+            funds = pd.DataFrame(self._funds_change)
+            funds['index'] = funds['index'].fillna(value.index[0])
+            funds = funds.set_index('index').amount
+            return value.sub(funds, fill_value=0) / value.shift(1) - 1
+        else:
+            return self.history.value.sum(axis=1).pct_change()
 
     @property
     def positions(self):
@@ -111,8 +119,15 @@ class Portfolio:
                 amount, fill_price, commission, self._current_dt, self.stop_model)
             return 0
 
-    def update_cash(self, amount):
+    def update_cash(self, amount, is_funds=False):
+        """ is_funds: Is this cash update related to funds transfer, (deposits/withdraw) """
         self._cash += amount
+        if is_funds:
+            if self._current_dt is None:
+                current_date = None
+            else:
+                current_date = self._current_dt.normalize()
+            self._funds_change.append({'index': current_date, 'amount': amount})
 
     def process_split(self, asset, inverse_ratio: float, last_price):
         if asset not in self._positions:
