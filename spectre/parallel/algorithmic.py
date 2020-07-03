@@ -223,13 +223,12 @@ def rankdata(data: torch.Tensor, dim=1, ascending=True, method='average', normal
 
 
 def unmasked_covariance(x, y, mask, dim=1, ddof=0):
-    x_bar = unmasked_mean(x, dim=dim, mask=mask).unsqueeze(-1)
-    y_bar = unmasked_mean(y, dim=dim, mask=mask).unsqueeze(-1)
-    demean_x = x - x_bar
-    demean_y = y - y_bar
-    xy = demean_x * demean_y
-    e = unmasked_sum(xy, mask, dim=dim)
-    return e / ((~mask).sum(dim=dim) - ddof)
+    x = x - unmasked_mean(x, dim=dim, mask=mask).unsqueeze(-1)
+    y = y - unmasked_mean(y, dim=dim, mask=mask).unsqueeze(-1)
+    xy = x * y
+    xy.masked_fill_(mask, 0)
+    xy = xy.sum(dim=dim)
+    return xy / ((~mask).sum(dim=dim) - ddof)
 
 
 def covariance(x, y, dim=1, ddof=0):
