@@ -8,6 +8,7 @@ from typing import Callable
 import torch
 import numpy as np
 import warnings
+import time
 from .constants import DeviceConstant
 from ..config import Global
 
@@ -34,17 +35,24 @@ class ParallelGroupBy:
         inverse_indices = sorted_indices.new_full((groups, width), n + 1)
         for start, end, i in zip(boundary[:-1], boundary[1:], range(groups)):
             inverse_indices[i, 0:(end - start)] = sorted_indices[start:end]
-        # keep inverse_indices in GPU for sort
+        # flatten inverse_indices for sorting
+        inverse_indices = inverse_indices.view(-1)
+        # sorting in CPU or GPU?
         inverse_indices_memory = inverse_indices.element_size() * inverse_indices.nelement()
         if inverse_indices_memory > self.GROUPBY_GPU_SORT_MAX_MEMORY:
-            warnings.warn('Groupby uses too much memory, switching to CPU for sorting, may affect '
-                          'initialization performance or modify spectre.parallel.ParallelGroupBy.'
-                          'GROUPBY_GPU_SORT_MAX_MEMORY parameter',
-                          RuntimeWarning)
+            start = time.clock()
             inverse_indices = torch.sort(inverse_indices)[1][:n]
-            inverse_indices = inverse_indices.flatten().to(keys.device, non_blocking=True)
+            inverse_indices = inverse_indices.to(keys.device, non_blocking=True)
+            takes = time.clock() - start
+            if takes > 0.5:
+                warnings.warn('ParallelGroupBy: The number of data in each group is too uneven, '
+                              'resulting in a large tensor, which sorting has been switched to CPU '
+                              '(takes {:.3f}s), you can modify spectre.parallel.ParallelGroupBy.'
+                              'GROUPBY_GPU_SORT_MAX_MEMORY parameter if you VRAM is enough.'
+                              .format(takes),
+                              RuntimeWarning)
         else:
-            inverse_indices = inverse_indices.flatten().to(keys.device, non_blocking=True)
+            inverse_indices = inverse_indices.to(keys.device, non_blocking=True)
             inverse_indices = torch.sort(inverse_indices)[1][:n]
         # for fast split
         take_indices = sorted_indices.new_full((groups, width), -1)
