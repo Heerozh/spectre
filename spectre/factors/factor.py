@@ -529,6 +529,9 @@ class CustomFactor(BaseFactor):
                                  "rolling win > 1 only supports one output, "
                                  "use slice to select a value before using it, for example: "
                                  "`factor[0]`.".format(str(upstream), ret.shape[2]))
+            # todo: If the indirect children is a column factor, also need to adjust.
+            #  for now, only adjust direct children.
+            #  refactor: if any shift occurs, adjust them.
             ret = Rolling(ret, self.win, upstream.adjustments)
         return ret
 
@@ -811,8 +814,8 @@ class DemeanFactor(CrossSectionFactor):
             # But if you demean by sector, and due to the float precision,
             # demean results will slightly different, so you got a random ranking results.
             double = data.to(torch.float64)
-            ret = double - nanmean(double).unsqueeze(-1)
-            return ret.to(data.dtype)
+            double -= nanmean(double).unsqueeze(-1)
+            return double.to(data.dtype)
 
 
 class MeanFactor(CrossSectionFactor):

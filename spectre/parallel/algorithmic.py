@@ -94,44 +94,49 @@ class ParallelGroupBy:
         return ret
 
 
-def unmasked_sum(data: torch.Tensor, mask: torch.Tensor, dim=1) -> torch.Tensor:
-    data = data.clone()
+def unmasked_sum(data: torch.Tensor, mask: torch.Tensor, dim=1, inplace=False) -> torch.Tensor:
+    if not inplace:
+        data = data.clone()
     data.masked_fill_(mask, 0)  # much faster than data[isnan] = 0
     return data.sum(dim=dim)
 
 
-def unmasked_prod(data: torch.Tensor, mask: torch.Tensor, dim=1) -> torch.Tensor:
-    data = data.clone()
+def unmasked_prod(data: torch.Tensor, mask: torch.Tensor, dim=1, inplace=False) -> torch.Tensor:
+    if not inplace:
+        data = data.clone()
     data.masked_fill_(mask, 1)
     return data.prod(dim=dim)
 
 
-def nansum(data: torch.Tensor, dim=1) -> torch.Tensor:
+def nansum(data: torch.Tensor, dim=1, inplace=False) -> torch.Tensor:
     mask = torch.isnan(data)
-    return unmasked_sum(data, mask, dim)
+    return unmasked_sum(data, mask, dim, inplace=inplace)
 
 
-def nanprod(data: torch.Tensor, dim=1) -> torch.Tensor:
+def nanprod(data: torch.Tensor, dim=1, inplace=False) -> torch.Tensor:
     mask = torch.isnan(data)
-    return unmasked_prod(data, mask, dim)
+    return unmasked_prod(data, mask, dim, inplace=inplace)
 
 
-def unmasked_mean(data, mask, dim=1):
-    total = unmasked_sum(data, mask, dim)
-    return total / (~mask).sum(dim=dim)
+def unmasked_mean(data, mask, dim=1, inplace=False):
+    total = unmasked_sum(data, mask, dim, inplace=inplace)
+    total /= (~mask).sum(dim=dim)
+    return total
 
 
-def nanmean(data: torch.Tensor, dim=1) -> torch.Tensor:
+def nanmean(data: torch.Tensor, dim=1, inplace=False) -> torch.Tensor:
     mask = torch.isnan(data)
-    return unmasked_mean(data, mask, dim)
+    return unmasked_mean(data, mask, dim, inplace=inplace)
 
 
 def unmasked_var(data: torch.Tensor, mask, dim=1, ddof=0) -> torch.Tensor:
-    total = unmasked_sum(data, mask, dim)
+    mean = unmasked_sum(data, mask, dim)
     n = (~mask).sum(dim=dim)
-    mean = total / n
+    mean /= n
     mean.unsqueeze_(-1)
-    var = (data - mean) ** 2 / (n.unsqueeze(-1) - ddof)
+
+    n -= ddof
+    var = (data - mean) ** 2 / n.unsqueeze(-1)
     var.masked_fill_(mask, 0)
     return var.sum(dim=dim)
 
@@ -238,9 +243,9 @@ def unmasked_covariance(x, y, mask, dim=1, ddof=0):
     x = x - unmasked_mean(x, dim=dim, mask=mask).unsqueeze(-1)
     y = y - unmasked_mean(y, dim=dim, mask=mask).unsqueeze(-1)
     xy = x * y
-    xy.masked_fill_(mask, 0)
-    xy = xy.sum(dim=dim)
-    return xy / ((~mask).sum(dim=dim) - ddof)
+    xy = unmasked_sum(xy, mask, dim, inplace=True)
+    xy /= ((~mask).sum(dim=dim) - ddof)
+    return xy
 
 
 def covariance(x, y, dim=1, ddof=0):
@@ -253,7 +258,8 @@ def pearsonr(x, y, dim=1, ddof=0):
     cov = unmasked_covariance(x, y, mask, dim, ddof)
     x_var = unmasked_var(x, mask, dim, ddof)
     y_var = unmasked_var(y, mask, dim, ddof)
-    return cov / (x_var.sqrt() * y_var.sqrt())
+    cov /= (x_var.sqrt() * y_var.sqrt())
+    return cov
 
 
 def linear_regression_1d(x, y, dim=1):
