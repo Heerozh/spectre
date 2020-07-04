@@ -25,6 +25,7 @@ class ParallelGroupBy:
         diff = sorted_keys[1:] - sorted_keys[:-1]
         boundary = (diff.nonzero(as_tuple=True)[0] + 1).tolist()
         boundary = np.array([0] + boundary + [n])
+        del relative_key, sorted_keys, diff
         # get inverse indices
         width = np.diff(boundary).max()
         groups = len(boundary) - 1
