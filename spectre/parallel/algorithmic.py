@@ -116,7 +116,7 @@ def nanprod(data: torch.Tensor, dim=1, inplace=False) -> torch.Tensor:
 
 def unmasked_mean(data, mask, dim=1, inplace=False):
     total = unmasked_sum(data, mask, dim, inplace=inplace)
-    total /= (~mask).sum(dim=dim)
+    total.div_((~mask).sum(dim=dim))
     return total
 
 
@@ -128,10 +128,10 @@ def nanmean(data: torch.Tensor, dim=1, inplace=False) -> torch.Tensor:
 def unmasked_var(data: torch.Tensor, mask, dim=1, ddof=0) -> torch.Tensor:
     mean = unmasked_sum(data, mask, dim)
     n = (~mask).sum(dim=dim)
-    mean /= n
+    mean.div_(n)
     mean.unsqueeze_(-1)
 
-    n -= ddof
+    n.sub_(ddof)
     var = (data - mean) ** 2 / n.unsqueeze(-1)
     var.masked_fill_(mask, 0)
     return var.sum(dim=dim)
@@ -240,7 +240,7 @@ def unmasked_covariance(x, y, mask, dim=1, ddof=0):
     y = y - unmasked_mean(y, dim=dim, mask=mask).unsqueeze(-1)
     xy = x * y
     xy = unmasked_sum(xy, mask, dim, inplace=True)
-    xy /= ((~mask).sum(dim=dim) - ddof)
+    xy.div_((~mask).sum(dim=dim).sub_(ddof))
     return xy
 
 
@@ -254,7 +254,7 @@ def pearsonr(x, y, dim=1, ddof=0):
     cov = unmasked_covariance(x, y, mask, dim, ddof)
     x_var = unmasked_var(x, mask, dim, ddof)
     y_var = unmasked_var(y, mask, dim, ddof)
-    cov /= (x_var.sqrt() * y_var.sqrt())
+    cov.div_(x_var.sqrt_().mul_(y_var.sqrt_()))
     return cov
 
 
