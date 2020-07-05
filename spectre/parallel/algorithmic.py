@@ -7,15 +7,13 @@
 from typing import Callable
 import torch
 import numpy as np
-import warnings
-import time
 from .constants import DeviceConstant
 from ..config import Global
 
 
 class ParallelGroupBy:
     """Fast parallel group by"""
-    GROUPBY_GPU_SORT_MAX_MEMORY = 200 * 1024 ** 2
+    GROUPBY_SORT_IN_GPU = False  # Enable it if your GPU >20G VRAM
 
     def __init__(self, keys: torch.Tensor):
         assert keys.min() >= 0
@@ -38,22 +36,12 @@ class ParallelGroupBy:
         # flatten inverse_indices for sorting
         inverse_indices = inverse_indices.view(-1)
         # sorting in CPU or GPU?
-        inverse_indices_memory = inverse_indices.element_size() * inverse_indices.nelement()
-        if inverse_indices_memory > self.GROUPBY_GPU_SORT_MAX_MEMORY:
-            start = time.clock()
-            inverse_indices = torch.sort(inverse_indices)[1][:n]
+        if self.GROUPBY_SORT_IN_GPU:
             inverse_indices = inverse_indices.to(keys.device, non_blocking=True)
-            takes = time.clock() - start
-            if takes > 0.5:
-                warnings.warn('ParallelGroupBy: The number of data in each group is too uneven, '
-                              'resulting in a large tensor, which sorting has been switched to CPU '
-                              '(takes {:.3f}s), you can modify spectre.parallel.ParallelGroupBy.'
-                              'GROUPBY_GPU_SORT_MAX_MEMORY parameter if you VRAM is enough.'
-                              .format(takes),
-                              RuntimeWarning)
+            inverse_indices = torch.sort(inverse_indices)[1][:n]
         else:
-            inverse_indices = inverse_indices.to(keys.device, non_blocking=True)
             inverse_indices = torch.sort(inverse_indices)[1][:n]
+            inverse_indices = inverse_indices.to(keys.device, non_blocking=True)
         # for fast split
         take_indices = sorted_indices.new_full((groups, width), -1)
         for start, end, i in zip(boundary[:-1], boundary[1:], range(groups)):
