@@ -652,7 +652,11 @@ class ManualBlotter(BaseBlotter):
         target_amount = target_value / last_close_price
         
         multiplier = self.order_multiplier
-        action_amount = int(round((target_amount - opened_shares) / multiplier)) * multiplier
+        if target_amount == 0:
+            # if close a position, allow odd lots
+            action_amount = -opened_shares
+        else:
+            action_amount = int(round((target_amount - opened_shares) / multiplier)) * multiplier
 
         order = pd.Series(dict(
             date=self._current_dt, status='PendingSubmit',
