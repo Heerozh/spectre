@@ -933,7 +933,10 @@ class WinsorizingFactor(CustomFactor):
 
 class SubFactor(CustomFactor):
     def compute(self, left, right) -> torch.Tensor:
-        return left - right
+        if type(right) is torch.Tensor and right.dtype is torch.bool:
+            return left - right.float()
+        else:
+            return left - right
 
 
 class AddFactor(CustomFactor):
