@@ -840,11 +840,13 @@ class ZScoreFactor(CrossSectionFactor):
 
     def compute(self, data: torch.Tensor, weight=None) -> torch.Tensor:
         if weight is None:
-            mean = nanmean(data)
+            mean = nanmean(data).unsqueeze(-1)
+        elif weight is 0:
+            mean = 0
         else:
             mean = nansum(data * weight) / nansum(weight)
-            mean = mean.to(Global.float_type)
-        return (data - mean.unsqueeze(-1)) / nanstd(data).unsqueeze(-1)
+            mean = mean.to(Global.float_type).unsqueeze(-1)
+        return (data - mean) / nanstd(data).unsqueeze(-1)
 
 
 class QuantileClassifier(CrossSectionFactor):
