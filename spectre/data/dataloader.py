@@ -44,7 +44,8 @@ class DataLoader:
         df = df[df.index.get_level_values(0).isin(index)]
         df.index = df.index.remove_unused_levels()
         if align_by_time:
-            df = df.reindex(pd.MultiIndex.from_product(df.index.levels))
+            # df = df.reindex(pd.MultiIndex.from_product(df.index.levels))
+            df = df.unstack(level=1).stack(dropna=False)
 
             def trim_nans(x):
                 dts = x.index.get_level_values(0)
