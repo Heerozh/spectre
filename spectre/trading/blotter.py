@@ -713,24 +713,24 @@ class ManualBlotter(BaseBlotter):
         """ Call this after you cancelled one order """
         self.orders.loc[oid, 'status'] = 'Cancelled'
 
-    def position_dividend(self, asset, amount):
+    def position_dividend(self, asset, amount, time_delta):
         """ Call this if your position has dividends """
         assert self._current_dt is not None
 
         order = pd.Series(dict(
-            date=self._current_dt, status='Dividend',
+            date=self._current_dt + time_delta, status='Dividend',
             symbol=asset, target_percent=0, action_value=0, amount=amount, limit_price='/',
             filled_amount=amount, filled_price=0, filled_percent=0, commission=0, realized=0))
         order.name = max(self.orders.index) + 1
         self.orders = self.orders.append(order)
         self._portfolio.process_dividend(asset, amount)
 
-    def position_split(self, asset, inverse_ratio: float, last_price):
+    def position_split(self, asset, inverse_ratio: float, last_price, time_delta):
         """ Call this if your position has splits """
         assert self._current_dt is not None
 
         order = pd.Series(dict(
-            date=self._current_dt, status='Split',
+            date=self._current_dt + time_delta, status='Split',
             symbol=asset, target_percent=0, action_value=0, amount=inverse_ratio, limit_price='/',
             filled_amount=inverse_ratio, filled_price=last_price, filled_percent=0,
             commission=0, realized=0))

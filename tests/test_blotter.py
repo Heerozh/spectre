@@ -366,8 +366,8 @@ index
         blotter.order_cancelled(batch_ids['batch1'])
         test_oid = blotter.order_target_percent('test', 0.0)
         blotter.order_filled(test_oid, -5, 300, 5)
-        blotter.position_dividend('batch2', 1.5)
-        blotter.position_split('batch2', 1.5, 200)
+        blotter.position_dividend('batch2', 1.5, time_delta=pd.Timedelta(hours=23))
+        blotter.position_split('batch2', 1.5, 200, time_delta=pd.Timedelta(hours=23))
 
         # with pd.option_context('max_columns', None):
         #     print(blotter.get_transactions())
@@ -377,8 +377,8 @@ index
         expected_txn = pd.DataFrame([['test',    5., 200., 205., 5.,   0.],
                                      ['batch2', 10., 200., 205., 5.,   0.],
                                      ['test',   -5., 300., 305., 5., 490.]],
-                                    columns=['symbol', 'amount', 'price', 'fill_price', 'commission',
-                                             'realized'],
+                                    columns=['symbol', 'amount', 'price', 'fill_price',
+                                             'commission', 'realized'],
                                     index=pd.DatetimeIndex([day1, day1, day2]))
         expected_txn.index.name = 'index'
         pd.testing.assert_frame_equal(expected_txn, blotter.get_transactions())
