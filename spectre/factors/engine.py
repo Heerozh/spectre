@@ -391,10 +391,14 @@ class FactorEngine:
 
         results, shifted_mask, delayed = self._run(start, end, delay_factor)
 
-        index = self._dataframe.index.levels[0]
-        start_ind = index.get_loc(start, 'bfill')
         if delayed:  # if any factors delayed, return df also should be delayed
-            start_ind += 1
+            unique_date_index = self._dataframe.index.levels[0]
+            start_unique_ind = unique_date_index.get_loc(start, 'bfill')
+            start = unique_date_index[start_unique_ind + 1]
+
+        index = self._dataframe_index[0]
+        start_ind = index.searchsorted(start)
+
         if start_ind >= len(index):
             raise ValueError('There is no data between start and end.')
         if shifted_mask is not None:
