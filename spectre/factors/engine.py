@@ -383,7 +383,7 @@ class FactorEngine:
         return ret.loc[start:]
 
     def run_raw(self, start: Union[str, pd.Timestamp], end: Union[str, pd.Timestamp],
-                delay_factor=True) -> Dict[str, torch.Tensor]:
+                delay_factor=True, return_index=False) -> Union[Dict[str, torch.Tensor], Tuple]:
         """
         Compute factors and filters, return a dict contains factor_name = torch.Tensor
         """
@@ -406,7 +406,12 @@ class FactorEngine:
             results = {k: v[start_ind:][shifted_mask] for k, v in results.items()}
         else:
             results = {k: v[start_ind:] for k, v in results.items()}
-        return results
+
+        if return_index:
+            index = index[start_ind:][shifted_mask.cpu().numpy()]
+            return results, index
+        else:
+            return results
 
     def get_factors_raw_value(self):
         stream = None
