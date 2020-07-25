@@ -139,6 +139,18 @@ class TestParallelAlgorithm(unittest.TestCase):
             expected, _ = stats.pearsonr(x[i], y[i])
             assert_almost_equal(expected, result[i], decimal=6)
 
+        # test pearsonr
+        rank_x = spectre.parallel.rankdata(x)
+        rank_y = spectre.parallel.rankdata(y)
+        result = spectre.parallel.spearman(rank_x, rank_y)
+        print(result)
+        from scipy import stats
+        for i in range(3):
+            expected, _ = stats.spearmanr(x[i], y[i])
+            if expected != expected:
+                expected = 1
+            assert_almost_equal(expected, result[i], decimal=6)
+
         # test quantile
         x = torch.tensor([[1, 2, np.nan, 3, 4, 5, 6], [3, 4, 5, 1.01, np.nan, 1.02, 1.03]])
         result = spectre.parallel.quantile(x, 5, dim=1)

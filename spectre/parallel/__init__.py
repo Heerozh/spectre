@@ -14,6 +14,7 @@ from .algorithmic import (
     rankdata,
     covariance,
     pearsonr,
+    spearman,
     linear_regression_1d,
     quantile,
     masked_kth_value_1d,
