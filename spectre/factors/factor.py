@@ -387,6 +387,7 @@ class CustomFactor(BaseFactor):
         self._total_backwards = None
         if isinstance(mask, BaseFactor) and mask._clean_required is not None:
             self._clean_required = max(self._clean_required or False, mask._clean_required)
+        return self
 
     def _get_mask_factor(self):
         # todo add a placeholder factor for universe
