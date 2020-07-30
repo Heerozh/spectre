@@ -584,7 +584,16 @@ class CustomFactor(BaseFactor):
                 out = self.compute(*inputs)
             down_stream.wait_event(self_stream.record_event())
         else:
-            out = self.compute(*inputs)
+            try:
+                out = self.compute(*inputs)
+            except RuntimeError as e:
+                if 'CUDA out of memory' in repr(e):
+                    out = self.compute(*[
+                        t.cpu() if isinstance(t, (torch.Tensor, Rolling)) else t
+                        for t in inputs])
+                    out = out.to(self._engine.device)
+                else:
+                    raise e
 
         self._mask_out = None
         if self._ref_count > 0:

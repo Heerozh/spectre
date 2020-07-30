@@ -368,6 +368,19 @@ class Rolling:
             self.adjustments = None
             self.adjustment_last = None
 
+    def cpu(self):
+        # un unfold, else will still got cuda out of memory
+        size = (self.values.shape[0], self.values.shape[1] + self.values.shape[2] - 1)
+        new_x = self.values.as_strided(size, (size[1], 1)).cpu()
+        self.values = new_x.unfold(1, self.win, 1)
+        if self.adjustments is not None:
+            size = (self.adjustments.shape[0],
+                    self.adjustments.shape[1] + self.adjustments.shape[2] - 1)
+            new_x = self.adjustments.as_strided(size, (size[1], 1)).cpu()
+            self.adjustments = new_x.unfold(1, self.win, 1)
+            self.adjustment_last = self.adjustment_last.cpu()
+        return self
+
     def adjust(self, s=None, e=None) -> torch.Tensor:
         """this will contiguous tensor consume lot of memory, limit e-s size"""
         if self.adjustments is not None:
