@@ -57,7 +57,7 @@ class TestTradingEvent(unittest.TestCase):
         test_now = first + pd.offsets.BDay(1) + pd.Timedelta("10:00:00")
 
         calendar = spectre.trading.Calendar()
-        calendar.build(end=str(end.date()),
+        calendar.build(start=str(pd.Timestamp.now(tz=tz).normalize()), end=str(end.date()),
                        daily_events={'Open': '9:00:00', 'Close': '15:00:00'},
                        tz=tz)
         calendar.set_as_holiday(holiday)
@@ -73,6 +73,7 @@ class TestTradingEvent(unittest.TestCase):
                          calendar.events['Open'][0])
 
         # test assert
-        self.assertRaises(ValueError, calendar.build, end='2019',
+        self.assertRaises(ValueError, calendar.build,
+                          start=str(pd.Timestamp.now(tz=tz).normalize()), end='2019',
                           daily_events={'Open': '9:00:00', 'Close': '15:00:00'},
                           tz=tz)
