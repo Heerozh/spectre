@@ -35,6 +35,10 @@ class Portfolio:
         return ret
 
     @property
+    def fund_history(self):
+        return pd.DataFrame(self._funds_change).set_index('index')
+
+    @property
     def returns(self):
         if self._funds_change:
             value = self.history.value.sum(axis=1)
