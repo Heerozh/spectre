@@ -9,6 +9,7 @@ from typing import Union
 import pandas as pd
 import numpy as np
 import gc
+import os
 import torch
 from collections import namedtuple
 from .event import Event, EventReceiver, EventManager, EveryBarData, MarketOpen, MarketClose
@@ -290,9 +291,17 @@ class SimulationEventManager(EventManager):
 
         alg.blotter.clear()
 
-        # get factor data from algorithm
+        # get factor data from algorithm or file
         run_engine = alg.run_engine
-        data, _ = run_engine(start, end, delay_factor)
+        if 'save_factor' in alg.__dict__ and os.path.exists(alg.save_factor):
+            data = pd.read_feather(alg.save_factor)
+            data.set_index(['date', 'asset'], inplace=True)
+            print('Reading factors data from file: ', alg.save_factor)
+        else:
+            data, _ = run_engine(start, end, delay_factor)
+            if 'save_factor' in alg.__dict__:
+                data.reset_index().to_feather(alg.save_factor)
+        # process data
         ticks = self.get_data_ticks(data, start)
         if len(ticks) == 0:
             raise ValueError("No data returned, please set `start`, `end` time correctly")
