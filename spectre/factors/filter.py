@@ -6,7 +6,7 @@
 """
 from abc import ABC
 from typing import Set
-from .factor import BaseFactor, CustomFactor, MultiRetSelector, TypeCastFactor
+from .factor import BaseFactor, CustomFactor, MultiRetSelector
 from ..parallel import Rolling
 import torch
 import warnings
@@ -36,11 +36,6 @@ class FilterFactor(CustomFactor, ABC):
     def all(self, win):
         """ Return True if Rolling window all are True """
         return AllFilter(win, inputs=(self,))
-
-    def int(self):
-        factor = TypeCastFactor(inputs=(self,))
-        factor.dtype = torch.int32
-        return factor
 
 
 class FilterMultiRetSelector(MultiRetSelector, FilterFactor):
