@@ -340,6 +340,7 @@ class CustomFactor(BaseFactor):
     _force_delay = None
     _keep_cache = False
     _total_backwards = None
+    _cache_for_engine = None
 
     def __init__(self, win: Optional[int] = None, inputs: Optional[Sequence[BaseFactor]] = None):
         """
@@ -493,6 +494,14 @@ class CustomFactor(BaseFactor):
         """
         Called when engine run but before compute.
         """
+        # TODO If the same factor added to 2 different engines, the _keep_cache should not able to
+        #  be enabled. alert or rise.
+        if engine is not self._cache_for_engine and self._cache is not None:
+            print('The factor({}) data cached for the original engine is invalidated due to engine '
+                  'changes.'.format(self))
+            self._cache = None
+            self._cache_stream = None
+
         super().pre_compute_(engine, start, end)
         self._clean_required = True
 
@@ -511,6 +520,7 @@ class CustomFactor(BaseFactor):
         if self._keep_cache:
             # ref count +1 so this factor's cache will not cleanup
             self._ref_count += 1
+            self._cache_for_engine = engine
 
     def _format_input(self, upstream, upstream_out, mask_factor, mask_out):
         # If input.groupby not equal self.groupby, convert it
