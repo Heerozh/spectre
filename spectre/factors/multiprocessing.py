@@ -100,7 +100,7 @@ class CPUParallelFactor(CustomFactor):
                 pool_ret.shape, ret.iloc[backwards:].shape))
 
         ret.iloc[backwards:] = pool_ret
-        ret = ret.stack()[origin_input.index]
+        ret = ret.stack(dropna=False)[origin_input.index]
 
         return self._regroup(ret)
 
