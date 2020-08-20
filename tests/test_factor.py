@@ -595,6 +595,24 @@ class TestFactorLib(unittest.TestCase):
         assert_almost_equal(expected1[0, 1], corr[0, 0, 0])
         assert_almost_equal(expected2[0, 1], corr[1, 0, 0])
 
+        # test FactorWiseKthValue
+        xs_k = spectre.factors.FactorWiseKthValue(2, [])
+        xs = [torch.tensor([[1., 2, 2, 4, 5], [1., 3, 3, 4, 5]]),
+              torch.tensor([[1., 3, 3, 3, 4], [2., 1, 0, 5, 5]]),
+              torch.tensor([[1., 1, 3, 3, 4], [2., 2, 0, 6, 6]])]
+        kv = xs_k.compute(*xs)
+        expected = np.array([2.8, 3.2]).repeat(5, 0).reshape(2, 5)
+        assert_almost_equal(expected, kv)
+
+        # test FactorWiseKthValue
+        xs_z = spectre.factors.FactorWiseZScore()
+        zv = xs_z.compute(*xs)
+        expected = np.array([[0.7071064,  0.7071064, -1.414214],
+                             [0.7071064, -1.414214,  0.7071064]]).repeat(5, 0).reshape(2, 5, 3)
+        assert_almost_equal(expected, zv, decimal=4)
+
+        # =========================
+
         # test reused factor only compute once, and nest factor window
         engine.run('2019-01-11', '2019-01-15')  # let pre_compute_ test executable
         f1 = spectre.factors.BBANDS(win=20, inputs=[spectre.factors.OHLCV.close, 2]).normalized()
@@ -623,8 +641,6 @@ class TestFactorLib(unittest.TestCase):
 
         result = engine.run('2019-01-01', '2019-01-15')
         self.assertEqual(0, f2._ref_count)
-
-        # test cuda result eq cup
 
     def test_filter_factor(self):
         loader = spectre.data.CsvDirLoader(
@@ -856,7 +872,6 @@ class TestFactorLib(unittest.TestCase):
 
         expected = np.array([np.nan, 2.1213, 2.1213, 3.5355, 1.4142])[:, None].repeat(5, 1)
         assert_almost_equal(expected, ir, decimal=4)
-
 
     def test_align_by_time(self):
         loader = spectre.data.CsvDirLoader(

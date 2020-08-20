@@ -233,6 +233,27 @@ class CrossSectionR2(CrossSectionFactor):
         return r2.unsqueeze(-1).expand(r2.shape[0], y.shape[1])
 
 
+class FactorWiseKthValue(CrossSectionFactor):
+    """ The kth value of all factors sorted in ascending order, grouped by each datetime """
+    def __init__(self, kth, inputs=None):
+        super().__init__(1, inputs)
+        self.kth = kth
+
+    def compute(self, *data):
+        mx = torch.stack([nanmean(x, dim=1) for x in data], dim=-1)
+        nans = torch.isnan(mx)
+        mx.masked_fill_(nans, -np.inf)
+        ret = torch.kthvalue(mx, self.kth, dim=1, keepdim=True).values
+        return ret.expand(ret.shape[0], data[0].shape[1])
+
+
+class FactorWiseZScore(CrossSectionFactor):
+    def compute(self, *data):
+        mx = torch.stack([nanmean(x, dim=1) for x in data], dim=-1)
+        ret = (mx - nanmean(mx, dim=1).unsqueeze(-1)) / nanstd(mx, dim=1).unsqueeze(-1)
+        return ret.unsqueeze(-2).repeat(1, data[0].shape[1], 1)
+
+
 STDDEV = StandardDeviation
 MAX = RollingHigh
 MIN = RollingLow

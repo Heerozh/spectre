@@ -68,6 +68,7 @@ from .statistical import (
     XSMaxCorrCoef,
     InformationCoefficient, RankWeightedInformationCoefficient,
     CrossSectionR2,
+    FactorWiseKthValue, FactorWiseZScore,
 )
 
 from .feature import (
