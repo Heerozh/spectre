@@ -250,15 +250,17 @@ class SimulationBlotter(BaseBlotter, EventReceiver):
 
         df = dataloader.load(start, None, 0).copy()
         # add previous day close price for daily curb
-        curb_cols = ['__last_close']
-        df['__last_close'] = df[dataloader.ohlcv[3]].groupby(level=1).apply(
-            lambda x: x.fillna(method='pad').shift(1))
         if dataloader.adjustments is not None:
-            df['__last_div'] = df[dataloader.adjustments[0]].groupby(level=1).apply(
+            sel_cols = [dataloader.ohlcv[3], dataloader.adjustments[0], dataloader.adjustments[1]]
+            lasts = df[sel_cols].groupby(level=1).apply(lambda x: x.fillna(method='pad').shift(1))
+            df['__last_close'] = lasts[sel_cols[0]]
+            df['__last_div'] = lasts[sel_cols[1]]
+            df['__last_sp'] = lasts[sel_cols[2]]
+            curb_cols = ['__last_close', '__last_div', '__last_sp']
+        else:
+            df['__last_close'] = df[dataloader.ohlcv[3]].groupby(level=1).apply(
                 lambda x: x.fillna(method='pad').shift(1))
-            df['__last_sp'] = df[dataloader.adjustments[1]].groupby(level=1).apply(
-                lambda x: x.fillna(method='pad').shift(1))
-            curb_cols += ['__last_div', '__last_sp']
+            curb_cols = ['__last_close']
         self._data = df
         self._prices = DataLoaderFastGetter(df[list(dataloader.ohlcv) + curb_cols])
         self._current_prices_col = None
