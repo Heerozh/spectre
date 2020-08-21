@@ -352,6 +352,7 @@ class Rolling:
     def __init__(self, x: torch.Tensor, win: int, _adjustment: torch.Tensor = None):
         self.values = self.unfold(x, win)
         self.win = win
+        self.device = x.device
 
         # rolling multiplication will consume lot of memory, split it by size
         memory_usage = self.values.nelement() * win / (1024. ** 3)
@@ -379,6 +380,7 @@ class Rolling:
             new_x = self.adjustments.as_strided(size, (size[1], 1)).cpu()
             self.adjustments = new_x.unfold(1, self.win, 1)
             self.adjustment_last = self.adjustment_last.cpu()
+        self.device = new_x.device
         return self
 
     def adjust(self, s=None, e=None) -> torch.Tensor:

@@ -103,6 +103,7 @@ class ExponentialWeightedMovingAverage(CustomFactor):
             self.weight = torch.tensor(self.weight, dtype=Global.float_type, device=engine.device)
 
     def compute(self, data):
+        self.weight = self.weight.to(device=data.device)
         weighted_mean = data.agg(lambda x: nansum(x * self.weight, dim=2))
         if self.adjust:
             return weighted_mean
