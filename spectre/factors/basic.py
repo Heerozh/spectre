@@ -193,6 +193,15 @@ class RollingArgMin(CustomFactor):
         return data.agg(_argmin)
 
 
+class ConstantsFactor(CustomFactor):
+    def __init__(self, value):
+        self.value = value
+        super().__init__(1, inputs=[OHLCV.open])
+
+    def compute(self, x):
+        return torch.full(x.shape, self.value, device=x.device, dtype=x.dtype)
+
+
 MA = SimpleMovingAverage
 SMA = SimpleMovingAverage
 EMA = ExponentialWeightedMovingAverage

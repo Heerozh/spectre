@@ -45,6 +45,7 @@ from .basic import (
     AnnualizedVolatility,
     ElementWiseMax, ElementWiseMin,
     RollingArgMax, RollingArgMin,
+    ConstantsFactor,
 )
 
 from .technical import (
