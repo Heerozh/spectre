@@ -270,6 +270,11 @@ class BaseFactor:
         factor.set_mask(mask)
         return factor
 
+    def half(self):
+        factor = TypeCastFactor(inputs=(self,))
+        factor.dtype = torch.float16
+        return factor
+
     def float(self):
         factor = TypeCastFactor(inputs=(self,))
         factor.dtype = Global.float_type
