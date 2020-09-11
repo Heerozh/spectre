@@ -188,7 +188,7 @@ class BaseFactor:
     def shift(self, periods=1):
         if periods == 0:
             return self
-        factor = ShiftFactor(inputs=(self,))
+        factor = RawShiftFactor(inputs=(self,))
         factor.periods = periods
         return factor
 
@@ -694,12 +694,28 @@ class MultiRetSelectorXS(MultiRetSelector, CrossSectionFactor):
     pass
 
 
-class ShiftFactor(CustomFactor):
+# class RootShiftFactor(CustomFactor):
+#     """ Shift the root datafactor """
+#     periods = 1
+#
+#     def compute_(self, down_stream, shift):
+#         # Propagate cumulative shift to root
+#         cum_shift = shift + self.periods
+#         return super().compute_(down_stream, cum_shift)
+#
+#     def compute(self, data: torch.Tensor) -> torch.Tensor:
+#         return data
+
+
+class RawShiftFactor(CustomFactor):
+    """
+    Shift the input data directly, note that this method will not process adjustment.
+    """
     periods = 1
 
     def compute(self, data: torch.Tensor) -> torch.Tensor:
         if data.dtype in {torch.bool, torch.int8, torch.int16, torch.int32, torch.int64}:
-            raise ValueError('factor.shift() does not support `int` or `bool` type, '
+            raise ValueError('RawShiftFactor does not support `int` or `bool` type, '
                              'please convert to float by using `factor.float()`, upstreams: {}'
                              .format(self.inputs))
 
