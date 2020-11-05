@@ -17,7 +17,7 @@ class FilterFactor(CustomFactor, ABC):
         return FilterMultiRetSelector(inputs=(self, key))
 
     def shift(self, periods=1):
-        factor = FilterShiftFactor(inputs=(self,))
+        factor = FilterRawShiftFactor(inputs=(self,))
         factor.periods = periods
         return factor
 
@@ -43,7 +43,7 @@ class FilterMultiRetSelector(MultiRetSelector, FilterFactor):
     pass
 
 
-class FilterShiftFactor(FilterFactor):
+class FilterRawShiftFactor(FilterFactor):
     """For "roll_cuda" not implemented for 'Bool' """
     periods = 1
 

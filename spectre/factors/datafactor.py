@@ -65,6 +65,17 @@ class ColumnDataFactor(BaseFactor):
     def compute(self, *inputs: Sequence[torch.Tensor]) -> torch.Tensor:
         pass
 
+#     def adjusted_shift(self, periods=1):
+#         factor = AdjustedShiftFactor(win=periods, inputs=(self,))
+#         return factor
+#
+#
+# class AdjustedShiftFactor(CustomFactor):
+#     """ Shift the root datafactor """
+#
+#     def compute(self, data) -> torch.Tensor:
+#         return data.first()
+
 
 class AdjustedColumnDataFactor(CustomFactor):
     def __init__(self, data: ColumnDataFactor):

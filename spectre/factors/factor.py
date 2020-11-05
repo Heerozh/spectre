@@ -694,19 +694,6 @@ class MultiRetSelectorXS(MultiRetSelector, CrossSectionFactor):
     pass
 
 
-# class RootShiftFactor(CustomFactor):
-#     """ Shift the root datafactor """
-#     periods = 1
-#
-#     def compute_(self, down_stream, shift):
-#         # Propagate cumulative shift to root
-#         cum_shift = shift + self.periods
-#         return super().compute_(down_stream, cum_shift)
-#
-#     def compute(self, data: torch.Tensor) -> torch.Tensor:
-#         return data
-
-
 class RawShiftFactor(CustomFactor):
     """
     Shift the input data directly, note that this method will not process adjustment.
