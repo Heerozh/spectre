@@ -29,18 +29,18 @@ conda install pyarrow pandas tqdm plotly requests bs4 lxml
 My Machine：
 - i9-7900X @ 3.30GHz, 20 Cores
 - DDR4 3800MHz
-- RTX 2080Ti Founders
+- 3090: GIGABYTE GeForce RTX 3090 GAMING OC 24G
+- 2080Ti: RTX 2080Ti Founders
 
 Running on Quandl 5 years, 3196 Assets, total 3,637,344 bars.
 
-|                |       spectre (CUDA)         |       spectre (CPU)        |   zipline.pipeline    |
-|----------------|------------------------------|----------------------------|-----------------------|
-|SMA(100)        | 144 ms ± 974 µs (**20.7x**) | 2.68 s ± 36.1 ms (1.11x)   | 2.98 s ± 14.4 ms (1x) |
-|EMA(50) win=229 | 270 ms ± 1.89 ms (**31.0x**)  | 4.37 s ± 46.4 ms (1.74x)   | 8.38 s ± 56.8 ms (1x) |
-|(MACD+RSI+STOCHF).rank.zscore | 282 ms ± 1.33 ms (**50.7x**) | 6.01 s ± 28.1 (2.38x)   | 14.3 s ± 277 ms (1x) |
+|                |     spectre (CUDA/3090)       |     spectre (CUDA/2080Ti)     |       spectre (CPU)        |   zipline.pipeline    |
+|----------------|-------------------------------|-------------------------------|----------------------------|-----------------------|
+|SMA(100)        | 87.9 ms ± 3.35 ms (**33.9x**) | 144 ms ± 974 µs (**20.7x**)   | 2.68 s ± 36.1 ms (1.11x)   | 2.98 s ± 14.4 ms (1x) |
+|EMA(50) win=229 | 166 ms ± 3.25 ms (**50.5x**)  | 270 ms ± 1.89 ms (**31.0x**)  | 4.37 s ± 46.4 ms (1.74x)   | 8.38 s ± 56.8 ms (1x) |
+|(MACD+RSI+STOCHF).rank.zscore | 184 ms ± 7.83 ms (**77.7x**) | 282 ms ± 1.33 ms (**50.7x**) | 6.01 s ± 28.1 (2.38x)   | 14.3 s ± 277 ms (1x) |
 
-
-* The CUDA memory used in the spectre benchmark is 2.4G, returned by cuda.max_memory_allocated().
+* The CUDA memory used in the spectre benchmark is 1.8G, returned by cuda.max_memory_allocated().
 * Benchmarks excluded the initial run (no copy data to VRAM, about saving 300ms).
 
 # Quick Start
