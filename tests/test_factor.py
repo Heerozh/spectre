@@ -413,7 +413,9 @@ class TestFactorLib(unittest.TestCase):
         # test nans bug
         x = torch.tensor([[-999, np.nan, np.nan, 2, np.nan, 3, np.nan, np.nan, 999, np.nan],
                           [1, np.nan, np.nan, 2, np.nan, 3, np.nan, np.nan, 4, np.nan]],
-                         dtype=torch.float64).cuda()
+                         dtype=torch.float64)
+        if torch.cuda.is_available():
+            x = x.cuda()
         mad_fct = spectre.factors.MADClampFactor()
         mad_fct.z = 1.5
         mad_fct._mask = mad_fct
@@ -757,7 +759,8 @@ class TestFactorLib(unittest.TestCase):
                     [np.nan, np.nan, 0.5, 0.5, 1 / 3, np.nan]]
         assert_almost_equal(result, expected)
         # test on cuda
-        data = data.cuda()
+        if torch.cuda.is_available():
+            data = data.cuda()
         result = f.compute(spectre.parallel.Rolling(data, win=3)).cpu()
         assert_almost_equal(result, expected)
 
