@@ -87,6 +87,14 @@ class CNCalendar(Calendar):
     closed = [
         *pd.date_range('2020-06-25', '2020-06-28', freq='D'),
         *pd.date_range('2020-10-01', '2020-10-08', freq='D'),
+
+        *pd.date_range('2021-01-01', '2021-01-03', freq='D'),
+        *pd.date_range('2021-02-11', '2021-02-17', freq='D'),
+        *pd.date_range('2021-04-03', '2021-04-05', freq='D'),
+        *pd.date_range('2021-05-01', '2021-05-05', freq='D'),
+        *pd.date_range('2021-06-12', '2021-06-14', freq='D'),
+        *pd.date_range('2021-09-19', '2021-09-21', freq='D'),
+        *pd.date_range('2021-10-01', '2021-10-07', freq='D'),
     ]
 
     daily_events = {
