@@ -229,10 +229,12 @@ class SimulationBlotter(BaseBlotter, EventReceiver):
     Order = namedtuple("Order", ['date', 'asset', 'amount', 'price',
                                  'fill_price', 'commission', 'realized'])
 
-    def __init__(self, dataloader, capital_base=100000, daily_curb=None, start=None):
+    def __init__(self, dataloader, capital_base=100000, daily_curb=None, start=None,
+                 ohlcv=None):
         """
         :param dataloader: dataloader for get prices
         :param daily_curb: How many fluctuations to prohibit trading, in return.
+        :param ohlcv: If None, blotter uses dataloader.ohlcv.
         """
         super().__init__()
         self.market_opened = False
@@ -250,25 +252,26 @@ class SimulationBlotter(BaseBlotter, EventReceiver):
 
         df = dataloader.load(start, None, 0).copy()
         # add previous day close price for daily curb
+        ohlcv = ohlcv or dataloader.ohlcv
         if dataloader.adjustments is not None:
-            sel_cols = [dataloader.ohlcv[3], dataloader.adjustments[0], dataloader.adjustments[1]]
+            sel_cols = [ohlcv[3], dataloader.adjustments[0], dataloader.adjustments[1]]
             lasts = df[sel_cols].groupby(level=1).apply(lambda x: x.fillna(method='pad').shift(1))
             df['__last_close'] = lasts[sel_cols[0]]
             df['__last_div'] = lasts[sel_cols[1]]
             df['__last_sp'] = lasts[sel_cols[2]]
             curb_cols = ['__last_close', '__last_div', '__last_sp']
         else:
-            df['__last_close'] = df[dataloader.ohlcv[3]].groupby(level=1).apply(
+            df['__last_close'] = df[ohlcv[3]].groupby(level=1).apply(
                 lambda x: x.fillna(method='pad').shift(1))
             curb_cols = ['__last_close']
         self._data = df
-        self._prices = DataLoaderFastGetter(df[list(dataloader.ohlcv) + curb_cols])
+        self._prices = DataLoaderFastGetter(df[list(ohlcv) + curb_cols])
         self._current_prices_col = None
         self._current_prices = None
         if dataloader.adjustments is not None:
             div_col = dataloader.adjustments[0]
             sp_col = dataloader.adjustments[1]
-            adj = df[[div_col, sp_col, dataloader.ohlcv[3]]]
+            adj = df[[div_col, sp_col, ohlcv[3]]]
             adj = adj[(adj[div_col] != 0) | (adj[sp_col] != 1)]
             self._adjustments = DataLoaderFastGetter(adj)
         else:
@@ -652,7 +655,7 @@ class ManualBlotter(BaseBlotter):
             raise ValueError('call blotter.set_last_price(dict) first.')
         last_close_price = self.last_price[asset]
         target_amount = target_value / last_close_price
-        
+
         multiplier = self.order_multiplier
         if target_amount == 0:
             # if close a position, allow odd lots

@@ -157,13 +157,13 @@ from .metric import (
 
 
 def run_backtest(loader: 'DataLoader', alg_type: 'Type[CustomAlgorithm]', start, end,
-                 delay_factor=True):
+                 delay_factor=True, ohlcv=None):
     # force python to free memory, else may be encountering cuda out of memory
     import gc
     import pandas as pd
     gc.collect()
 
-    _blotter = SimulationBlotter(loader, start=pd.to_datetime(start, utc=True))
+    _blotter = SimulationBlotter(loader, start=pd.to_datetime(start, utc=True), ohlcv=ohlcv)
     evt_mgr = SimulationEventManager()
     alg = alg_type(_blotter, main=loader)
     evt_mgr.subscribe(_blotter)
