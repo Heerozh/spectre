@@ -194,9 +194,9 @@ class RollingArgMin(CustomFactor):
 
 
 class ConstantsFactor(CustomFactor):
-    def __init__(self, value):
+    def __init__(self, value, like=OHLCV.open):
         self.value = value
-        super().__init__(1, inputs=[OHLCV.open])
+        super().__init__(1, inputs=[like])
 
     def compute(self, x):
         return torch.full(x.shape, self.value, device=x.device, dtype=x.dtype)
