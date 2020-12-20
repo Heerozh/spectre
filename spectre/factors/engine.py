@@ -342,7 +342,8 @@ class FactorEngine:
         # some pre-work
         if filter_:
             filter_.pre_compute_(self, start, end)
-        for f in factors.values():
+        for _, f in factors.items():
+            # print(_)
             f.pre_compute_(self, start, end)
 
         # schedule possible gpu work first
@@ -489,7 +490,8 @@ class FactorEngine:
         return figs, df
 
     def full_run(self, start, end, trade_at='close', periods=(1, 4, 9),
-                 quantiles=5, filter_zscore=20, demean=True, preview=True
+                 quantiles=5, filter_zscore=20, demean=True, preview=True, to_weight=True,
+                 xs_quantile=True
                  ) -> Tuple[pd.DataFrame, pd.DataFrame]:
         """
         Return this:
@@ -509,9 +511,11 @@ class FactorEngine:
                          cause lookahead bias.
         :param periods: Forward return periods
         :param quantiles: Number of quantile
+        :param xs_quantile: Calculate quantile based on cross section
         :param filter_zscore: Drop extreme factor return, for stability of the analysis.
         :param demean: Whether the factor is converted into a hedged weight: sum(weight) = 0
         :param preview: Display a preview chart of the result
+        :param to_weight: Normalize the factor value to a weight on the cross section
         """
         factors = self._factors.copy()
         universe = self.get_filter()
@@ -519,19 +523,29 @@ class FactorEngine:
         column_names = {}
         # add quantile factor of all factors
         for c, f in factors.items():
-            self.add(f.quantile(quantiles, mask=universe), c + '_q_')
-            self.add(f.to_weight(mask=universe, demean=demean), c + '_w_')
             column_names[c] = (c, 'factor')
+            quantile_fct = f.quantile(quantiles, mask=universe)
+            if not xs_quantile:
+                quantile_fct.groupby = 'asset'
+            self.add(quantile_fct, c + '_q_')
             column_names[c + '_q_'] = (c, 'factor_quantile')
+
+            if to_weight:
+                self.add(f.to_weight(mask=universe, demean=demean), c + '_w_')
+            else:
+                self.add(f, c + '_w_')
             column_names[c + '_w_'] = (c, 'factor_weight')
 
         # add the rolling returns of each period, use AdjustedColumnDataFactor for best performance
         shift = -1
         inputs = (AdjustedColumnDataFactor(OHLCV.close),)
-        if trade_at == 'open':
+        if isinstance(trade_at, BaseFactor):
+            inputs = (trade_at,)
+        elif trade_at == 'open':
             inputs = (AdjustedColumnDataFactor(OHLCV.open),)
         elif trade_at == 'current_close':
             shift = 0
+
         from .basic import Returns
         for n in periods:
             # Different: returns here diff by bar, which alphalens diff by time
@@ -548,7 +562,8 @@ class FactorEngine:
                 self.add(ret.filter(mask), str(n) + '_r_')
             else:
                 self.add(ret, str(n) + '_r_')
-            self.add(ret.demean(mask=mask), str(n) + '_d_')
+            if demean:
+                self.add(ret.demean(mask=mask), str(n) + '_d_')
 
         # run and get df
         factor_data = self.run(start, end, trade_at != 'current_close')
@@ -568,7 +583,8 @@ class FactorEngine:
         period_cols = {n: str(n * freq) + unit for n in periods}
         for n, period_col in period_cols.items():
             column_names[str(n) + '_r_'] = ('Returns', period_col)
-            column_names[str(n) + '_d_'] = ('Demeaned', period_col)
+            if demean:
+                column_names[str(n) + '_d_'] = ('Demeaned', period_col)
         new_cols = pd.MultiIndex.from_tuples([column_names[c] for c in factor_data.columns])
         factor_data.columns = new_cols
         factor_data.sort_index(axis=1, inplace=True)
@@ -578,9 +594,13 @@ class FactorEngine:
         for fact_name, _ in factors.items():
             mean_return = pd.DataFrame(columns=pd.MultiIndex.from_arrays([[], []]))
             group = [(fact_name, 'factor_quantile'), 'date']
-            grouped_mean = factor_data[['Demeaned', fact_name]].groupby(group).agg('mean')
+            if demean:
+                returns_col = 'Demeaned'
+            else:
+                returns_col = 'Returns'
+            grouped_mean = factor_data[[returns_col, fact_name]].groupby(group).agg('mean')
             for _, period_col in period_cols.items():
-                demean_col = ('Demeaned', period_col)
+                demean_col = (returns_col, period_col)
                 mean_col = (fact_name, period_col)
                 mean_return[mean_col] = grouped_mean[demean_col]
             if mean_return.empty:
