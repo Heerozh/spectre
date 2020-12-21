@@ -681,6 +681,10 @@ class CrossSectionFactor(CustomFactor, ABC):
 
 
 class MultiRetSelector(CustomFactor):
+    def pre_compute_(self, engine, start, end):
+        super().pre_compute_(engine, start, end)
+        # consistent with upstream groupby, otherwise it will regroup before compute
+        self.groupby = self.inputs[0].groupby
 
     def compute(self, data: torch.Tensor, key) -> torch.Tensor:
         if len(data.shape) < 3:
