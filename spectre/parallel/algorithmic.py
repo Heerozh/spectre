@@ -90,6 +90,27 @@ class ParallelGroupBy:
         return ret
 
 
+class DummyParallelGroupBy:
+    def __init__(self, shape, device, dim=-1):
+        self.dim = dim
+        self._padding_mask = torch.full(shape, False, device=device).unsqueeze(dim)
+
+    @property
+    def padding_mask(self):
+        return self._padding_mask
+
+    def split(self, data: torch.Tensor) -> torch.Tensor:
+        return data.unsqueeze(self.dim)
+
+    def revert(self, split_data: torch.Tensor, dbg_str='None') -> torch.Tensor:
+        return split_data.squeeze()
+
+    def create(self, dtype, values, nan_fill=np.nan):
+        ret = torch.full(self._padding_mask.shape, values, dtype=dtype,
+                         device=self._padding_mask.device).squeeze()
+        return ret
+
+
 def unmasked_sum(data: torch.Tensor, mask: torch.Tensor, dim=1, inplace=False) -> torch.Tensor:
     if not inplace:
         data = data.clone()

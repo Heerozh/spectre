@@ -1,5 +1,5 @@
 from .algorithmic import (
-    ParallelGroupBy,
+    ParallelGroupBy, DummyParallelGroupBy,
     Rolling,
     nansum, unmasked_sum,
     nanmean, unmasked_mean,

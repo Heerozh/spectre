@@ -14,7 +14,7 @@ from .filter import FilterFactor, StaticAssets
 from .datafactor import ColumnDataFactor, AdjustedColumnDataFactor
 from ..plotting import plot_quantile_and_cumulative_returns, plot_chart
 from ..data import DataLoader
-from ..parallel import ParallelGroupBy
+from ..parallel import ParallelGroupBy, DummyParallelGroupBy
 
 
 class OHLCV:
@@ -61,6 +61,14 @@ class FactorEngine:
             return
 
         cols = group_column.split(',')
+
+        if len(self._dataframe.index.levels[1]) == 1 and (
+                cols[0] == 'date' or cols[0] == self._loader.time_category):
+            col = self._loader.time_category
+            series = self._dataframe[col]
+            self._groups[as_group_name] = DummyParallelGroupBy(series.shape, self._device)
+            return
+
         keys = None
         for col in cols:
             if col:
