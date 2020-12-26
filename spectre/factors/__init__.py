@@ -68,6 +68,7 @@ from .statistical import (
     RollingCovariance,
     XSMaxCorrCoef,
     InformationCoefficient, RankWeightedInformationCoefficient,
+    RollingInformationCoefficient,
     CrossSectionR2,
     FactorWiseKthValue, FactorWiseZScore,
 )

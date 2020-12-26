@@ -441,8 +441,8 @@ class Rolling:
         # unbiased=False eq ddof=0
         return self.agg(lambda x: x.std(unbiased=False, dim=axis))
 
-    def nanstd(self, axis=2):
-        return self.agg(lambda x: nanstd(x, dim=axis, ddof=0))
+    def nanstd(self, axis=2, ddof=0):
+        return self.agg(lambda x: nanstd(x, dim=axis, ddof=ddof))
 
     def var(self, axis=2):
         return self.agg(lambda x: x.var(unbiased=False, dim=axis))

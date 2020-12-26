@@ -18,9 +18,10 @@ from ..config import Global
 class StandardDeviation(CustomFactor):
     inputs = [OHLCV.close]
     _min_win = 2
+    ddof = 0
 
     def compute(self, data):
-        return data.nanstd()
+        return data.nanstd(ddof=self.ddof)
 
 
 class RollingHigh(CustomFactor):
@@ -205,6 +206,15 @@ class InformationCoefficient(CrossSectionFactor):
                 ir = nanmean(rolling_ic, dim=1) / nanstd(rolling_ic, dim=1, ddof=1)
                 return ir.unsqueeze(-1).expand(ic.shape)
         return RollingIC2IR(win_=win, inputs=[self])
+
+
+class RollingInformationCoefficient(RollingCorrelation):
+    def to_ir(self, win):
+        std = StandardDeviation(win=win, inputs=(self,))
+        std.ddof = 1
+        mean = self.sum(win) / win
+
+        return mean / std
 
 
 class RankWeightedInformationCoefficient(InformationCoefficient):
