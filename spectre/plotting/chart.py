@@ -33,15 +33,15 @@ def plot_chart(df_prices, ohlcv, df_factor, trace_types=None, styles=None, inlin
     styles['volume']['yaxis'] = styles['volume'].get('yaxis', 'y2')
     styles['volume']['name'] = styles['volume'].get('name', 'volume')
 
-    # get y-axises
-    y_axises = set()
+    # get y_axes
+    y_axes = set()
     for k, v in styles.items():
         if not isinstance(v, dict):
             continue
         if 'yaxis' in v:
-            y_axises.add('yaxis' + v['yaxis'][1:])
+            y_axes.add('yaxis' + v['yaxis'][1:])
         if 'yref' in v:
-            y_axises.add('yaxis' + v['yref'][1:])
+            y_axes.add('yaxis' + v['yref'][1:])
 
     figs = {}
     # plotting
@@ -53,13 +53,22 @@ def plot_chart(df_prices, ohlcv, df_factor, trace_types=None, styles=None, inlin
         start, end = factors.index[0], factors.index[-1]
 
         prices = df_prices.loc[(slice(start, end), asset), :].droplevel(level=1)
-        index = prices.index.strftime("%y-%m-%d %H%M")
-        # add candlestick
-        fig.add_trace(
-            go.Candlestick(x=index, open=prices[ohlcv[0]], high=prices[ohlcv[1]],
-                           low=prices[ohlcv[2]], close=prices[ohlcv[3]], **styles['price']))
-        fig.add_trace(
-            go.Bar(x=index, y=prices[ohlcv[4]], **styles['volume']))
+        index = prices.index.strftime("%y-%m-%d %H%M%S")
+        if ohlcv[0] is not None:
+            # add candlestick
+            fig.add_trace(
+                go.Candlestick(x=index, open=prices[ohlcv[0]], high=prices[ohlcv[1]],
+                               low=prices[ohlcv[2]], close=prices[ohlcv[3]], **styles['price']))
+            fig.add_trace(
+                go.Bar(x=index, y=prices[ohlcv[4]], **styles['volume']))
+        else:
+            # add line plot
+            if ohlcv[3] is not None:
+                fig.add_trace(
+                    go.Scatter(x=index, y=prices[ohlcv[3]], **styles['price']))
+            if ohlcv[4] is not None:
+                fig.add_trace(
+                    go.Scatter(x=index, y=prices[ohlcv[4]], **styles['volume']))
 
         # add factors
         for col in factors.columns:
@@ -68,10 +77,10 @@ def plot_chart(df_prices, ohlcv, df_factor, trace_types=None, styles=None, inlin
                 continue
             style = styles.get(col, {})
             style['name'] = style.get('name', col)
-            fig.add_trace(go.__dict__[trace_type](x=index, y=factors[col], **style))
+            fig.add_trace(getattr(go, trace_type)(x=index, y=factors[col], **style))
 
         new_axis = dict(anchor="free", overlaying="y", side="right", position=1)
-        alpha_ordered_axises = list(y_axises)
+        alpha_ordered_axises = list(y_axes)
         alpha_ordered_axises.sort()
         for y_axis in alpha_ordered_axises:
             fig.update_layout(**{y_axis: new_axis})

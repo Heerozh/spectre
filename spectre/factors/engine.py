@@ -455,7 +455,7 @@ class FactorEngine:
         return ret
 
     def plot_chart(self, start, end, trace_types=None, styles=None, delay_factor=True,
-                   inline=True):
+                   inline=True, ohlcv=None):
         """
         Plotting common stock price chart for researching.
         :param start: same as engine.run()
@@ -464,6 +464,7 @@ class FactorEngine:
         :param trace_types: dict(factor_name=plotly_trace_type), default is 'Scatter'
         :param styles: dict(factor_name=plotly_trace_styles)
         :param inline: display plot immediately
+        :param ohlcv: open high low close volume column names, open high low can be None.
 
         Usage::
 
@@ -484,8 +485,10 @@ class FactorEngine:
             })
 
         """
+        assert ohlcv is not None or self.loader_.ohlcv is not None, \
+            "parameter ohlcv cannot be None."
         df = self.run(start, end, delay_factor)
-        figs = plot_chart(self._dataframe, self.loader_.ohlcv, df, trace_types=trace_types,
+        figs = plot_chart(self._dataframe, ohlcv or self.loader_.ohlcv, df, trace_types=trace_types,
                           styles=styles, inline=inline)
         return figs, df
 
