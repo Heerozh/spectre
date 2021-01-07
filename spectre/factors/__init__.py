@@ -8,6 +8,7 @@ from .factor import (
     CustomFactor,
     CrossSectionFactor,
     RankFactor, RollingRankFactor,
+    ZScoreFactor, RollingZScoreFactor,
     XSMax, XSMin,
     QuantileClassifier,
     SumFactor, ProdFactor,

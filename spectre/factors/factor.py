@@ -889,6 +889,19 @@ class ZScoreFactor(CrossSectionFactor):
         return (data - mean) / nanstd(data).unsqueeze(-1)
 
 
+class RollingZScoreFactor(CustomFactor):
+    """ ZScore over rolling period """
+    _min_win = 2
+
+    def compute(self, data) -> torch.Tensor:
+        def _rolling_zscore(_data):
+            mean = nanmean(_data, dim=2).unsqueeze(-1)
+            ret = (_data - mean) / nanstd(_data, dim=2).unsqueeze(-1)
+            return ret[:, :, -1]
+
+        return data.agg(_rolling_zscore)
+
+
 class QuantileClassifier(CrossSectionFactor):
     """Returns the quantile of the factor at each datetime"""
     bins = 5
