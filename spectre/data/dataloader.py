@@ -37,6 +37,12 @@ class DataLoader:
         """ data source last modification time """
         raise NotImplementedError("abstractmethod")
 
+    @property
+    def min_timedelta(self) -> pd.Timedelta:
+        """ Minimum time delta of date index """
+        date_idx = self.load().index.levels[0]
+        return min(date_idx[1:] - date_idx[:-1])
+
     @classmethod
     def _align_to(cls, df, calender_asset, align_by_time=False):
         """ helper method for align index """
