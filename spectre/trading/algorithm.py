@@ -133,7 +133,7 @@ class CustomAlgorithm(EventReceiver, ABC):
     def record(self, **kwargs):
         self._recorder.record(self._current_dt, kwargs)
 
-    def cumulative_returns_fig(self, annual_risk_free, benchmark):
+    def cumulative_returns_fig(self, annual_risk_free, benchmark, start=0):
         returns = self._results.returns
         if returns.shape[0] <= 1 or returns.isna().all():
             print('plot failed: Insufficient data')
@@ -153,7 +153,7 @@ class CustomAlgorithm(EventReceiver, ABC):
             bench = bench.pct_change()
 
         fig = cumulative_returns_fig(returns, self._results.positions,  self._results.transactions,
-                                     bench, annual_risk_free)
+                                     bench, annual_risk_free, start=start)
         return fig
 
     def plot(self, annual_risk_free=0.04, benchmark: Union[pd.Series, str] = None) -> None:

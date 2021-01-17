@@ -113,7 +113,7 @@ def plot_quantile_and_cumulative_returns(factor_data, mean_ret):
     return fig
 
 
-def cumulative_returns_fig(returns, positions, transactions, benchmark, annual_risk_free):
+def cumulative_returns_fig(returns, positions, transactions, benchmark, annual_risk_free, start=0):
     from ..trading import turnover, sharpe_ratio, drawdown, annual_volatility
 
     import plotly.graph_objects as go
@@ -121,14 +121,16 @@ def cumulative_returns_fig(returns, positions, transactions, benchmark, annual_r
 
     fig = subplots.make_subplots(specs=[[{"secondary_y": True}]])
 
-    cum_ret = (returns + 1).cumprod()
+    cum_ret = returns.iloc[start:]
+    cum_ret = (cum_ret + 1).cumprod()
     fig.add_trace(go.Scatter(x=cum_ret.index, y=cum_ret.values * 100 - 100, name='portfolio',
                              hovertemplate='<b>Date</b>:%{x}<br><b>Return</b>: %{y:.3f}%'))
     fig.add_shape(go.layout.Shape(y0=0, y1=0, x0=cum_ret.index[0], x1=cum_ret.index[-1],
                                   type="line", line=dict(width=1)))
 
     if benchmark is not None:
-        cum_bench = (benchmark + 1).cumprod()
+        cum_bench = benchmark.iloc[start:]
+        cum_bench = (cum_bench + 1).cumprod()
         fig.add_trace(go.Scatter(x=cum_bench.index, y=cum_bench.values * 100 - 100,
                                  name='benchmark', line=dict(width=0.5)))
 
@@ -138,7 +140,7 @@ def cumulative_returns_fig(returns, positions, transactions, benchmark, annual_r
         y0=0, y1=1, x0=cum_ret.idxmax(), x1=cum_ret[cum_ret.idxmax():].idxmin(),
     ))
 
-    to = turnover(positions, transactions) * 100
+    to = turnover(positions, transactions).iloc[start:] * 100
     resample = int(len(to) / 126)
     if resample > 0:
         to = to.fillna(0).rolling(resample).mean()[::resample]
