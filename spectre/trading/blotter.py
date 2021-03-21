@@ -43,14 +43,14 @@ class DailyCurbModel:
         :param last_close: previous day close price
         :param last_div: previous day dividend
         :param last_sp: previous day split ratio
-        :return: float: filled price; None: not to trading
+        :return: float, int: filled price & amount
         """
         last_close = (round(last_close, 2) - last_div) * last_sp
         last_close = round(last_close, 2)
         if abs(current_price / last_close - 1) >= self.percentage:
-            return None
+            return None, 0
         else:
-            return current_price
+            return current_price, shares
 
 
 class BaseBlotter:
@@ -376,10 +376,10 @@ class SimulationBlotter(BaseBlotter, EventReceiver):
                 last_div = self._prices.get_as_dict(curr_prices.row_slice, column_id=-2)
                 last_sp = self._prices.get_as_dict(curr_prices.row_slice, column_id=-1)
             # Detecting whether transactions are possible
-            price = self.daily_curb.calculate(
+            price, amount = self.daily_curb.calculate(
                 asset, price, amount, curr_high[asset], curr_low[asset],
                 last_close[asset], last_div[asset], last_sp[asset],)
-            if price is None:
+            if amount == 0:
                 return False
 
         # commission, slippage

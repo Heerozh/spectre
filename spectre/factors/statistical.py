@@ -234,6 +234,7 @@ class CrossSectionR2(CrossSectionFactor):
         mask = torch.isnan(y_pred) | torch.isnan(y)
         ss_err = unmasked_sum((y - y_pred) ** 2, mask, dim=1)
         if self.total_r2:
+            # 按市场总回报来算r2的话，用这个。不然就是相对回报。
             ss_tot = unmasked_sum(y ** 2, mask, dim=1)
         else:
             y_bar = unmasked_mean(y, mask, dim=1).unsqueeze(-1)
