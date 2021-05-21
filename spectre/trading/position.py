@@ -131,6 +131,7 @@ class Position:
         if amount != amount or amount == 0:
             return 0
         self._average_price -= amount
+        self.last_price -= amount
         cash = self._shares * amount
         return cash
 

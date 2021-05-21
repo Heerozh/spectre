@@ -222,6 +222,7 @@ class FactorEngine:
         """
         Add factor or filter to engine, as a column.
         """
+        assert factor is not None
         if isinstance(factor, Iterable):
             for i, fct in enumerate(factor):
                 self.add(fct, name[i], replace)
@@ -389,6 +390,7 @@ class FactorEngine:
             if (start_ind + 1) >= len(index):
                 raise ValueError('There is no data between start and end.')
             start = index[start_ind + 1]
+        ret.sort_index(inplace=True)
         return ret.loc[start:]
 
     def run_raw(self, start: Union[str, pd.Timestamp], end: Union[str, pd.Timestamp],

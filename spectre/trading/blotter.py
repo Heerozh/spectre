@@ -530,11 +530,6 @@ class ManualBlotter(BaseBlotter):
             for i, row in df.iterrows():
                 if row.status == 'Cash':
                     self._portfolio.update_cash(row.filled_amount, is_funds=True)
-                elif row.status == 'Dividend':
-                    self._portfolio.process_dividend(row.symbol, row.filled_amount)
-                elif row.status == 'Split':
-                    self._portfolio.process_split(row.symbol, row.filled_amount,
-                                                  row.filled_price)
                 elif row.status == 'Filled':
                     self._portfolio.update(row.symbol, row.filled_amount, row.filled_price,
                                            row.commission)
@@ -549,6 +544,14 @@ class ManualBlotter(BaseBlotter):
                     self.update_portfolio_value(price_dict)
                 except KeyError:
                     pass
+
+            # update div and split after close, otherwise last price won't be adjusted
+            for i, row in df.iterrows():
+                if row.status == 'Dividend':
+                    self._portfolio.process_dividend(row.symbol, row.filled_amount)
+                elif row.status == 'Split':
+                    self._portfolio.process_split(row.symbol, row.filled_amount,
+                                                  row.filled_price)
 
     def load(self):
         """ Reload portfolio/orders from working_dir, for updating account and order status """

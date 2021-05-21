@@ -91,7 +91,7 @@ class DataLoader:
         date_index = df.index.get_level_values(0)
         unique_date = date_index.unique()
         time_cat = dict(zip(unique_date, range(len(unique_date))))
-        cat = np.fromiter(map(lambda x: time_cat[x], date_index), dtype=np.int)
+        cat = np.fromiter(map(lambda x: time_cat[x], date_index), dtype=int)
         df[self.time_category] = cat
 
         # Process dividends and split
