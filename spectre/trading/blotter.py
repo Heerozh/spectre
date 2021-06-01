@@ -439,7 +439,8 @@ class SimulationBlotter(BaseBlotter, EventReceiver):
 
                 for asset, row in current_adj.items():
                     div = row[div_col] - self.div_tax.calculate(asset, row[div_col], 1)
-                    self._portfolio.process_dividend(asset, div)
+                    tax = row[div_col] - div
+                    self._portfolio.process_dividend(asset, div, tax=tax)
                     self._portfolio.process_split(asset, 1/row[sp_col], row[close_col])
             except KeyError:
                 pass
@@ -548,7 +549,8 @@ class ManualBlotter(BaseBlotter):
             # update div and split after close, otherwise last price won't be adjusted
             for i, row in df.iterrows():
                 if row.status == 'Dividend':
-                    self._portfolio.process_dividend(row.symbol, row.filled_amount)
+                    self._portfolio.process_dividend(row.symbol, row.filled_amount,
+                                                     tax=row.commission)
                 elif row.status == 'Split':
                     self._portfolio.process_split(row.symbol, row.filled_amount,
                                                   row.filled_price)
@@ -721,21 +723,24 @@ class ManualBlotter(BaseBlotter):
         """ Call this after you cancelled one order """
         self.orders.loc[oid, 'status'] = 'Cancelled'
 
-    def position_dividend(self, asset, amount, time_delta):
+    def position_dividend(self, asset, amount, tax, time_delta):
         """ Call this if your position has dividends """
         assert self._current_dt is not None
 
         order = pd.Series(dict(
             date=self._current_dt + time_delta, status='Dividend',
             symbol=asset, target_percent=0, action_value=0, amount=amount, limit_price='/',
-            filled_amount=amount, filled_price=0, filled_percent=0, commission=0, realized=0))
+            filled_amount=amount, filled_price=0, filled_percent=0, commission=tax, realized=0))
         order.name = max(self.orders.index) + 1
         self.orders = self.orders.append(order)
-        self._portfolio.process_dividend(asset, amount)
+        self._portfolio.process_dividend(asset, amount, tax)
 
     def position_split(self, asset, inverse_ratio: float, last_price, time_delta):
         """ Call this if your position has splits """
         assert self._current_dt is not None
+        if last_price is None:
+            last_price = self.positions[asset].last_price
+        assert last_price is not None
 
         order = pd.Series(dict(
             date=self._current_dt + time_delta, status='Split',

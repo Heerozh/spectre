@@ -140,11 +140,11 @@ class Portfolio:
         cash = pos.process_split(inverse_ratio, last_price)
         self.update_cash(cash)
 
-    def process_dividend(self, asset, amount):
+    def process_dividend(self, asset, amount, tax):
         if asset not in self._positions:
             return
         pos = self._positions[asset]
-        cash = pos.process_dividend(amount)
+        cash = pos.process_dividend(amount, tax)
         self.update_cash(cash)
 
     def _update_value_func(self, func):

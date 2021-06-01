@@ -32,8 +32,8 @@ class TestBlotter(unittest.TestCase):
 
         self.assertEqual(0, pf.positions['MSFT'].realized)
 
-        pf.process_dividend('AAPL', 2.0)
-        pf.process_dividend('MSFT', 2.0)
+        pf.process_dividend('AAPL', 2.0, tax=0)
+        pf.process_dividend('MSFT', 2.0, tax=0)
         pf.update_value(lambda x: x == 'AAPL' and 1.5 or 2)
 
         position_shares = {k: pos.shares for k, pos in pf.positions.items()}
@@ -366,7 +366,7 @@ index
         blotter.order_cancelled(batch_ids['batch1'])
         test_oid = blotter.order_target_percent('test', 0.0)
         blotter.order_filled(test_oid, -5, 300, 5)
-        blotter.position_dividend('batch2', 1.5, time_delta=pd.Timedelta(hours=23))
+        blotter.position_dividend('batch2', 1.5, tax=0, time_delta=pd.Timedelta(hours=23))
         blotter.position_split('batch2', 1.5, 200, time_delta=pd.Timedelta(hours=23))
 
         # with pd.option_context('max_columns', None):
