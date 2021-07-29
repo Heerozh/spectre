@@ -93,7 +93,7 @@ class FactorEngine:
 
     def revert_to_series_(self, data: torch.Tensor, group: str, factor_name: str) -> pd.Series:
         array = self.revert_(data, group, factor_name).cpu()
-        return pd.Series(array, index=self._dataframe.index)
+        return pd.Series(array.numpy(), index=self._dataframe.index)
 
     def group_by_(self, data: Union[torch.Tensor, pd.Series], group: str) -> torch.Tensor:
         if isinstance(data, torch.Tensor):

@@ -181,5 +181,5 @@ class TestParallelAlgorithm(unittest.TestCase):
                            np.nan, -1, np.nan, - 1, np.nan, np.nan, np.nan, 1]])
         result = spectre.parallel.pad_2d(x)
 
-        expected = [pd.Series(x[0]).fillna(method='ffill'), pd.Series(x[1]).fillna(method='ffill')]
+        expected = [pd.Series(x[0].numpy()).fillna(method='ffill'), pd.Series(x[1].numpy()).fillna(method='ffill')]
         assert_almost_equal(expected, result)
