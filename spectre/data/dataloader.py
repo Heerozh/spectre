@@ -144,7 +144,7 @@ class DataLoader:
             "df.index.names should be ['date', 'asset'] "
         assert not any(df.index.duplicated()), \
             "There are duplicate indexes in df, you need handle them up."
-        assert df.index.is_lexsorted(), \
+        assert df.index.is_monotonic_increasing, \
             "df.index must be sorted, try using df.sort_index(level=0, inplace=True)"
         assert str(df.index.levels[0].tzinfo) == 'UTC', \
             "df.index.date must be UTC timezone."
