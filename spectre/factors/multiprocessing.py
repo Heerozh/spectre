@@ -94,7 +94,7 @@ class CPUParallelFactor(CustomFactor):
             pool_ret = p.map(caller.split_call, split_range)
 
         pool_ret = np.concatenate(pool_ret)
-        ret = pd.Series(index=origin_input.index).unstack(level=1)
+        ret = pd.Series(index=origin_input.index, dtype='float64').unstack(level=1)
         if pool_ret.shape != ret.iloc[backwards:].shape:
             raise ValueError('return value shape {} != original {}'.format(
                 pool_ret.shape, ret.iloc[backwards:].shape))
