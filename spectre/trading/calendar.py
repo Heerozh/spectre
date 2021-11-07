@@ -95,6 +95,14 @@ class CNCalendar(Calendar):
         *pd.date_range('2021-06-12', '2021-06-14', freq='D'),
         *pd.date_range('2021-09-19', '2021-09-21', freq='D'),
         *pd.date_range('2021-10-01', '2021-10-07', freq='D'),
+
+        *pd.date_range('2022-01-01', '2022-01-03', freq='D'),
+        *pd.date_range('2022-01-31', '2022-02-06', freq='D'),
+        *pd.date_range('2022-04-03', '2022-04-05', freq='D'),
+        *pd.date_range('2022-04-30', '2022-05-04', freq='D'),
+        *pd.date_range('2022-06-03', '2022-06-05', freq='D'),
+        *pd.date_range('2022-09-10', '2022-09-12', freq='D'),
+        *pd.date_range('2022-10-01', '2022-10-07', freq='D'),
     ]
 
     daily_events = {
