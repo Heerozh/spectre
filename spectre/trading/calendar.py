@@ -103,6 +103,13 @@ class CNCalendar(Calendar):
         *pd.date_range('2022-06-03', '2022-06-05', freq='D'),
         *pd.date_range('2022-09-10', '2022-09-12', freq='D'),
         *pd.date_range('2022-10-01', '2022-10-07', freq='D'),
+
+        *pd.date_range('2023-01-01', '2023-01-02', freq='D'),
+        *pd.date_range('2023-01-21', '2023-01-27', freq='D'),
+        *pd.date_range('2023-04-05', '2023-04-05', freq='D'),
+        *pd.date_range('2023-04-29', '2023-05-03', freq='D'),
+        *pd.date_range('2023-06-22', '2023-06-24', freq='D'),
+        *pd.date_range('2023-09-29', '2023-10-06', freq='D'),
     ]
 
     daily_events = {
