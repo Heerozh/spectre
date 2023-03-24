@@ -261,7 +261,7 @@ class SimulationBlotter(BaseBlotter, EventReceiver):
             df['__last_sp'] = lasts[sel_cols[2]]
             curb_cols = ['__last_close', '__last_div', '__last_sp']
         else:
-            df['__last_close'] = df[ohlcv[3]].groupby(level=1).apply(
+            df['__last_close'] = df[ohlcv[3]].groupby(level=1, group_keys=False).apply(
                 lambda x: x.fillna(method='pad').shift(1))
             curb_cols = ['__last_close']
         self._data = df

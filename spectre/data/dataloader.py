@@ -184,9 +184,9 @@ class DataLoader:
             raise ValueError("`end` ({}) time cannot greater than latest time of data: {}."
                              .format(end, index[-1]))
 
-        start_loc = index.get_loc(start, 'bfill')
+        start_loc = index.get_indexer([start], 'bfill')[0]
         backward_loc = max(start_loc - backwards, 0)
-        end_loc = index.get_loc(end, 'ffill')
+        end_loc = index.get_indexer([end], 'ffill')[0]
         assert end_loc >= start_loc, 'There is no data between `start` and `end`.'
 
         backward_start = index[backward_loc]
