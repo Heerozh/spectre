@@ -255,7 +255,7 @@ class SimulationBlotter(BaseBlotter, EventReceiver):
         ohlcv = ohlcv or dataloader.ohlcv
         if dataloader.adjustments is not None:
             sel_cols = [ohlcv[3], dataloader.adjustments[0], dataloader.adjustments[1]]
-            lasts = df[sel_cols].groupby(level=1).apply(lambda x: x.fillna(method='pad').shift(1))
+            lasts = df[sel_cols].groupby(level=1, group_keys=False).apply(lambda x: x.fillna(method='pad').shift(1))
             df['__last_close'] = lasts[sel_cols[0]]
             df['__last_div'] = lasts[sel_cols[1]]
             df['__last_sp'] = lasts[sel_cols[2]]
@@ -674,7 +674,8 @@ class ManualBlotter(BaseBlotter):
             limit_price='Market', filled_amount=0, filled_price=0, filled_percent=0, commission=0,
             realized=0))
         order.name = max(self.orders.index) + 1
-        self.orders = self.orders.append(order)
+        order = order.to_frame().T.infer_objects().rename_axis(self.orders.index.names, copy=False)
+        self.orders = pd.concat([self.orders, order])
 
         return self.orders.index[-1]
 

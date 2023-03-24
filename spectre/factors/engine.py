@@ -379,7 +379,10 @@ class FactorEngine:
         results, shifted_mask, delayed = self._run(start, end, delay_factor)
         # do cpu work and synchronize will automatically done by torch
         ret = pd.DataFrame(index=self._dataframe.index.copy())
-        ret = ret.assign(**{col: t.cpu().numpy() for col, t in results.items()})
+        # pandas will rise DataFrame is highly fragmented on this, no sense.
+        with warnings.catch_warnings():
+            warnings.simplefilter(action='ignore', category=pd.errors.PerformanceWarning)
+            ret = ret.assign(**{col: t.cpu().numpy() for col, t in results.items()})
         if shifted_mask is not None:
             ret = ret[shifted_mask.cpu().numpy()]
 
