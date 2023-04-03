@@ -69,6 +69,8 @@ class BaseBlotter:
         self.div_tax = CommissionModel(0, 0, 0)
         self.long_only = False
         self.order_multiplier = 1
+        self.borrow_money_interest_rate = 0.06
+        self.borrow_stock_interest_rate = 0.093
 
     @property
     def positions(self):
@@ -314,6 +316,10 @@ class SimulationBlotter(BaseBlotter, EventReceiver):
                     self.set_price('close')
                     self.update_portfolio_value()
                     self.market_close(self)
+        self._portfolio.process_borrow_interest(
+            (dt - self._portfolio.current_dt).days,
+            self.borrow_money_interest_rate,
+            self.borrow_stock_interest_rate)
         super().set_datetime(dt)
 
     def set_price(self, name: str):

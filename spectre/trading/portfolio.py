@@ -70,6 +70,10 @@ class Portfolio:
         values = [pos.value for asset, pos in self.positions.items() if pos.shares != 0]
         return sum(np.abs(values)) / (sum(values) + self._cash)
 
+    @property
+    def current_dt(self):
+        return self._current_dt
+
     def __repr__(self):
         return "<Portfolio>" + str(self.history)[11:]
 
@@ -146,6 +150,15 @@ class Portfolio:
         pos = self._positions[asset]
         cash = pos.process_dividend(amount, tax)
         self.update_cash(cash)
+
+    def process_borrow_interest(self, day_passed, money_interest_rate, stock_interest_rate):
+        interest = 0
+        for asset, pos in self._positions.items():
+            if pos.shares < 0:
+                interest += pos.value * (stock_interest_rate / 365) * day_passed
+        if self._cash < 0:
+            interest += self._cash * (money_interest_rate / 365) * day_passed
+        self.update_cash(interest)
 
     def _update_value_func(self, func):
         for asset, pos in self._positions.items():
