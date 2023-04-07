@@ -70,6 +70,7 @@ from .statistical import (
     XSMaxCorrCoef,
     InformationCoefficient, RankWeightedInformationCoefficient,
     RollingInformationCoefficient,
+    TTest1Samp, StudentCDF,
     CrossSectionR2,
     FactorWiseKthValue, FactorWiseZScore,
 )

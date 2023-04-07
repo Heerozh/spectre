@@ -645,9 +645,11 @@ class CustomFactor(BaseFactor):
                 callback function separately.
         * Groupby `date` or others (set `groupby = 'date'`):
             set N = asset count, Max = Max asset count in all time
-                | time id  | price(t+0) | ... | price(t+N) | price(t+N+1) | ... | price(t+Max) |
-                |----------|------------|-----|------------|--------------|-----|--------------|
-                |     0    | 100.00     | ... | 200.00     | NaN          | ... | Nan          |
+                | time     | price(0) | ... | price(N) | price(N+1) | ... | price(N+Max) |
+                |----------|----------|-----|----------|------------|-----|--------------|
+                |     t    | 100.00   | ... | 200.00   | NaN        | ... | Nan          |
+                |    ...   | ...      | ... | ...      | ...        | ... | ...          |
+                |   t+Max  | 123.45   | ... | 234.56   | NaN        | ... | Nan          |
                 The prices is all asset prices in same time, this is useful for calculations
                 such as rank, quantile.
                 If `align_by_time=False` then the order of assets in each row (time) is not fixed,

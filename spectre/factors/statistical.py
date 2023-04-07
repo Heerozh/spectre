@@ -10,7 +10,7 @@ import numpy as np
 from .factor import CustomFactor, CrossSectionFactor
 from .engine import OHLCV
 from ..parallel import (linear_regression_1d, quantile, pearsonr, unmasked_mean, unmasked_sum,
-                        nanmean, nanstd, covariance)
+                        nanmean, nanstd, covariance, nanvar)
 from ..parallel import DeviceConstant
 from ..config import Global
 
@@ -169,6 +169,9 @@ class XSMaxCorrCoef(CrossSectionFactor):
 
 
 class InformationCoefficient(CrossSectionFactor):
+    """
+    Cross-Section IC, the ic value of all assets is the same.
+    """
     def __init__(self, x, y, mask=None, weight=None):
         super().__init__(win=1, inputs=[x, y, weight], mask=mask)
 
@@ -209,6 +212,9 @@ class InformationCoefficient(CrossSectionFactor):
 
 
 class RollingInformationCoefficient(RollingCorrelation):
+    """
+    Rolling IC, Calculate IC between 2 historical data for each asset.
+    """
     def to_ir(self, win):
         std = StandardDeviation(win=win, inputs=(self,))
         std.ddof = 1
@@ -223,6 +229,46 @@ class RankWeightedInformationCoefficient(InformationCoefficient):
         y_rank = y.rank(ascending=False, mask=mask) - 1
         weight = alpha ** y_rank
         super().__init__(x, y, mask=mask, weight=weight)
+
+
+class TTest1Samp(CustomFactor):
+    _min_win = 2
+
+    def compute(self, a, pop_mean):
+        def _ttest(_x):
+            d = nanmean(_x, dim=2) - pop_mean
+            v = nanvar(_x, dim=2, ddof=1)
+            denom = torch.sqrt(v / self._min_win)
+            t = d / denom
+            return t
+        return a.agg(_ttest)
+
+
+class StudentCDF(CrossSectionFactor):
+    """
+    Note!! For performance, This factor assumes that all assets have the
+           same t-value in same time!!
+    """
+    DefaultPrecision = 0.001
+
+    def compute(self, t, dof, precision):
+        reduced_t = nanmean(t, dim=1)
+        p = torch.zeros_like(reduced_t)
+        dof = torch.tensor(dof, dtype=torch.float64, device=t.device)
+        for i, v in enumerate(reduced_t.cpu()):
+            if np.isnan(v):
+                p[i] = torch.nan
+            elif np.isinf(v):
+                p[i] = 1
+            elif v < -9:
+                p[i] = 0
+            else:
+                x = torch.arange(-9, v, precision, device=t.device)
+                p[i] = torch.e ** torch.lgamma((dof + 1) / 2) / (
+                            torch.sqrt(dof * torch.pi) * torch.e ** torch.lgamma(dof / 2)) * (
+                        torch.trapezoid((1 + x ** 2 / dof) ** (-dof / 2 - 1 / 2), x)
+                       )
+        return p.unsqueeze(-1).expand(t.shape)
 
 
 class CrossSectionR2(CrossSectionFactor):
