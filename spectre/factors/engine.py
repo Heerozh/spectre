@@ -260,12 +260,12 @@ class FactorEngine:
     def remove_all_factors(self) -> None:
         self._factors = {}
 
-    def to_cuda(self, enable_stream=False) -> None:
+    def to_cuda(self, enable_stream=False, gpu_id=0) -> None:
         """
         Set enable_stream to True allows pipeline branches to calculation simultaneously.
         However, this will lead to more VRAM usage and may affect performance.
         """
-        self._device = torch.device('cuda')
+        self._device = torch.device(f'cuda:{ gpu_id }')
         self._enable_stream = enable_stream
         self.empty_cache()
 
