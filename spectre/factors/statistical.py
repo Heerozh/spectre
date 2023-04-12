@@ -246,8 +246,7 @@ class TTest1Samp(CustomFactor):
 
 class StudentCDF(CrossSectionFactor):
     """
-    Note!! For performance, This factor assumes that all assets have the
-           same t-value in same time!!
+    Note!! For performance, This factor uses Cross-section mean of t-value.
     """
     DefaultPrecision = 0.001
 
