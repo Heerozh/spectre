@@ -591,7 +591,7 @@ class FactorEngine:
         assert len(factor_data.index.levels[0]) > max(periods) - shift, \
             'No enough data for forward returns, please expand the end date'
         last_date = factor_data.index.levels[0][-max(periods) + shift - 1]
-        factor_data = factor_data.loc[:last_date]
+        factor_data = factor_data.loc[:last_date].copy()
 
         # infer freq
         delta = min(factor_data.index.levels[0][1:] - factor_data.index.levels[0][:-1])

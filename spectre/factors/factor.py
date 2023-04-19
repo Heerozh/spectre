@@ -75,6 +75,10 @@ class BaseFactor:
         from .filter import OrFactor
         return OrFactor(inputs=(self, other))
 
+    def __xor__(self, other):
+        from .filter import XorFactor
+        return XorFactor(inputs=(self, other))
+
     # op: <=>==!=
     def __lt__(self, other):
         from .filter import LtFactor

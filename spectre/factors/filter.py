@@ -125,6 +125,11 @@ class OrFactor(FilterFactor):
         return left | right
 
 
+class XorFactor(FilterFactor):
+    def compute(self, left, right) -> torch.Tensor:
+        return left ^ right
+
+
 class AndFactor(FilterFactor):
     def compute(self, left, right) -> torch.Tensor:
         return left & right
