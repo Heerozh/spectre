@@ -887,7 +887,7 @@ class ZScoreFactor(CrossSectionFactor):
     def compute(self, data: torch.Tensor, weight=None) -> torch.Tensor:
         if weight is None:
             mean = nanmean(data).unsqueeze(-1)
-        elif weight is 0:
+        elif weight == 0:
             mean = 0
         else:
             mean = nansum(data * weight) / nansum(weight)
