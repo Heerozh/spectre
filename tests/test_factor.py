@@ -889,8 +889,8 @@ class TestFactorLib(unittest.TestCase):
         engine.add(spectre.factors.SMA(2), 'ma')
         df = engine.run("2019-01-01", "2019-01-15")
 
-        self.assertEqual(df.loc[("2019-01-11", 'MSFT'), 'ma'].values,
-                         df.loc[("2019-01-10", 'MSFT'), 'close'].values)
+        self.assertEqual(df.loc[("2019-01-11", 'MSFT'), 'ma'],
+                         df.loc[("2019-01-10", 'MSFT'), 'close'])
 
         # dataloader
         loader = spectre.data.CsvDirLoader(
@@ -904,8 +904,8 @@ class TestFactorLib(unittest.TestCase):
         engine.add(spectre.factors.SMA(2), 'ma')
         df = engine.run("2019-01-01", "2019-01-15")
 
-        self.assertEqual(df.loc[("2019-01-11", 'MSFT'), 'ma'].values,
-                         df.loc[("2019-01-10", 'MSFT'), 'close'].values)
+        self.assertEqual(df.loc[("2019-01-11", 'MSFT'), 'ma'],
+                         df.loc[("2019-01-10", 'MSFT'), 'close'])
 
     def test_linear_regression(self):
         loader = spectre.data.CsvDirLoader(
@@ -1082,6 +1082,39 @@ class TestFactorLib(unittest.TestCase):
         assert_array_equal(result['t&b'], t & b)
         assert_array_equal(result['t|b'], t | b)
         assert_array_equal(result['~t'], b)
+
+    def test_cache(self):
+        loader = spectre.data.CsvDirLoader(
+            data_dir + '/daily/', ohlcv=('uOpen', 'uHigh', 'uLow', 'uClose', 'uVolume'),
+            prices_index='date', parse_dates=True,
+        )
+        # cache failure test
+        ma5 = spectre.factors.MA(5)
+        ma10 = f =spectre.factors.MA(10)
+        ma5._keep_cache = True
+
+        engine = spectre.factors.FactorEngine(loader)
+
+        engine.remove_all_factors()
+        engine.add(ma5, 'a')
+        df = engine.run("2019-01-01", "2019-01-05")
+        shape1 = ma5._cache.shape
+
+        engine.remove_all_factors()
+        engine.add(ma10, 'a')
+        df = engine.run("2019-01-01", "2019-01-05")
+        shape2 = ma5._cache.shape
+        # engine.empty_cache()
+
+        engine.remove_all_factors()
+        engine.add(ma5, 'a')
+        df = engine.run("2019-01-01", "2019-01-05")
+        shape3 = ma5._cache.shape
+
+        assert_array_equal(shape1, shape2)
+        assert_array_equal(shape1 <= shape3, [True, True])
+        assert_array_equal(shape3, [2, 13])
+
 
     def test_multiprocess(self):
         loader = spectre.data.CsvDirLoader(

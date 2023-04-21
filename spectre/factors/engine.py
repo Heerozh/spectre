@@ -9,6 +9,7 @@ import warnings
 import pandas as pd
 import numpy as np
 import torch
+import uuid
 from .factor import BaseFactor
 from .filter import FilterFactor, StaticAssets
 from .datafactor import ColumnDataFactor, AdjustedColumnDataFactor
@@ -42,6 +43,10 @@ class FactorEngine:
 
     def get_group_(self, group_name):
         return self._groups[group_name]
+
+    @property
+    def cache_hash(self):
+        return self._cache_hash
 
     def column_to_tensor_(self, data_column) -> torch.Tensor:
         # cache data with column prevent double copying
@@ -160,6 +165,9 @@ class FactorEngine:
 
         # time group prepare
         self.column_to_parallel_groupby_(self._loader.time_category, 'date')
+        # change engine cache id
+        # print('_cache length changed', max_backwards, self._last_loaded[2])
+        self._cache_hash = uuid.uuid4()
 
         self._column_cache = {}
         if isinstance(self._filter, StaticAssets):
@@ -191,6 +199,7 @@ class FactorEngine:
         self._enable_stream = False
         self._align_by_time = False
         self.timezone = 'UTC'
+        self._cache_hash = uuid.uuid4()
 
     @property
     def device(self):
@@ -256,6 +265,7 @@ class FactorEngine:
         self._groups = dict()
         self._dataframe = None
         self._dataframe_index = None
+        self._cache_hash = uuid.uuid4()
 
     def remove_all_factors(self) -> None:
         self._factors = {}

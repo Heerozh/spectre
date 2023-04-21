@@ -352,7 +352,7 @@ class CustomFactor(BaseFactor):
     _force_delay = None
     _keep_cache = False
     _total_backwards = None
-    _cache_for_engine = None
+    _cache_hash = None
 
     def __init__(self, win: Optional[int] = None, inputs: Optional[Sequence[BaseFactor]] = None):
         """
@@ -473,7 +473,7 @@ class CustomFactor(BaseFactor):
 
     def clean_up_(self, force=False) -> None:
         super().clean_up_(force)
-        # brand new factor, no need to clean up
+        # brand-new factor, no need to clean up
         if self._clean_required is None:
             return
         # if not brand new, then maybe some child kept cache. force tell us cache expired.
@@ -508,7 +508,7 @@ class CustomFactor(BaseFactor):
         """
         # TODO If the same factor added to 2 different engines, the _keep_cache should not able to
         #  be enabled. alert or rise.
-        if engine is not self._cache_for_engine and self._cache is not None:
+        if engine.cache_hash != self._cache_hash and self._cache is not None:
             print('The factor({}) data cached for the original engine is invalidated due to engine '
                   'changes.'.format(self))
             self._cache = None
@@ -530,9 +530,9 @@ class CustomFactor(BaseFactor):
             mask_factor.pre_compute_(engine, start, end)
 
         if self._keep_cache:
-            # ref count +1 so this factor's cache will not cleanup
+            # ref count +1 so this factor's cache will not clean up
             self._ref_count += 1
-            self._cache_for_engine = engine
+            self._cache_hash = engine.cache_hash
 
     def _format_input(self, upstream, upstream_out, mask_factor, mask_out):
         # If input.groupby not equal self.groupby, convert it
