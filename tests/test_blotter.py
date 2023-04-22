@@ -100,6 +100,8 @@ index
         blotter = spectre.trading.SimulationBlotter(loader, capital_base=200000)
         blotter.set_commission(0, 0.005, 1)
         blotter.set_slippage(0.005, 0.4)
+        blotter.borrow_money_interest_rate = 0
+        blotter.borrow_stock_interest_rate = 0
 
         # t+0 and double purchase
         date = pd.Timestamp("2019-01-02", tz='UTC')

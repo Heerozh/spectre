@@ -316,10 +316,13 @@ class SimulationBlotter(BaseBlotter, EventReceiver):
                     self.set_price('close')
                     self.update_portfolio_value()
                     self.market_close(self)
-        self._portfolio.process_borrow_interest(
-            (dt - self._portfolio.current_dt).days,
-            self.borrow_money_interest_rate,
-            self.borrow_stock_interest_rate)
+        # get last datetime before portfolio datetime change
+        last_dt = self._portfolio.current_dt
+        if last_dt:
+            self._portfolio.process_borrow_interest(
+                (dt - last_dt).days,
+                self.borrow_money_interest_rate,
+                self.borrow_stock_interest_rate)
         super().set_datetime(dt)
 
     def set_price(self, name: str):

@@ -74,7 +74,7 @@ class TestDataLoaderLib(unittest.TestCase):
         df = loader.load(start, end, 0)
 
         # test value
-        self.assertAlmostEqual(df.loc[('2019-01-09', 'MSFT'), 'ex-dividend'].values[-1], 0.57)
+        self.assertAlmostEqual(df.loc[('2019-01-09', 'MSFT'), 'ex-dividend'], 0.57)
 
         # test adjustments in engine
         engine = spectre.factors.FactorEngine(loader)
