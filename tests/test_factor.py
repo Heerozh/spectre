@@ -388,6 +388,35 @@ class TestFactorLib(unittest.TestCase):
         expected_msft = np.array([0, 0, 24., 0, 0, 0, 8., 0, 0])
         test_expected(factor, expected_aapl, expected_msft, 10)
 
+        # test most (pytorch mode has bug)
+        # factor = spectre.factors.Returns().sign().mode(groupby='date')
+        # # sign values:
+        # # -1., -1.,  1.,  0.,  1.,  1.,  1., -1.,  1.
+        # # -1.,  1.,  1., -1.,  1.,  1., -1.,  1.
+        # expected_aapl = np.array([-1., -1.,  1.,  -1,  1.,  1.,  1., -1.,  1.])
+        # expected_msft = np.array([-1., -1.,  1.,  -1,  1.,  1., -1.,  1.])
+        # test_expected(factor, expected_aapl, expected_msft, 10)
+        # factor = spectre.factors.Returns().round(3).mode(groupby='asset')
+        # # sign values:
+        # # [[nan, -0.0310, -0.0840, 0.0260, 0.0000, 0.0170, 0.0300, 0.0320,
+        # #  -0.0450, 0.0220, -0.0000],
+        # # [nan, -0.0300, 0.0100, 0.0210, -0.0110, 0.0200, 0.0070, -0.0260,
+        # #  0.0020, 0.0530, nan]]
+        # expected_aapl = np.array([-0., -0.,  -0.,  -0,  -0.,  -0.,  -0., -0.,  -0.])
+        # expected_msft = np.array([-0.03, -0.03,  -0.03,  -0.03,  -0.03,  -0.03, -0.03,  -0.03])
+        # test_expected(factor, expected_aapl, expected_msft, 10, check_bias=False)
+
+        # test Median
+        factor = spectre.factors.Returns().round(3).median(groupby='asset')
+        # sign values:
+        # [[nan, -0.0310, -0.0840, 0.0260, 0.0000, 0.0170, 0.0300, 0.0320,
+        #  -0.0450, 0.0220, -0.0000],
+        # [nan, -0.0300, 0.0100, 0.0210, -0.0110, 0.0200, 0.0070, -0.0260,
+        #  0.0020, 0.0530, nan]]
+        expected_aapl = np.array([0.0085] * 9)
+        expected_msft = np.array([0.007] * 8)
+        test_expected(factor, expected_aapl, expected_msft, 10, check_bias=False)
+
         # test ForwardSignalData
         signal = spectre.factors.OHLCV.close > 150
         signal_price = spectre.factors.ForwardSignalData(4, spectre.factors.OHLCV.close, signal)

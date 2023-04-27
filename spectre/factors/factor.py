@@ -175,6 +175,11 @@ class BaseFactor:
         factor.groupby = groupby
         return factor
 
+    def median(self, mask: 'BaseFactor' = None, groupby: str = 'date'):
+        factor = MedianFactor(inputs=(self,), mask=mask)
+        factor.groupby = groupby
+        return factor
+
     def quantile(self, bins=5, mask: 'BaseFactor' = None, groupby: str = 'date'):
         """ Cross-section quantiles to which the factor belongs """
         factor = QuantileClassifier(inputs=(self,))
@@ -868,6 +873,22 @@ class MeanFactor(CrossSectionFactor):
 
     def compute(self, data: torch.Tensor) -> torch.Tensor:
         return nanmean(data).unsqueeze(-1).expand(data.shape[0], data.shape[1])
+
+
+class MedianFactor(CrossSectionFactor):
+
+    def compute(self, data: torch.Tensor) -> torch.Tensor:
+        universe_mask = self._get_computed_mask()
+        half_universe = 0.5 * ((universe_mask & ~torch.isnan(data)).sum(dim=1) - 1)
+        median_ks_odd = half_universe.long().unsqueeze(-1)
+        median_ks_even = (half_universe + 0.6).long().unsqueeze(-1)
+
+        median1, sorted_data = masked_kth_value_1d(
+            data, universe_mask, median_ks_odd, treat_nan_as=np.nan)
+        median2 = sorted_data.gather(1, median_ks_even)
+        median = (median1 + median2) / 2
+
+        return median.expand(data.shape[0], data.shape[1])
 
 
 class XSMax(CrossSectionFactor):
