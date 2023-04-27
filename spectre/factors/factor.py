@@ -260,10 +260,10 @@ class BaseFactor:
     def clamp(self, left: Union[float, int], right: Union[float, int]):
         return ClampFactor(self, left, right)
 
-    def mad_clamp(self, z: float, mask: 'BaseFactor' = None):
+    def mad_clamp(self, z: float, mask: 'BaseFactor' = None, groupby='date'):
         """ Cross-section MAD clamp """
         factor = MADClampFactor(inputs=(self,))
-        factor.groupby = CrossSectionFactor.groupby
+        factor.groupby = groupby
         factor.z = z
         factor.set_mask(mask)
         return factor
