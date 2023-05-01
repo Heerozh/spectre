@@ -161,7 +161,7 @@ class BaseFactor:
             raise ValueError()
         return factor
 
-    def mean(self, groupby: str, mask: 'BaseFactor' = None):
+    def mean(self, groupby: str = 'date', mask: 'BaseFactor' = None):
         """
         Cross-section mean.
         """
@@ -210,8 +210,13 @@ class BaseFactor:
     def sign(self):
         return SignFactor(inputs=(self,))
 
-    def sum(self, win: int):
+    def ts_sum(self, win: int):
         return SumFactor(win, inputs=(self,))
+
+    def xs_sum(self, mask: 'BaseFactor' = None, groupby='date'):
+        ret = XSSumFactor(inputs=(self,), mask=mask)
+        ret.groupby = groupby
+        return ret
 
     def prod(self, win: int):
         return ProdFactor(win, inputs=(self,))
@@ -744,6 +749,12 @@ class SumFactor(CustomFactor):
 
     def compute(self, data: Rolling) -> torch.Tensor:
         return data.nansum()
+
+
+class XSSumFactor(CrossSectionFactor):
+
+    def compute(self, data: torch.Tensor) -> torch.Tensor:
+        return data.nansum().unsqueeze(-1).expand(data.shape[0], data.shape[1])
 
 
 class ProdFactor(CustomFactor):

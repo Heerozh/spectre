@@ -549,7 +549,7 @@ class TestFactorLib(unittest.TestCase):
         test_expected(factor, expected_aapl, expected_msft, 10)
 
         # test sum prod
-        factor = spectre.factors.LogReturns().sum(2)
+        factor = spectre.factors.LogReturns().ts_sum(2)
         expected_aapl = np.log(df_aapl_close) - np.log(df_aapl_close.shift(1))
         expected_msft = np.log(df_msft_close) - np.log(df_msft_close.shift(1))
         expected_aapl = expected_aapl.rolling(2).sum()
