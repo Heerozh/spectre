@@ -24,6 +24,14 @@ class StandardDeviation(CustomFactor):
         return data.nanstd(ddof=self.ddof)
 
 
+class XSStandardDeviation(CrossSectionFactor):
+    inputs = [OHLCV.close]
+    ddof = 0
+
+    def compute(self, data):
+        return nanstd(data, ddof=self.ddof).unsqueeze(-1).expand(data.shape[0], data.shape[1])
+
+
 class RollingHigh(CustomFactor):
     inputs = (OHLCV.close,)
     win = 5

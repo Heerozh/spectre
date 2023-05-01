@@ -135,6 +135,14 @@ class TestFactorLib(unittest.TestCase):
         expected[3] = np.nan
         assert_array_equal(expected, result[1])
 
+        # test XSStandardDeviation
+        expected_aapl = [28.655, 21.475, 22.305, 22.900, 23.165,
+                         25.015, 0.000, 25.245, 26.805, ]
+        expected_msft = [28.655, 21.475, 22.305, 22.900, 23.165,
+                         25.015, 25.245, 26.805]
+        test_expected(spectre.factors.OHLCV.close.std(),
+                      expected_aapl, expected_msft, total_rows)
+
         # test zscore
         expected_aapl = [1.] * 9
         # aapl has prices data, but we only have two stocks, so one data zscore = 0/0 = nan

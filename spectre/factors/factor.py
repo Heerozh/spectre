@@ -142,13 +142,7 @@ class BaseFactor:
 
     def zscore(self, groupby: str = 'date', mask: 'BaseFactor' = None, weight: 'BaseFactor' = None):
         """ Cross-section zscore """
-        inputs = [self]
-        if weight is not None:
-            inputs.append(weight)
-        factor = ZScoreFactor(inputs=inputs)
-        factor.set_mask(mask)
-        factor.groupby = groupby
-
+        factor = ZScoreFactor(data=self, mask=mask, groupby=groupby, weight=weight)
         return factor
 
     def demean(self, groupby: Union[str, dict] = None, mask: 'BaseFactor' = None):
@@ -186,6 +180,12 @@ class BaseFactor:
         factor.set_mask(mask)
         factor.groupby = groupby
         factor.bins = bins
+        return factor
+
+    def std(self, groupby: str = 'date', mask: 'BaseFactor' = None):
+        from .statistical import XSStandardDeviation
+        factor = XSStandardDeviation(inputs=(self,), mask=mask)
+        factor.groupby = groupby
         return factor
 
     def to_weight(self, demean=True, mask: 'BaseFactor' = None):
@@ -904,6 +904,10 @@ class XSMin(CrossSectionFactor):
 
 
 class ZScoreFactor(CrossSectionFactor):
+
+    def __init__(self, data, mask=None, groupby: str = 'date', weight=None):
+        super().__init__(inputs=[data, weight], mask=mask)
+        self.groupby = groupby
 
     def compute(self, data: torch.Tensor, weight=None) -> torch.Tensor:
         if weight is None:
