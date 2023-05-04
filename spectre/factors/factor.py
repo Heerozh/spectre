@@ -210,8 +210,10 @@ class BaseFactor:
     def sign(self):
         return SignFactor(inputs=(self,))
 
-    def ts_sum(self, win: int):
-        return SumFactor(win, inputs=(self,))
+    def ts_sum(self, win: int, mask: 'BaseFactor' = None):
+        ret = SumFactor(win, inputs=(self,))
+        ret.set_mask(mask)
+        return ret
 
     def xs_sum(self, mask: 'BaseFactor' = None, groupby='date'):
         ret = XSSumFactor(inputs=(self,), mask=mask)
@@ -749,6 +751,18 @@ class SumFactor(CustomFactor):
 
     def compute(self, data: Rolling) -> torch.Tensor:
         return data.nansum()
+
+
+class UniqueTSSumFactor(CustomFactor):
+    _min_win = 2
+
+    def compute(self, data: Rolling) -> torch.Tensor:
+        def _uni_sum(x):
+            s = x.roll(1, dims=2)
+            s[:, :, 0:1] = np.nan
+            u = x.masked_fill(x == s, np.nan)
+            return nansum(u, dim=2)
+        return data.agg(_uni_sum)
 
 
 class XSSumFactor(CrossSectionFactor):

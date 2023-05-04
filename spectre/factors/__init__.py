@@ -11,7 +11,7 @@ from .factor import (
     ZScoreFactor, RollingZScoreFactor,
     XSMax, XSMin,
     QuantileClassifier,
-    SumFactor, ProdFactor,
+    SumFactor, ProdFactor, UniqueTSSumFactor,
     MADClampFactor,
     WinsorizingFactor,
 )
