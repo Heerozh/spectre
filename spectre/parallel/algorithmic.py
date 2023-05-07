@@ -150,10 +150,12 @@ def unmasked_var(data: torch.Tensor, mask, dim=1, ddof=0) -> torch.Tensor:
     mean = unmasked_sum(data, mask, dim)
     n = (~mask).sum(dim=dim)
     mean.div_(n)
-    mean.unsqueeze_(-1)
-
     n.sub_(ddof)
-    var = (data - mean) ** 2 / n.unsqueeze(-1)
+    if dim == len(data.shape) - 1:
+        mean.unsqueeze_(-1)
+        n.unsqueeze_(-1)
+
+    var = (data - mean) ** 2 / n
     var.masked_fill_(mask, 0)
     return var.sum(dim=dim)
 
