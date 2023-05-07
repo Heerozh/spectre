@@ -23,13 +23,13 @@ class ColumnDataFactor(BaseFactor):
             "ColumnDataFactor's `inputs` can only contains one data column and corresponding " \
             "adjustments column"
         self._data = None
-        self._multi = None
+        self._multiplier = None
         self._should_delay = should_delay
         self.dtype = dtype
 
     @property
     def adjustments(self):
-        return self._multi
+        return self._multiplier
 
     def get_total_backwards_(self) -> int:
         return 0
@@ -45,18 +45,18 @@ class ColumnDataFactor(BaseFactor):
                 self._data = self._data.to(self.dtype)
             self._data = engine.group_by_(self._data, self.groupby)
             if len(self.inputs) > 1 and self.inputs[1] in engine.dataframe_:
-                self._multi = engine.column_to_tensor_(self.inputs[1])
-                self._multi = engine.group_by_(self._multi, self.groupby)
+                self._multiplier = engine.column_to_tensor_(self.inputs[1])
+                self._multiplier = engine.group_by_(self._multiplier, self.groupby)
                 if self.dtype is not None:
-                    self._multi = self._multi.to(self.dtype)
+                    self._multiplier = self._multiplier.to(self.dtype)
             else:
-                self._multi = None
+                self._multiplier = None
             self._clean_required = True
 
     def clean_up_(self, force=False) -> None:
         super().clean_up_(force)
         self._data = None
-        self._multi = None
+        self._multiplier = None
         self._clean_required = False
 
     def compute_(self, stream: Union[torch.cuda.Stream, None]) -> torch.Tensor:
