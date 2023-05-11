@@ -987,7 +987,10 @@ class ClampFactor(CustomFactor):
 
 
 class MADClampFactor(CustomFactor):
-    """ Mean Absolute Deviation Clamping """
+    """
+    Median Absolute Deviation Clamping
+    median of the absolute deviations from the data's median
+    """
     z = 5
     treat_nan_as = 0  # or inf
 
