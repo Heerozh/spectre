@@ -66,7 +66,7 @@ class RollingLinearRegression(CustomFactor):
         if x is None:
             return y.agg(lin_reg)
         else:
-            return y.agg(lin_reg, y)
+            return y.agg(lin_reg, x)
 
     @property
     def coef(self):

@@ -145,14 +145,15 @@ class BaseFactor:
         factor = ZScoreFactor(data=self, mask=mask, groupby=groupby, weight=weight)
         return factor
 
-    def demean(self, groupby: Union[str, dict] = None, mask: 'BaseFactor' = None):
+    def demean(self, groupby: Union[str, dict] = None, mask: 'BaseFactor' = None,
+               beta: 'BaseFactor' = None):
         """
         Cross-section demean.
         Set `groupby` to the name of a column, like 'sector'.
         `groupby` also can be a dictionary like groupby={'name': group_id}, `group_id` must > 0.
         Group by dict is implemented by pandas, not in GPU.
         """
-        factor = DemeanFactor(inputs=(self,), mask=mask)
+        factor = DemeanFactor(inputs=(self, beta), mask=mask)
         if isinstance(groupby, str):
             factor.groupby = groupby
         elif isinstance(groupby, dict):
@@ -216,11 +217,12 @@ class BaseFactor:
         return ret
 
     def xs_sum(self, mask: 'BaseFactor' = None, groupby='date'):
+        # todo future name will change to sum
         ret = XSSumFactor(inputs=(self,), mask=mask)
         ret.groupby = groupby
         return ret
 
-    def prod(self, win: int):
+    def ts_prod(self, win: int):
         return ProdFactor(win, inputs=(self,))
 
     def round(self, decimal):
@@ -255,17 +257,17 @@ class BaseFactor:
     def masked_fill(self, mask: 'BaseFactor', fill: Union['BaseFactor', float, int, bool]):
         return MaskedFillFactor(inputs=(self, mask, fill))
 
-    def any(self, win: int):
+    def ts_any(self, win: int):
         """ Return True if Rolling window contains any Non-NaNs """
         from .filter import AnyNonNaNFactor
         return AnyNonNaNFactor(win, inputs=(self,))
 
-    def all(self, win: int):
+    def ts_all(self, win: int):
         """ Return True if Rolling window all are Non-NaNs """
         from .filter import AllNonNaNFactor
         return AllNonNaNFactor(win, inputs=(self,))
 
-    def count(self, win: int):
+    def ts_count(self, win: int):
         """ Return Non-NaN data count """
         return NonNaNCountFactor(win, inputs=(self,))
 
@@ -875,13 +877,14 @@ class RollingRankFactor(CustomFactor):
 class DemeanFactor(CrossSectionFactor):
     group_dict = None
 
-    def compute(self, data: torch.Tensor) -> torch.Tensor:
+    def compute(self, data: torch.Tensor, beta) -> torch.Tensor:
         if self.group_dict is not None:
             s = self._revert_to_series(data)
             d = dict.fromkeys(s.index.levels[1], -1)
             d.update(self.group_dict)
             g = s.groupby([d, 'date'], level=1)
             ret = g.transform(lambda x: x - x.mean())
+            print('Deprecated, group_dict will be removed in the future')
             return self._regroup(ret)
         else:
             # Why double?
@@ -890,6 +893,9 @@ class DemeanFactor(CrossSectionFactor):
             # But if you demean by sector, and due to the float precision,
             # demean results will slightly different, so you got a random ranking results.
             double = data.to(torch.float64)
+            if beta is not None:
+                mean = nanmean(double).unsqueeze(-1)
+                double -= beta * mean
             double -= nanmean(double).unsqueeze(-1)
             return double.to(data.dtype)
 

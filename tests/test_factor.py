@@ -391,7 +391,7 @@ class TestFactorLib(unittest.TestCase):
         test_expected(factor, expected_aapl, expected_msft, 10)
 
         # test prod
-        factor = spectre.factors.WEEKDAY.prod(3)
+        factor = spectre.factors.WEEKDAY.ts_prod(3)
         expected_aapl = np.array([0, 0, 24., 0, 0, 0, 6., 24., 0, 0])
         expected_msft = np.array([0, 0, 24., 0, 0, 0, 8., 0, 0])
         test_expected(factor, expected_aapl, expected_msft, 10)
@@ -558,7 +558,7 @@ class TestFactorLib(unittest.TestCase):
         expected_msft = expected_msft[-8:]
         test_expected(factor, expected_aapl, expected_msft, 10)
 
-        factor = spectre.factors.OHLCV.close.prod(2).log()
+        factor = spectre.factors.OHLCV.close.ts_prod(2).log()
         expected_aapl = np.log(df_aapl_close) + np.log(df_aapl_close.shift(1))
         expected_msft = np.log(df_msft_close) + np.log(df_msft_close.shift(1))
         expected_aapl = expected_aapl[-9:]
@@ -575,7 +575,7 @@ class TestFactorLib(unittest.TestCase):
         data = torch.tensor([[np.nan, 1, 2, 3, 4, 5],
                              [0, 1, 2, 3, 4, 5]])
         data = spectre.parallel.Rolling(data, win=3)
-        f = spectre.factors.CustomFactor().count(3)
+        f = spectre.factors.CustomFactor().ts_count(3)
         result = f.compute(data)
         assert_almost_equal([[0, 1, 2, ] + [3] * 3, [1, 2, ] + [3] * 4], result)
 
@@ -745,11 +745,11 @@ class TestFactorLib(unittest.TestCase):
         data = torch.tensor([[np.nan, 1, 2, 3, 4, 5],
                              [0, 1, 2, 3, 4, 5]])
         data = spectre.parallel.Rolling(data, win=3)
-        f = spectre.factors.CustomFactor().any(3)
+        f = spectre.factors.CustomFactor().ts_any(3)
         result = f.compute(data)
         assert_almost_equal([[False] + [True] * 5, [True] * 6], result)
 
-        f = spectre.factors.CustomFactor().all(3)
+        f = spectre.factors.CustomFactor().ts_all(3)
         result = f.compute(data)
         assert_almost_equal([[False] * 3 + [True] * 3, [False] * 2 + [True] * 4], result)
 
@@ -961,6 +961,17 @@ class TestFactorLib(unittest.TestCase):
             [-0.555879, -0.710545, -0.935697, -1.04103, -1.232, -1.704182,
              -0.873212, -0.640606, 0.046424], result, decimal=5)
         assert_array_equal(['slope', 'intcp'], df.columns)
+
+        engine.remove_all_factors()
+        f = spectre.factors.RollingLinearRegression(
+            10, x=spectre.factors.OHLCV.close, y=spectre.factors.OHLCV.open)
+        engine.add(f.coef, 'slope')
+        df = engine.run("2019-01-01", "2019-01-15")
+        result = df.loc[(slice(None), 'AAPL'), 'slope']
+        assert_almost_equal(
+            [0.72021, 0.78893, 0.73185, 0.74825, 0.74774, 0.74796, 0.86587,
+             0.8005 , 0.74089], result, decimal=5)
+
 
         # test RollingMomentum
         engine.remove_all_factors()
