@@ -174,6 +174,13 @@ class TestParallelAlgorithm(unittest.TestCase):
         expected = pd.qcut(x[1, 1], 5, labels=False)
         assert_array_equal(expected, result[1, 1])
 
+        # test squeeze bug
+        x = torch.tensor([[1., 2, 3, 4, 5]])
+        y = torch.tensor([[-1., 2, 3, 4, -5]])
+        coef, intcp = spectre.parallel.linear_regression_1d(x, y)
+        reg = LinearRegression().fit(x[0, :, None], y[0, :, None])
+        assert_almost_equal(reg.coef_, coef[0], decimal=6)
+
     def test_pad2d(self):
         x = torch.tensor([[np.nan, 1, 1, np.nan, 1, np.nan, np.nan, 0, np.nan, 0, np.nan, np.nan, 0,
                            np.nan, -1, np.nan, - 1, np.nan, np.nan, np.nan, 1],

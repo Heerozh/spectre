@@ -298,7 +298,7 @@ def linear_regression_1d(x, y, dim=1):
     x_var = nanvar(x, dim=dim, ddof=0)
     slope = cov / x_var
     slope[x_var == 0] = 0
-    intcp = y_bar.squeeze() - slope * x_bar.squeeze()
+    intcp = y_bar.squeeze(dim=-1) - slope * x_bar.squeeze(dim=-1)
     return slope, intcp
 
 
