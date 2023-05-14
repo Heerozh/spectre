@@ -391,7 +391,7 @@ class CustomFactor(BaseFactor):
                 str(self), self.win, self._min_win))
 
         if self.inputs:
-            self.inputs = tuple(ipt() if callable(ipt) else ipt for ipt in self.inputs)
+            self.inputs = list(ipt() if callable(ipt) else ipt for ipt in self.inputs)
             for ipt in self.inputs:
                 if isinstance(ipt, BaseFactor):
                     if ipt._clean_required is not None:
