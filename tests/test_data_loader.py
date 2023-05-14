@@ -5,6 +5,7 @@ import pandas as pd
 import numpy as np
 from numpy.testing import assert_almost_equal
 from os.path import dirname
+import warnings
 
 data_dir = dirname(__file__) + '/data/'
 
@@ -61,6 +62,7 @@ class TestDataLoaderLib(unittest.TestCase):
         loader.test_load()
 
     def test_csv_div_split(self):
+        warnings.filterwarnings("ignore", module='spectre')
         start, end = pd.Timestamp('2019-01-02', tz='UTC'), pd.Timestamp('2019-01-15', tz='UTC')
         loader = spectre.data.CsvDirLoader(
             prices_path=data_dir + '/daily/', earliest_date=start.tz_convert(None),
@@ -117,6 +119,7 @@ class TestDataLoaderLib(unittest.TestCase):
         assert_almost_equal(result[1][1], expected_msft_open+[np.nan], decimal=4)
 
     def test_no_ohlcv(self):
+        warnings.filterwarnings("ignore", module='spectre')
         start, end = pd.Timestamp('2019-01-02', tz='UTC'), pd.Timestamp('2019-01-15', tz='UTC')
         loader = spectre.data.CsvDirLoader(
             prices_path=data_dir + '/daily/', earliest_date=start, calender_asset='AAPL',

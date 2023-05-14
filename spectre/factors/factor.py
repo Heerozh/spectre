@@ -771,7 +771,7 @@ class UniqueTSSumFactor(CustomFactor):
 class XSSumFactor(CrossSectionFactor):
 
     def compute(self, data: torch.Tensor) -> torch.Tensor:
-        return data.nansum().unsqueeze(-1).expand(data.shape[0], data.shape[1])
+        return data.nansum(dim=-1).unsqueeze(-1).expand(data.shape[0], data.shape[1])
 
 
 class ProdFactor(CustomFactor):

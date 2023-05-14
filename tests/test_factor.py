@@ -7,6 +7,8 @@ import torch
 import scipy.stats
 from numpy.testing import assert_almost_equal, assert_array_equal
 from os.path import dirname
+import warnings
+
 
 data_dir = dirname(__file__) + '/data/'
 
@@ -21,6 +23,7 @@ class TestMultiProcessing(spectre.factors.CPUParallelFactor):
 class TestFactorLib(unittest.TestCase):
 
     def test_factors(self):
+        warnings.filterwarnings("ignore", module='spectre')
         loader = spectre.data.CsvDirLoader(
             data_dir + '/daily/', calender_asset='AAPL',
             ohlcv=('uOpen', 'uHigh', 'uLow', 'uClose', 'uVolume'),
@@ -563,6 +566,13 @@ class TestFactorLib(unittest.TestCase):
         expected_msft = np.log(df_msft_close) + np.log(df_msft_close.shift(1))
         expected_aapl = expected_aapl[-9:]
         expected_msft = expected_msft[-8:]
+        test_expected(factor, expected_aapl, expected_msft, 10)
+
+        factor = spectre.factors.LogReturns().xs_sum()
+        expected_aapl = np.array([-0.061983 , -0.0785019,  0.0460473, -0.011465 ,  0.0363538,
+        0.0365184,  0.0313561, -0.073237 ,  0.0231476])
+        expected_msft = np.array([-0.061983 , -0.0785019,  0.0460473, -0.011465 ,  0.0363538,
+        0.0365184, -0.073237 ,  0.0231476])
         test_expected(factor, expected_aapl, expected_msft, 10)
 
         # test RollingRankFactor

@@ -60,6 +60,8 @@ class FactorEngine:
 
     def column_to_parallel_groupby_(self, group_column: str, as_group_name=None):
         # todo refactor: group_column change to ClassifierFactor type
+        if isinstance(group_column, torch.Tensor):
+            return
         if as_group_name is None:
             as_group_name = group_column
         if as_group_name in self._groups:
@@ -94,6 +96,9 @@ class FactorEngine:
         self._groups[as_group_name] = ParallelGroupBy(keys)
 
     def revert_(self, data: torch.Tensor, group: str, factor_name: str) -> torch.Tensor:
+        if isinstance(group, torch.Tensor):
+            g = ParallelGroupBy(group)
+            return g.revert(data, factor_name)
         return self._groups[group].revert(data, factor_name)
 
     def revert_to_series_(self, data: torch.Tensor, group: str, factor_name: str) -> pd.Series:
@@ -102,7 +107,11 @@ class FactorEngine:
 
     def group_by_(self, data: Union[torch.Tensor, pd.Series], group: str) -> torch.Tensor:
         if isinstance(data, torch.Tensor):
-            return self._groups[group].split(data)
+            if isinstance(group, torch.Tensor):
+                g = ParallelGroupBy(group)
+                return g.split(data)
+            else:
+                return self._groups[group].split(data)
         elif isinstance(data, pd.Series):
             data = torch.tensor(data.values, device=self._device)
             return self._groups[group].split(data)
@@ -113,6 +122,9 @@ class FactorEngine:
             raise ValueError('Invalid data type, should be tensor or series.')
 
     def get_group_padding_mask(self, group: str) -> torch.Tensor:
+        if isinstance(group, torch.Tensor):
+            g = ParallelGroupBy(group)
+            return g.padding_mask
         return self._groups[group].padding_mask
 
     # private:
@@ -168,6 +180,11 @@ class FactorEngine:
         # change engine cache id
         # print('_cache length changed', max_backwards, self._last_loaded[2])
         self._cache_hash = uuid.uuid4()
+
+        # if not self.align_by_time and not self.loader_.is_align_by_time:
+        #     warnings.warn("Date Misalignment!!! Either the dataloader is marked as align_by_time"
+        #                   ", or turned on the engine's align_by_time.",
+        #                   RuntimeWarning)
 
         self._column_cache = {}
         if isinstance(self._filter, StaticAssets):
