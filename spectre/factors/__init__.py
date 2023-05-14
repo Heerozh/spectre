@@ -4,7 +4,7 @@ from .engine import (
 )
 
 from .factor import (
-    BaseFactor,
+    BaseFactor, PlaceHolderFactor,
     CustomFactor,
     CrossSectionFactor,
     RankFactor, RollingRankFactor,
