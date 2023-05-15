@@ -145,6 +145,7 @@ class CustomAlgorithm(EventReceiver, ABC):
         elif isinstance(benchmark, str):
             engine = self.get_factor_engine()
             filter_ = engine.get_filter()
+            engine.empty_cache()
             engine.set_filter(StaticAssets({benchmark}))
             df = engine.get_price_matrix(returns.index[0], returns.index[-1])
             engine.set_filter(filter_)

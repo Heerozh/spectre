@@ -141,7 +141,7 @@ class FactorEngine:
         df = self._loader.load(start, end, max_backwards).copy()
         # If possible, pre-screen
         if isinstance(self._filter, StaticAssets):
-            df = df.loc[(slice(None), self._filter.assets), :]
+            df = df.loc[(slice(None), list(self._filter.assets)), :]
             if df.shape[0] == 0:
                 raise ValueError("The assets {} specified by StaticAssets filter, was not found in "
                                  "DataLoader.".format(self._filter.assets))
@@ -260,6 +260,10 @@ class FactorEngine:
             self._factors[name] = factor
 
     def set_filter(self, factor: Union[FilterFactor, None]) -> None:
+        if isinstance(self._filter, StaticAssets) or isinstance(factor, StaticAssets):
+            if self._dataframe is not None:
+                print('Cache clean due to the StaticAssets filter changed.')
+                self.empty_cache()
         self._filter = factor
 
     def get_filter(self):

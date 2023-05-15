@@ -737,13 +737,18 @@ class TestFactorLib(unittest.TestCase):
         assert_almost_equal(expected_aapl, result_aapl)
         assert_almost_equal(expected_msft, result_msft)
 
-        # test StaticAssets
-        aapl_filter = spectre.factors.StaticAssets(['AAPL'])
+        # test StaticAssets/pre-screen
+        aapl_filter = spectre.factors.StaticAssets({'AAPL'})
         engine.remove_all_factors()
         engine.set_filter(aapl_filter)
         engine.add(spectre.factors.OHLCV.close, 'close')
         df = engine.run('2018-01-01', '2019-01-15')
         assert_array_equal(['AAPL'], df.index.get_level_values(1).unique())
+        # test StaticAssets/ none pre-screen
+        aapl_filter = ~spectre.factors.StaticAssets({'AAPL'})
+        engine.set_filter(aapl_filter)
+        df = engine.run('2018-01-01', '2019-01-15')
+        assert_array_equal(['MSFT'], df.index.get_level_values(1).unique())
 
         # test filtering a filter
         engine.remove_all_factors()
