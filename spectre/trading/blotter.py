@@ -586,10 +586,10 @@ class ManualBlotter(BaseBlotter):
             self.orders.set_index('id', inplace=True)
         else:
             self.orders = pd.concat([
-                pd.read_csv(fn, index_col='id', dtype=col_types, parse_dates=['date'],
-                            date_parser=lambda col: pd.to_datetime(col, utc=True))
+                pd.read_csv(fn, index_col='id', dtype=col_types, parse_dates=False)
                 for fn in files
             ])
+            self.orders.date = pd.to_datetime(self.orders.date, utc=True)
             print('Orders loaded: {} - {}, total: {} orders'.format(
                 self.orders.date.iloc[0], self.orders.date.iloc[-1], len(self.orders)))
             self.orders['date'] = self.orders['date'].dt.tz_convert(self.time_zone)
@@ -620,7 +620,7 @@ class ManualBlotter(BaseBlotter):
             order.name = 1
         else:
             order.name = max(self.orders.index) + 1
-        self.orders = self.orders.append(order)
+        self.orders = pd.concat([self.orders, pd.DataFrame([order])])
         self._portfolio.update_cash(amount, is_funds=True)
 
     def _order(self, asset, amount, price=None):
@@ -683,8 +683,8 @@ class ManualBlotter(BaseBlotter):
             limit_price='Market', filled_amount=0, filled_price=0, filled_percent=0, commission=0,
             realized=0))
         order.name = max(self.orders.index) + 1
-        order = order.to_frame().T.infer_objects().rename_axis(self.orders.index.names, copy=False)
-        self.orders = pd.concat([self.orders, order])
+        # order = order.to_frame().T.infer_objects().rename_axis(self.orders.index.names, copy=False)
+        self.orders = pd.concat([self.orders, pd.DataFrame([order])])
 
         return self.orders.index[-1]
 
@@ -742,7 +742,7 @@ class ManualBlotter(BaseBlotter):
             symbol=asset, target_percent=0, action_value=0, amount=amount, limit_price='/',
             filled_amount=amount, filled_price=0, filled_percent=0, commission=tax, realized=0))
         order.name = max(self.orders.index) + 1
-        self.orders = self.orders.append(order)
+        self.orders = pd.concat([self.orders, pd.DataFrame([order])])
         self._portfolio.process_dividend(asset, amount, tax)
 
     def position_split(self, asset, inverse_ratio: float, last_price, time_delta):
@@ -758,7 +758,7 @@ class ManualBlotter(BaseBlotter):
             filled_amount=inverse_ratio, filled_price=last_price, filled_percent=0,
             commission=0, realized=0))
         order.name = max(self.orders.index) + 1
-        self.orders = self.orders.append(order)
+        self.orders = pd.concat([self.orders, pd.DataFrame([order])])
         self._portfolio.process_split(asset, inverse_ratio, last_price)
 
     def update_portfolio_value(self, prices):

@@ -120,7 +120,7 @@ class TestDataLoaderLib(unittest.TestCase):
 
     def test_no_ohlcv(self):
         warnings.filterwarnings("ignore", module='spectre')
-        start, end = pd.Timestamp('2019-01-02', tz='UTC'), pd.Timestamp('2019-01-15', tz='UTC')
+        start, end = pd.Timestamp('2019-01-02'), pd.Timestamp('2019-01-15')
         loader = spectre.data.CsvDirLoader(
             prices_path=data_dir + '/daily/', earliest_date=start, calender_asset='AAPL',
             ohlcv=None, adjustments=None,
