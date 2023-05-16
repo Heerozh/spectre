@@ -198,9 +198,7 @@ class BaseFactor:
     def shift(self, periods=1):
         if periods == 0:
             return self
-        factor = RawShiftFactor(inputs=(self,))
-        factor.periods = periods
-        return factor
+        return RawShiftFactor(self, periods)
 
     def abs(self):
         return AbsFactor(inputs=(self,))
@@ -726,7 +724,9 @@ class RawShiftFactor(CustomFactor):
     """
     Shift the input data directly, note that this method will not process adjustment.
     """
-    periods = 1
+    def __init__(self, data, periods=1):
+        super().__init__(inputs=[data])
+        self.periods = periods
 
     def compute(self, data: torch.Tensor) -> torch.Tensor:
         if data.dtype in {torch.bool, torch.int8, torch.int16, torch.int32, torch.int64}:
