@@ -13,7 +13,7 @@ from ..config import Global
 
 class ParallelGroupBy:
     """Fast parallel group by"""
-    GROUPBY_SORT_IN_GPU = False  # Enable it if your GPU >20G VRAM
+    GROUPBY_SORT_IN_GPU = True  # Enable it if your GPU >20G VRAM
 
     def __init__(self, keys: torch.Tensor):
         assert keys.min() >= 0

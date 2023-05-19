@@ -162,7 +162,7 @@ class BaseFactor:
             raise ValueError()
         return factor
 
-    def mean(self, groupby: str = 'date', mask: 'BaseFactor' = None):
+    def mean(self, groupby: str = 'date', mask: Union['BaseFactor', str] = None):
         """
         Cross-section mean.
         """
