@@ -900,7 +900,8 @@ class DemeanFactor(CrossSectionFactor):
             if beta is not None:
                 mean = nanmean(double).unsqueeze(-1)
                 double -= beta * mean
-            double -= nanmean(double).unsqueeze(-1)
+            else:
+                double -= nanmean(double).unsqueeze(-1)
             return double.to(data.dtype)
 
 
