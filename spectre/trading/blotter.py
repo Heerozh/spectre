@@ -777,7 +777,7 @@ class ManualBlotter(BaseBlotter):
         ret.symbol = orders.symbol
         ret.amount = orders.filled_amount
         ret.price = orders.filled_price
-        ret.fill_price = orders.filled_price + orders.commission
+        ret.fill_price = orders.filled_price + orders.commission / orders.filled_amount
         ret.commission = orders.commission
         ret.realized = orders.realized
         ret = ret.set_index('index').sort_index()
