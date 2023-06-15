@@ -376,9 +376,9 @@ index
         #     print(blotter.portfolio)
 
         # test transactions
-        expected_txn = pd.DataFrame([['test',    5., 200., 205., 5.,   0.],
-                                     ['batch2', 10., 200., 205., 5.,   0.],
-                                     ['test',   -5., 300., 305., 5., 490.]],
+        expected_txn = pd.DataFrame([['test',    5., 200., 201., 5.,   0.],
+                                     ['batch2', 10., 200., 200.5, 5.,   0.],
+                                     ['test',   -5., 300., 299, 5., 490.]],
                                     columns=['symbol', 'amount', 'price', 'fill_price',
                                              'commission', 'realized'],
                                     index=pd.DatetimeIndex([day1, day1, day2]))

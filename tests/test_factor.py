@@ -134,7 +134,7 @@ class TestFactorLib(unittest.TestCase):
         x = torch.tensor([[2, 3, 6, 8, 3, 6, 6], [2, 3, 6, np.nan, 3, 2, 9]])
         result = spectre.parallel.rankdata(x)
         assert_array_equal(scipy.stats.rankdata(x[0]), result[0])
-        expected = scipy.stats.rankdata(x[1])
+        expected = scipy.stats.rankdata(x[1], nan_policy='omit')
         expected[3] = np.nan
         assert_array_equal(expected, result[1])
 
@@ -450,6 +450,12 @@ class TestFactorLib(unittest.TestCase):
         expected_msft = np.array([101.3, 102.28, 104.39, 103.2, 105.22, 105.61, 103.2, 103.39])
         test_expected(factor, expected_aapl, expected_msft, 10, check_bias=False)
 
+        factor = spectre.factors.OHLCV.close.mad_clamp(2, mean=True)
+        factor.groupby = 'asset'
+        expected_aapl = np.array([158.61, 145.583, 149., 149., 151.55, 156.03, 161, 153.69, 157.])
+        expected_msft = np.array([101.3, 102.28, 104.39, 103.2, 105.22, 106, 103.2, 103.39])
+        test_expected(factor, expected_aapl, expected_msft, 10, check_bias=False)
+
         # test nans bug
         x = torch.tensor([[-999, np.nan, np.nan, 2, np.nan, 3, np.nan, np.nan, 999, np.nan],
                           [1, np.nan, np.nan, 2, np.nan, 3, np.nan, np.nan, 4, np.nan]],
@@ -460,7 +466,7 @@ class TestFactorLib(unittest.TestCase):
         mad_fct.z = 1.5
         mad_fct._mask = mad_fct
         mad_fct._mask_out = ~torch.isnan(x)
-        result = mad_fct.compute(x)
+        result = mad_fct.compute(x, fill=None)
         expected = x.cpu().numpy()
         expected[0, 0] = -745.25
         expected[0, -2] = 750.25
@@ -470,27 +476,27 @@ class TestFactorLib(unittest.TestCase):
         factor = spectre.factors.WEEKDAY.winsorizing(0.2)
         factor.groupby = 'asset'
         expected_aapl = scipy.stats.mstats.winsorize(
-            [2., 3., 4., 0., 1., 2., 3., 4., 0., 1.], [0.2, 0.2])
+            np.array([2., 3., 4., 0., 1., 2., 3., 4., 0., 1.]), [0.2, 0.2])
         expected_msft = scipy.stats.mstats.winsorize(
-            [2., 3., 4., 0., 1., 2., 4., 0., 1.], [0.2, 0.2])
+            np.array([2., 3., 4., 0., 1., 2., 4., 0., 1.]), [0.2, 0.2])
         test_expected(factor, expected_aapl, expected_msft, 10)
 
         factor = spectre.factors.WEEKDAY.winsorizing(0.001)
         factor.groupby = 'asset'
         expected_aapl = scipy.stats.mstats.winsorize(
-            [2., 3., 4., 0., 1., 2., 3., 4., 0., 1.], [0.001, 0.001])
+            np.array([2., 3., 4., 0., 1., 2., 3., 4., 0., 1.]), [0.001, 0.001])
         expected_msft = scipy.stats.mstats.winsorize(
-            [2., 3., 4., 0., 1., 2., 4., 0., 1.], [0.001, 0.001])
+            np.array([2., 3., 4., 0., 1., 2., 4., 0., 1.]), [0.001, 0.001])
         test_expected(factor, expected_aapl, expected_msft, 10)
 
         factor = spectre.factors.OHLCV.close.winsorizing(0.2)
         factor.groupby = 'asset'
         expected_aapl = scipy.stats.mstats.winsorize(
-            [158.6100, 145.2300, 149.0000, 149.0000, 151.5500, 156.0300, 161.0000,
-             153.6900, 157.0000, 156.9400], [0.2, 0.2])[:-1]
+            np.array([158.6100, 145.2300, 149.0000, 149.0000, 151.5500, 156.0300, 161.0000,
+             153.6900, 157.0000, 156.9400]), [0.2, 0.2])[:-1]
         expected_msft = scipy.stats.mstats.winsorize(
-            [101.3000, 102.2800, 104.3900, 103.2000, 105.2200, 106.0000, 103.2000,
-             103.3900, 108.8500], [0.2, 0.2])[:-1]
+            np.array([101.3000, 102.2800, 104.3900, 103.2000, 105.2200, 106.0000, 103.2000,
+             103.3900, 108.8500]), [0.2, 0.2])[:-1]
         test_expected(factor, expected_aapl, expected_msft, 10, check_bias=False)
 
         # test LinearWeightedAverage

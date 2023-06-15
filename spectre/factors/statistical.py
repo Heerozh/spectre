@@ -198,7 +198,7 @@ class InformationCoefficient(CrossSectionFactor):
             ic = cov_xy / (var_x * var_y) ** 0.5
         return ic.unsqueeze(-1).expand(ic.shape[0], y.shape[1])
 
-    def to_ir(self, win):
+    def to_ir(self, win, ddof=1):
         # Use CrossSectionFactor and unfold by self, because if use CustomFactor, the ir value
         # will inconsistent when some assets have no data (like newly listed), the ir value should
         # not be related to assets.
@@ -214,7 +214,7 @@ class InformationCoefficient(CrossSectionFactor):
                 rolling_ic = new_x.unfold(0, self.rolling_win, 1)
 
                 # Fundamental Law of Active Management: ir = ic * sqrt(b), 1/sqrt(b) = std(ic)
-                ir = nanmean(rolling_ic, dim=1) / nanstd(rolling_ic, dim=1, ddof=1)
+                ir = nanmean(rolling_ic, dim=1) / nanstd(rolling_ic, dim=1, ddof=ddof)
                 return ir.unsqueeze(-1).expand(ic.shape)
         return RollingIC2IR(win_=win, inputs=[self])
 

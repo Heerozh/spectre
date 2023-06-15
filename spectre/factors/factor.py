@@ -272,12 +272,13 @@ class BaseFactor:
     def clamp(self, left: Union[float, int], right: Union[float, int]):
         return ClampFactor(self, left, right)
 
-    def mad_clamp(self, z: float, mask: 'BaseFactor' = None, groupby='date'):
+    def mad_clamp(self, z: float, mask: 'BaseFactor' = None, groupby='date', fill=None, mean=False):
         """ Cross-section MAD clamp """
-        factor = MADClampFactor(inputs=(self,))
+        factor = MADClampFactor(inputs=(self, fill))
         factor.groupby = groupby
         factor.z = z
         factor.set_mask(mask)
+        factor.m_is_mean = mean
         return factor
 
     def winsorizing(self, z: float = 0.05, mask: 'BaseFactor' = None):
@@ -1004,30 +1005,39 @@ class MADClampFactor(CustomFactor):
     """
     z = 5
     treat_nan_as = 0  # or inf
+    m_is_mean = False  # switch to mean abs deviation
 
-    def compute(self, data):
+    def compute(self, data, fill):
         ret = data.clone()
 
         universe_mask = self._get_computed_mask()
-        half_universe = 0.5 * (universe_mask.sum(dim=1) - 1)
-        median_ks_odd = half_universe.long().unsqueeze(-1)
-        median_ks_even = (half_universe + 0.6).long().unsqueeze(-1)
+        if self.m_is_mean:
+            center = nanmean(data).unsqueeze(-1)
+            diff = (data - center).abs()
+            mad = nanmean(diff).unsqueeze(-1)
+        else:
+            half_universe = 0.5 * (universe_mask.sum(dim=1) - 1)
+            median_ks_odd = half_universe.long().unsqueeze(-1)
+            median_ks_even = (half_universe + 0.6).long().unsqueeze(-1)
 
-        median1, sorted_data = masked_kth_value_1d(
-            data, universe_mask, median_ks_odd, treat_nan_as=self.treat_nan_as)
-        median2 = sorted_data.gather(1, median_ks_even)
-        median = (median1 + median2) / 2
+            median1, sorted_data = masked_kth_value_1d(
+                data, universe_mask, median_ks_odd, treat_nan_as=self.treat_nan_as)
+            median2 = sorted_data.gather(1, median_ks_even)
+            center = (median1 + median2) / 2
 
-        diff = (data - median).abs()
-        # sort mad
-        sorted_data, _ = diff.sort(dim=1)
-        mad1 = sorted_data.gather(1, median_ks_odd)
-        mad2 = sorted_data.gather(1, median_ks_even)
-        mad = (mad1 + mad2) / 2
+            diff = (data - center).abs()
+            # sort mad
+            sorted_data, _ = diff.sort(dim=1)
+            mad1 = sorted_data.gather(1, median_ks_odd)
+            mad2 = sorted_data.gather(1, median_ks_even)
+            mad = (mad1 + mad2) / 2
 
-        upper = median + self.z * mad
-        lower = median - self.z * mad
-        clamp_1d_(ret, lower, upper)
+        upper = center + self.z * mad
+        lower = center - self.z * mad
+        if fill is None:
+            clamp_1d_(ret, lower, upper)
+        else:
+            ret.masked_fill_((ret <= lower) | (ret >= upper), fill)
         return ret
 
 
