@@ -838,7 +838,7 @@ class FillNANFactor(CustomFactor):
         if self.nan:
             mask = torch.isnan(data)
         if self.inf:
-            mask = mask | torch.isinf(data) if mask else torch.isinf(data)
+            mask = (mask | torch.isinf(data)) if mask is not None else torch.isinf(data)
         return data.masked_fill(mask, value)
 
 

@@ -215,7 +215,7 @@ def pad_2d(data: torch.Tensor, including_inf=False, including_nan=True) -> torch
     if including_nan:
         mask = torch.isnan(data)
     if including_inf:
-        mask = mask | torch.isinf(data) if mask else torch.isinf(data)
+        mask = (mask | torch.isinf(data)) if mask is not None else torch.isinf(data)
     idx = torch.arange(0, mask.shape[1], device=data.device).expand(mask.shape[0], mask.shape[1])
     idx = idx.masked_fill(mask, 0)
     idx = idx.cummax(dim=1).values
