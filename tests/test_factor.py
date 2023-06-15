@@ -379,6 +379,11 @@ class TestFactorLib(unittest.TestCase):
         expected_msft = np.delete(expected_aapl, 6)
         engine.to_cuda()
         test_expected(factor.fill_na(ffill=True), expected_aapl, expected_msft, 10)
+        expected_aapl = np.array([np.nan, 1., np.nan, np.nan, np.nan, np.nan,
+                                  1., np.nan, np.nan, np.nan], dtype=np.float32)
+        expected_msft = np.delete(expected_aapl, 6)
+        test_expected((1e10 ** factor).fill_na(np.nan, nan=False, inf=True)/1e30, expected_aapl,
+                      expected_msft, 10, decimal=5)
         engine.to_cpu()
         spectre.factors.WEEKDAY.filter(None)
 

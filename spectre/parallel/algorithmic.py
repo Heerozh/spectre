@@ -210,10 +210,12 @@ def nanlast(data: torch.Tensor, dim=1, offset=0) -> torch.Tensor:
     return masked_last(data, mask, dim)
 
 
-def pad_2d(data: torch.Tensor, including_inf=False) -> torch.Tensor:
-    mask = torch.isnan(data)
+def pad_2d(data: torch.Tensor, including_inf=False, including_nan=True) -> torch.Tensor:
+    mask = None
+    if including_nan:
+        mask = torch.isnan(data)
     if including_inf:
-        mask = mask | torch.isinf(data)
+        mask = mask | torch.isinf(data) if mask else torch.isinf(data)
     idx = torch.arange(0, mask.shape[1], device=data.device).expand(mask.shape[0], mask.shape[1])
     idx = idx.masked_fill(mask, 0)
     idx = idx.cummax(dim=1).values
