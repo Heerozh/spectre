@@ -917,23 +917,14 @@ class DemeanFactor(CrossSectionFactor):
 
 
 class DemedianFactor(CrossSectionFactor):
-    treat_nan_as = 0  # or inf
+    nan_policy = 'omit'
 
     def compute(self, data: torch.Tensor) -> torch.Tensor:
-        ret = data.clone()
-
         universe_mask = self._get_computed_mask()
+        median, _ = masked_kth_value_1d(
+            data, universe_mask, [0.5], nan_policy=self.nan_policy)
 
-        half_universe = 0.5 * (universe_mask.sum(dim=1) - 1)
-        median_ks_odd = half_universe.long().unsqueeze(-1)
-        median_ks_even = (half_universe + 0.6).long().unsqueeze(-1)
-
-        median1, sorted_data = masked_kth_value_1d(
-            data, universe_mask, median_ks_odd, treat_nan_as=self.treat_nan_as)
-        median2 = sorted_data.gather(1, median_ks_even)
-        median = (median1 + median2) / 2
-
-        return data - median
+        return data - median[0].expand(data.shape[0], data.shape[1])
 
 
 class MeanFactor(CrossSectionFactor):
@@ -946,16 +937,9 @@ class MedianFactor(CrossSectionFactor):
 
     def compute(self, data: torch.Tensor) -> torch.Tensor:
         universe_mask = self._get_computed_mask()
-        half_universe = 0.5 * ((universe_mask & ~torch.isnan(data)).sum(dim=1) - 1)
-        median_ks_odd = half_universe.long().unsqueeze(-1)
-        median_ks_even = (half_universe + 0.6).long().unsqueeze(-1)
-
-        median1, sorted_data = masked_kth_value_1d(
-            data, universe_mask, median_ks_odd, treat_nan_as=np.nan)
-        median2 = sorted_data.gather(1, median_ks_even)
-        median = (median1 + median2) / 2
-
-        return median.expand(data.shape[0], data.shape[1])
+        median, _ = masked_kth_value_1d(
+            data, universe_mask, [0.5], nan_policy='omit')
+        return median[0].expand(data.shape[0], data.shape[1])
 
 
 class XSMax(CrossSectionFactor):
@@ -1034,7 +1018,7 @@ class MADClampFactor(CustomFactor):
     median of the absolute deviations from the data's median
     """
     z = 5
-    treat_nan_as = 0  # or inf
+    nan_policy = 'omit'
     m_is_mean = False  # switch to mean abs deviation
 
     def compute(self, data, fill):
@@ -1046,20 +1030,14 @@ class MADClampFactor(CustomFactor):
             diff = (data - center).abs()
             mad = nanmean(diff).unsqueeze(-1)
         else:
-            half_universe = 0.5 * (universe_mask.sum(dim=1) - 1)
-            median_ks_odd = half_universe.long().unsqueeze(-1)
-            median_ks_even = (half_universe + 0.6).long().unsqueeze(-1)
-
-            median1, sorted_data = masked_kth_value_1d(
-                data, universe_mask, median_ks_odd, treat_nan_as=self.treat_nan_as)
-            median2 = sorted_data.gather(1, median_ks_even)
-            center = (median1 + median2) / 2
-
+            center, kth = masked_kth_value_1d(data, universe_mask, [0.5],
+                                              nan_policy=self.nan_policy)
+            center, kth = center[0], kth[0]
             diff = (data - center).abs()
             # sort mad
             sorted_data, _ = diff.sort(dim=1)
-            mad1 = sorted_data.gather(1, median_ks_odd)
-            mad2 = sorted_data.gather(1, median_ks_even)
+            mad1 = sorted_data.gather(1, kth[0])
+            mad2 = sorted_data.gather(1, kth[1])
             mad = (mad1 + mad2) / 2
 
         upper = center + self.z * mad
@@ -1077,20 +1055,13 @@ class MADClampFactor(CustomFactor):
 
 class WinsorizingFactor(CustomFactor):
     z = 0.05
-    treat_nan_as = 0  # or inf
+    nan_policy = 'omit'
 
     def compute(self, data):
         universe_mask = self._get_computed_mask()
-        n = universe_mask.sum(dim=1)
-        upper_k = n - (self.z * n).long() - 1
-        lower_k = (self.z * n).long()
-
-        upper_k.clamp_(0, data.shape[1]).unsqueeze_(-1)
-        lower_k.clamp_(0, data.shape[1]).unsqueeze_(-1)
-
-        upper, sorted_data = masked_kth_value_1d(
-            data, universe_mask, upper_k, treat_nan_as=self.treat_nan_as)
-        lower = sorted_data.gather(1, lower_k)
+        k_values, _ = masked_kth_value_1d(data, universe_mask, [self.z, -self.z], even_mean=False,
+                                          nan_policy=self.nan_policy)
+        lower, upper = k_values
 
         ret = data.clone()
         clamp_1d_(ret, lower, upper)

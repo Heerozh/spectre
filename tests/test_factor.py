@@ -495,6 +495,14 @@ class TestFactorLib(unittest.TestCase):
             np.array([2., 3., 4., 0., 1., 2., 4., 0., 1.]), [0.2, 0.2])
         test_expected(factor, expected_aapl, expected_msft, 10)
 
+        factor = spectre.factors.WEEKDAY.winsorizing(0.01)
+        factor.groupby = 'asset'
+        expected_aapl = scipy.stats.mstats.winsorize(
+            np.array([2., 3., 4., 0., 1., 2., 3., 4., 0., 1.]), [0.01, 0.01])
+        expected_msft = scipy.stats.mstats.winsorize(
+            np.array([2., 3., 4., 0., 1., 2., 4., 0., 1.]), [0.01, 0.01])
+        test_expected(factor, expected_aapl, expected_msft, 10)
+
         factor = spectre.factors.WEEKDAY.winsorizing(0.001)
         factor.groupby = 'asset'
         expected_aapl = scipy.stats.mstats.winsorize(

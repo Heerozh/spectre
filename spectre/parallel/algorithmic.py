@@ -4,7 +4,7 @@
 @license: Apache 2.0
 @email: heeroz@gmail.com
 """
-from typing import Callable
+from typing import Callable, Union
 import torch
 import numpy as np
 from .constants import DeviceConstant
@@ -342,16 +342,62 @@ def quantile(data, bins, dim=1):
     return ret
 
 
-def masked_kth_value_1d(data, mask, k_array, treat_nan_as=0):
-    # fill nan with 0, and fill out of mask with inf
-    data = data.masked_fill(~mask, np.inf)
+def masked_kth_value_1d(data, universe_mask, k_percents, even_mean=True,
+                        nan_policy: Union[str, float] = 'omit', dim=1):
+    """
+    :param data:
+    :param universe_mask:
+    :param k_percents: percent position array of universe
+    :param even_mean: if percent indivisible, mean with adjacent
+    :param nan_policy:
+        omit: ignore nans
+        float type: fill with this value
+    :param dim:
+    :return:
+        list or kth values
+    """
+
+    # fill out of mask with inf
+    data = data.masked_fill(~universe_mask, np.inf)
     nans = torch.isnan(data)
-    data.masked_fill_(nans, treat_nan_as)
+    universe_count = universe_mask.sum(dim=dim)
+    if type(nan_policy) is float:
+        data.masked_fill_(nans, nan_policy)
+    else:
+        data.masked_fill_(nans, np.inf)
+        universe_count -= nans.sum(dim=dim)
+
     # sort
-    sorted_data, _ = data.sort(dim=1)
-    # gather median
-    value = sorted_data.gather(1, k_array)
-    return value, sorted_data
+    sorted_data, _ = data.sort(dim=dim)
+    # gather kth
+    rtn = []
+    kth = []
+    for k in k_percents:
+        if even_mean:
+            if k < 0:
+                kth_in_universe = universe_count - abs(k) * (universe_count - 1)
+            else:
+                kth_in_universe = k * (universe_count - 1)
+        else:
+            if k < 0:
+                kth_in_universe = universe_count - (abs(k) * universe_count).long() - 1
+            else:
+                kth_in_universe = k * universe_count
+
+        kth_odd = kth_in_universe.long().unsqueeze(-1)
+        kth_odd.clamp_(0, data.shape[dim])
+        kth_value = sorted_data.gather(dim=dim, index=kth_odd)
+        kth_even = None
+
+        if even_mean:
+            kth_even = (kth_in_universe + 0.6).long().unsqueeze(-1)
+            kth_even.clamp_(0, data.shape[dim])
+            even_value = sorted_data.gather(dim=dim, index=kth_even)
+            kth_value = (kth_value + even_value) / 2
+        rtn.append(kth_value)
+        kth.append([kth_odd, kth_even])
+
+    return rtn, kth
 
 
 def clamp_1d_(data, min_, max_):
