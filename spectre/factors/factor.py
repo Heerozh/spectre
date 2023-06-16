@@ -162,6 +162,11 @@ class BaseFactor:
             raise ValueError()
         return factor
 
+    def demedian(self, groupby: str = 'date', mask: 'BaseFactor' = None):
+        factor = DemedianFactor(inputs=(self, ), mask=mask)
+        factor.groupby = groupby
+        return factor
+
     def mean(self, groupby: str = 'date', mask: Union['BaseFactor', str] = None):
         """
         Cross-section mean.
@@ -911,6 +916,26 @@ class DemeanFactor(CrossSectionFactor):
             return double.to(data.dtype)
 
 
+class DemedianFactor(CrossSectionFactor):
+    treat_nan_as = 0  # or inf
+
+    def compute(self, data: torch.Tensor) -> torch.Tensor:
+        ret = data.clone()
+
+        universe_mask = self._get_computed_mask()
+
+        half_universe = 0.5 * (universe_mask.sum(dim=1) - 1)
+        median_ks_odd = half_universe.long().unsqueeze(-1)
+        median_ks_even = (half_universe + 0.6).long().unsqueeze(-1)
+
+        median1, sorted_data = masked_kth_value_1d(
+            data, universe_mask, median_ks_odd, treat_nan_as=self.treat_nan_as)
+        median2 = sorted_data.gather(1, median_ks_even)
+        median = (median1 + median2) / 2
+
+        return data - median
+
+
 class MeanFactor(CrossSectionFactor):
 
     def compute(self, data: torch.Tensor) -> torch.Tensor:
@@ -1041,6 +1066,10 @@ class MADClampFactor(CustomFactor):
         lower = center - self.z * mad
         if fill is None:
             clamp_1d_(ret, lower, upper)
+        elif fill == 'center':
+            ret.masked_scatter_(
+                (ret <= lower) | (ret >= upper),
+                center.expand(data.shape[0], data.shape[1]))
         else:
             ret.masked_fill_((ret <= lower) | (ret >= upper), fill)
         return ret

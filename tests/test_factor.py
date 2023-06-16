@@ -164,6 +164,9 @@ class TestFactorLib(unittest.TestCase):
                       [0] * 9, [0] * 8, total_rows)
         test_expected(spectre.factors.OHLCV.close.demean(),
                       expected_aapl, expected_msft, total_rows)
+        test_expected(spectre.factors.OHLCV.close.demedian(),
+                      expected_aapl, expected_msft, total_rows)
+
 
         # test shift
         expected_aapl = df_aapl_close.shift(2)[-total_rows + 1:]
