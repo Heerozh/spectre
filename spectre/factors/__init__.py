@@ -14,6 +14,7 @@ from .factor import (
     SumFactor, ProdFactor, UniqueTSSumFactor,
     MADClampFactor,
     WinsorizingFactor,
+    IQRNormalityFactor,
 )
 
 from .datafactor import (

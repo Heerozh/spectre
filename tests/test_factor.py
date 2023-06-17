@@ -521,6 +521,14 @@ class TestFactorLib(unittest.TestCase):
              103.3900, 108.8500]), [0.2, 0.2])[:-1]
         test_expected(factor, expected_aapl, expected_msft, 10, check_bias=False)
 
+        # test IQRNormalityFactor
+        factor = spectre.factors.IQRNormalityFactor(inputs=[spectre.factors.Returns()])
+        expected_aapl = np.array([0.65102, 0.65102, 0.65102, 0.65102, 0.65102, 0.65102, np.nan,
+                                  0.65102, 0.65102])
+        expected_msft = np.array([0.65102, 0.65102, 0.65102, 0.65102, 0.65102, 0.65102, 0.65102,
+                                  0.65102])
+        test_expected(factor, expected_aapl, expected_msft, 10, check_bias=False)
+
         # test LinearWeightedAverage
         factor = spectre.factors.LinearWeightedAverage(5, inputs=[spectre.factors.WEEKDAY])
         expected_aapl = np.array([2., 2.2666667, 2.8000002, 1.9333334, 1.6666667, 1.6666667, 2,

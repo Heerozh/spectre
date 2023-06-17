@@ -180,6 +180,16 @@ class BaseFactor:
         factor.groupby = groupby
         return factor
 
+    def max(self, mask: 'BaseFactor' = None, groupby: str = 'date'):
+        factor = XSMax(inputs=(self,), mask=mask)
+        factor.groupby = groupby
+        return factor
+
+    def min(self, mask: 'BaseFactor' = None, groupby: str = 'date'):
+        factor = XSMin(inputs=(self,), mask=mask)
+        factor.groupby = groupby
+        return factor
+
     def quantile(self, bins=5, mask: 'BaseFactor' = None, groupby: str = 'date'):
         """ Cross-section quantiles to which the factor belongs """
         factor = QuantileClassifier(inputs=(self,))
@@ -1067,6 +1077,25 @@ class WinsorizingFactor(CustomFactor):
         clamp_1d_(ret, lower, upper)
         return ret
 
+
+class IQRNormalityFactor(CrossSectionFactor):
+    """
+     0 = most likely be normal dist
+     > 0: how many times away from the standard deviation
+    """
+    nan_policy = 'omit'
+
+    def compute(self, data):
+        universe_mask = self._get_computed_mask()
+        k_values, _ = masked_kth_value_1d(data, universe_mask, [-0.25, 0.25], even_mean=False,
+                                          nan_policy=self.nan_policy)
+        q3, q1 = k_values
+        iqr = q3 - q1
+        std = nanstd(data).unsqueeze(-1)
+        #  interquartile range of a normal random variable is 1.34898 times its standard deviation
+        normality = ((iqr / std) - 1.34898).abs()
+
+        return normality.expand(data.shape[0], data.shape[1])
 
 # --------------- op factors ---------------
 
