@@ -7,6 +7,7 @@
 from abc import ABC
 from typing import Optional, Sequence, Union
 import numpy as np
+import warnings
 import torch
 from ..parallel import (nansum, nanmean, nanstd, nanmax, nanmin, pad_2d, Rolling, quantile,
                         masked_kth_value_1d, clamp_1d_, rankdata)
@@ -192,6 +193,10 @@ class BaseFactor:
 
     def quantile(self, bins=5, mask: 'BaseFactor' = None, groupby: str = 'date'):
         """ Cross-section quantiles to which the factor belongs """
+        if not mask:
+            warnings.warn("quantile() mask parameter not set, normally set mask=universe, "
+                          "is it expected?",
+                          RuntimeWarning)
         factor = QuantileClassifier(inputs=(self,))
         factor.set_mask(mask)
         factor.groupby = groupby
@@ -285,8 +290,8 @@ class BaseFactor:
         """ Return Non-NaN data count """
         return NonNaNCountFactor(win, inputs=(self,))
 
-    def clamp(self, left: Union[float, int], right: Union[float, int]):
-        return ClampFactor(self, left, right)
+    def clamp(self, left: Union[float, int], right: Union[float, int], fill=None):
+        return ClampFactor(self, left, right, fill)
 
     def mad_clamp(self, z: float, mask: 'BaseFactor' = None, groupby='date', fill=None, mean=False):
         """ Cross-section MAD clamp """
@@ -1015,11 +1020,14 @@ class ClampFactor(CustomFactor):
     """ Simple Winsorizing """
     _min_win = 1
 
-    def __init__(self, data, left, right):
-        super().__init__(win=1, inputs=[data, left, right])
+    def __init__(self, data, left, right, fill=None):
+        super().__init__(win=1, inputs=[data, left, right, fill])
 
-    def compute(self, data, left, right):
-        return data.clamp(left, right)
+    def compute(self, data, left, right, fill):
+        if fill is None:
+            return data.clamp(left, right, fill)
+        else:
+            return data.masked_fill((data < left) | (data > right), fill)
 
 
 class MADClampFactor(CustomFactor):

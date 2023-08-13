@@ -558,12 +558,12 @@ class FactorEngine:
                          cause lookahead bias.
         :param periods: Forward return periods
         :param quantiles: Number of quantile
-        :param xs_quantile: Calculate quantile based on cross section
+        :param xs_quantile: Calculate quantile based on cross-section
         :param filter_zscore: Drop extreme factor return, for stability of the analysis.
         :param demean: demean quantile returns
         :param preview: Display a preview chart of the result
-        :param to_weight: Normalize the factor value to a weight on the cross section
-        :param demean_weight: If to_weight is True, will the factor weight is converted into a
+        :param to_weight: Normalize the factor value to a weight on the cross-section
+        :param demean_weight: If to_weight is True, will the factor weight be converted into a
                               hedged weight: sum(weight) = 0
         """
         factors = self._factors.copy()
