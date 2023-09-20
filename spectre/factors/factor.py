@@ -914,7 +914,7 @@ class DemeanFactor(CrossSectionFactor):
             d.update(self.group_dict)
             g = s.groupby([d, 'date'], level=1)
             ret = g.transform(lambda x: x - x.mean())
-            print('Deprecated, group_dict will be removed in the future')
+            print('Spectre: Deprecated, group_dict will be removed in the future')
             return self._regroup(ret)
         else:
             # Why double?

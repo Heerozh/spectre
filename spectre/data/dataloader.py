@@ -105,7 +105,7 @@ class DataLoader:
                 df[spr_col] = 1 / df[spr_col]
 
             # move ex-div up 1 row
-            groupby = df.groupby(level=1)
+            groupby = df.groupby(level=1, observed=False)
             last = pd.DataFrame.last_valid_index
             ex_div = groupby[div_col].shift(-1)
             ex_div.loc[groupby.apply(last)] = 0
@@ -117,9 +117,9 @@ class DataLoader:
 
             # generate dividend multipliers
             price_multi = (1 - ex_div / df[close_col]) * sp_rto
-            price_multi = price_multi[::-1].groupby(level=1).cumprod()[::-1]
+            price_multi = price_multi[::-1].groupby(level=1, observed=False).cumprod()[::-1]
             df[price_multi_col] = price_multi.astype(np.float32)
-            vol_multi = (1 / sp_rto)[::-1].groupby(level=1).cumprod()[::-1]
+            vol_multi = (1 / sp_rto)[::-1].groupby(level=1, observed=False).cumprod()[::-1]
             df[vol_multi_col] = vol_multi.astype(np.float32)
 
         return df

@@ -152,6 +152,7 @@ class CsvDirLoader(DataLoader):
         df = df.rename_axis(['asset', 'date'])
 
         if self.ohlcv is not None:
+            # 这里把0当成nan进行ffill，如果未来取消了，要先把0变成nan，然后df.ffill
             df[list(self.ohlcv)] = df[list(self.ohlcv)].replace(to_replace=0, method='ffill')
 
         if self._dividends_path is not None:

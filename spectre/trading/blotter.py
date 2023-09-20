@@ -257,14 +257,15 @@ class SimulationBlotter(BaseBlotter, EventReceiver):
         ohlcv = ohlcv or dataloader.ohlcv
         if dataloader.adjustments is not None:
             sel_cols = [ohlcv[3], dataloader.adjustments[0], dataloader.adjustments[1]]
-            lasts = df[sel_cols].groupby(level=1, group_keys=False).apply(lambda x: x.fillna(method='pad').shift(1))
+            lasts = df[sel_cols].groupby(level=1, group_keys=False, observed=False).apply(
+                lambda x: x.ffill().shift(1))
             df['__last_close'] = lasts[sel_cols[0]]
             df['__last_div'] = lasts[sel_cols[1]]
             df['__last_sp'] = lasts[sel_cols[2]]
             curb_cols = ['__last_close', '__last_div', '__last_sp']
         else:
-            df['__last_close'] = df[ohlcv[3]].groupby(level=1, group_keys=False).apply(
-                lambda x: x.fillna(method='pad').shift(1))
+            df['__last_close'] = df[ohlcv[3]].groupby(level=1, group_keys=False, observed=False).apply(
+                lambda x: x.ffill().shift(1))
             curb_cols = ['__last_close']
         self._data = df
         self._prices = DataLoaderFastGetter(df[list(ohlcv) + curb_cols])
@@ -613,14 +614,17 @@ class ManualBlotter(BaseBlotter):
         """ Call this after you transfer funds to broker """
         assert self._current_dt is not None
         order = pd.Series(dict(
-            date=self._current_dt, status='Cash', symbol='cash', target_percent=0, action_value=0,
-            amount=amount, limit_price='/', filled_amount=amount, filled_price=0, filled_percent=0,
-            commission=0, realized=0))
+            date=self._current_dt, status='Cash', symbol='cash', target_percent=0., action_value=0.,
+            amount=amount, limit_price='/', filled_amount=amount, filled_price=0., filled_percent=0.,
+            commission=0., realized=0.))
         if len(self.orders.index) == 0:
             order.name = 1
         else:
             order.name = max(self.orders.index) + 1
-        self.orders = pd.concat([self.orders, pd.DataFrame([order])])
+        if len(self.orders) == 0:
+            self.orders = pd.DataFrame([order])
+        else:
+            self.orders = pd.concat([self.orders, pd.DataFrame([order])])
         self._portfolio.update_cash(amount, is_funds=True)
 
     def _order(self, asset, amount, price=None):
