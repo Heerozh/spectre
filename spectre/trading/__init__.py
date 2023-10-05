@@ -124,6 +124,7 @@ from .event import (
 from .calendar import (
     Calendar,
     CNCalendar,
+    JPCalendar,
 )
 from .algorithm import (
     CustomAlgorithm,

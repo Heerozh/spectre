@@ -26,7 +26,8 @@ class Calendar:
               pop_passed=True):
         """ build("2020", {'Open': '9:00:00', 'Close': '15:00:00'}) """
         self.timezone = tz
-        days = pd.date_range(pd.Timestamp(start, tz=tz), pd.Timestamp(end, tz=tz),
+        days = pd.date_range(pd.Timestamp(start, tz=tz).normalize(),
+                             pd.Timestamp(end, tz=tz).normalize(),
                              tz=tz, freq=freq)
         if len(days) == 0:
             raise ValueError("Empty date range between now({}) to end({})".format(
@@ -134,4 +135,73 @@ class CNCalendar(Calendar):
             daily_events=self.daily_events,
             tz=timezone, pop_passed=pop_passed)
         for d in CNCalendar.closed:
+            self.set_as_holiday(d.tz_localize(timezone))
+
+
+class JPCalendar(Calendar):
+    """
+    JP holiday calendar: https://www.jpx.co.jp/corporate/about-jpx/calendar/index.html
+    """
+    closed = [
+        *pd.date_range(f'{pd.Timestamp.now().year}-01-01',
+                       f'{pd.Timestamp.now().year}-01-03', freq='D'),
+        *pd.date_range(f'{pd.Timestamp.now().year+1}-01-01',
+                       f'{pd.Timestamp.now().year+1}-01-03', freq='D'),
+        *pd.date_range(f'{pd.Timestamp.now().year}-12-31',
+                       f'{pd.Timestamp.now().year}-12-31', freq='D'),
+        *pd.date_range(f'{pd.Timestamp.now().year+1}-12-31',
+                       f'{pd.Timestamp.now().year+1}-12-31', freq='D'),
+
+        # yearly manually updated
+        *pd.date_range('2023-01-09', '2023-01-09', freq='D'),
+        *pd.date_range('2023-02-11', '2023-02-11', freq='D'),
+        *pd.date_range('2023-02-23', '2023-02-23', freq='D'),
+        *pd.date_range('2023-03-21', '2023-03-21', freq='D'),
+        *pd.date_range('2023-04-29', '2023-04-29', freq='D'),
+        *pd.date_range('2023-05-03', '2023-05-05', freq='D'),
+        *pd.date_range('2023-07-17', '2023-07-17', freq='D'),
+        *pd.date_range('2023-08-11', '2023-08-11', freq='D'),
+        *pd.date_range('2023-09-18', '2023-09-18', freq='D'),
+        *pd.date_range('2023-09-23', '2023-09-23', freq='D'),
+        *pd.date_range('2023-10-09', '2023-10-09', freq='D'),
+        *pd.date_range('2023-11-03', '2023-11-03', freq='D'),
+        *pd.date_range('2023-11-23', '2023-11-23', freq='D'),
+
+        *pd.date_range('2024-01-08', '2024-01-08', freq='D'),
+        *pd.date_range('2024-02-11', '2024-02-12', freq='D'),
+        *pd.date_range('2024-02-23', '2024-02-23', freq='D'),
+        *pd.date_range('2024-03-20', '2024-03-20', freq='D'),
+        *pd.date_range('2024-04-29', '2024-04-29', freq='D'),
+        *pd.date_range('2024-05-03', '2024-05-06', freq='D'),
+        *pd.date_range('2024-07-15', '2024-07-15', freq='D'),
+        *pd.date_range('2024-08-11', '2024-08-12', freq='D'),
+        *pd.date_range('2024-09-16', '2024-09-16', freq='D'),
+        *pd.date_range('2024-09-22', '2024-09-23', freq='D'),
+        *pd.date_range('2024-10-14', '2024-10-14', freq='D'),
+        *pd.date_range('2024-11-03', '2024-11-04', freq='D'),
+        *pd.date_range('2024-11-23', '2024-11-23', freq='D'),
+    ]
+
+    daily_events = {
+        'DayStart': '00:00:00',
+        'PreOpen': '8:00:00',
+        'Open': '9:00:00',
+        'Lunch': '11:30:00',
+        'LunchEnd': '12:30:00',
+        'Close': '15:00:00',
+        'DayEnd': '23:59:59'
+    }
+
+    def __init__(self, start=None, pop_passed=True):
+        super().__init__()
+        timezone = 'Asia/Tokyo'
+        if start is None:
+            start = pd.Timestamp.now(self.timezone).normalize()
+        assert start.year <= self.closed[-1].year
+        self.build(
+            start=str(start),
+            end=str(self.closed[-1].year + 1),
+            daily_events=self.daily_events,
+            tz=timezone, pop_passed=pop_passed)
+        for d in self.closed:
             self.set_as_holiday(d.tz_localize(timezone))
