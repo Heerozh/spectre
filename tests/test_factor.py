@@ -138,6 +138,20 @@ class TestFactorLib(unittest.TestCase):
         expected[3] = np.nan
         assert_array_equal(expected, result[1])
 
+        # test mean
+        expected_aapl = [129.955, 123.755, 126.695, 126.1, 128.385, 131.015, 161.,
+                         128.445, 130.195]
+        expected_msft = [129.955, 123.755, 126.695, 126.1, 128.385, 131.015,
+                         128.445, 130.195]
+        test_expected(spectre.factors.OHLCV.close.mean(),
+                      expected_aapl, expected_msft, total_rows)
+        expected_aapl = [127.76211, 130.98482, 131.98633, 132.3147 , 131.43803, 135.9378 ,
+                         161.  , 128.19464, 132.38597]
+        expected_msft = [127.76211, 130.98482, 131.98633, 132.3147 , 131.43803, 135.9378 ,
+                         128.19464, 132.38597]
+        test_expected(spectre.factors.OHLCV.close.mean(weight=spectre.factors.OHLCV.volume),
+                      expected_aapl, expected_msft, total_rows, decimal=4)
+
         # test XSStandardDeviation
         expected_aapl = [28.655, 21.475, 22.305, 22.900, 23.165,
                          25.015, 0.000, 25.245, 26.805, ]

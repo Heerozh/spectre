@@ -168,11 +168,12 @@ class BaseFactor:
         factor.groupby = groupby
         return factor
 
-    def mean(self, groupby: str = 'date', mask: Union['BaseFactor', str] = None):
+    def mean(self, groupby: str = 'date', mask: Union['BaseFactor', str] = None,
+             weight: 'BaseFactor' = None):
         """
         Cross-section mean.
         """
-        factor = MeanFactor(inputs=(self,), mask=mask)
+        factor = MeanFactor(inputs=(self, weight), mask=mask)
         factor.groupby = groupby
         return factor
 
@@ -944,9 +945,13 @@ class DemedianFactor(CrossSectionFactor):
 
 class MeanFactor(CrossSectionFactor):
 
-    def compute(self, data: torch.Tensor) -> torch.Tensor:
-        return nanmean(data).unsqueeze(-1).expand(data.shape[0], data.shape[1])
-
+    def compute(self, data: torch.Tensor, weight=None) -> torch.Tensor:
+        if weight is None:
+            return nanmean(data).unsqueeze(-1).expand(data.shape[0], data.shape[1])
+        else:
+            mean = nansum(data * weight) / nansum(weight)
+            mean = mean.to(Global.float_type).unsqueeze(-1)
+            return mean.expand(data.shape[0], data.shape[1])
 
 class MedianFactor(CrossSectionFactor):
 
