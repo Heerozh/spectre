@@ -74,6 +74,7 @@ class DataLoader:
         * create time_cat column
         * create adjustment multipliers columns
         """
+        # print(pd.Timestamp.now(), 'Formatting index...')
         df = df.rename_axis(['date', 'asset'])
         # speed up asset index search time
         df = df.reset_index()
@@ -88,11 +89,13 @@ class DataLoader:
             df = df.tz_convert('UTC', level=0, copy=False)
         df.sort_index(level=[0, 1], inplace=True)
         # generate time key for parallel
+        # print(pd.Timestamp.now(), 'Formatting time key for gpu sorting...')
         date_index = df.index.get_level_values(0)
         unique_date = date_index.unique()
         time_cat = dict(zip(unique_date, range(len(unique_date))))
-        cat = np.fromiter(map(lambda x: time_cat[x], date_index), dtype=int)
-        df[self.time_category] = cat
+        # cat = np.fromiter(map(lambda x: time_cat[x], date_index), dtype=int)
+        df[self.time_category] = date_index.map(time_cat)
+        # print(pd.Timestamp.now(), 'Done.')
 
         # Process dividends and split
         if self.adjustments is not None:
