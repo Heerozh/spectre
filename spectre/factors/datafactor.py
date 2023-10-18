@@ -4,6 +4,7 @@
 @license: Apache 2.0
 @email: heeroz@gmail.com
 """
+import numpy as np
 import torch
 import pandas as pd
 
@@ -165,7 +166,9 @@ class DatetimeDataFactor(BaseFactor):
         super().pre_compute_(engine, start, end)
         if self._data is None:
             data = getattr(engine.dataframe_index[0], self.attr)  # slow
-            data = torch.from_numpy(data.values).to(
+            if not isinstance(data, np.ndarray):
+                data = data.values
+            data = torch.from_numpy(data).to(
                 device=engine.device, dtype=Global.float_type, non_blocking=True)
             self._data = engine.group_by_(data, self.groupby)
             self._clean_required = True
