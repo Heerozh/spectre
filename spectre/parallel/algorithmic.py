@@ -421,6 +421,7 @@ class Rolling:
         return new_x.unfold(1, win, 1)
 
     def __init__(self, x: torch.Tensor, win: int, _adjustment: torch.Tensor = None):
+        # todo win should support negative value
         self.values = self.unfold(x, win)
         self.win = win
         self.device = x.device

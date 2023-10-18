@@ -192,6 +192,14 @@ class BaseFactor:
         factor.groupby = groupby
         return factor
 
+    def ts_max(self, win=2):
+        from statistical import RollingHigh
+        return RollingHigh(win=win, inputs=(self,))
+
+    def ts_min(self, win=2):
+        from statistical import RollingLow
+        return RollingLow(win=win, inputs=(self,))
+
     def quantile(self, bins=5, mask: 'BaseFactor' = None, groupby: str = 'date'):
         """ Cross-section quantiles to which the factor belongs """
         if not mask:
@@ -667,39 +675,46 @@ class CustomFactor(BaseFactor):
         `inputs` Data structure:
         The data structure is designed for optimal performance in parallel.
         * Groupby `asset`(default):
-            set N = individual asset bar count, Max = Max bar count across all asset
+            set T = data bar
+            set N = individual asset bar count - 1,  Max = Max bar count across all assets - 1
             win = 1:
-                | asset id | price(t+0) | ... | price(t+N) | price(t+N+1) | ... | price(t+Max) |
+                | asset idx| price(T+0) | ... | price(T+N) | price(T+N+1) | ... | price(T+Max) |
                 |----------|------------|-----|------------|--------------|-----|--------------|
                 |     0    | 123.45     | ... | 234.56     | NaN          | ... | Nan          |
+                It's 2D matrix like data[asset idx, T idx], Bars after T+N will fill with NANs.
                 If `align_by_time=False` then the time represented by each bar is different.
             win > 1:
-                Gives you a rolling object `r`, you can `r.mean()`, `r.sum()`, or `r.agg()`.
+                Gives you a rolling object `r`, you can call `r.mean()`, `r.sum()`, or `r.agg()`.
                 `r.agg(callback)` gives you raw data structure as:
-                | asset id | Rolling bar  | price(t+0) | ... | price(t+Win) |
-                |----------|--------------|------------|-----|--------------|
-                |     0    | 0            | NaN        | ... | 123.45       |
-                |          | ...          | ...        | ... | ...          |
-                |          | N            | xxx.xx     | ... | 234.56       |
+                | asset idx;time idx |price(t-win+1)| ... | price(t+0) |
+                |----------;---------|--------------|-----|--------------|
+                |     0    ; T+0     | NaN          | ... | 123.45       |
+                |          ; ...     | ...          | ... | ...          |
+                |          ; T+N     | xxx.xx       | ... | 234.56       |
+                |     1    ; T+0     | NaN          | ... | 123.45       |
+                |          ; ...     | ...          | ... | ...          |
+                |          ; T+N     | xxx.xx       | ... | 234.56       |
+                It's 3D matrix like: data[asset idx, T idx, win idx]
                 If this table too big, it will split to multiple tables by axis 0, and call the
                 callback function separately.
-        * Groupby `date` or others (set `groupby = 'date'`):
-            set N = asset count, Max = Max asset count in all time
-                | time     | price(0) | ... | price(N) | price(N+1) | ... | price(N+Max) |
+        * Groupby `date` or Cross-Section Factors (set `groupby = 'date'`):
+            set A = asset
+            set N = asset count - 1, Max = Max asset count in all time - 1
+                | time idx |price(A+0)| ... |price(A+N)|price(A+N+1)| ... | price(A+Max) |
                 |----------|----------|-----|----------|------------|-----|--------------|
-                |     t    | 100.00   | ... | 200.00   | NaN        | ... | Nan          |
+                |     T    | 100.00   | ... | 200.00   | NaN        | ... | Nan          |
                 |    ...   | ...      | ... | ...      | ...        | ... | ...          |
-                |   t+Max  | 123.45   | ... | 234.56   | NaN        | ... | Nan          |
-                The prices is all asset prices in same time, this is useful for calculations
-                such as rank, quantile.
+                |   T+Max  | 123.45   | ... | 234.56   | NaN        | ... | Nan          |
+                This is the price of all assets at same time T, useful for calculations such as
+                every day market means.
                 If `align_by_time=False` then the order of assets in each row (time) is not fixed,
                 in that way the column cannot be considered as a particular asset.
         * Custom:
             Use `series = self._revert_to_series(input)` you can get `pd.Series` data type, and
             manipulate by your own. Remember to call `return self._regroup(series)` when returning.
-            WARNING: This method will be very inefficient and break parallel.
+            WARNING: This CPU method will be very inefficient and break parallel.
         :param inputs: All input factors data, including all data from `start(minus win)` to `end`.
-        :return: your factor values, length should be same as the `inputs`
+        :return: your factor values, length should be the same as the `inputs`
         """
         raise NotImplementedError("abstractmethod")
 
@@ -952,6 +967,7 @@ class MeanFactor(CrossSectionFactor):
             mean = nansum(data * weight) / nansum(weight)
             mean = mean.to(Global.float_type).unsqueeze(-1)
             return mean.expand(data.shape[0], data.shape[1])
+
 
 class MedianFactor(CrossSectionFactor):
 
