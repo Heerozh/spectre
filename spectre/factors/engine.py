@@ -100,13 +100,13 @@ class FactorEngine:
         df = self._loader.load(start, end, max_backwards).copy()
         # If possible, pre-screen
         if isinstance(self._filter, StaticAssets):
-            df = df.loc[(slice(None), self._filter.assets), :]
+            df = df.loc[(slice(None), list(self._filter.assets)), :]
             if df.shape[0] == 0:
                 raise ValueError("The assets {} specified by StaticAssets filter, was not found in "
                                  "DataLoader.".format(self._filter.assets))
         # check history data is insufficient
         df.index = df.index.remove_unused_levels()
-        history_win = df.index.levels[0].get_loc(start, 'bfill')
+        history_win = df.index.levels[0].get_loc(start)
         if history_win < max_backwards:
             warnings.warn("Historical data seems insufficient. "
                           "{} rows of historical data are required, but only {} rows are obtained. "
@@ -353,7 +353,7 @@ class FactorEngine:
         # if any factors delayed, return df also should be delayed
         if delayed:
             index = ret.index.levels[0]
-            start_ind = index.get_loc(start, 'bfill')
+            start_ind = index.get_loc(start)
             if (start_ind + 1) >= len(index):
                 raise ValueError('There is no data between start and end.')
             start = index[start_ind + 1]
@@ -369,7 +369,7 @@ class FactorEngine:
         results, shifted_mask, delayed = self._run(start, end, delay_factor)
 
         index = self._dataframe.index.levels[0]
-        start_ind = index.get_loc(start, 'bfill')
+        start_ind = index.get_loc(start)
         if delayed:  # if any factors delayed, return df also should be delayed
             start_ind += 1
         if start_ind >= len(index):
