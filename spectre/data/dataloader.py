@@ -170,9 +170,9 @@ class DataLoader:
                 f"than latest time of data: {index[-1]}."
             )
 
-        start_loc = index.get_loc(start)
+        start_loc = index.get_indexer([start], method='bfill')[0]
         backward_loc = max(start_loc - backwards, 0)
-        end_loc = index.get_loc(end)
+        end_loc = index.get_indexer([end], method='ffill')[0]
         assert end_loc >= start_loc, 'There is no data between `start` and `end`.'
 
         backward_start = index[backward_loc]

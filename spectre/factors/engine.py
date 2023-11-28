@@ -106,7 +106,8 @@ class FactorEngine:
                                  "DataLoader.".format(self._filter.assets))
         # check history data is insufficient
         df.index = df.index.remove_unused_levels()
-        history_win = df.index.levels[0].get_loc(start)
+        history_win = df.index.levels[0].get_indexer([start], method='ffill')[0]
+        print('hehehehehe')
         if history_win < max_backwards:
             warnings.warn("Historical data seems insufficient. "
                           "{} rows of historical data are required, but only {} rows are obtained. "
@@ -353,7 +354,7 @@ class FactorEngine:
         # if any factors delayed, return df also should be delayed
         if delayed:
             index = ret.index.levels[0]
-            start_ind = index.get_loc(start)
+            start_ind = index.get_indexer([start], method='bfill')[0]
             if (start_ind + 1) >= len(index):
                 raise ValueError('There is no data between start and end.')
             start = index[start_ind + 1]
@@ -369,7 +370,7 @@ class FactorEngine:
         results, shifted_mask, delayed = self._run(start, end, delay_factor)
 
         index = self._dataframe.index.levels[0]
-        start_ind = index.get_loc(start)
+        start_ind = index.get_indexer([start], method='bfill')[0]
         if delayed:  # if any factors delayed, return df also should be delayed
             start_ind += 1
         if start_ind >= len(index):
