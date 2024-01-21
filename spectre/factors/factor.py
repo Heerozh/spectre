@@ -446,6 +446,9 @@ class CustomFactor(BaseFactor):
             self._clean_required = max(self._clean_required or False, mask._clean_required)
         return self
 
+    def get_mask(self):
+        return self._mask
+
     def _get_mask_factor(self):
         # todo add a placeholder factor for universe
         if type(self._mask) is str and (self._mask == 'universe') is True:
@@ -515,6 +518,16 @@ class CustomFactor(BaseFactor):
     def show_graph(self):
         plot_factor_diagram(self)
 
+    def nodes_count(self):
+        ret = 1
+
+        def cum(_):
+            nonlocal ret
+            ret += 1
+        self.iter(cum)
+
+        return ret
+
     def clean_up_(self, force=False) -> None:
         super().clean_up_(force)
         # brand-new factor, no need to clean up
@@ -545,6 +558,26 @@ class CustomFactor(BaseFactor):
         if isinstance(self._mask, BaseFactor):
             # if mask is 'universe', engine will do clean up
             self._get_mask_factor().clean_up_(force)
+
+    def iter(self, func):
+        func(self)
+
+        if self.inputs:
+            for upstream in self.inputs:
+                if isinstance(upstream, BaseFactor):
+                    func(upstream)
+                if isinstance(upstream, CustomFactor):
+                    upstream.iter(func)
+
+        if self._engine is not None:
+            mask = self._get_mask_factor()
+        else:
+            mask = self._mask
+        if mask is not None:
+            if isinstance(mask, BaseFactor):
+                func(mask)
+            if isinstance(mask, CustomFactor):
+                mask.iter(func)
 
     def pre_compute_(self, engine, start, end) -> None:
         """
@@ -606,7 +639,9 @@ class CustomFactor(BaseFactor):
         # return cached result
         self._ref_count -= 1
         if self._ref_count < 0:
-            raise ValueError('Reference count error: Maybe you override `pre_compute_`, '
+            raise ValueError('Reference count error: possible circular reference! '
+                             'Do not set_mask="universe" in global filter.'
+                             'Or maybe you override `pre_compute_`, '
                              'but did not call super() method.')
         if self._cache is not None:
             if down_stream:
@@ -943,7 +978,10 @@ class DemeanFactor(CrossSectionFactor):
                 mean = nanmean(double).unsqueeze(-1)
                 double -= beta * mean
             else:
-                double -= nanmean(double).unsqueeze(-1)
+                try:
+                    double -= nanmean(double).unsqueeze(-1)
+                except RuntimeError:  # pytorch bug
+                    double = double - nanmean(double).unsqueeze(-1)
             return double.to(data.dtype)
 
 
