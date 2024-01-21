@@ -43,6 +43,11 @@ class FilterMultiRetSelector(MultiRetSelector, FilterFactor):
     pass
 
 
+class PlaceHolderFilter(FilterFactor):
+    def compute(self, data: torch.Tensor) -> torch.Tensor:
+        return data
+
+
 class FilterRawShiftFactor(FilterFactor):
     """For "roll_cuda" not implemented for 'Bool' """
     periods = 1

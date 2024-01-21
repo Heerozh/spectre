@@ -132,9 +132,13 @@ class FactorEngine:
     def _prepare_tensor(self, start, end, max_backwards):
         # Check cache, just in case, if use some ML techniques, engine may be called repeatedly
         # with same date range.
-        if start == self._last_loaded[0] and end == self._last_loaded[1] \
-                and max_backwards <= self._last_loaded[2]:
-            return False
+        if start == self._last_loaded[0] and end == self._last_loaded[1]:
+            if max_backwards <= self._last_loaded[2]:
+                return False
+            else:
+                print('Due to Factor Rolling window increase, extend the length of historical data '
+                      'in GPU memory, '
+                      f'{self._last_loaded[2]} -> {max_backwards}')
         self._groups = dict()
 
         # Get data

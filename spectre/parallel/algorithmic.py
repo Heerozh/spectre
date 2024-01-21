@@ -202,6 +202,7 @@ def masked_first(data: torch.Tensor, mask: torch.Tensor, dim=1) -> torch.Tensor:
 
 
 def nanlast(data: torch.Tensor, dim=1, offset=0) -> torch.Tensor:
+    # offset: Ignore the first n(offset) data
     if offset > 0:
         s = [slice(None)] * len(data.shape)
         s[dim] = slice(offset, None)

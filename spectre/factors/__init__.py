@@ -29,6 +29,8 @@ from .filter import (
     FilterFactor,
     StaticAssets,
     OneHotEncoder,
+    AndFactor,
+    PlaceHolderFilter,
 )
 
 from .multiprocessing import (
