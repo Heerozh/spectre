@@ -193,11 +193,11 @@ class BaseFactor:
         return factor
 
     def ts_max(self, win=2):
-        from statistical import RollingHigh
+        from .statistical import RollingHigh
         return RollingHigh(win=win, inputs=(self,))
 
     def ts_min(self, win=2):
-        from statistical import RollingLow
+        from .statistical import RollingLow
         return RollingLow(win=win, inputs=(self,))
 
     def quantile(self, bins=5, mask: 'BaseFactor' = None, groupby: str = 'date'):

@@ -29,11 +29,11 @@ class FilterFactor(CustomFactor, ABC):
         raise ValueError("FilterFactor does not support local filtering `.filter()` method, "
                          "please convert to float by using `filter_factor.float()`")
 
-    def any(self, win):
+    def ts_any(self, win):
         """ Return True if Rolling window contains any True """
         return AnyFilter(win, inputs=(self,))
 
-    def all(self, win):
+    def ts_all(self, win):
         """ Return True if Rolling window all are True """
         return AllFilter(win, inputs=(self,))
 

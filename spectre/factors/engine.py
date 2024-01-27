@@ -129,20 +129,21 @@ class FactorEngine:
 
     # private:
 
-    def _prepare_tensor(self, start, end, max_backwards):
+    def _prepare_tensor(self, start, end, backwards):
         # Check cache, just in case, if use some ML techniques, engine may be called repeatedly
         # with same date range.
+        backwards = min(backwards, self.max_backwards)
         if start == self._last_loaded[0] and end == self._last_loaded[1]:
-            if max_backwards <= self._last_loaded[2]:
+            if backwards <= self._last_loaded[2]:
                 return False
             else:
                 print('Due to Factor Rolling window increase, extend the length of historical data '
                       'in GPU memory, '
-                      f'{self._last_loaded[2]} -> {max_backwards}')
+                      f'{self._last_loaded[2]} -> {backwards}')
         self._groups = dict()
 
         # Get data
-        df = self._loader.load(start, end, max_backwards).copy()
+        df = self._loader.load(start, end, backwards).copy()
         # If possible, pre-screen
         if isinstance(self._filter, StaticAssets):
             df = df.loc[(slice(None), list(self._filter.assets)), :]
@@ -152,12 +153,12 @@ class FactorEngine:
         # check history data is insufficient
         df.index = df.index.remove_unused_levels()
         history_win = df.index.levels[0].get_indexer([start], 'bfill')[0]
-        if history_win < max_backwards:
+        if history_win < backwards:
             warnings.warn("Historical data seems insufficient. "
                           "{} rows of historical data are required, but only {} rows are obtained. "
                           "It is also possible that `calender_asset` of the loader is not set, "
                           "some out of trading hours data will cause indexing problems."
-                          .format(max_backwards, history_win),
+                          .format(backwards, history_win),
                           RuntimeWarning)
         # post processing data
         if self._align_by_time:
@@ -195,7 +196,7 @@ class FactorEngine:
             # if pre-screened, don't cache data, only cache full data.
             self._last_loaded = [None, None, None]
         else:
-            self._last_loaded = [start, end, max_backwards]
+            self._last_loaded = [start, end, backwards]
         return True
 
     def _compute_and_revert(self, f: BaseFactor, name) -> torch.Tensor:
@@ -221,6 +222,7 @@ class FactorEngine:
         self._align_by_time = False
         self.timezone = 'UTC'
         self._cache_hash = uuid.uuid4()
+        self.max_backwards = np.inf
 
     @property
     def device(self):
