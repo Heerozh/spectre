@@ -5,7 +5,7 @@
 @email: heeroz@gmail.com
 """
 from typing import Union, Iterable
-import pandas as pd
+# import pandas as pd
 import numpy as np
 import os
 import glob
@@ -21,10 +21,30 @@ class CommissionModel:
         self.per_share = per_share
         self.minimum = minimum
 
+    def is_empty(self):
+        return (self.percentage + self.per_share + self.minimum) == 0
+
     def calculate(self, asset: str, price: float, shares: int):
         commission = price * abs(shares) * self.percentage
         commission += abs(shares) * self.per_share
         return max(commission, self.minimum)
+
+
+class SlippageModel(CommissionModel):
+    def __init__(self, max_percentage: float, max_amount_to_volume_ratio: float = 2e-4):
+        """
+        When amount_to_volume_ratio reaches max, the slippage will be
+            price * max_percentage, uses sigmod interpolate when ratio below max.
+        """
+        super().__init__(max_percentage, 0, 0)
+        self.max_ratio = max_amount_to_volume_ratio
+
+    def calculate(self, asset: str, price: float, amount_to_volume_ratio: int):
+        def sigmoid(x, edge0, edge1):
+            return (1 + 200 ** (-((x - edge0) / (edge1 - edge0)) + 0.5)) ** (-1)
+        slippage = price * self.percentage * sigmoid(
+            amount_to_volume_ratio, 0, self.max_ratio)
+        return price + max(slippage, self.minimum)
 
 
 class DailyCurbModel:
@@ -64,7 +84,7 @@ class BaseBlotter:
         self._portfolio = Portfolio()
         self._current_dt = None
         self.commission = CommissionModel(0, 0, 0)
-        self.slippage = CommissionModel(0, 0, 0)
+        self.slippage = SlippageModel(0, 0)
         self.short_fee = CommissionModel(0, 0, 0)
         self.div_tax = CommissionModel(0, 0, 0)
         self.long_only = False
@@ -97,14 +117,14 @@ class BaseBlotter:
         """
         self.commission = CommissionModel(percentage, per_share, minimum)
 
-    def set_slippage(self, percentage: float, per_share: float):
+    def set_slippage(self, max_percentage: float, max_volume_ratio: float):
         """
         <WORK IN BACKTEST ONLY>
-        market impact add to price, sum of following:
-        :param percentage: percentage * price * shares
-        :param per_share: per_share * shares
+        market impact add to price, calc by:
+        slippage = price * max_percentage * sigmod()
+        sigmod returns 1.0 when amount_to_volume_ratio hits max_volume_ratio
         """
-        self.slippage = CommissionModel(percentage, per_share, 0)
+        self.slippage = SlippageModel(max_percentage, max_volume_ratio)
 
     def set_short_fee(self, percentage: float):
         """
@@ -190,9 +210,9 @@ class BaseBlotter:
         pf_value = self._portfolio.value
         prices = self.get_price(assets)
         skipped = []
-        if None in assets or np.any([not(a == a) for a in assets]):
+        if None in assets or np.any([not (a == a) for a in assets]):
             raise ValueError('None/NaN in `assets: ' + str(assets))
-        if None in weights or np.any([not(w == w) for w in weights]):
+        if None in weights or np.any([not (w == w) for w in weights]):
             raise ValueError('None/NaN in `weights: ' + str(weights))
         assets = list(assets)  # copy for preventing del items in loop
         for asset, pct in zip(assets, weights):
@@ -264,8 +284,8 @@ class SimulationBlotter(BaseBlotter, EventReceiver):
             df['__last_sp'] = lasts[sel_cols[2]]
             curb_cols = ['__last_close', '__last_div', '__last_sp']
         else:
-            df['__last_close'] = df[ohlcv[3]].groupby(level=1, group_keys=False, observed=False).apply(
-                lambda x: x.ffill().shift(1))
+            df['__last_close'] = df[ohlcv[3]].groupby(level=1, group_keys=False, observed=False
+                                                      ).apply(lambda x: x.ffill().shift(1))
             curb_cols = ['__last_close']
         self._data = df
         self._prices = DataLoaderFastGetter(df[list(ohlcv) + curb_cols])
@@ -393,13 +413,15 @@ class SimulationBlotter(BaseBlotter, EventReceiver):
                 return False
 
         # commission, slippage
+        if not self.slippage.is_empty():
+            bar_volume = self._prices.get_as_dict(self._current_dt, column_id=4)  # ohlcv=01234
+            price = self.slippage.calculate(asset, price, amount/bar_volume[asset])
         commission = self.commission.calculate(asset, price, amount)
-        slippage = self.slippage.calculate(asset, price, 1)
         if amount < 0:
             commission += self.short_fee.calculate(asset, price, amount)
-            fill_price = price - slippage
+            fill_price = price
         else:
-            fill_price = price + slippage
+            fill_price = price
         commission = round(commission, 2)
 
         # update portfolio, pay cash
@@ -479,7 +501,7 @@ class ManualBlotter(BaseBlotter):
                         in this state to the broker.
         Submitted - When you submitted this order to broker, you can set to this status (skip able).
         Cancelled - When none filled of this order and cancelled, please set to this status.
-        Filled - When you order has been completely/partially filled, please set to this status.
+        Filled - When your order has been completely/partially filled, please set to this status.
         Cash - Cash transfer log
     symbol:
         underlay asset
@@ -614,8 +636,9 @@ class ManualBlotter(BaseBlotter):
         """ Call this after you transfer funds to broker """
         assert self._current_dt is not None
         order = pd.Series(dict(
-            date=self._current_dt, status='Cash', symbol='cash', target_percent=0., action_value=0.,
-            amount=amount, limit_price='/', filled_amount=amount, filled_price=0., filled_percent=0.,
+            date=self._current_dt, status='Cash', symbol='cash', target_percent=0.,
+            action_value=0., amount=amount, limit_price='/',
+            filled_amount=amount, filled_price=0., filled_percent=0.,
             commission=0., realized=0.))
         if len(self.orders.index) == 0:
             order.name = 1
@@ -687,7 +710,8 @@ class ManualBlotter(BaseBlotter):
             limit_price='Market', filled_amount=0, filled_price=0, filled_percent=0, commission=0,
             realized=0))
         order.name = max(self.orders.index) + 1
-        # order = order.to_frame().T.infer_objects().rename_axis(self.orders.index.names, copy=False)
+        # order = order.to_frame().T.infer_objects().rename_axis(
+        #       self.orders.index.names, copy=False)
         self.orders = pd.concat([self.orders, pd.DataFrame([order])])
 
         return self.orders.index[-1]
@@ -697,9 +721,9 @@ class ManualBlotter(BaseBlotter):
         Call by trading algorithm, only generate orders csv, you need to manually place real order
         to your broker, and call `order_filled` after broker tell you order filled.
         """
-        if None in assets or np.any([not(a == a) for a in assets]):
+        if None in assets or np.any([not (a == a) for a in assets]):
             raise ValueError('None/NaN in `assets: ' + str(assets))
-        if None in weights or np.any([not(w == w) for w in weights]):
+        if None in weights or np.any([not (w == w) for w in weights]):
             raise ValueError('None/NaN in `weights: ' + str(weights))
         ret = dict()
         for asset, pct in zip(assets, weights):
