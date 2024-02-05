@@ -129,6 +129,7 @@ class Portfolio:
 
     def update_cash(self, amount, is_funds=False):
         """ is_funds: Is this cash update related to funds transfer, (deposits/withdraw) """
+        assert amount == amount
         self._cash += amount
         if is_funds:
             if self._current_dt is None:
@@ -154,7 +155,8 @@ class Portfolio:
     def process_borrow_interest(self, day_passed, money_interest_rate, stock_interest_rate):
         interest = 0
         for asset, pos in self._positions.items():
-            if pos.shares < 0:
+            # 有的时候运行到这pos.last_price没更新会导致cash变成nan，还没找到哪里没更新
+            if pos.shares < 0 and pos.value == pos.value:
                 interest += pos.value * (stock_interest_rate / 365) * day_passed
         if self._cash < 0:
             interest += self._cash * (money_interest_rate / 365) * day_passed
