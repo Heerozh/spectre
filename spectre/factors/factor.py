@@ -910,8 +910,11 @@ class FillNANFactor(CustomFactor):
             mask = torch.isnan(data)
         if self.inf:
             mask = (mask | torch.isinf(data)) if mask is not None else torch.isinf(data)
-        return data.masked_fill(mask, value)
-
+        if isinstance(value, (int, float, bool)):
+            return data.masked_fill(mask, value)
+        elif data.dtype != value.dtype:
+            value = value.type(data.dtype)
+        return data.masked_scatter(mask, value.masked_select(mask))
 
 class MaskedFillFactor(CustomFactor):
     def compute(self, data, mask, fill) -> torch.Tensor:
