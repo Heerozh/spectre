@@ -40,6 +40,9 @@ class SlippageModel(CommissionModel):
         self.max_ratio = max_amount_to_volume_ratio
 
     def calculate(self, asset: str, price: float, amount_to_volume_ratio: int):
+        if self.max_ratio == 0:
+            return price
+
         def sigmoid(x, edge0, edge1):
             return (1 + 200 ** (-((x - edge0) / (edge1 - edge0)) + 0.5)) ** (-1)
         slippage = price * self.percentage * sigmoid(

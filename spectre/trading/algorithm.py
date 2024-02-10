@@ -188,6 +188,10 @@ class CustomAlgorithm(EventReceiver, ABC):
         if len(self._engines) == 1:
             name = next(iter(self._engines))
             df = self._engines[name].run(start, end, delay_factor)
+            if df.shape[0] == 0:
+                start = start - pd.DateOffset(years=1)
+                df = self._engines[name].run(start, end, delay_factor)
+                return df, df.head(0)
             last_dt = df.index.get_level_values(0)[-1]
             return df, df.loc[last_dt]
         else:
