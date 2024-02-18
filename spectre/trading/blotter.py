@@ -697,8 +697,13 @@ class ManualBlotter(BaseBlotter):
 
         if self.last_price is None:
             raise ValueError('call blotter.set_last_price(dict) first.')
-        last_close_price = self.last_price[asset]
-        target_amount = target_value / last_close_price
+        if pct == 0:
+            # if an asset removed from universe,
+            # u don't want to get last_price because it not exists.
+            target_amount = 0
+        else:
+            last_close_price = self.last_price[asset]
+            target_amount = target_value / last_close_price
 
         multiplier = self.order_multiplier
         if target_amount == 0:
