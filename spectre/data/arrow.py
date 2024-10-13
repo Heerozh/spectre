@@ -59,6 +59,7 @@ class ArrowLoader(DataLoader):
         meta = pd.DataFrame(columns=['ohlcv', 'adjustments'])
         meta.ohlcv = source.ohlcv
         meta.adjustments[:2] = source.adjustments
+        # meta.loc[:2, "adjustments"] = source.adjustments
         meta.to_feather(save_to + '.meta')
 
     def filter(self, func):
