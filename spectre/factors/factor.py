@@ -1089,7 +1089,7 @@ class ClampFactor(CustomFactor):
 
     def compute(self, data, left, right, fill):
         if fill is None:
-            return data.clamp(left, right, fill)
+            return data.clamp(left, right)
         else:
             return data.masked_fill((data < left) | (data > right), fill)
 

@@ -136,7 +136,7 @@ class TestParallelAlgorithm(unittest.TestCase):
         result = spectre.parallel.pearsonr(x, y)
         from scipy import stats
         for i in range(3):
-            expected, _ = stats.pearsonr(x[i], y[i])
+            expected, _ = stats.pearsonr(x[i].tolist(), y[i].tolist())
             assert_almost_equal(expected, result[i], decimal=6)
 
         # test pearsonr
@@ -146,7 +146,7 @@ class TestParallelAlgorithm(unittest.TestCase):
         print(result)
         from scipy import stats
         for i in range(3):
-            expected, _ = stats.spearmanr(x[i], y[i])
+            expected, _ = stats.spearmanr(x[i].tolist(), y[i].tolist())
             if expected != expected:
                 expected = 1
             assert_almost_equal(expected, result[i], decimal=6)
@@ -154,9 +154,9 @@ class TestParallelAlgorithm(unittest.TestCase):
         # test quantile
         x = torch.tensor([[1, 2, np.nan, 3, 4, 5, 6], [3, 4, 5, 1.01, np.nan, 1.02, 1.03]])
         result = spectre.parallel.quantile(x, 5, dim=1)
-        expected = pd.qcut(x[0], 5, labels=False)
+        expected = pd.qcut(x[0].tolist(), 5, labels=False)
         assert_array_equal(expected, result[0])
-        expected = pd.qcut(x[1], 5, labels=False)
+        expected = pd.qcut(x[1].tolist(), 5, labels=False)
         assert_array_equal(expected, result[1])
 
         x = torch.tensor(
@@ -165,13 +165,13 @@ class TestParallelAlgorithm(unittest.TestCase):
              [[1, 2, 2.1,    3,      4,      5,    6],
               [3, 4, 5,      np.nan, np.nan, 1.02, 1.03]]])
         result = spectre.parallel.quantile(x, 5, dim=2)
-        expected = pd.qcut(x[0, 0], 5, labels=False)
+        expected = pd.qcut(x[0, 0].tolist(), 5, labels=False)
         assert_array_equal(expected, result[0, 0])
-        expected = pd.qcut(x[0, 1], 5, labels=False)
+        expected = pd.qcut(x[0, 1].tolist(), 5, labels=False)
         assert_array_equal(expected, result[0, 1])
-        expected = pd.qcut(x[1, 0], 5, labels=False)
+        expected = pd.qcut(x[1, 0].tolist(), 5, labels=False)
         assert_array_equal(expected, result[1, 0])
-        expected = pd.qcut(x[1, 1], 5, labels=False)
+        expected = pd.qcut(x[1, 1].tolist(), 5, labels=False)
         assert_array_equal(expected, result[1, 1])
 
         # test squeeze bug
