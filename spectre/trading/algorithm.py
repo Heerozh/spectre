@@ -151,14 +151,19 @@ class CustomAlgorithm(EventReceiver, ABC):
             engine.set_filter(filter_)
             bench = df[benchmark]
             bench = bench.resample('D').last().dropna()
-            bench = bench.pct_change()
+            if len(bench) > 2:
+                bench = bench.pct_change()
+            else:
+                bench = None
 
         fig = cumulative_returns_fig(returns, self._results.positions,  self._results.transactions,
                                      bench, annual_risk_free, start=start)
         return fig
 
     def plot(self, annual_risk_free=0.04, benchmark: Union[pd.Series, str] = None) -> None:
-        self.cumulative_returns_fig(annual_risk_free, benchmark).show()
+        fig = self.cumulative_returns_fig(annual_risk_free, benchmark)
+        if fig:
+            fig.show()
 
     def _call_rebalance(self, _):
         history = self._data
