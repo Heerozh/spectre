@@ -4,17 +4,24 @@ from .engine import (
 )
 
 from .factor import (
-    BaseFactor,
+    BaseFactor, PlaceHolderFactor,
     CustomFactor,
     CrossSectionFactor,
-    RankFactor,
+    RankFactor, RollingRankFactor,
+    ZScoreFactor, RollingZScoreFactor,
+    XSMax, XSMin,
     QuantileClassifier,
+    SumFactor, ProdFactor, UniqueTSSumFactor,
+    MADClampFactor,
+    WinsorizingFactor,
+    IQRNormalityFactor,
 )
 
 from .datafactor import (
     ColumnDataFactor,
     AdjustedColumnDataFactor,
     AssetClassifierDataFactor,
+    SeriesDataFactor,
     DatetimeDataFactor,
 )
 
@@ -22,6 +29,10 @@ from .filter import (
     FilterFactor,
     StaticAssets,
     OneHotEncoder,
+    AndFactor,
+    AnyFilter,
+    AllFilter,
+    PlaceHolderFilter,
 )
 
 from .multiprocessing import (
@@ -33,11 +44,14 @@ from .basic import (
     LogReturns,
     SimpleMovingAverage, MA, SMA,
     WeightedAverageValue,
+    LinearWeightedAverage,
     VWAP,
     ExponentialWeightedMovingAverage, EMA,
     AverageDollarVolume,
     AnnualizedVolatility,
     ElementWiseMax, ElementWiseMin,
+    RollingArgMax, RollingArgMin,
+    ConstantsFactor,
 )
 
 from .technical import (
@@ -57,8 +71,13 @@ from .statistical import (
     RollingQuantile,
     HalfLifeMeanReversion,
     RollingCorrelation,
-    InformationCoefficient,
+    RollingCovariance,
+    XSMaxCorrCoef,
+    InformationCoefficient, RankWeightedInformationCoefficient,
+    RollingInformationCoefficient,
+    TTest1Samp, StudentCDF,
     CrossSectionR2,
+    FactorWiseKthValue, FactorWiseZScore,
 )
 
 from .feature import (

@@ -2,12 +2,14 @@ import unittest
 import spectre
 from numpy.testing import assert_array_equal
 from os.path import dirname
+import warnings
 
 data_dir = dirname(__file__) + '/data/'
 
 
 class TestDataFactorLib(unittest.TestCase):
     def test_datafactor_value(self):
+        warnings.filterwarnings("ignore", module='spectre')
         loader = spectre.data.CsvDirLoader(
             data_dir + '/daily/',
             ohlcv=('uOpen', 'uHigh', 'uLow', 'uClose', 'uVolume'),

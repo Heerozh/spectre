@@ -107,3 +107,5 @@ venv.bak/
 /.note.md
 /tests/data/yahoo
 /private_factors
+/tests/data/orders_2020-06-01.csv
+/tests/data/orders_2020-06-02.csv

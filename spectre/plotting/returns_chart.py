@@ -54,7 +54,7 @@ def plot_quantile_and_cumulative_returns(factor_data, mean_ret):
     specs = [[{}, {"secondary_y": True}]] * rows
     fig = subplots.make_subplots(
         rows=rows, cols=2,
-        vertical_spacing=0.03,
+        vertical_spacing=0.06 / rows,
         horizontal_spacing=0.06,
         specs=specs,
         subplot_titles=['Quantile Return', 'Portfolio cumulative returns'],
@@ -78,7 +78,12 @@ def plot_quantile_and_cumulative_returns(factor_data, mean_ret):
             open_period = period
             if period.endswith('D'):
                 open_period = 'b' + open_period
-            cum_ret = factor_return[period].resample(open_period).mean().dropna()
+            try:
+                cum_ret = factor_return[period].resample(open_period).mean().dropna()
+            except ValueError as e:
+                print("pandas re-sampling failed, try set "
+                      "`engine.timezone = 'your local timezone'`")
+                cum_ret = factor_return[period].resample(period).mean().dropna()
             cum_ret = (cum_ret + 1).cumprod() * 100 - 100
             fig.add_trace(go.Scatter(
                 x=cum_ret.index, y=cum_ret.values, yaxis='y2', **cumulative_styles[period]
@@ -105,10 +110,10 @@ def plot_quantile_and_cumulative_returns(factor_data, mean_ret):
         fig.update_yaxes(row=row, col=2, secondary_y=False, matches='y2')
 
     fig.update_layout(height=300 * rows, barmode='group', bargap=0.5, margin={'t': 50})
-    fig.show()
+    return fig
 
 
-def plot_cumulative_returns(returns, positions, transactions, benchmark, annual_risk_free):
+def cumulative_returns_fig(returns, positions, transactions, benchmark, annual_risk_free, start=0):
     from ..trading import turnover, sharpe_ratio, drawdown, annual_volatility
 
     import plotly.graph_objects as go
@@ -116,14 +121,16 @@ def plot_cumulative_returns(returns, positions, transactions, benchmark, annual_
 
     fig = subplots.make_subplots(specs=[[{"secondary_y": True}]])
 
-    cum_ret = (returns + 1).cumprod()
+    cum_ret = returns.iloc[start:]
+    cum_ret = (cum_ret + 1).cumprod()
     fig.add_trace(go.Scatter(x=cum_ret.index, y=cum_ret.values * 100 - 100, name='portfolio',
                              hovertemplate='<b>Date</b>:%{x}<br><b>Return</b>: %{y:.3f}%'))
     fig.add_shape(go.layout.Shape(y0=0, y1=0, x0=cum_ret.index[0], x1=cum_ret.index[-1],
                                   type="line", line=dict(width=1)))
 
     if benchmark is not None:
-        cum_bench = (benchmark + 1).cumprod()
+        cum_bench = benchmark.iloc[start:]
+        cum_bench = (cum_bench + 1).cumprod()
         fig.add_trace(go.Scatter(x=cum_bench.index, y=cum_bench.values * 100 - 100,
                                  name='benchmark', line=dict(width=0.5)))
 
@@ -133,7 +140,7 @@ def plot_cumulative_returns(returns, positions, transactions, benchmark, annual_
         y0=0, y1=1, x0=cum_ret.idxmax(), x1=cum_ret[cum_ret.idxmax():].idxmin(),
     ))
 
-    to = turnover(positions, transactions) * 100
+    to = turnover(positions, transactions).iloc[start:] * 100
     resample = int(len(to) / 126)
     if resample > 0:
         to = to.fillna(0).rolling(resample).mean()[::resample]
@@ -167,4 +174,4 @@ def plot_cumulative_returns(returns, positions, transactions, benchmark, annual_
     fig.update_xaxes(tickformat='%Y-%m-%d')
     fig.update_yaxes(title_text='cumulative return', ticksuffix='%', secondary_y=False)
     fig.update_yaxes(title_text='turnover', ticksuffix='%', secondary_y=True)
-    fig.show()
+    return fig

@@ -119,6 +119,12 @@ from .event import (
     MarketClose,
     EventReceiver,
     EventManager,
+    MarketEventManager,
+)
+from .calendar import (
+    Calendar,
+    CNCalendar,
+    JPCalendar,
 )
 from .algorithm import (
     CustomAlgorithm,
@@ -138,7 +144,10 @@ from .portfolio import (
 )
 from .blotter import (
     BaseBlotter,
-    SimulationBlotter
+    SimulationBlotter,
+    ManualBlotter,
+    CommissionModel,
+    DailyCurbModel,
 )
 from .metric import (
     drawdown,
@@ -149,13 +158,13 @@ from .metric import (
 
 
 def run_backtest(loader: 'DataLoader', alg_type: 'Type[CustomAlgorithm]', start, end,
-                 delay_factor=True):
+                 delay_factor=True, ohlcv=None):
     # force python to free memory, else may be encountering cuda out of memory
     import gc
     import pandas as pd
     gc.collect()
 
-    _blotter = SimulationBlotter(loader, start=pd.Timestamp(start, tz='UTC'))
+    _blotter = SimulationBlotter(loader, start=pd.to_datetime(start, utc=True), ohlcv=ohlcv)
     evt_mgr = SimulationEventManager()
     alg = alg_type(_blotter, main=loader)
     evt_mgr.subscribe(_blotter)
@@ -163,3 +172,18 @@ def run_backtest(loader: 'DataLoader', alg_type: 'Type[CustomAlgorithm]', start,
     evt_mgr.run(start, end, delay_factor)
 
     return alg.results
+
+
+def get_algorithm_data(loader: 'DataLoader', alg_type: 'Type[CustomAlgorithm]',
+                       start, end, delay_factor=True):
+    import pandas as pd
+    start, end = pd.to_datetime(start, utc=True), pd.to_datetime(end, utc=True)
+
+    _blotter = SimulationBlotter(loader, start=start)
+    evt_mgr = SimulationEventManager()
+    alg = alg_type(_blotter, main=loader)
+    evt_mgr.subscribe(_blotter)
+    evt_mgr.subscribe(alg)
+    alg.on_run()
+
+    return alg.run_engine(start, end, delay_factor)

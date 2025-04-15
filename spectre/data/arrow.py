@@ -31,6 +31,7 @@ class ArrowLoader(DataLoader):
         super().__init__(path, ohlcv, adjustments)
         self.keep_in_memory = keep_in_memory
         self._cache = None
+        self._filter = None
 
     @classmethod
     def _last_modified(cls, file_path) -> float:
@@ -58,7 +59,12 @@ class ArrowLoader(DataLoader):
         meta = pd.DataFrame(columns=['ohlcv', 'adjustments'])
         meta.ohlcv = source.ohlcv
         meta.adjustments[:2] = source.adjustments
+        # meta.loc[:2, "adjustments"] = source.adjustments
         meta.to_feather(save_to + '.meta')
+
+    def filter(self, func):
+        self._filter = func
+        self._cache = None
 
     def _load(self) -> pd.DataFrame:
         if self._cache is not None:
@@ -70,6 +76,9 @@ class ArrowLoader(DataLoader):
         else:
             df = pd.read_feather(self._path)
         df.set_index(['date', 'asset'], inplace=True)
+
+        if self._filter is not None:
+            df = self._filter(df)
 
         if self.keep_in_memory:
             self._cache = df

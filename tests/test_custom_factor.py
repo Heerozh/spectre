@@ -3,6 +3,7 @@ import spectre
 import numpy as np
 from numpy.testing import assert_array_equal
 import torch
+import warnings
 from os.path import dirname
 
 data_dir = dirname(__file__) + '/data/'
@@ -11,6 +12,7 @@ data_dir = dirname(__file__) + '/data/'
 class TestCustomFactorLib(unittest.TestCase):
 
     def test_custom_factor(self):
+        warnings.filterwarnings("ignore", module='spectre')
         # test backward tree
         a = spectre.factors.CustomFactor(win=2)
         b = spectre.factors.CustomFactor(win=3, inputs=(a,))

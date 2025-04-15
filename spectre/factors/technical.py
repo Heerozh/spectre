@@ -100,8 +100,10 @@ class RSI(CustomFactor):
             shift = shift.contiguous()
             shift[:, :, 0] = np.nan
             diff = _closes - shift
+            del shift, _closes
             up = diff.clamp(min=0)
             down = diff.clamp(max=0)
+            del diff
             # Cutler's RSI, more stable, independent to data length
             up = nanmean(up[:, :, 1:], dim=2)
             down = nanmean(down[:, :, 1:], dim=2).abs()

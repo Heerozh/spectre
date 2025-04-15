@@ -17,7 +17,7 @@ class FilterFactor(CustomFactor, ABC):
         return FilterMultiRetSelector(inputs=(self, key))
 
     def shift(self, periods=1):
-        factor = FilterShiftFactor(inputs=(self,))
+        factor = FilterRawShiftFactor(inputs=(self,))
         factor.periods = periods
         return factor
 
@@ -29,10 +29,12 @@ class FilterFactor(CustomFactor, ABC):
         raise ValueError("FilterFactor does not support local filtering `.filter()` method, "
                          "please convert to float by using `filter_factor.float()`")
 
-    def any(self, win):
+    def ts_any(self, win):
+        """ Return True if Rolling window contains any True """
         return AnyFilter(win, inputs=(self,))
 
-    def all(self, win):
+    def ts_all(self, win):
+        """ Return True if Rolling window all are True """
         return AllFilter(win, inputs=(self,))
 
 
@@ -41,7 +43,12 @@ class FilterMultiRetSelector(MultiRetSelector, FilterFactor):
     pass
 
 
-class FilterShiftFactor(FilterFactor):
+class PlaceHolderFilter(FilterFactor):
+    def compute(self, data: torch.Tensor) -> torch.Tensor:
+        return data
+
+
+class FilterRawShiftFactor(FilterFactor):
     """For "roll_cuda" not implemented for 'Bool' """
     periods = 1
 
@@ -99,6 +106,20 @@ class AllFilter(FilterFactor):
         return data.values.all(dim=2)
 
 
+class AnyNonNaNFactor(FilterFactor):
+    _min_win = 2
+
+    def compute(self, data: Rolling) -> torch.Tensor:
+        return (~torch.isnan(data.values)).any(dim=2)
+
+
+class AllNonNaNFactor(FilterFactor):
+    _min_win = 2
+
+    def compute(self, data: Rolling) -> torch.Tensor:
+        return (~torch.isnan(data.values)).all(dim=2)
+
+
 class InvertFactor(FilterFactor):
     def compute(self, left) -> torch.Tensor:
         return ~left
@@ -107,6 +128,11 @@ class InvertFactor(FilterFactor):
 class OrFactor(FilterFactor):
     def compute(self, left, right) -> torch.Tensor:
         return left | right
+
+
+class XorFactor(FilterFactor):
+    def compute(self, left, right) -> torch.Tensor:
+        return left ^ right
 
 
 class AndFactor(FilterFactor):

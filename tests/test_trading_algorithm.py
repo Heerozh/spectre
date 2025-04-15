@@ -145,14 +145,15 @@ class TestTradingAlgorithm(unittest.TestCase):
         msft_weight2 = 1268.466 / (155.854+1268.466)
         value_bod2 = aapl_shares1 * 150.81 + cash1
         aapl_shares_change = aapl_weight2 * value_bod2 / 150.81
-        aapl_shares_change = int(aapl_shares_change - aapl_shares1)
+        aapl_shares_change = int(round(aapl_shares_change)) - aapl_shares1
         aapl_shares2 = aapl_shares1 + aapl_shares_change
         aapl_basis = (155.19 * aapl_shares1 + aapl_shares_change * 150.81) / aapl_shares2
         aapl_value2 = aapl_shares2 * 156.94
-        msft_shares2 = int(msft_weight2 * value_bod2 / 103.19)
+        msft_shares2 = int(round(msft_weight2 * value_bod2 / 103.19))
         msft_value2 = msft_shares2 * 108.85
         cash2 = 1e5-aapl_cost1 + (aapl_shares1-aapl_shares2) * 150.81 - msft_shares2 * 103.19
-        expected = pd.DataFrame([[155.19, nan, aapl_shares1,  nan,  aapl_value_eod1, nan, cash1],
+        expected = pd.DataFrame([[nan, nan, nan, nan, nan, nan, 100000.00],
+                                 [155.19, nan, aapl_shares1,  nan,  aapl_value_eod1, nan, cash1],
                                  [aapl_basis, 103.19, aapl_shares2, msft_shares2, aapl_value2,
                                   msft_value2, cash2]],
                                 columns=pd.MultiIndex.from_tuples(
@@ -160,7 +161,8 @@ class TestTradingAlgorithm(unittest.TestCase):
                                      ('shares', 'AAPL'), ('shares', 'MSFT'),
                                      ('value', 'AAPL'), ('value', 'MSFT'),
                                      ('value', 'cash')]),
-                                index=[pd.Timestamp("2019-01-14", tz='UTC'),
+                                index=[pd.Timestamp("2019-01-13", tz='UTC'),
+                                       pd.Timestamp("2019-01-14", tz='UTC'),
                                        pd.Timestamp("2019-01-15", tz='UTC')])
         expected.index.name = 'index'
         pd.testing.assert_frame_equal(expected, results.positions)

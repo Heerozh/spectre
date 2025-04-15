@@ -9,10 +9,11 @@ from typing import Union
 import pandas as pd
 import numpy as np
 import gc
+import os
 import torch
 from collections import namedtuple
 from .event import Event, EventReceiver, EventManager, EveryBarData, MarketOpen, MarketClose
-from ..plotting import plot_cumulative_returns
+from ..plotting import cumulative_returns_fig
 from .blotter import BaseBlotter, SimulationBlotter
 from ..factors import FactorEngine, OHLCV, StaticAssets
 from ..data import DataLoader, DataLoaderFastGetter
@@ -60,6 +61,7 @@ class CustomAlgorithm(EventReceiver, ABC):
         self._current_dt = None
         self._results = CustomAlgorithm.Results(None, None, None)
         self._rebalance_callback = None
+        self.delay_factor = True
 
     def clear(self):
         for engine in self._engines.values():
@@ -102,19 +104,19 @@ class CustomAlgorithm(EventReceiver, ABC):
 
     @property
     def long_only(self):
-        raise NotImplementedError('Please using self.blotter.long_only')
+        raise RuntimeError('Please using self.blotter.long_only')
 
     @long_only.setter
     def long_only(self, b):
-        raise NotImplementedError('Please using self.blotter.long_only')
+        raise RuntimeError('Please using self.blotter.long_only')
 
     @property
     def daily_curb(self):
-        raise NotImplementedError('Please using self.blotter.daily_curb')
+        raise RuntimeError('Please using self.blotter.daily_curb')
 
     @daily_curb.setter
     def daily_curb(self, b):
-        raise NotImplementedError('Please using self.blotter.daily_curb')
+        raise RuntimeError('Please using self.blotter.daily_curb')
 
     @property
     def results(self):
@@ -131,9 +133,9 @@ class CustomAlgorithm(EventReceiver, ABC):
     def record(self, **kwargs):
         self._recorder.record(self._current_dt, kwargs)
 
-    def plot(self, annual_risk_free=0.04, benchmark: Union[pd.Series, str] = None) -> None:
+    def cumulative_returns_fig(self, annual_risk_free, benchmark, start=0):
         returns = self._results.returns
-        if returns.shape[0] <= 1:
+        if returns.shape[0] <= 1 or returns.isna().all():
             print('plot failed: Insufficient data')
             return
 
@@ -143,15 +145,25 @@ class CustomAlgorithm(EventReceiver, ABC):
         elif isinstance(benchmark, str):
             engine = self.get_factor_engine()
             filter_ = engine.get_filter()
+            engine.empty_cache()
             engine.set_filter(StaticAssets({benchmark}))
             df = engine.get_price_matrix(returns.index[0], returns.index[-1])
             engine.set_filter(filter_)
             bench = df[benchmark]
             bench = bench.resample('D').last().dropna()
-            bench = bench.pct_change()
+            if len(bench) > 2:
+                bench = bench.pct_change()
+            else:
+                bench = None
 
-        plot_cumulative_returns(returns, self._results.positions,  self._results.transactions,
-                                bench, annual_risk_free)
+        fig = cumulative_returns_fig(returns, self._results.positions,  self._results.transactions,
+                                     bench, annual_risk_free, start=start)
+        return fig
+
+    def plot(self, annual_risk_free=0.04, benchmark: Union[pd.Series, str] = None) -> None:
+        fig = self.cumulative_returns_fig(annual_risk_free, benchmark)
+        if fig:
+            fig.show()
 
     def _call_rebalance(self, _):
         history = self._data
@@ -176,12 +188,15 @@ class CustomAlgorithm(EventReceiver, ABC):
     def run_engine(self, start, end, delay_factor=True):
         if start is None:
             start = self._current_dt
-            end = self._current_dt
         start = start - self._history_window
 
         if len(self._engines) == 1:
             name = next(iter(self._engines))
             df = self._engines[name].run(start, end, delay_factor)
+            if df.shape[0] == 0:
+                start = start - pd.DateOffset(years=1)
+                df = self._engines[name].run(start, end, delay_factor)
+                return df, df.head(0)
             last_dt = df.index.get_level_values(0)[-1]
             return df, df.loc[last_dt]
         else:
@@ -192,7 +207,7 @@ class CustomAlgorithm(EventReceiver, ABC):
 
     def _data_updated(self, event_source=None):
         # todo if in live, last row should return by inferred time
-        self._data, self._last_row = self.run_engine(None, None)
+        self._data, self._last_row = self.run_engine(None, None, delay_factor=self.delay_factor)
 
     def on_run(self):
         # schedule first, so it will run before rebalance
@@ -285,15 +300,24 @@ class SimulationEventManager(EventManager):
         from tqdm.auto import tqdm
 
         alg.blotter.clear()
-        # get factor data from algorithm
+
+        # get factor data from algorithm or file
         run_engine = alg.run_engine
-        data, _ = run_engine(start, end, delay_factor)
+        if 'save_factor' in alg.__dict__ and os.path.exists(alg.save_factor):
+            data = pd.read_feather(alg.save_factor)
+            data.set_index(['date', 'asset'], inplace=True)
+            print('Reading factors data from file: ', alg.save_factor)
+        else:
+            data, _ = run_engine(start, end, delay_factor)
+            if 'save_factor' in alg.__dict__:
+                data.reset_index().to_feather(alg.save_factor)
+        # process data
         ticks = self.get_data_ticks(data, start)
         if len(ticks) == 0:
             raise ValueError("No data returned, please set `start`, `end` time correctly")
         data = self.wrap_data(data, DataLoaderFastGetter)
         # mock CustomAlgorithm
-        alg.run_engine = lambda *args: (self._mocked_data, self._mocked_last)
+        alg.run_engine = lambda *args, **kwargs: (self._mocked_data, self._mocked_last)
         if 'empty_cache_after_run' in alg.__dict__:
             for eng in alg._engines.values():
                 eng.empty_cache()
@@ -303,6 +327,9 @@ class SimulationEventManager(EventManager):
         # infer freq
         delta = min(ticks[1:] - ticks[:-1])
         data_freq = delta.resolution_string
+
+        # for portfolio recoding cash history
+        alg.blotter.portfolio.set_datetime(ticks[0] - pd.DateOffset(days=1))
 
         # loop factor data
         last_day = None

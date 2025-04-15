@@ -16,6 +16,7 @@ class Portfolio:
         self._history = []
         self._positions = dict()
         self._cash = 0
+        self._funds_change = []
         self._current_dt = None
         self.stop_model = stop_model
 
@@ -34,8 +35,19 @@ class Portfolio:
         return ret
 
     @property
+    def fund_history(self):
+        return pd.DataFrame(self._funds_change).set_index('index')
+
+    @property
     def returns(self):
-        return self.history.value.sum(axis=1).pct_change()
+        if self._funds_change:
+            value = self.history.value.sum(axis=1)
+            funds = pd.DataFrame(self._funds_change)
+            funds['index'] = funds['index'].fillna(value.index[0])
+            funds = funds.set_index('index').amount
+            return value.sub(funds, fill_value=0) / value.shift(1) - 1
+        else:
+            return self.history.value.sum(axis=1).pct_change()
 
     @property
     def positions(self):
@@ -57,6 +69,10 @@ class Portfolio:
     def leverage(self):
         values = [pos.value for asset, pos in self.positions.items() if pos.shares != 0]
         return sum(np.abs(values)) / (sum(values) + self._cash)
+
+    @property
+    def current_dt(self):
+        return self._current_dt
 
     def __repr__(self):
         return "<Portfolio>" + str(self.history)[11:]
@@ -111,8 +127,16 @@ class Portfolio:
                 amount, fill_price, commission, self._current_dt, self.stop_model)
             return 0
 
-    def update_cash(self, amount):
+    def update_cash(self, amount, is_funds=False):
+        """ is_funds: Is this cash update related to funds transfer, (deposits/withdraw) """
+        assert amount == amount
         self._cash += amount
+        if is_funds:
+            if self._current_dt is None:
+                current_date = None
+            else:
+                current_date = self._current_dt.normalize()
+            self._funds_change.append({'index': current_date, 'amount': amount})
 
     def process_split(self, asset, inverse_ratio: float, last_price):
         if asset not in self._positions:
@@ -121,12 +145,22 @@ class Portfolio:
         cash = pos.process_split(inverse_ratio, last_price)
         self.update_cash(cash)
 
-    def process_dividends(self, asset, amount):
+    def process_dividend(self, asset, amount, tax):
         if asset not in self._positions:
             return
         pos = self._positions[asset]
-        cash = pos.process_dividends(amount)
+        cash = pos.process_dividend(amount, tax)
         self.update_cash(cash)
+
+    def process_borrow_interest(self, day_passed, money_interest_rate, stock_interest_rate):
+        interest = 0
+        for asset, pos in self._positions.items():
+            # 有的时候运行到这pos.last_price没更新会导致cash变成nan，还没找到哪里没更新
+            if pos.shares < 0 and pos.value == pos.value:
+                interest += pos.value * (stock_interest_rate / 365) * day_passed
+        if self._cash < 0:
+            interest += self._cash * (money_interest_rate / 365) * day_passed
+        self.update_cash(interest)
 
     def _update_value_func(self, func):
         for asset, pos in self._positions.items():

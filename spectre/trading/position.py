@@ -102,7 +102,10 @@ class Position:
                 return True, realized
             else:
                 self._average_price = cum_cost / after_shares
-                realized = (before_avg_px - self._average_price) * abs(after_shares)
+                if after_shares < before_shares:
+                    realized = (before_avg_px - self._average_price) * abs(after_shares)
+                else:
+                    realized = 0
                 self._realized += realized
                 self.last_price = fill_price
                 return False, realized
@@ -116,7 +119,7 @@ class Position:
             remaining = int(self._shares - int(sp) / inverse_ratio)  # for more precise
             if remaining != 0:
                 cash = remaining * last_price
-        self._shares = int(sp)
+        self._shares = int(round(sp, 5))
         self._average_price = self._average_price / inverse_ratio
         self.last_price = last_price / inverse_ratio
 
@@ -124,10 +127,11 @@ class Position:
             self.stop_tracker.process_split(last_price)
         return cash
 
-    def process_dividends(self, amount: float) -> float:
+    def process_dividend(self, amount: float, tax: float) -> float:
         if amount != amount or amount == 0:
             return 0
         self._average_price -= amount
+        self.last_price -= amount + tax
         cash = self._shares * amount
         return cash
 

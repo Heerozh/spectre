@@ -37,6 +37,12 @@ class DataLoader:
         """ data source last modification time """
         raise NotImplementedError("abstractmethod")
 
+    @property
+    def min_timedelta(self) -> pd.Timedelta:
+        """ Minimum time delta of date index """
+        date_idx = self.load().index.levels[0]
+        return min(date_idx[1:] - date_idx[:-1])
+
     @classmethod
     def _align_to(cls, df, calender_asset, align_by_time=False):
         """ helper method for align index """
@@ -45,6 +51,18 @@ class DataLoader:
         df.index = df.index.remove_unused_levels()
         if align_by_time:
             df = df.reindex(pd.MultiIndex.from_product(df.index.levels))
+            # df = df.unstack(level=1).stack(dropna=False) 这个速度快，但新版本取消掉了
+
+            def trim_nans(x):
+                dts = x.index.get_level_values(0)
+                first = x.first_valid_index()
+                last = x.last_valid_index()
+                if first is None:
+                    return None
+                mask = (dts >= first[0]) & (dts <= last[0])
+                return x[mask]
+
+            df = df.groupby(level=1, group_keys=False).apply(trim_nans)
         return df
 
     def _format(self, df, split_ratio_is_inverse=False) -> pd.DataFrame:
@@ -56,6 +74,7 @@ class DataLoader:
         * create time_cat column
         * create adjustment multipliers columns
         """
+        # print(pd.Timestamp.now(), 'Formatting index...')
         df = df.rename_axis(['date', 'asset'])
         # speed up asset index search time
         df = df.reset_index()
@@ -70,11 +89,13 @@ class DataLoader:
             df = df.tz_convert('UTC', level=0, copy=False)
         df.sort_index(level=[0, 1], inplace=True)
         # generate time key for parallel
+        # print(pd.Timestamp.now(), 'Formatting time key for gpu sorting...')
         date_index = df.index.get_level_values(0)
         unique_date = date_index.unique()
         time_cat = dict(zip(unique_date, range(len(unique_date))))
-        cat = np.fromiter(map(lambda x: time_cat[x], date_index), dtype=np.int)
-        df[self.time_category] = cat
+        # cat = np.fromiter(map(lambda x: time_cat[x], date_index), dtype=int)
+        df[self.time_category] = date_index.map(time_cat)
+        # print(pd.Timestamp.now(), 'Done.')
 
         # Process dividends and split
         if self.adjustments is not None:
@@ -87,7 +108,7 @@ class DataLoader:
                 df[spr_col] = 1 / df[spr_col]
 
             # move ex-div up 1 row
-            groupby = df.groupby(level=1)
+            groupby = df.groupby(level=1, observed=False)
             last = pd.DataFrame.last_valid_index
             ex_div = groupby[div_col].shift(-1)
             ex_div.loc[groupby.apply(last)] = 0
@@ -99,9 +120,9 @@ class DataLoader:
 
             # generate dividend multipliers
             price_multi = (1 - ex_div / df[close_col]) * sp_rto
-            price_multi = price_multi[::-1].groupby(level=1).cumprod()[::-1]
+            price_multi = price_multi[::-1].groupby(level=1, observed=False).cumprod()[::-1]
             df[price_multi_col] = price_multi.astype(np.float32)
-            vol_multi = (1 / sp_rto)[::-1].groupby(level=1).cumprod()[::-1]
+            vol_multi = (1 / sp_rto)[::-1].groupby(level=1, observed=False).cumprod()[::-1]
             df[vol_multi_col] = vol_multi.astype(np.float32)
 
         return df
@@ -126,7 +147,7 @@ class DataLoader:
             "df.index.names should be ['date', 'asset'] "
         assert not any(df.index.duplicated()), \
             "There are duplicate indexes in df, you need handle them up."
-        assert df.index.is_lexsorted(), \
+        assert df.index.is_monotonic_increasing, \
             "df.index must be sorted, try using df.sort_index(level=0, inplace=True)"
         assert str(df.index.levels[0].tzinfo) == 'UTC', \
             "df.index.date must be UTC timezone."
@@ -144,7 +165,8 @@ class DataLoader:
                 "There is nan value in ex-dividend column, should be filled with 0."
             assert not any(df[self.adjustments[1]].isna()), \
                 "There is nan value in split_ratio column, should be filled with 1."
-
+            assert not any(df[self.time_category].isna()), \
+                "There is nan value in time_category column, should be filled with time id."
         return df
 
     def load(self, start: Optional[pd.Timestamp] = None, end: Optional[pd.Timestamp] = None,

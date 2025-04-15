@@ -11,6 +11,7 @@ import math
 from .factor import BaseFactor, CustomFactor
 from ..parallel import nansum, nanmean
 from .engine import OHLCV
+from ..config import Global
 
 
 class Returns(CustomFactor):
@@ -21,7 +22,7 @@ class Returns(CustomFactor):
 
     def compute(self, closes):
         # missing data considered as delisted, calculated on the last day's data.
-        return closes.last_nonnan() / closes.first() - 1
+        return closes.last_nonnan(offset=1) / closes.first() - 1
 
 
 class LogReturns(CustomFactor):
@@ -51,6 +52,25 @@ class WeightedAverageValue(CustomFactor):
         return base.agg(_weight_mean, weight)
 
 
+class LinearWeightedAverage(CustomFactor):
+    _min_win = 2
+
+    def __init__(self, win=None, inputs=None):
+        super().__init__(win, inputs)
+        self.weight = torch.arange(1, self.win + 1, dtype=Global.float_type)
+        self.weight = self.weight / self.weight.sum()
+
+    def pre_compute_(self, engine, start, end) -> None:
+        super().pre_compute_(engine, start, end)
+        self.weight = self.weight.to(device=engine.device, copy=False)
+
+    def compute(self, base):
+        def _weight_mean(_base):
+            return nansum(_base * self.weight, dim=2)
+
+        return base.agg(_weight_mean)
+
+
 class VWAP(WeightedAverageValue):
     inputs = (OHLCV.close, OHLCV.volume)
 
@@ -68,7 +88,7 @@ class ExponentialWeightedMovingAverage(CustomFactor):
             # simplification to 4 * (span+1). 3.45 achieve 99.90%, 2.26 99.00%
             self.win = int(4.5 * (span + 1))
         else:
-            self.alpha = 1 - math.exp(math.log(0.5)/half_life)
+            self.alpha = 1 - math.exp(math.log(0.5) / half_life)
             self.win = 15 * half_life
 
         super().__init__(None, inputs)
@@ -80,9 +100,10 @@ class ExponentialWeightedMovingAverage(CustomFactor):
     def pre_compute_(self, engine, start, end) -> None:
         super().pre_compute_(engine, start, end)
         if not isinstance(self.weight, torch.Tensor):
-            self.weight = torch.tensor(self.weight, dtype=torch.float32, device=engine.device)
+            self.weight = torch.tensor(self.weight, dtype=Global.float_type, device=engine.device)
 
     def compute(self, data):
+        self.weight = self.weight.to(device=data.device)
         weighted_mean = data.agg(lambda x: nansum(x * self.weight, dim=2))
         if self.adjust:
             return weighted_mean
@@ -115,13 +136,17 @@ class AnnualizedVolatility(CustomFactor):
 class ElementWiseMax(CustomFactor):
     _min_win = 1
 
+    def __init__(self, win=None, inputs=None):
+        super().__init__(win, inputs)
+        assert self.win == 1
+
     @classmethod
     def binary_fill_na(cls, a, b, value):
         a = a.clone()
         b = b.clone()
         if a.dtype != b.dtype or a.dtype not in (torch.float32, torch.float64, torch.float16):
-            a = a.type(torch.float32)
-            b = b.type(torch.float32)
+            a = a.to(Global.float_type)
+            b = b.to(Global.float_type)
 
         a.masked_fill_(torch.isnan(a), value)
         b.masked_fill_(torch.isnan(b), value)
@@ -136,10 +161,45 @@ class ElementWiseMax(CustomFactor):
 class ElementWiseMin(CustomFactor):
     _min_win = 1
 
+    def __init__(self, win=None, inputs=None):
+        super().__init__(win, inputs)
+        assert self.win == 1
+
     def compute(self, a, b):
         ret = torch.min(*ElementWiseMax.binary_fill_na(a, b, np.inf))
         ret.masked_fill_(torch.isinf(ret), np.nan)
         return ret
+
+
+class RollingArgMax(CustomFactor):
+    _min_win = 2
+
+    def compute(self, data):
+        def _argmax(_data):
+            ret = (_data.argmax(dim=2) + 1.) / self.win
+            return ret.to(Global.float_type)
+
+        return data.agg(_argmax)
+
+
+class RollingArgMin(CustomFactor):
+    _min_win = 2
+
+    def compute(self, data):
+        def _argmin(_data):
+            ret = (_data.argmin(dim=2) + 1.) / self.win
+            return ret.to(Global.float_type)
+
+        return data.agg(_argmin)
+
+
+class ConstantsFactor(CustomFactor):
+    def __init__(self, value, like=OHLCV.open):
+        self.value = value
+        super().__init__(1, inputs=[like])
+
+    def compute(self, x):
+        return torch.full(x.shape, self.value, device=x.device, dtype=x.dtype)
 
 
 MA = SimpleMovingAverage

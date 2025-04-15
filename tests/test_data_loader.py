@@ -5,6 +5,7 @@ import pandas as pd
 import numpy as np
 from numpy.testing import assert_almost_equal
 from os.path import dirname
+import warnings
 
 data_dir = dirname(__file__) + '/data/'
 
@@ -46,7 +47,8 @@ class TestDataLoaderLib(unittest.TestCase):
 
     def test_csv_split_loader_value(self):
         loader = spectre.data.CsvDirLoader(
-            data_dir + '/5mins/', prices_by_year=True, prices_index='Date', parse_dates=True, )
+            data_dir + '/5mins/', prices_by_year=True, prices_index='Date', parse_dates=True,
+            ohlcv=None)
         start = pd.Timestamp('2019-01-02 14:30:00', tz='UTC')
         end = pd.Timestamp('2019-01-15', tz='UTC')
         loader.load(start, end, 0)
@@ -60,6 +62,7 @@ class TestDataLoaderLib(unittest.TestCase):
         loader.test_load()
 
     def test_csv_div_split(self):
+        warnings.filterwarnings("ignore", module='spectre')
         start, end = pd.Timestamp('2019-01-02', tz='UTC'), pd.Timestamp('2019-01-15', tz='UTC')
         loader = spectre.data.CsvDirLoader(
             prices_path=data_dir + '/daily/', earliest_date=start.tz_convert(None),
@@ -73,7 +76,7 @@ class TestDataLoaderLib(unittest.TestCase):
         df = loader.load(start, end, 0)
 
         # test value
-        self.assertAlmostEqual(df.loc[('2019-01-09', 'MSFT'), 'ex-dividend'].values[-1], 0.57)
+        self.assertAlmostEqual(df.loc[('2019-01-09', 'MSFT'), 'ex-dividend'], 0.57)
 
         # test adjustments in engine
         engine = spectre.factors.FactorEngine(loader)
@@ -116,7 +119,8 @@ class TestDataLoaderLib(unittest.TestCase):
         assert_almost_equal(result[1][1], expected_msft_open+[np.nan], decimal=4)
 
     def test_no_ohlcv(self):
-        start, end = pd.Timestamp('2019-01-02', tz='UTC'), pd.Timestamp('2019-01-15', tz='UTC')
+        warnings.filterwarnings("ignore", module='spectre')
+        start, end = pd.Timestamp('2019-01-02'), pd.Timestamp('2019-01-15')
         loader = spectre.data.CsvDirLoader(
             prices_path=data_dir + '/daily/', earliest_date=start, calender_asset='AAPL',
             ohlcv=None, adjustments=None,
@@ -203,7 +207,8 @@ class TestDataLoaderLib(unittest.TestCase):
 
         # test 5mins
         loader = spectre.data.CsvDirLoader(
-            data_dir + '/5mins/', prices_by_year=True, prices_index='Date', parse_dates=True, )
+            data_dir + '/5mins/', prices_by_year=True, prices_index='Date', parse_dates=True,
+            ohlcv=None)
         df = loader.load()
         getter = spectre.data.DataLoaderFastGetter(df)
         table = getter.get_as_dict(

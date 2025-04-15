@@ -136,15 +136,27 @@ class TestParallelAlgorithm(unittest.TestCase):
         result = spectre.parallel.pearsonr(x, y)
         from scipy import stats
         for i in range(3):
-            expected, _ = stats.pearsonr(x[i], y[i])
+            expected, _ = stats.pearsonr(x[i].tolist(), y[i].tolist())
+            assert_almost_equal(expected, result[i], decimal=6)
+
+        # test pearsonr
+        rank_x = spectre.parallel.rankdata(x)
+        rank_y = spectre.parallel.rankdata(y)
+        result = spectre.parallel.spearman(rank_x, rank_y)
+        print(result)
+        from scipy import stats
+        for i in range(3):
+            expected, _ = stats.spearmanr(x[i].tolist(), y[i].tolist())
+            if expected != expected:
+                expected = 1
             assert_almost_equal(expected, result[i], decimal=6)
 
         # test quantile
         x = torch.tensor([[1, 2, np.nan, 3, 4, 5, 6], [3, 4, 5, 1.01, np.nan, 1.02, 1.03]])
         result = spectre.parallel.quantile(x, 5, dim=1)
-        expected = pd.qcut(x[0], 5, labels=False)
+        expected = pd.qcut(x[0].tolist(), 5, labels=False)
         assert_array_equal(expected, result[0])
-        expected = pd.qcut(x[1], 5, labels=False)
+        expected = pd.qcut(x[1].tolist(), 5, labels=False)
         assert_array_equal(expected, result[1])
 
         x = torch.tensor(
@@ -153,14 +165,31 @@ class TestParallelAlgorithm(unittest.TestCase):
              [[1, 2, 2.1,    3,      4,      5,    6],
               [3, 4, 5,      np.nan, np.nan, 1.02, 1.03]]])
         result = spectre.parallel.quantile(x, 5, dim=2)
-        expected = pd.qcut(x[0, 0], 5, labels=False)
+        expected = pd.qcut(x[0, 0].tolist(), 5, labels=False)
         assert_array_equal(expected, result[0, 0])
-        expected = pd.qcut(x[0, 1], 5, labels=False)
+        expected = pd.qcut(x[0, 1].tolist(), 5, labels=False)
         assert_array_equal(expected, result[0, 1])
-        expected = pd.qcut(x[1, 0], 5, labels=False)
+        expected = pd.qcut(x[1, 0].tolist(), 5, labels=False)
         assert_array_equal(expected, result[1, 0])
-        expected = pd.qcut(x[1, 1], 5, labels=False)
+        expected = pd.qcut(x[1, 1].tolist(), 5, labels=False)
         assert_array_equal(expected, result[1, 1])
+
+        # test squeeze bug
+        x = torch.tensor([[1., 2, 3, 4, 5]])
+        y = torch.tensor([[-1., 2, 3, 4, -5]])
+        coef, intcp = spectre.parallel.linear_regression_1d(x, y)
+        reg = LinearRegression().fit(x[0, :, None], y[0, :, None])
+        assert_almost_equal(reg.coef_, coef[0], decimal=6)
+
+        # test median
+        x = torch.tensor([[1, 2, np.nan, 3, 4, 5, 6], [3, 4, 5, 1.01, np.nan, 1.02, 1.03]])
+        u = torch.tensor([[True, False, True, True, True, True, True, ],
+                          [True, True, True, True, True, True, True]])
+        np_x = torch.masked_fill(x, ~u, np.nan)
+        median = np.nanmedian(np_x.cpu(), axis=1)
+        median = np.expand_dims(median, axis=1)
+        expected, _ = spectre.parallel.masked_kth_value_1d(x, u, [0.5], dim=1)
+        assert_almost_equal(median, expected[0], decimal=6)
 
     def test_pad2d(self):
         x = torch.tensor([[np.nan, 1, 1, np.nan, 1, np.nan, np.nan, 0, np.nan, 0, np.nan, np.nan, 0,
@@ -169,5 +198,5 @@ class TestParallelAlgorithm(unittest.TestCase):
                            np.nan, -1, np.nan, - 1, np.nan, np.nan, np.nan, 1]])
         result = spectre.parallel.pad_2d(x)
 
-        expected = [pd.Series(x[0]).fillna(method='ffill'), pd.Series(x[1]).fillna(method='ffill')]
+        expected = [pd.Series(x[0].numpy()).ffill(), pd.Series(x[1].numpy()).ffill()]
         assert_almost_equal(expected, result)

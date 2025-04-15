@@ -151,6 +151,10 @@ class CsvDirLoader(DataLoader):
         df = pd.concat(dfs, sort=False)
         df = df.rename_axis(['asset', 'date'])
 
+        if self.ohlcv is not None:
+            # 这里把0当成nan进行ffill，如果未来取消了，要先把0变成nan，然后df.ffill
+            df[list(self.ohlcv)] = df[list(self.ohlcv)].replace(to_replace=0, method='ffill')
+
         if self._dividends_path is not None:
             dfs = self._walk_dir(self._dividends_path, self._dividends_index)
             ex_div_col = self._adjustment_cols[0]
@@ -201,10 +205,11 @@ class CsvDirLoader(DataLoader):
 
         df = df.swaplevel(0, 1).sort_index(level=0)
 
-        df = self._format(df, self._split_ratio_is_inverse)
         if self._calender:
             # drop the data of the non-trading day by calender,
             # because there may be some one-line junk data in non-trading day,
             # causing extra row of nan to all others assets.
             df = self._align_to(df, self._calender, self._align_by_time)
+            df.sort_index(level=[0, 1], inplace=True)
+        df = self._format(df, self._split_ratio_is_inverse)
         return df

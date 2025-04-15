@@ -9,6 +9,7 @@ from .datafactor import DatetimeDataFactor
 from .factor import CrossSectionFactor, CustomFactor
 from .basic import Returns
 from ..parallel import nanstd, nanmean, nansum
+from ..config import Global
 
 
 # ----------- Common Market Features -----------
@@ -21,7 +22,7 @@ class MarketDispersion(CrossSectionFactor):
 
     def compute(self, returns):
         ret = nanstd(returns, dim=1).unsqueeze(-1)
-        return ret.repeat(1, returns.shape[1])
+        return ret.expand(ret.shape[0], returns.shape[1])
 
 
 class MarketReturn(CrossSectionFactor):
@@ -31,7 +32,7 @@ class MarketReturn(CrossSectionFactor):
 
     def compute(self, returns):
         ret = nanmean(returns, dim=1).unsqueeze(-1)
-        return ret.repeat(1, returns.shape[1])
+        return ret.expand(ret.shape[0], returns.shape[1])
 
 
 class MarketVolatility(CustomFactor):
@@ -50,10 +51,10 @@ class AdvanceDeclineRatio(CrossSectionFactor):
     win = 1
 
     def compute(self, returns):
-        advancing = nansum(returns > 0, dim=1)
-        declining = nansum(returns < 0, dim=1)
+        advancing = nansum(returns > 0, dim=1).to(Global.float_type)
+        declining = nansum(returns < 0, dim=1).to(Global.float_type)
         ratio = (advancing / declining).unsqueeze(-1)
-        return ratio.repeat(1, returns.shape[1])
+        return ratio.expand(ratio.shape[0], returns.shape[1])
 
 
 # ----------- Asset-specific data -----------
@@ -75,7 +76,7 @@ class AssetData(CustomFactor):
 
     def compute(self, data):
         ret = data[self.asset_ind]
-        return ret.repeat(data.shape[0], 1)
+        return ret.expand(data.shape[0], ret.shape[0])
 
 
 # ----------- Common Calendar Features -----------
@@ -88,9 +89,8 @@ TIME = DatetimeDataFactor('hour') + DatetimeDataFactor('minute') / 60.0
 
 IS_JANUARY = MONTH == 1
 IS_DECEMBER = MONTH == 12
-# Because the future data is used in IS_MONTH_END and IS_QUARTER_END factors, it will fail the
-# test_lookahead_bias, but because it's != operation, so only a very low probability will fail the
-# test. And this method is the fastest, so be it.
+# Note: shift(-1) may fail the engine.test_lookahead_bias(),
+# but this method is the fastest, so be it.
 IS_MONTH_END = MONTH.shift(-1) != MONTH
 IS_MONTH_START = MONTH.shift(1) != MONTH
 IS_QUARTER_END = QUARTER.shift(-1) != QUARTER
