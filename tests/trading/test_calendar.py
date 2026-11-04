@@ -129,7 +129,7 @@ JPX_CLOSED = {
 
 @pytest.fixture(scope="module")
 def jp_calendar():
-    """Takes seconds to build. A fixed start, it doesn't depend on the year the tests run."""
+    """A fixed start, it doesn't depend on the year the tests run."""
     return trading.JPCalendar(start=pd.Timestamp("2025-01-01"), pop_passed=False)
 
 
@@ -151,3 +151,52 @@ def test_jp_calendar_removes_all_daily_events_of_a_closed_day(jp_calendar):
 def test_jp_calendar_says_when_its_table_needs_an_update():
     with pytest.raises(AssertionError, match="needs its yearly update"):
         trading.JPCalendar(start=pd.Timestamp("2099-01-01"))
+
+
+@pytest.mark.parametrize("calendar_type", [trading.CNCalendar, trading.JPCalendar])
+def test_closures_are_removed_in_one_pass(monkeypatch, calendar_type):
+    """A pass goes over every event of every day, one for each closure took seconds."""
+    passes = []
+    remove_events = trading.Calendar.remove_events
+
+    def counted(self, *dates):
+        passes.append(dates)
+        remove_events(self, *dates)
+
+    monkeypatch.setattr(trading.Calendar, "remove_events", counted)
+    calendar_type(start=pd.Timestamp("2026-11-02"), pop_passed=False)
+    assert len(passes) == 1
+
+
+@pytest.mark.parametrize(
+    "calendar_type, start, tz",
+    [
+        (trading.CNCalendar, "2026-09-01", "Asia/Shanghai"),
+        (trading.JPCalendar, "2027-09-01", "Asia/Tokyo"),
+    ],
+)
+def test_closures_leave_what_one_holiday_at_a_time_leaves(calendar_type, start, tz):
+    cal = calendar_type(start=pd.Timestamp(start), pop_passed=False)
+
+    expected = trading.Calendar()
+    expected.build(
+        start=start,
+        end=str(calendar_type.closed[-1].year + 1),
+        daily_events={"Open": calendar_type.daily_events["Open"]},
+        tz=tz,
+        pop_passed=False,
+    )
+    for day in calendar_type.closed:
+        expected.set_as_holiday(day.tz_localize(tz))
+
+    assert cal.events["Open"] == expected.events["Open"]
+    assert len(cal.events["Open"]) < 100
+
+
+def test_removing_several_days_at_once(calendar):
+    calendar.set_as_holiday(ts("2020-01-08"))
+    calendar.remove_events(ts("2020-01-09"), ts("2020-01-10"))
+    # the rest of the week is gone, and the next one is not
+    opens = calendar.events["Open"]
+    assert opens[:3] == [ts("2020-01-06 09:00"), ts("2020-01-07 09:00"), ts("2020-01-13 09:00")]
+    assert len(calendar.events["Close"]) == 7

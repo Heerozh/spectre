@@ -59,14 +59,15 @@ class Calendar:
         self.events[event].append(datetime)
         self.events[event].sort()
 
-    def remove_events(self, date: pd.Timestamp):
+    def remove_events(self, *dates: pd.Timestamp):
+        dates = set(dates)
         self.events = {
-            event: [dt for dt in dts if dt.normalize() != date]
+            event: [dt for dt in dts if dt.normalize() not in dates]
             for event, dts in self.events.items()
         }
 
-    def set_as_holiday(self, date: pd.Timestamp):
-        return self.remove_events(date)
+    def set_as_holiday(self, *dates: pd.Timestamp):
+        return self.remove_events(*dates)
 
     def hr_now(self):
         """Return now time"""
@@ -172,8 +173,7 @@ class CNCalendar(Calendar):
             tz=timezone,
             pop_passed=pop_passed,
         )
-        for d in CNCalendar.closed:
-            self.set_as_holiday(d.tz_localize(timezone))
+        self.set_as_holiday(*(d.tz_localize(timezone) for d in CNCalendar.closed))
 
 
 class JPCalendar(Calendar):
@@ -300,5 +300,4 @@ class JPCalendar(Calendar):
             tz=timezone,
             pop_passed=pop_passed,
         )
-        for d in self.closed:
-            self.set_as_holiday(d.tz_localize(timezone))
+        self.set_as_holiday(*(d.tz_localize(timezone) for d in self.closed))
