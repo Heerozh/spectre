@@ -2,6 +2,9 @@
 Tests need data outside of this repository or the internet, they are skipped by default.
 """
 
+import warnings
+
+import pandas as pd
 import pytest
 import torch
 from numpy.testing import assert_almost_equal
@@ -18,6 +21,26 @@ def test_yahoo(tmp_path):
     loader = spectre.data.ArrowLoader(str(tmp_path / "yahoo.feather"))
     df = loader._load()
     assert list(df.index.levels[1]) == ["AAPL", "IBM"]
+
+    # raw prices around the 4-for-1 split, which moved up one row like all adjustments
+    aapl = df.xs("AAPL", level="asset")
+    before = aapl.loc[pd.Timestamp("2020-08-28", tz="UTC")]
+    after = aapl.loc[pd.Timestamp("2020-08-31", tz="UTC")]
+    assert before["Close"] == pytest.approx(499.23, abs=0.01)
+    assert before["split_ratio"] == 0.25
+    assert after["Close"] == pytest.approx(129.04, abs=0.01)
+
+
+@pytest.mark.network
+def test_sp500_constituents():
+    with warnings.catch_warnings():
+        # a warning here means the format of the Wikipedia page changed
+        warnings.simplefilter("error", RuntimeWarning)
+        members = spectre.data.sp500_constituents()
+    assert 490 <= len(members.iloc[-1]) <= 510
+    assert "TSLA" not in members.asof("2020-12-18")
+    assert "TSLA" in members.asof("2020-12-21")
+    assert "LEHMQ" in members.asof("2008-09-01")
 
 
 @pytest.mark.slow

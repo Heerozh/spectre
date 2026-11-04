@@ -43,11 +43,12 @@ class AppleDualEma(trading.CustomAlgorithm):
         asset_data = data.loc[self.asset]
         buy, sell = False, False
         if asset_data.buy_signal and not self.invested:
-            self.blotter.order(self.asset, 100)
+            self.blotter.order_target(self.asset, 100)
             self.invested = True
             buy = True
         elif asset_data.sell_signal and self.invested:
-            self.blotter.order(self.asset, -100)
+            # a split may have changed the number of shares we hold since we bought them
+            self.blotter.order_target(self.asset, 0)
             self.invested = False
             sell = True
 

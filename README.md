@@ -66,7 +66,8 @@ Running on Quandl 5 years, 3196 Assets, total 3,637,344 bars.
 
 First of all is data, you can use [CsvDirLoader](#csvdirloader) read your csv files.
 
-spectre also has built-in Yahoo downloader, `symbols=None` will download all SP500 components.
+spectre also has built-in Yahoo downloader, `symbols=None` will download the latest S&P 500
+components, plus SPY and QQQ.
 
 ```python
 from spectre.data import YahooDownloader
@@ -75,6 +76,10 @@ YahooDownloader.ingest(start_date="2001", save_to="./prices/yahoo", symbols=None
 ```
 
 You can use `spectre.data.ArrowLoader('./prices/yahoo/yahoo.feather')` load those data now.
+
+**Survivorship bias:** Yahoo has no data for delisted stocks, so this data only has the companies
+that are in the S&P 500 today. The ones that went bankrupt or were acquired are missing, which makes
+backtests look better than they should. See [YahooDownloader](#yahoodownloader).
 
 ## Factor and FactorEngine
 
@@ -265,7 +270,7 @@ pf.create_full_tear_sheet(
   at once, so you need to be careful to prevent Look-Ahead Bias, because the inputs are not just
   historical data. Also using `engine.test_lookahead_bias` do some tests.
 * spectre's normally using float32 data type for GPU performance.
-* spectre FactorEngine arranges data by bars, so `Return(win=10)` means 10 bars return, may
+* spectre FactorEngine arranges data by bars, so `Returns(win=11)` means 10 bars return, may
   actually be more than 10 days if some assets not open trading in period. You can change this
   behavior by aligning data: filling missing bars with NaNs in your DataLoader, please refer to the
   `align_by_time` parameter of `CsvDirLoader`.
@@ -276,6 +281,9 @@ pf.create_full_tear_sheet(
   will be different from the stock chart software which only adjusted according to last day.
   If you want adjusted by last day, use like 'AdjustedColumnDataFactor(OHLCV.close)' as input data.
   This will speeds up a lot because it only needs to be adjusted once, but brings Look-Ahead Bias.
+* Adjustment only happens inside rolling windows, on the price and volume columns directly.
+  `close / close.shift(1)` compares raw prices and drops on a split day, without any error. Use
+  `Returns(win=n + 1)` for the return of n bars.
 * Factors that uses the close data will be delayed by 1 bar.
 * spectre's `EMA` uses the algorithm same as `zipline` and `Dataframe.ewm(span=...)`, when `span` is
   greater than 100, it will be slightly different from common EMA.
@@ -442,6 +450,53 @@ from spectre.data import ArrowLoader, QuandlLoader
 
 ArrowLoader.ingest(source=QuandlLoader("WIKI_PRICES.zip"), save_to="wiki_prices.feather")
 ```
+
+### YahooDownloader
+
+`YahooDownloader.ingest(start_date: str, save_to: str, symbols: list = None, skip_exists=True)`
+
+Download daily data with [yfinance](https://github.com/ranaroussi/yfinance) to `save_to/daily`, and
+ingest it to `save_to/yahoo.feather`, which you can read with `ArrowLoader`.
+
+Prices are raw, as they were traded on that day, and come with dividends and splits. Factors adjust
+them like any other data with adjustments, see
+[Differences to common chart](#differences-to-common-chart), and backtests receive the dividends
+and splits. A strategy that uses `blotter.order` to close a position has to expect the number of
+shares to change, `blotter.order_target` doesn't have this problem.
+
+**symbols:** List of symbols to download. If None, download the latest S&P 500 components, plus SPY
+and QQQ.\
+**skip_exists:** Skip the symbols that already have a csv file, useful for resuming after an
+interruption. Files from older versions have no dividends and splits, so download them again with
+`skip_exists=False`.
+
+Today's bar is left out, because it is unfinished during trading hours.
+
+Yahoo has no data for delisted stocks, so any universe made of today's stocks has survivorship bias.
+Using [sp500_constituents](#sp500_constituents) doesn't solve it: Yahoo still has about half of the
+members of 2001, and 90% of the members of 2019.
+
+### sp500_constituents
+
+`sp500_constituents() -> pd.Series`
+
+Members of the S&P 500 over time, since 1996. Some members are missing before 2001.
+
+```python
+from spectre.data import sp500_constituents
+
+members = sp500_constituents()
+members.asof("2015-06-30")  # frozenset of the tickers on a date
+members.iloc[-1]  # the latest members
+```
+
+The history is [fja05680/sp500](https://github.com/fja05680/sp500), and the changes after its last
+update come from [Wikipedia](https://en.wikipedia.org/wiki/Historical_components_of_the_S%26P_500).
+If Wikipedia can't be read, it gives a warning and returns the history only.
+
+Tickers are the ones in use on that date, so check them before downloading. Yahoo has no data for
+many of them, and others now belong to a different company: `FB` is an ETF today, and `BBT` is
+another bank with a price history going back to 2000, so you get wrong prices without any error.
 
 ### How to write your own DataLoader
 

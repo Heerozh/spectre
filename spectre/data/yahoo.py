@@ -5,121 +5,125 @@
 @email: heeroz@gmail.com
 """
 
-import datetime
 import os
 import time
+import warnings
 
 import numpy as np
 import pandas as pd
 
 from .arrow import ArrowLoader
 from .csv import CsvDirLoader
+from .sp500 import sp500_constituents
+
+
+def _to_raw_prices(df: pd.DataFrame) -> pd.DataFrame:
+    """
+    Yahoo's prices, volumes and dividends are already adjusted for all later splits. Undo that and
+    add the columns `DataLoader` adjusts with, because giving it the splits of adjusted prices
+    would adjust them twice.
+    """
+    # 'Stock Splits' is to/from, like 4 for a 4-for-1 split, and 0 on the days without a split
+    splits = df["Stock Splits"].fillna(0).replace(0, 1)
+    later_splits = splits[::-1].cumprod()[::-1].shift(-1, fill_value=1)
+    raw = df[["Open", "High", "Low", "Close"]].mul(later_splits, axis=0)
+    raw["Volume"] = df["Volume"] / later_splits
+    # A dividend is paid on the shares before its ex-date, so include a split on that same date
+    raw["ex-dividend"] = df["Dividends"].fillna(0) * later_splits * splits
+    raw["split_ratio"] = 1 / splits
+    return raw
 
 
 class YahooDownloader:
+    # Symbols of one `yfinance.download`, `skip_exists` resumes from the last finished batch.
+    batch_size = 100
+    # Seconds to wait before downloading the failed symbols again.
+    retry_delays = (5, 10)
+
     @classmethod
     def ingest(
         cls, start_date: str, save_to: str, symbols: list | None = None, skip_exists=True
     ) -> None:
         """
-        Download data from yahoo.
+        Download daily data from yahoo. Prices are raw, as they were traded on that day, and come
+        with dividends and splits, so factors and backtests can adjust them.
+
+        Yahoo has no data for delisted stocks, so any universe made of today's stocks has
+        survivorship bias. `sp500_constituents` has the members of the past, but only about half
+        of the members of 2001 can still be downloaded.
+
         :param start_date:
         :param save_to: path to folder
-        :param symbols: list of symbol to download. If is None, download SP500 components.
+        :param symbols: list of symbol to download. If is None, download the latest S&P 500
+            components, plus SPY and QQQ.
         :param skip_exists: skip if file exists, useful for resume from interruption.
         """
-        import re
-
-        import requests
+        import yfinance
         from tqdm.auto import tqdm
-
-        print("Download prices from yahoo...")
-
-        start_date = pd.to_datetime(start_date, utc=True)
 
         calender_asset = None
         if symbols is None:
-            etf = pd.read_html(
-                requests.get(
-                    "https://etfdailynews.com/etf/spy/", headers={"User-agent": "Mozilla/5.0"}
-                ).text,
-                attrs={"id": "etfs-that-own"},
+            warnings.warn(
+                "`symbols=None` downloads the latest S&P 500 components, and yahoo has no data for "
+                "delisted stocks, so backtests on this data have survivorship bias.",
+                RuntimeWarning,
             )
-            symbols = [x for x in etf[0].Symbol.values.tolist() if isinstance(x, str)]
-            symbols.extend(["SPY", "QQQ"])
+            symbols = [*sorted(sp500_constituents().iloc[-1]), "SPY", "QQQ"]
             calender_asset = "SPY"
 
-        session = requests.Session()
-        page = session.get("https://finance.yahoo.com/quote/IBM/history?p=IBM")
-        # CrumbStore
-        m = re.search('"CrumbStore":{"crumb":"(.*?)"}', page.text)
-        crumb = m.group(1)
-        crumb = crumb.encode("ascii").decode("unicode-escape")
-
-        def download(event, folder):
-            start = int(start_date.timestamp())
-            now = int(datetime.datetime.now().timestamp())
-            for symbol in tqdm(symbols):
-                symbol = symbol.replace(".", "-")
-                csv_path = os.path.join(folder, f"{symbol}.csv")
-                if os.path.exists(csv_path) and skip_exists:
-                    continue
-                url = (
-                    "https://query1.finance.yahoo.com/v7/finance/download/"
-                    f"{symbol}?period1={start}&period2={now}&interval=1d&events={event}&crumb={crumb}"
-                )
-
-                retry = 0.25
-                while True:
-                    req = session.get(url)
-                    if req.status_code != requests.codes.ok:
-                        if "No data found" in req.text:
-                            print(f"Symbol invalid, skipped: {symbol}.")
-                            break
-                        retry *= 2
-                        if retry >= 5:
-                            print(
-                                f"Get {symbol} failed, Over 4 retries, skipped, reason: {req.text}"
-                            )
-                            break
-                        else:
-                            time.sleep(retry)
-                            continue
-                    with open(csv_path, "wb") as f:
-                        f.write(req.content)
-                    break
-
-        print("Ingest prices...")
         prices_dir = os.path.join(save_to, "daily")
-        if not os.path.exists(prices_dir):
-            os.makedirs(prices_dir)
-        download("history", prices_dir)
+        os.makedirs(prices_dir, exist_ok=True)
 
-        # yahoo prices data already split adjusted
-        # print('Ingest dividends...')
-        # div_dir = os.path.join(save_to, 'dividends')
-        # if not os.path.exists(div_dir):
-        #     os.makedirs(div_dir)
-        # download('div', div_dir)
+        def csv_path(symbol):
+            return os.path.join(prices_dir, f"{symbol}.csv")
 
-        # print('Ingest splits...')
-        # sp_dir = os.path.join(save_to, 'splits')
-        # if not os.path.exists(sp_dir):
-        #     os.makedirs(sp_dir)
-        # download('split', sp_dir)
+        failed = [symbol.replace(".", "-").upper() for symbol in symbols]
+        if skip_exists:
+            failed = [symbol for symbol in failed if not os.path.exists(csv_path(symbol))]
 
-        session.close()
+        start = pd.Timestamp(start_date).strftime("%Y-%m-%d")
+        # `end` is exclusive, so this leaves out today's bar, which is unfinished during trading
+        end = pd.Timestamp.now(tz="America/New_York").strftime("%Y-%m-%d")
+
+        def download(batch):
+            """Save the symbols in `batch`, and return the ones without data."""
+            # It doesn't raise, the symbols that failed for any reason just have no prices.
+            data = yfinance.download(
+                batch,
+                start=start,
+                end=end,
+                auto_adjust=False,
+                actions=True,
+                group_by="ticker",
+                progress=False,
+            )
+            missing = []
+            for symbol in batch:
+                prices = data[symbol].dropna(subset=["Close"])
+                if prices.empty:
+                    missing.append(symbol)
+                else:
+                    _to_raw_prices(prices).to_csv(csv_path(symbol))
+            return missing
+
+        print("Download prices from yahoo...")
+        for delay in (*cls.retry_delays, None):
+            size = cls.batch_size
+            batches = [failed[i : i + size] for i in range(0, len(failed), size)]
+            failed = [symbol for batch in tqdm(batches) for symbol in download(batch)]
+            if not failed or delay is None:
+                break
+            time.sleep(delay)
+        if failed:
+            print(f"No data from yahoo, skipped: {failed}")
 
         print("Converting...")
         loader = CsvDirLoader(
             prices_dir,
             calender_asset=calender_asset,
-            # dividends_path=div_dir,
-            # splits_path=sp_dir,
             ohlcv=("Open", "High", "Low", "Close", "Volume"),
-            # adjustments=('Dividends', 'Stock Splits'),
+            adjustments=("ex-dividend", "split_ratio"),
             prices_index="Date",
-            # dividends_index='Date', splits_index='Date', split_ratio_is_fraction=True,
             parse_dates=True,
             dtype={
                 "Open": np.float32,
@@ -127,7 +131,8 @@ class YahooDownloader:
                 "Low": np.float32,
                 "Close": np.float32,
                 "Volume": np.float64,
-                "Dividends": np.float64,
+                "ex-dividend": np.float64,
+                "split_ratio": np.float64,
             },
         )
 
