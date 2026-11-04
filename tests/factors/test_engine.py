@@ -73,6 +73,21 @@ def test_insufficient_history_warning(engine):
         engine.run("2014-10-27", "2014-11-30")
 
 
+def test_max_backwards_warns_if_it_cuts_the_history(dirty_engine):
+    dirty_engine.max_backwards = 5
+    dirty_engine.add(factors.MA(20), "f")
+    with pytest.warns(RuntimeWarning, match="max_backwards is 5, but 20 bars"):
+        dirty_engine.run(DIRTY_DATES[40], DIRTY_DATES[-1])
+
+
+def test_max_backwards_is_silent_if_the_history_fits(dirty_engine):
+    dirty_engine.max_backwards = 20
+    dirty_engine.add(factors.MA(20), "f")
+    with warnings.catch_warnings():
+        warnings.simplefilter("error")
+        dirty_engine.run(DIRTY_DATES[40], DIRTY_DATES[-1])
+
+
 def test_delayed_run_needs_no_bar_before_the_data(dirty_engine):
     """The first bar of a delayed run is dropped, so it can start on the first bar of the data."""
     dirty_engine.add(close, "close")

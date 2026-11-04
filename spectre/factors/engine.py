@@ -149,6 +149,12 @@ class FactorEngine:
     def _prepare_tensor(self, start, end, backwards, delayed=False):
         # Check cache, just in case, if use some ML techniques, engine may be called repeatedly
         # with same date range.
+        if backwards > self.max_backwards:
+            warnings.warn(
+                f"engine.max_backwards is {self.max_backwards}, but {backwards} bars of historical "
+                "data are required, so the first bars of the results will use partial windows.",
+                RuntimeWarning,
+            )
         backwards = min(backwards, self.max_backwards)
         if start == self._last_loaded[0] and end == self._last_loaded[1]:
             if backwards <= self._last_loaded[2]:
