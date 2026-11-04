@@ -21,8 +21,6 @@ def test_column_data_not_allowed():
         MeanOfProduct(inputs=[factors.OHLCV.open])
 
 
-# Pool forks the process which has torch threads, python warns it may deadlock.
-@pytest.mark.filterwarnings("ignore:This process .* is multi-threaded:DeprecationWarning")
 @pytest.mark.parametrize("multiprocess", [False, True])
 def test_cpu_parallel_factor(engine_no_calendar, device, multiprocess):
     engine = engine_no_calendar

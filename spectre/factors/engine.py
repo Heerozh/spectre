@@ -13,7 +13,6 @@ import numpy as np
 import pandas as pd
 import torch
 
-from .._compat import stack_keep_nan
 from ..data import DataLoader
 from ..parallel import DummyParallelGroupBy, ParallelGroupBy
 from ..plotting import plot_chart, plot_quantile_and_cumulative_returns
@@ -180,7 +179,7 @@ class FactorEngine:
             # since pandas 0.23, MultiIndex reindex is slow, so using a alternative way here,
             # but still very slow.
             # df = df.reindex(pd.MultiIndex.from_product(df.index.levels))
-            df = stack_keep_nan(df.unstack(level=1))
+            df = df.unstack(level=1).stack()
             df[self._loader.time_category] = (
                 df[self._loader.time_category]
                 .groupby(level=0)

@@ -41,9 +41,8 @@ and factors.
   PyPI, which is CPU-only on Windows. After changing it, run `rm uv.lock && uv lock`: an existing
   lock can hide a config that fails from scratch. To move to a new CUDA version, change `cu134` in
   `pyproject.toml`.
-- Pandas version shims belong in `spectre/_compat.py`. Under pandas 3 Copy-on-Write, chained
-  assignment silently does nothing, and `.to_numpy()` can return a read-only array that torch
-  rejects.
+- Under pandas 3 Copy-on-Write, chained assignment silently does nothing, and `.to_numpy()` can
+  return a read-only array that torch rejects.
 
 ## Architecture
 

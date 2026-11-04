@@ -12,7 +12,6 @@ from multiprocessing.pool import ThreadPool
 import numpy as np
 import pandas as pd
 
-from .._compat import stack_keep_nan
 from ..parallel import Rolling
 from .datafactor import ColumnDataFactor
 from .factor import BaseFactor, CustomFactor
@@ -112,7 +111,7 @@ class CPUParallelFactor(CustomFactor):
             )
 
         ret.iloc[backwards:] = pool_ret
-        ret = stack_keep_nan(ret)[origin_input.index]
+        ret = ret.stack()[origin_input.index]
 
         return self._regroup(ret)
 

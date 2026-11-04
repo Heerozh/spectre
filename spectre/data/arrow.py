@@ -20,17 +20,11 @@ class ArrowLoader(DataLoader):
         if not os.path.exists(path + ".meta"):
             raise FileNotFoundError(os.path.abspath(path + ".meta"))
 
-        # pandas 0.22 has the fastest MultiIndex
-        if pd.__version__.startswith("0.22"):
-            import feather
-
-            cols = feather.read_dataframe(path + ".meta")
-        else:
-            cols = pd.read_feather(path + ".meta")
+        cols = pd.read_feather(path + ".meta")
 
         ohlcv = tuple(cols.ohlcv)
         adjustments = tuple(cols.adjustments.values[:2])
-        # missing values may be read as None or NaN, depends on pandas version
+        # missing values may be read as None or NaN
         if pd.isna(adjustments[0]):
             adjustments = None
         super().__init__(path, ohlcv, adjustments)
@@ -78,12 +72,7 @@ class ArrowLoader(DataLoader):
         if self._cache is not None:
             return self._cache
 
-        if pd.__version__.startswith("0.22"):
-            import feather
-
-            df = feather.read_dataframe(self._path)
-        else:
-            df = pd.read_feather(self._path)
+        df = pd.read_feather(self._path)
         df = df.set_index(["date", "asset"])
 
         if self._filter is not None:
