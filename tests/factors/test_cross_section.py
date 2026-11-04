@@ -276,8 +276,7 @@ def test_rolling_quantile():
     assert_array_equal(result[0].numpy(), expected)
 
 
-@pytest.mark.parametrize("device_", ["cpu", pytest.param("cuda", marks=pytest.mark.cuda)])
-def test_rolling_quantile_one_bar_chunks(monkeypatch, device_):
+def test_rolling_quantile_one_bar_chunks(monkeypatch, device):
     win, bars = 6, 12
     data = np.random.default_rng(2).standard_normal((3, bars))
     expected = np.full(data.shape, nan)
@@ -288,7 +287,7 @@ def test_rolling_quantile_one_bar_chunks(monkeypatch, device_):
 
     # pretend memory usage is huge, so every bar becomes a chunk
     monkeypatch.setattr(parallel.Rolling, "_split_multi", 1e12)
-    rolling = parallel.Rolling(torch.tensor(data, device=device_), win)
+    rolling = parallel.Rolling(torch.tensor(data, device=device), win)
     assert len(rolling.split) == bars
     result = factors.RollingQuantile(win).compute(rolling, 5)
     assert_array_equal(result.cpu().numpy(), expected)
