@@ -149,6 +149,13 @@ def ewm_of_windows(values, span, adjust):
     return values.rolling(int(4.5 * (span + 1)), min_periods=1).apply(ewm_of_window, raw=True)
 
 
+def loaded_closes(panel, asset, start, backwards):
+    """The closes of `asset` the engine loads: its own `backwards` bars before bar `start`, on."""
+    close = panel.xs(asset, level="asset").close
+    first = close.index.searchsorted(DIRTY_DATES[start]) - backwards
+    return close.iloc[max(first, 0) :]
+
+
 @pytest.mark.parametrize("span", [11, 50])
 @pytest.mark.parametrize("adjust", [False, True])
 def test_ema(engine, span, adjust):
@@ -189,10 +196,8 @@ def test_ema_of_dirty_assets(dirty_engine, dirty_panel, span, adjust, start):
     """A new listing, a halt without rows and a NaN close. Only the window truncates it."""
     factor = factors.EMA(span, adjust=adjust)
     result = run_dirty(dirty_engine, factor, start)
-    # history is loaded by dates, so after a halt fewer bars of that asset are loaded
-    loaded = dirty_panel.loc[DIRTY_DATES[max(start - factor.win + 1, 0)] :]
     for asset in ("FULL", "LISTED", "DELISTED", "HALTED", "NANBAR"):
-        close = loaded.xs(asset, level="asset").close
+        close = loaded_closes(dirty_panel, asset, start, factor.win - 1)
         got = result.xs(asset, level="asset")
         expected = ewm_mean(close, span, adjust).loc[got.index]
         # the weights of adjust=True are float32
@@ -268,9 +273,8 @@ def test_ema_of_truncated_history(dirty_engine, dirty_panel, adjust):
     span, start, backwards = 12, 30, 10
     dirty_engine.max_backwards = backwards
     result = run_dirty(dirty_engine, factors.EMA(span, adjust=adjust), start)
-    loaded = dirty_panel.loc[DIRTY_DATES[start - backwards] :]
     for asset in ("FULL", "LISTED", "HALTED", "NANBAR"):
-        close = loaded.xs(asset, level="asset").close
+        close = loaded_closes(dirty_panel, asset, start, backwards)
         got = result.xs(asset, level="asset")
         expected = close.ewm(span=span, adjust=adjust).mean().loc[got.index]
         assert_allclose(got.values, expected.values, rtol=0, atol=1e-5, err_msg=asset)
