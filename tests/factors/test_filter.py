@@ -1,12 +1,13 @@
 import numpy as np
 import pytest
 import torch
-from numpy.testing import assert_almost_equal, assert_array_equal
+from numpy.testing import assert_allclose, assert_almost_equal, assert_array_equal
 
 from spectre import factors
 from tests.factors import reference as ref
 from tests.factors.helpers import run_dirty, run_late_listed
 
+nan = np.nan
 volume = factors.OHLCV.volume
 close = factors.OHLCV.close
 
@@ -190,6 +191,72 @@ def test_xs_sum_of_filter(dirty_engine, dirty_panel):
     result = run_dirty(dirty_engine, (close > 100).xs_sum())
     assert_array_equal(result, selected.groupby(level="date").transform("sum"))
     assert result.dtype == "float32"
+
+
+# ------------------------------------ statistics of a filter ------------------------------------
+# A row that doesn't exist on a date is not a False of that date, the rows of the dirty panel
+# change by date and by asset, so a helper that counts them gives other values.
+
+
+def zscore_of(x):
+    return (x - x.mean()) / x.std(ddof=0)
+
+
+FILTER_HELPERS = [
+    (lambda f, g: f.mean(groupby=g), lambda x: x.transform("mean")),
+    (lambda f, g: f.std(groupby=g), lambda x: x.transform("std", ddof=0)),
+    (lambda f, g: f.zscore(groupby=g), lambda x: x.transform(zscore_of)),
+]
+FILTER_HELPER_IDS = ["mean", "std", "zscore"]
+
+
+@pytest.mark.parametrize("groupby", ["date", "asset"])
+@pytest.mark.parametrize("build, reference", FILTER_HELPERS, ids=FILTER_HELPER_IDS)
+def test_statistics_of_filter(dirty_engine, dirty_panel, build, reference, groupby):
+    expected = reference((dirty_panel.close > 100).astype(float).groupby(level=groupby))
+    result = run_dirty(dirty_engine, build(close > 100, groupby))
+    assert_allclose(result, expected, rtol=1e-5, atol=1e-5)
+
+
+@pytest.mark.parametrize("groupby", ["date", "asset"])
+@pytest.mark.parametrize("build, reference", FILTER_HELPERS, ids=FILTER_HELPER_IDS)
+def test_statistics_of_filter_as_float(dirty_engine, dirty_panel, build, reference, groupby):
+    expected = reference((dirty_panel.close > 100).astype(float).groupby(level=groupby))
+    result = run_dirty(dirty_engine, build((close > 100).float(), groupby))
+    assert_allclose(result, expected, rtol=1e-5, atol=1e-5)
+
+
+@pytest.mark.parametrize("helper, expected", [("mean", 1.0), ("std", 0.0), ("zscore", nan)])
+def test_statistics_of_filter_skip_padding(dirty_engine, helper, expected):
+    # True on every row, and a rolling factor goes on for two bars after the last one, so in
+    # the padding it is True and then False
+    filter_ = factors.MA(3) > 0
+    result = run_dirty(dirty_engine, getattr(filter_, helper)(groupby="asset"))
+    assert_array_equal(result, expected)
+
+
+def test_mean_of_filter_with_mask(dirty_engine, dirty_panel):
+    selected = (dirty_panel.close > 100).astype(float).where(dirty_panel.volume > 1500)
+    expected = selected.groupby(level="date").transform("mean")
+    result = run_dirty(dirty_engine, (close > 100).mean(mask=volume > 1500))
+    assert_allclose(result, expected, rtol=1e-6)
+
+
+def test_weighted_mean_of_filter(dirty_engine, dirty_panel):
+    selected = (dirty_panel.close > 100).astype(float)
+    total = (selected * dirty_panel.volume).groupby(level="date").transform("sum")
+    expected = total / dirty_panel.volume.groupby(level="date").transform("sum")
+    result = run_dirty(dirty_engine, (close > 100).mean(weight=volume))
+    assert_allclose(result, expected, rtol=1e-5)
+
+
+@pytest.mark.parametrize(
+    "build", [lambda f: factors.MA(3, inputs=[f]), lambda f: factors.STDDEV(3, inputs=[f])]
+)
+def test_rolling_statistics_of_filter_raise(dirty_engine, build):
+    """The kernels reject bool on purpose: a padded False can't be told from a real False."""
+    with pytest.raises(RuntimeError, match="can't be cast"):
+        run_dirty(dirty_engine, build(close > 100))
 
 
 # ------------------------------------ newly listed asset ------------------------------------

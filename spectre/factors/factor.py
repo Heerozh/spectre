@@ -175,7 +175,7 @@ class BaseFactor:
 
     def zscore(self, groupby: str = "date", mask: BaseFactor = None, weight: BaseFactor = None):
         """Cross-section zscore"""
-        factor = ZScoreFactor(data=self, mask=mask, groupby=groupby, weight=weight)
+        factor = ZScoreFactor(data=self._numeric(), mask=mask, groupby=groupby, weight=weight)
         return factor
 
     def demean(
@@ -214,7 +214,7 @@ class BaseFactor:
         """
         Cross-section mean.
         """
-        factor = MeanFactor(inputs=(self, weight, weight_sum), mask=mask)
+        factor = MeanFactor(inputs=(self._numeric(), weight, weight_sum), mask=mask)
         factor.groupby = groupby
         return factor
 
@@ -259,7 +259,7 @@ class BaseFactor:
     def std(self, groupby: str = "date", mask: BaseFactor = None):
         from .statistical import XSStandardDeviation
 
-        factor = XSStandardDeviation(inputs=(self,), mask=mask)
+        factor = XSStandardDeviation(inputs=(self._numeric(),), mask=mask)
         factor.groupby = groupby
         return factor
 
