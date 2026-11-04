@@ -272,6 +272,48 @@ def test_demean(engine):
     assert_factor(engine, close.demean(), *ref.expected_xs(demeaned))
 
 
+def demean_by_asset(factor):
+    demean = factor.demean()
+    demean.groupby = "asset"
+    return demean
+
+
+def test_demean_leaves_its_input_alone(dirty_engine, dirty_panel):
+    # float64 in the same group: `.to(torch.float64)` returns the tensor of the input itself
+    closes = dirty_panel.close
+    demedian = close.demedian()
+    dirty_engine.add(demean_by_asset(close), "close_demeaned")
+    dirty_engine.add(demedian.demean(), "demedian_demeaned")
+    dirty_engine.add(close, "close")
+    dirty_engine.add(demedian, "demedian")
+    with pytest.warns(RuntimeWarning, match="delay_factor is set to False"):
+        result = dirty_engine.run(DIRTY_DATES[0], DIRTY_DATES[-1], delay_factor=False)
+    assert_allclose(result.close, closes)
+    assert_allclose(result.demedian, closes - closes.groupby(level="date").transform("median"))
+
+
+def test_demean_with_beta(dirty_engine, dirty_panel):
+    closes = dirty_panel.close
+    mean = closes.groupby(level="date").transform("mean")
+    result = run_dirty(dirty_engine, close.mean().demean(beta=close))
+    assert_allclose(result, mean - closes * mean)
+
+
+def test_filter_demean(dirty_engine, dirty_panel):
+    selected = (dirty_panel.close > 100).astype(float)
+    expected = selected - selected.groupby(level="date").transform("mean")
+    result = run_dirty(dirty_engine, (close > 100).demean())
+    assert_allclose(result, expected, atol=1e-6)
+    assert result.dtype == "float32"
+
+
+def test_filter_demean_with_mask(dirty_engine, dirty_panel):
+    selected = (dirty_panel.close > 100).astype(float).where(dirty_panel.volume > 1500)
+    expected = selected - selected.groupby(level="date").transform("mean")
+    result = run_dirty(dirty_engine, (close > 100).demean(mask=volume > 1500))
+    assert_allclose(result, expected, atol=1e-6)
+
+
 def test_demedian(engine):
     expected = ref.expected_xs(lambda df: df.sub(df.median(axis=1), axis=0))
     assert_factor(engine, close.demedian(), *expected)

@@ -1030,6 +1030,12 @@ class RollingRankFactor(CustomFactor):
 class DemeanFactor(CrossSectionFactor):
     group_dict = None
 
+    def _format_input(self, upstream, upstream_out, mask_factor, mask_out):
+        # a regroup pads a filter with False, as a float the missing rows stay NaN
+        if upstream_out.dtype == torch.bool:
+            upstream_out = upstream_out.to(Global.float_type)
+        return super()._format_input(upstream, upstream_out, mask_factor, mask_out)
+
     def compute(self, data: torch.Tensor, beta) -> torch.Tensor:
         if self.group_dict is not None:
             s = self._revert_to_series(data)
@@ -1046,15 +1052,10 @@ class DemeanFactor(CrossSectionFactor):
             # But if you demean by sector, and due to the float precision,
             # demean results will slightly different, so you got a random ranking results.
             double = data.to(torch.float64)
+            mean = nanmean(double).unsqueeze(-1)
             if beta is not None:
-                mean = nanmean(double).unsqueeze(-1)
-                double -= beta * mean
-            else:
-                try:
-                    double -= nanmean(double).unsqueeze(-1)
-                except RuntimeError:  # pytorch bug
-                    double = double - nanmean(double).unsqueeze(-1)
-            return double.to(data.dtype)
+                mean = beta * mean
+            return (double - mean).to(data.dtype)
 
 
 class DemedianFactor(CrossSectionFactor):
