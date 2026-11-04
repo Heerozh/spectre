@@ -1184,9 +1184,11 @@ class RollingZScoreFactor(CustomFactor):
 
     def compute(self, data) -> torch.Tensor:
         def _rolling_zscore(_data):
-            mean = nanmean(_data, dim=2).unsqueeze(-1)
-            ret = (_data - mean) / nanstd(_data, dim=2).unsqueeze(-1)
-            return ret[:, :, -1]
+            # from the lowest value, so rounding doesn't give equal values a spread
+            samples = _data - nanmin(_data, dim=2).unsqueeze(-1)
+            std = nanstd(samples, dim=2)
+            std = std.masked_fill(std == 0, np.nan)
+            return (samples[:, :, -1] - nanmean(samples, dim=2)) / std
 
         return data.agg(_rolling_zscore)
 

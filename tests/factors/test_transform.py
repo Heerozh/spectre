@@ -230,6 +230,15 @@ def test_rolling_zscore(engine):
     )
 
 
+@pytest.mark.parametrize("dtype", [torch.float32, torch.float64])
+def test_rolling_zscore_of_flat_windows(device, dtype):
+    """The rounding of the mean must not give scores to a run of unchanged prices."""
+    prices = np.random.default_rng(0).uniform(0.01, 500, 200)
+    data = torch.tensor(prices, dtype=dtype, device=device).unsqueeze(-1).expand(200, 5)
+    result = factors.RollingZScoreFactor(5).compute(parallel.Rolling(data, 5))
+    assert torch.isnan(result).all()
+
+
 # ------------------------------------ math ------------------------------------
 
 
