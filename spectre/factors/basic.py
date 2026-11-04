@@ -127,9 +127,7 @@ class ExponentialWeightedMovingAverage(CustomFactor):
         previous[..., 0] = 0
         # older bars keep decaying over the missing bars, so `share` depends on the distance
         decay = (1 - self.alpha) ** torch.arange(self.win + 1, device=data.device, dtype=data.dtype)
-        # `ewm` has a branch of its own for com = 1, it only differs after a missing bar
-        new = 1 - decay if self.alpha == 0.5 else self.alpha
-        share = (new / (decay + new))[bars - previous]
+        share = (self.alpha / (decay + self.alpha))[bars - previous]
         share = share.masked_fill(previous == 0, 1).masked_fill(~valid, 0)
         later = (1 - share).flip(-1).cumprod(dim=-1).flip(-1).roll(-1, dims=-1)
         later[..., -1] = 1

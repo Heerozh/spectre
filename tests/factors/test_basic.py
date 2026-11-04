@@ -108,6 +108,31 @@ def ema_truncation_bound(span, prices, missing=0):
     return (1 - alpha) ** (win - missing) * (prices.max() - prices.min())
 
 
+def ewm_mean(values, span, adjust):
+    """
+    Expected EMA: `Series.ewm`, except for adjust=False at span=3, which is the formula of its docs.
+
+    pandas is not the reference for that one span. span=3 is com=1, and pandas has a branch for
+    com=1 that exists for `ewm(times=...)`. It only reaches span=3 by accident, and after a missing
+    bar it leaves the documented formula, so pandas jumps between spans 2.999, 3 and 3.001.
+    """
+    if span != 3 or adjust:
+        return values.ewm(span=span, adjust=adjust).mean()
+    # a gap of g bars decays the older bars by (1 - alpha) ^ g, the new bar always has alpha
+    alpha = 2 / (span + 1)
+    ret, y, decay = [], nan, 1 - alpha
+    for x in values:
+        if np.isnan(y):
+            y = x
+        elif np.isnan(x):
+            decay *= 1 - alpha
+        else:
+            y = (decay * y + alpha * x) / (decay + alpha)
+            decay = 1 - alpha
+        ret.append(y)
+    return pd.Series(ret, index=values.index)
+
+
 @pytest.mark.parametrize("span", [11, 50])
 @pytest.mark.parametrize("adjust", [False, True])
 def test_ema(engine, span, adjust):
@@ -153,7 +178,7 @@ def test_ema_of_dirty_assets(dirty_engine, dirty_panel, span, adjust, start):
     for asset in ("FULL", "LISTED", "DELISTED", "HALTED", "NANBAR"):
         close = loaded.xs(asset, level="asset").close
         got = result.xs(asset, level="asset")
-        expected = close.ewm(span=span, adjust=adjust).mean().loc[got.index]
+        expected = ewm_mean(close, span, adjust).loc[got.index]
         # the weights of adjust=True are float32
         atol = ema_truncation_bound(span, close, missing=1) + 1e-5
         assert_allclose(got.values, expected.values, rtol=0, atol=atol, err_msg=asset)
@@ -190,7 +215,7 @@ def test_ema_of_missing_bars_in_the_window(dirty_engine, dirty_panel, span, adju
     win = int(4.5 * (span + 1))
 
     def ewm_of_window(window):
-        return pd.Series(window).ewm(span=span, adjust=adjust).mean().iloc[-1]
+        return ewm_mean(pd.Series(window), span, adjust).iloc[-1]
 
     for asset in ("FULL", "LISTED", "DELISTED", "HALTED", "NANBAR"):
         expected = closes[asset].rolling(win, min_periods=1).apply(ewm_of_window, raw=True)
@@ -215,15 +240,46 @@ def test_ema_of_truncated_history(dirty_engine, dirty_panel, adjust):
         assert_allclose(got.values, expected.values, rtol=0, atol=1e-5, err_msg=asset)
 
 
+def run_ema(factor, data):
+    """`compute` of an EMA on a tensor with one row, without an engine."""
+    factor.weight = torch.tensor(factor.weight, device=data.device)  # done by pre_compute_
+    return factor.compute(parallel.Rolling(data, factor.win))[0].cpu().numpy()
+
+
 @pytest.mark.parametrize("span", [2, 3, 5])
 def test_ema_of_nan_runs(device, span):
     """Leading NaNs are not 0, the first valid bar is the seed, and the last value is kept."""
     data = torch.tensor([[nan, nan, 4, 8, nan, nan, 2, nan]], device=device, dtype=torch.float64)
-    expected = pd.Series(data[0].cpu().numpy()).ewm(span=span, adjust=False).mean().values
-    factor = factors.EMA(span)
-    factor.weight = torch.tensor(factor.weight, device=device)  # done by pre_compute_
-    result = factor.compute(parallel.Rolling(data, factor.win))
-    assert_allclose(result[0].cpu().numpy(), expected, rtol=1e-12)
+    expected = ewm_mean(pd.Series(data[0].cpu().numpy()), span, False).values
+    assert_allclose(run_ema(factors.EMA(span), data), expected, rtol=1e-12)
+
+
+@pytest.mark.parametrize(
+    "make_factor",
+    [lambda: factors.EMA(3), lambda: factors.EMA(half_life=1)],
+    ids=["span=3", "half_life=1"],
+)
+def test_ema_after_a_missing_bar_at_alpha_one_half(device, make_factor):
+    """
+    By hand, with alpha = 0.5. The docs of `ewm` give x0 and x2 of [x0, NaN, x2] the weights
+    (1 - alpha) ^ 2 and alpha, so (0.25 * 1 + 0.5 * 3) / (0.25 + 0.5) = 7 / 3. The bar after it is
+    a plain step, 0.5 * 7 / 3 + 0.5 * 5. pandas says 2.5 for the first, see `ewm_mean` for why it
+    is not the reference here.
+    """
+    data = torch.tensor([[1, nan, 3, 5]], device=device, dtype=torch.float64)
+    expected = [1, 1, 7 / 3, 7 / 6 + 5 / 2]
+    assert_allclose(run_ema(make_factor(), data), expected, rtol=1e-12)
+
+
+def test_ema_has_no_jump_at_span_3(device):
+    """pandas follows the documented formula on both sides of 3, span=3 has to lie between them."""
+    data = torch.tensor([[1, nan, 3]], device=device, dtype=torch.float64)
+    series = pd.Series(data[0].cpu().numpy())
+    lower_span = series.ewm(span=2.999, adjust=False).mean().iloc[-1]
+    higher_span = series.ewm(span=3.001, adjust=False).mean().iloc[-1]
+    assert higher_span < run_ema(factors.EMA(3), data)[-1] < lower_span
+    assert_allclose(run_ema(factors.EMA(2.999), data)[-1], lower_span, rtol=1e-12)
+    assert_allclose(run_ema(factors.EMA(3.001), data)[-1], higher_span, rtol=1e-12)
 
 
 @pytest.mark.filterwarnings("ignore:Warning!! delay_factor is set to False")
