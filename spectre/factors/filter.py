@@ -80,7 +80,8 @@ class OneHotEncoder(FilterFactor):
         super().__init__(1, [input_])
 
     def compute(self, data: torch.Tensor) -> torch.Tensor:
-        classes = torch.unique(data, sorted=False)
+        # sorted, so the order of the outputs is deterministic
+        classes = torch.unique(data, sorted=True)
         classes = classes[~torch.isnan(classes)]
         one_hot = []
         if classes.shape[0] > 1000:

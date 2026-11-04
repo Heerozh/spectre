@@ -226,7 +226,7 @@ class FactorEngine:
         self._device = torch.device('cpu')
         self._enable_stream = False
         self._align_by_time = False
-        self.timezone = 'UTC'
+        self._timezone = 'UTC'
         self._cache_hash = uuid.uuid4()
         self.max_backwards = np.inf
 
@@ -251,7 +251,22 @@ class FactorEngine:
         If `enable` is `True`, df index will be the product of 'date' and 'asset'.
         This method is slow, recommended to do it in your DataLoader in advance.
         """
+        if enable != self._align_by_time:
+            # cached data was prepared with the old setting
+            self.empty_cache()
         self._align_by_time = enable
+
+    @property
+    def timezone(self):
+        return self._timezone
+
+    @timezone.setter
+    def timezone(self, tz: str):
+        """ Timezone of the datetime index, affects DatetimeDataFactor like WEEKDAY """
+        if tz != self._timezone:
+            # cached data was prepared with the old timezone
+            self.empty_cache()
+        self._timezone = tz
 
     def add(self,
             factor: Union[Iterable[BaseFactor], BaseFactor],
@@ -391,18 +406,27 @@ class FactorEngine:
         for f in factors.values():
             f.clean_up_(force_cleanup)
 
-        # some pre-work
-        if filter_:
-            filter_.pre_compute_(self, start, end)
-        for _, f in factors.items():
-            # print(_)
-            f.pre_compute_(self, start, end)
+        try:
+            # some pre-work
+            if filter_:
+                filter_.pre_compute_(self, start, end)
+            for _, f in factors.items():
+                # print(_)
+                f.pre_compute_(self, start, end)
 
-        # schedule possible gpu work first
-        results = {col: self._compute_and_revert(fct, col) for col, fct in factors.items()}
-        shifted_mask = None
-        if filter_:
-            shifted_mask = self._compute_and_revert(filter_, 'filter')
+            # schedule possible gpu work first
+            results = {col: self._compute_and_revert(fct, col) for col, fct in factors.items()}
+            shifted_mask = None
+            if filter_:
+                shifted_mask = self._compute_and_revert(filter_, 'filter')
+        except BaseException:
+            # Reset reference counts and cached data, otherwise the factors (some of them are
+            # shared, like OHLCV) will use the stale data next time.
+            if filter_:
+                filter_.clean_up_(force=True)
+            for f in factors.values():
+                f.clean_up_(force=True)
+            raise
 
         # do clean up again
         if filter_:
@@ -467,7 +491,9 @@ class FactorEngine:
             results = {k: v[start_ind:] for k, v in results.items()}
 
         if return_index:
-            index = index[start_ind:][shifted_mask.cpu().numpy()]
+            index = index[start_ind:]
+            if shifted_mask is not None:
+                index = index[shifted_mask.cpu().numpy()]
             return results, index
         else:
             return results
