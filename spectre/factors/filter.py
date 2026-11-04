@@ -95,6 +95,8 @@ class OneHotEncoder(FilterFactor):
 
 class AnyFilter(FilterFactor):
     _min_win = 2
+    # no data before the first bar, it's not True
+    _rolling_fill = False
 
     def compute(self, data: Rolling) -> torch.Tensor:
         return data.values.any(dim=2)

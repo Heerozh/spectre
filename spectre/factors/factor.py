@@ -385,6 +385,7 @@ class CustomFactor(BaseFactor):
     win = 1          # determine include how many previous data
     inputs = None    # any values in `inputs` list will pass to `compute` function by order
     _min_win = None  # assert when `win` less than `_min_win`, prevent user error.
+    _rolling_fill = np.nan  # value of the rolling window before the first data
 
     # internal member variables
     _cache = None
@@ -632,7 +633,7 @@ class CustomFactor(BaseFactor):
             # todo: If the indirect children is a column factor, also need to adjust.
             #  for now, only adjust direct children.
             #  refactor: if any shift occurs, adjust them.
-            ret = Rolling(ret, self.win, upstream.adjustments)
+            ret = Rolling(ret, self.win, upstream.adjustments, self._rolling_fill)
         return ret
 
     def compute_(self, down_stream: Union[torch.cuda.Stream, None]) -> torch.Tensor:

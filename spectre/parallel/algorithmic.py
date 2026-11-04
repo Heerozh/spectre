@@ -417,16 +417,18 @@ class Rolling:
 
     @classmethod
     def unfold(cls, x, win, fill=np.nan):
-        if x.dtype == torch.bool:
-            # nan is True for bool tensor, means no data should be False
-            fill = False
         nan_stack = x.new_full((x.shape[0], win - 1), fill)
         new_x = torch.cat((nan_stack, x), dim=1)
         return new_x.unfold(1, win, 1)
 
-    def __init__(self, x: torch.Tensor, win: int, _adjustment: torch.Tensor = None):
+    def __init__(self, x: torch.Tensor, win: int, _adjustment: torch.Tensor = None,
+                 fill=np.nan):
+        """
+        :param fill: value of the window before the first data. Note that nan is True for bool
+            tensor.
+        """
         # todo win should support negative value
-        self.values = self.unfold(x, win)
+        self.values = self.unfold(x, win, fill)
         self.win = win
         self.device = x.device
 
