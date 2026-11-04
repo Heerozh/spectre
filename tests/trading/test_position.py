@@ -251,6 +251,23 @@ def test_reverse_split_remaining_to_cash():
     assert pos.last_price == pytest.approx(135)
 
 
+def test_split_without_a_price_uses_the_last_price():
+    pos = trading.Position(10, 10, 0, None)
+    assert pos.process_split(2, float("nan")) == 0
+    assert pos.shares == 20
+    assert pos.last_price == 5
+    assert pos.value == 100
+
+
+def test_reverse_split_without_a_price_uses_the_last_price():
+    pos = trading.Position(970, 10, 0, None)
+    # 970 = 64 * 15 + 10, the 10 left over are sold at the last price of 10
+    cash = pos.process_split(1 / 15, float("nan"))
+    assert pos.shares == 64
+    assert cash == pytest.approx(10 * 10)
+    assert pos.last_price == pytest.approx(150)
+
+
 def test_dividend():
     pos = trading.Position(10, 10, 0, None)
     assert pos.process_dividend(0.5, tax=0.1) == 5

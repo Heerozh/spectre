@@ -123,6 +123,8 @@ class Position:
     def process_split(self, inverse_ratio: float, last_price: float) -> float:
         if inverse_ratio != inverse_ratio or inverse_ratio == 1:
             return 0
+        if last_price != last_price:  # no price on this bar
+            last_price = self._last_price
         sp = self._shares * inverse_ratio
         cash = 0
         if inverse_ratio < 1:  # reverse split remaining to cash
