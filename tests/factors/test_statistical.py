@@ -2,10 +2,11 @@ import numpy as np
 import pandas as pd
 import pytest
 import torch
-from numpy.testing import assert_almost_equal
+from numpy.testing import assert_allclose, assert_almost_equal
 
 import spectre
 from spectre import factors
+from tests.conftest import DIRTY_DATES, LISTED_ON
 from tests.factors import reference as ref
 from tests.factors.helpers import assert_factor
 
@@ -56,6 +57,24 @@ def test_rolling_linear_regression_x(engine):
     f = factors.RollingLinearRegression(10, x=close, y=factors.OHLCV.open)
     expected = ref.expected(lambda df: rolling_polyfit(df.open, 10, 1, 1, x=df.close))
     assert_factor(engine, f.coef, *expected, decimal=5)
+
+
+def test_rolling_linear_regression_of_new_listing(dirty_engine, dirty_panel):
+    """A partial window fits the bars that exist, at their positions in the window."""
+    win = 10
+    closes = dirty_panel.xs("LISTED", level="asset").close.values
+    expected = [[nan, nan]]  # one bar has no slope
+    for i in range(1, len(closes)):
+        y = closes[max(0, i - win + 1) : i + 1]
+        expected.append(np.polyfit(np.arange(win)[-len(y) :], y, 1))
+
+    f = factors.RollingLinearRegression(win, None, close)
+    dirty_engine.add(f.coef, "slope")
+    dirty_engine.add(f.intercept, "intercept")
+    result = dirty_engine.run(DIRTY_DATES[LISTED_ON], DIRTY_DATES[-1], delay_factor=False)
+    assert_allclose(
+        result.xs("LISTED", level="asset")[["slope", "intercept"]].values, expected, rtol=1e-6
+    )
 
 
 def test_rolling_momentum(engine):

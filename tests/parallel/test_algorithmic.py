@@ -330,6 +330,65 @@ def test_linear_regression_1d_single_row():
     assert intercept[0].item() == pytest.approx(expected_intercept, abs=1e-6)
 
 
+@pytest.mark.parametrize("dtype", [torch.float32, torch.float64])
+@pytest.mark.parametrize(
+    "x, y",
+    [
+        ([0, 1, 2, 3, 4], [nan, nan, 1, 2, 3]),
+        ([nan, nan, 2, 3, 4], [0, 1, 2, 4, 3]),
+        ([nan, nan, 2, 3, 4], [nan, nan, 1, 2, 5]),
+        ([nan, 1, 2, 3, 4], [0, 1, 2, nan, 7]),
+        ([1, 2, 3, 4, nan], [nan, 5, 1, 7, 9]),
+    ],
+)
+def test_linear_regression_1d_uses_valid_pairs(device, dtype, x, y):
+    valid = ~np.isnan(np.array(x) * np.array(y))
+    expected = np.polyfit(np.array(x)[valid], np.array(y)[valid], 1)
+    coef, intercept = parallel.linear_regression_1d(
+        tensor([x], device, dtype), tensor([y], device, dtype)
+    )
+    assert coef.item() == pytest.approx(expected[0], abs=1e-5)
+    assert intercept.item() == pytest.approx(expected[1], abs=1e-5)
+
+
+@pytest.mark.parametrize("win", [5, 10, 20, 60])
+def test_linear_regression_1d_constant_x_float32(device, win):
+    """The mean of a constant rounds in float32, so its variance is not exactly 0."""
+    rng = np.random.default_rng(win)
+    constant = rng.uniform(0.5, 2000, (2000, 1)).astype(np.float32).repeat(win, axis=1)
+    y = rng.normal(100, 2, (2000, win)).astype(np.float32)
+    coef, intercept = parallel.linear_regression_1d(
+        torch.tensor(constant, device=device), torch.tensor(y, device=device)
+    )
+    assert_array_equal(to_np(coef), np.zeros(2000))
+    assert_almost_equal(to_np(intercept), y.mean(axis=1, dtype=np.float64), decimal=4)
+
+
+def test_linear_regression_1d_x_constant_on_valid_pairs(device):
+    x = tensor([[1, 2, 3, 3, 3]], device)
+    y = tensor([[nan, nan, 1, 2, 4]], device)
+    coef, intercept = parallel.linear_regression_1d(x, y)
+    assert coef.item() == 0
+    assert intercept.item() == pytest.approx(7 / 3, abs=1e-6)
+
+
+@pytest.mark.parametrize(
+    "x, y",
+    [
+        ([nan, nan, nan], [1, 2, 3]),
+        ([1, 2, 3], [nan, nan, nan]),
+        ([1, 2, nan], [nan, nan, 3]),
+        # a slope needs two samples
+        ([1, 2, 3], [nan, nan, 3]),
+        ([nan, 2, nan], [1, 2, 3]),
+    ],
+)
+def test_linear_regression_1d_too_few_pairs(device, x, y):
+    coef, intercept = parallel.linear_regression_1d(tensor([x], device), tensor([y], device))
+    assert_array_equal(to_np(coef), [nan])
+    assert_array_equal(to_np(intercept), [nan])
+
+
 def test_pearsonr():
     result = parallel.pearsonr(tensor(X), tensor(Y))
     for i in range(2):

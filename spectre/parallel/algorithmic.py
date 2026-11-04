@@ -304,14 +304,18 @@ def spearman(rank_x, rank_y, dim=1):
 
 
 def linear_regression_1d(x, y, dim=1):
-    x_bar = nanmean(x, dim=dim).unsqueeze(-1)
-    y_bar = nanmean(y, dim=dim).unsqueeze(-1)
+    mask = torch.isnan(x * y)
+    x_bar = unmasked_mean(x, mask, dim=dim).unsqueeze(-1)
+    y_bar = unmasked_mean(y, mask, dim=dim).unsqueeze(-1)
     demean_x = x - x_bar
     demean_y = y - y_bar
-    cov = nanmean(demean_x * demean_y, dim=dim)
-    x_var = nanvar(x, dim=dim, ddof=0)
+    cov = unmasked_mean(demean_x * demean_y, mask, dim=dim, inplace=True)
+    x_var = unmasked_mean(demean_x.square_(), mask, dim=dim, inplace=True)
     slope = cov / x_var
-    slope[x_var == 0] = 0
+    # x_bar is rounded, so x_var of a constant x can be above 0, compare the values instead
+    lowest = x.masked_fill(mask, np.inf).amin(dim=dim)
+    highest = x.masked_fill(mask, -np.inf).amax(dim=dim)
+    slope.masked_fill_((lowest == highest) & ((~mask).sum(dim=dim) > 1), 0)
     intcp = y_bar.squeeze(dim=-1) - slope * x_bar.squeeze(dim=-1)
     return slope, intcp
 
