@@ -1,13 +1,14 @@
 # Tests
 
 ```bash
-pip install -r requirements.txt -r requirements-test.txt
-pytest -n auto        # in parallel, needs pytest-xdist
+uv run pytest -n 6                                  # with the CUDA build of torch, the default
+uv run --no-group cuda --group cpu pytest -n auto   # with the CPU build, for machines without a GPU
 ```
 
-With a CUDA build of torch on Windows, use a small worker count such as `-n 6`. Each worker loads
-the CUDA DLLs, and `-n auto` on a many-core machine can fail at import with `WinError 1455` (page
-file too small).
+With the CUDA build on Windows, keep the worker count around `-n 6`. Each process commits a lot of
+memory for the CUDA DLLs, and `-n auto` on a many-core machine aborts with `WinError 1455` (page
+file too small). A lower count can hang instead, because the `Pool` in `test_cpu_parallel_factor`
+loads the DLLs again in every child process.
 
 ## Layout
 
@@ -35,8 +36,9 @@ Some tests are skipped by default:
 
 * `cuda`: runs only when CUDA is available. Tests using the `device` fixture run on both cpu
   and cuda.
-* `network`: downloads data, run with `pytest --run-network`.
+* `network`: downloads data, run with `uv run pytest --run-network`.
 * `external_data`: needs the quandl dataset (`wiki_prices.feather`, `WIKI_PRICES.zip`), set
   `SPECTRE_EXTERNAL_DATA` to the folder contains it, defaults to
   `../historical_data/us/prices/quandl` next to the repository.
-* `slow`: takes minutes, run with `pytest --run-slow`. TODO: split and simplify them.
+* `slow`: takes minutes, run with `uv run --with alphalens-reloaded pytest --run-slow`. TODO: split
+  and simplify them.

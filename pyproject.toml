@@ -1,0 +1,85 @@
+[project]
+name = "spectre"
+version = "0.5"
+description = "GPU-accelerated Parallel quantitative trading library"
+readme = "README.md"
+requires-python = ">=3.11"
+license = "GPL-3.0-only"
+license-files = ["LICENSE"]
+authors = [{ name = "Zhang Jianhao", email = "heeroz@gmail.com" }]
+keywords = ["quantitative", "analysis", "backtesting", "parallel", "algorithmic", "trading"]
+classifiers = [
+    "Programming Language :: Python :: 3",
+    "Operating System :: OS Independent",
+]
+dependencies = [
+    "bs4",
+    "lxml",
+    "numpy",
+    "pandas>=2.2",
+    "plotly",
+    "pyarrow",
+    "requests",
+    "torch>=2.0",
+    "tqdm",
+]
+
+[project.urls]
+Homepage = "https://github.com/Heerozh/spectre"
+
+[dependency-groups]
+dev = ["pytest", "pytest-xdist", "scipy"]
+# These two only pick the torch build, see `tool.uv.sources`. `cuda` is on by default, select the
+# CPU build with `--no-group cuda --group cpu`. Groups are not part of the built package.
+cuda = ["torch"]
+cpu = ["torch"]
+
+[build-system]
+requires = ["uv_build>=0.13.6,<0.14.0"]
+build-backend = "uv_build"
+
+[tool.uv]
+default-groups = ["dev", "cuda"]
+conflicts = [[{ group = "cpu" }, { group = "cuda" }]]
+
+[tool.uv.build-backend]
+module-root = ""
+
+[tool.uv.sources]
+torch = [
+    { index = "pytorch-cu132", group = "cuda", marker = "sys_platform != 'darwin'" },
+    { index = "pytorch-cpu", group = "cpu", marker = "sys_platform != 'darwin'" },
+    # macOS has no CUDA builds. This has to bind `project.dependencies` rather than the groups,
+    # or uv does not fork on the platform: it picks cu132 there, or fails a lock from scratch.
+    { index = "pypi", marker = "sys_platform == 'darwin'" },
+]
+
+[[tool.uv.index]]
+name = "pytorch-cu132"
+url = "https://download.pytorch.org/whl/cu132"
+explicit = true
+
+[[tool.uv.index]]
+name = "pytorch-cpu"
+url = "https://download.pytorch.org/whl/cpu"
+explicit = true
+
+[[tool.uv.index]]
+name = "pypi"
+url = "https://pypi.org/simple"
+explicit = true
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+addopts = "-ra --strict-markers"
+xfail_strict = true
+markers = [
+    "cuda: needs a CUDA device, skipped automatically when CUDA is not available.",
+    "network: downloads data from the internet, only runs with --run-network.",
+    "slow: takes minutes (TODO: split and simplify), only runs with --run-slow.",
+    "external_data: needs data outside this repository, skipped if not found, see tests/README.md.",
+]
+filterwarnings = [
+    # CsvDirLoader recommends float32 dtypes, the test data intentionally uses the defaults.
+    "ignore:It is recommended to set the `dtype` parameter:RuntimeWarning",
+]

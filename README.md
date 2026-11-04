@@ -8,20 +8,36 @@ spectre is a **GPU-accelerated Parallel** quantitative trading library, focused 
   * Pure python code, based on PyTorch, so it can integrate DL model very smoothly.
   * Compatible with `alphalens` and `pyfolio`
 
-Python 3.7+, PyTorch 1.3+, Pandas 1.0+ recommended
+Requires Python 3.11+, PyTorch 2.0+, Pandas 2.2+
 
 
 # Installation
 
+With [uv](https://docs.astral.sh/uv/), `--torch-backend=auto` installs the PyTorch build matching
+your GPU driver, or the CPU build if there is no GPU:
+
 ```bash
-pip install --no-deps git+git://github.com/Heerozh/spectre.git
+uv venv
+uv pip install --torch-backend=auto git+https://github.com/Heerozh/spectre.git
 ```
 
-Dependencies:
+With pip, on Windows install a CUDA build of PyTorch first, because the one on PyPI is CPU-only:
 
 ```bash
-conda install pytorch torchvision torchaudio cudatoolkit=11.0 -c pytorch
-conda install pyarrow pandas tqdm plotly requests bs4 lxml
+pip install torch --index-url https://download.pytorch.org/whl/cu132
+pip install git+https://github.com/Heerozh/spectre.git
+```
+
+A uv project depending on spectre has to choose its own PyTorch build, see
+[uv's PyTorch guide](https://docs.astral.sh/uv/guides/integration/pytorch/).
+
+For development, `uv sync` installs the locked dependencies with the CUDA build of PyTorch. Without
+a GPU, use `uv sync --no-group cuda --group cpu` for the much smaller CPU build:
+
+```bash
+git clone https://github.com/Heerozh/spectre.git
+cd spectre
+uv sync
 ```
 
 # Benchmarks
@@ -365,7 +381,7 @@ Reading csv is very slow, so you also need to use [ArrowLoader](#arrowloader).
 **\*\*read_csv:** Parameters for all csv when calling `pd.read_csv`.
  `parse_dates` or `date_parser` is required.
 
-Example for load [IEX](https://github.com/Heerozh/iex_fetcher) CSV files:
+Example for load IEX CSV files:
 
 ```python
 usecols = {'date', 'uOpen', 'uHigh', 'uLow', 'uClose', 'uVolume', 'exDate', 'amount', 'ratio'}
