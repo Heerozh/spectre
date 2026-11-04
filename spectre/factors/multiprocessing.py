@@ -8,6 +8,7 @@ from typing import Optional, Sequence
 from .factor import BaseFactor, CustomFactor
 from .datafactor import ColumnDataFactor
 from ..parallel import Rolling
+from .._compat import stack_keep_nan
 import pandas as pd
 import numpy as np
 from multiprocessing import Pool, cpu_count
@@ -100,7 +101,7 @@ class CPUParallelFactor(CustomFactor):
                 pool_ret.shape, ret.iloc[backwards:].shape))
 
         ret.iloc[backwards:] = pool_ret
-        ret = ret.stack(dropna=False)[origin_input.index]
+        ret = stack_keep_nan(ret)[origin_input.index]
 
         return self._regroup(ret)
 

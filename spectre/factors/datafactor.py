@@ -137,8 +137,14 @@ class SeriesDataFactor(ColumnDataFactor):
         if self.series.name not in engine.dataframe_.columns:
             engine._dataframe = engine.dataframe_.join(self.series)
             if self.fill_na is not None:
-                engine._dataframe[self.series.name] = engine._dataframe[self.series.name].\
-                    groupby(level=1).fillna(method=self.fill_na)
+                # GroupBy.fillna(method=...) was removed in pandas 3.0
+                fill_methods = {'ffill': 'ffill', 'pad': 'ffill', 'bfill': 'bfill',
+                                'backfill': 'bfill'}
+                if self.fill_na not in fill_methods:
+                    raise ValueError("`fill_na` must be one of {}".format(list(fill_methods)))
+                grouped = engine._dataframe[self.series.name].groupby(level=1, observed=False)
+                engine._dataframe[self.series.name] = getattr(
+                    grouped, fill_methods[self.fill_na])()
         super().pre_compute_(engine, start, end)
 
 

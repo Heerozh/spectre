@@ -12,6 +12,21 @@ import warnings
 from .dataloader import DataLoader
 
 
+def _ffill_zeros(df: pd.DataFrame) -> pd.DataFrame:
+    """
+    Replace every 0 with the value of the previous row (column by column), NaNs are kept as is.
+    Same as `df.replace(to_replace=0, method='ffill')`, which was removed in pandas 3.0.
+    """
+    df = df.copy()
+    row_ids = np.arange(len(df))
+    for col in df.columns:
+        values = df[col].to_numpy()
+        # index of the last non-zero row, leading zeros point to themselves (stay 0)
+        last_valid = np.maximum.accumulate(np.where(values != 0, row_ids, 0))
+        df[col] = values[last_valid]
+    return df
+
+
 class CsvDirLoader(DataLoader):
     def __init__(self, prices_path: str, prices_by_year=False, earliest_date: pd.Timestamp = None,
                  dividends_path=None, splits_path=None, file_pattern='*.csv',
@@ -153,7 +168,7 @@ class CsvDirLoader(DataLoader):
 
         if self.ohlcv is not None:
             # 这里把0当成nan进行ffill，如果未来取消了，要先把0变成nan，然后df.ffill
-            df[list(self.ohlcv)] = df[list(self.ohlcv)].replace(to_replace=0, method='ffill')
+            df[list(self.ohlcv)] = _ffill_zeros(df[list(self.ohlcv)])
 
         if self._dividends_path is not None:
             dfs = self._walk_dir(self._dividends_path, self._dividends_index)

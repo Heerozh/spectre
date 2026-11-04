@@ -16,6 +16,7 @@ from .datafactor import ColumnDataFactor, AdjustedColumnDataFactor
 from ..plotting import plot_quantile_and_cumulative_returns, plot_chart
 from ..data import DataLoader
 from ..parallel import ParallelGroupBy, DummyParallelGroupBy
+from .._compat import stack_keep_nan
 
 
 class OHLCV:
@@ -165,7 +166,7 @@ class FactorEngine:
             # since pandas 0.23, MultiIndex reindex is slow, so using a alternative way here,
             # but still very slow.
             # df = df.reindex(pd.MultiIndex.from_product(df.index.levels))
-            df = df.unstack(level=1).stack(dropna=False)
+            df = stack_keep_nan(df.unstack(level=1))
             df[self._loader.time_category] = df[self._loader.time_category].groupby(
                 level=0).transform(lambda x: x.fillna(x.value_counts().index[0]))
         if self.timezone != 'UTC':
