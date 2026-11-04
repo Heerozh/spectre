@@ -2,9 +2,10 @@ import numpy as np
 import pandas as pd
 import pytest
 import torch
-from numpy.testing import assert_almost_equal
+from numpy.testing import assert_allclose, assert_almost_equal
 
 from spectre import factors, parallel
+from tests.conftest import DIRTY_DATES, NANSPLIT_ON
 from tests.factors import reference as ref
 from tests.factors.helpers import assert_factor, run_factor
 
@@ -40,6 +41,21 @@ def test_returns_with_nan(device):
     result = factors.Returns().compute(parallel.Rolling(data, win=3)).cpu().numpy()
     expected = [[nan, nan, 1, 1, nan, 1], [nan, nan, 0.5, 0.5, 1 / 3, nan]]
     assert_almost_equal(result, expected)
+
+
+@pytest.mark.filterwarnings("ignore:Warning!! delay_factor is set to False")
+def test_returns_over_a_split_after_a_nan_bar(dirty_engine, dirty_panel):
+    """The split of NANSPLIT must be adjusted, even though the bar before it has no prices."""
+    win = 5
+    # the windows that start before the split, and end on or after it
+    spanning = DIRTY_DATES[NANSPLIT_ON : NANSPLIT_ON + win - 1]
+    dirty_engine.add(factors.Returns(win=win), "returns")
+    result = dirty_engine.run(spanning[0], spanning[-1], delay_factor=False)
+
+    clean_close = dirty_panel.clean_close.xs("NANSPLIT", level="asset")
+    expected = (clean_close / clean_close.shift(win - 1) - 1)[spanning]
+    assert expected.notna().sum() == win - 2  # one window starts on the NaN bar
+    assert_allclose(result.returns.xs("NANSPLIT", level="asset"), expected, rtol=1e-5)
 
 
 def test_log_returns(engine):

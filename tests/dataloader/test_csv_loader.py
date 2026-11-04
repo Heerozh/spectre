@@ -1,12 +1,21 @@
 import numpy as np
 import pandas as pd
 import pytest
-from numpy.testing import assert_almost_equal, assert_array_equal
+from numpy.testing import assert_allclose, assert_almost_equal, assert_array_equal
 
 import spectre
-from tests.conftest import DAILY_OHLCV, DATA_DIR, make_adjusted_daily_loader
+from tests.conftest import (
+    DAILY_OHLCV,
+    DATA_DIR,
+    DIRTY_SECTORS,
+    NANSPLIT_ON,
+    make_adjusted_daily_loader,
+)
+
+nan = np.nan
 
 START, END = pd.Timestamp("2019-01-01", tz="UTC"), pd.Timestamp("2019-01-15", tz="UTC")
+MEMORY_OHLCV = ("open", "high", "low", "close", "volume")
 
 
 def read_raw(asset, folder="daily", index_col="date"):
@@ -238,3 +247,76 @@ def test_align_by_time_loader():
     # MSFT has a nan row on 2019-01-10
     assert len(df) == 2 * 10
     assert df.loc[("2019-01-10", "MSFT"), DAILY_OHLCV].isna().all()
+
+
+# ---------------------------------- adjustments ----------------------------------
+
+
+def memory_loader(closes, dividends=None, splits=None):
+    """One asset 'A', `dividends` and `splits` are {bar: value}, on the bar of the ex-date."""
+    bars = len(closes)
+    dates = pd.date_range("2020-01-06", periods=bars, freq="D", tz="UTC")
+    df = pd.DataFrame({col: closes for col in MEMORY_OHLCV}, index=dates, dtype=float)
+    df["ex-dividend"] = pd.Series(dividends or {}, index=range(bars), dtype=float).fillna(0).values
+    df["split_ratio"] = pd.Series(splits or {}, index=range(bars), dtype=float).fillna(1).values
+    df = df.assign(asset="A").set_index("asset", append=True)
+    return spectre.data.MemoryLoader(df, MEMORY_OHLCV, ("ex-dividend", "split_ratio"))
+
+
+@pytest.mark.parametrize(
+    "closes, dividends, splits, price_multi, vol_multi",
+    [
+        pytest.param([20, nan, 10, 10], {}, {2: 0.5}, [0.5, 0.5, 1, 1], [2, 2, 1, 1], id="after"),
+        pytest.param([20, 20, nan, 10], {}, {2: 0.5}, [0.5, 0.5, 1, 1], [2, 2, 1, 1], id="on"),
+        pytest.param([9, nan, 9, 9], {}, {}, [1, 1, 1, 1], [1, 1, 1, 1], id="no_event"),
+        pytest.param([9, 9, nan], {}, {}, [1, 1, 1], [1, 1, 1], id="last_bar"),
+        # 1 - 2 / 100, the last close before the ex-date
+        pytest.param(
+            [100, nan, nan, 98, 98], {3: 2}, {}, [0.98, 0.98, 0.98, 1, 1], [1] * 5, id="dividend"
+        ),
+        # The dividend is after the split, so 1 is compared with 100 in the scale of the split.
+        pytest.param(
+            [100, nan, nan, 49, 49],
+            {3: 1},
+            {2: 0.5},
+            [0.49, 0.49, 0.98, 1, 1],
+            [2, 2, 1, 1, 1],
+            id="dividend_after_split",
+        ),
+        # A dividend on the ex-date of a split is paid on the shares before it, see `yahoo.py`.
+        pytest.param(
+            [100, nan, 50, 50], {2: 1}, {2: 0.5}, [0.495, 0.495, 1, 1], [2, 2, 1, 1], id="same_date"
+        ),
+        # No close before the ex-date, so there is no ratio, and no price to adjust.
+        pytest.param([nan, nan, 9, 9], {1: 2}, {}, [1, 1, 1, 1], [1, 1, 1, 1], id="no_last_close"),
+        pytest.param([nan, nan, 9, 9], {1: 2}, {1: 0.5}, [0.5, 1, 1, 1], [2, 1, 1, 1], id="split"),
+        # the csv loader keeps leading zeros, see `_ffill_zeros`
+        pytest.param([0, 0, 9, 9], {}, {}, [1, 1, 1, 1], [1, 1, 1, 1], id="zero_close"),
+        pytest.param([0, 0, 9, 9], {1: 2}, {}, [1, 1, 1, 1], [1, 1, 1, 1], id="zero_last_close"),
+    ],
+)
+def test_nan_close_keeps_events(closes, dividends, splits, price_multi, vol_multi):
+    df = memory_loader(closes, dividends, splits).load()
+    assert_allclose(df.price_multi, price_multi, rtol=1e-6)
+    assert_allclose(df.vol_multi, vol_multi, rtol=1e-6)
+    assert df.price_multi.dtype == np.float32
+    assert df.vol_multi.dtype == np.float32
+
+
+def test_dirty_panel_multipliers(dirty_loader, dirty_panel):
+    df = dirty_loader.load()
+    assert not df[["price_multi", "vol_multi"]].isna().any(axis=None)
+
+    # an adjusted close moves like `clean_close`, in the scale of the last bar
+    assert list(df.index.levels[1]) == sorted(DIRTY_SECTORS)
+    for asset in DIRTY_SECTORS:
+        raw = dirty_panel.xs(asset, level="asset")
+        scale = (raw.close / raw.clean_close).dropna()
+        expected = scale.iloc[-1] / scale
+        assert_allclose(df.price_multi.xs(asset, level="asset")[scale.index], expected, rtol=1e-6)
+
+    multi = df.xs("NANSPLIT", level="asset")
+    assert_allclose(multi.price_multi.iloc[:NANSPLIT_ON], 0.5)
+    assert_allclose(multi.price_multi.iloc[NANSPLIT_ON:], 1)
+    assert_allclose(multi.vol_multi.iloc[:NANSPLIT_ON], 2)
+    assert_allclose(multi.vol_multi.iloc[NANSPLIT_ON:], 1)

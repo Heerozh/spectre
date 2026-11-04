@@ -123,10 +123,15 @@ class DataLoader:
             df[spr_col] = sp_rto
 
             # generate dividend multipliers
-            price_multi = (1 - ex_div / df[close_col]) * sp_rto
+            vol_multi = (1 / sp_rto)[::-1].groupby(level=1, observed=False).cumprod()[::-1]
+            # A dividend is divided by the last close before its ex-date. That close can be some
+            # bars back, so bring it to the scale of the ex-date, there may be a split in between.
+            split_adjusted = df[close_col].where(df[close_col] > 0) / vol_multi
+            last_close = split_adjusted.groupby(level=1, observed=False).ffill() * vol_multi
+            # no last close means no earlier price to adjust
+            price_multi = (1 - ex_div / last_close).fillna(1) * sp_rto
             price_multi = price_multi[::-1].groupby(level=1, observed=False).cumprod()[::-1]
             df[price_multi_col] = price_multi.astype(np.float32)
-            vol_multi = (1 / sp_rto)[::-1].groupby(level=1, observed=False).cumprod()[::-1]
             df[vol_multi_col] = vol_multi.astype(np.float32)
 
         return df
