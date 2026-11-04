@@ -21,6 +21,9 @@ and factors.
   deprecation warnings from newer numpy that have nothing to do with spectre.
 - On Windows, PyPI's torch wheel is CPU-only. That environment skips every `cuda` test, so a passing
   run says nothing about GPU code paths.
+- With a CUDA build of torch on Windows, use a small worker count such as `-n 6`. Each worker loads
+  the CUDA DLLs, and `-n auto` on a many-core machine can fail at import with `WinError 1455` (page
+  file too small). pytest then exits with code 3 before any test runs.
 
 ## Lint and packaging
 

@@ -5,6 +5,10 @@ pip install -r requirements.txt -r requirements-test.txt
 pytest -n auto        # in parallel, needs pytest-xdist
 ```
 
+With a CUDA build of torch on Windows, use a small worker count such as `-n 6`. Each worker loads
+the CUDA DLLs, and `-n auto` on a many-core machine can fail at import with `WinError 1455` (page
+file too small).
+
 ## Layout
 
 The test folders mirror the `spectre` packages:
