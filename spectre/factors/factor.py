@@ -442,6 +442,10 @@ class CustomFactor(BaseFactor):
     inputs = None  # any values in `inputs` list will pass to `compute` function by order
     _min_win = None  # assert when `win` less than `_min_win`, prevent user error.
     _rolling_fill = np.nan  # value of the rolling window before the first data
+    # Set if `compute` reads across the slots of a group, like a mean of each date. Then the padding
+    # slots of an input in the same group are cleared. Not by default, because `shift(-n)` needs
+    # them: they hold the returns up to the last close of a delisted asset.
+    _reads_across_group = False
 
     # internal member variables
     _cache = None
@@ -680,6 +684,13 @@ class CustomFactor(BaseFactor):
             else:
                 ret = ret.masked_fill(~mask, np.nan)
 
+        # a regroup has already cleared them
+        if self._reads_across_group and upstream.groupby == self.groupby:
+            padding = self._engine.get_group_padding_mask(self.groupby)
+            if ret.ndim > padding.ndim:  # multiple outputs
+                padding = padding.unsqueeze(-1)
+            ret = ret.masked_fill(padding, False if ret.dtype == torch.bool else np.nan)
+
         # if need rolling and adjustment
         if self.win > 1:
             if len(ret.shape) >= 3:
@@ -821,6 +832,7 @@ class CrossSectionFactor(CustomFactor, ABC):
 
     groupby = "date"
     win = 1
+    _reads_across_group = True
 
     def __init__(
         self,
@@ -1186,6 +1198,7 @@ class MADClampFactor(CustomFactor):
     z = 5
     nan_policy = "omit"
     m_is_mean = False  # switch to mean abs deviation
+    _reads_across_group = True
 
     def compute(self, data, fill):
         ret = data.clone()
@@ -1225,6 +1238,7 @@ class MADClampFactor(CustomFactor):
 class WinsorizingFactor(CustomFactor):
     z = 0.05
     nan_policy = "omit"
+    _reads_across_group = True
 
     def compute(self, data):
         universe_mask = self._get_computed_mask()

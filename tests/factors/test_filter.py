@@ -152,6 +152,12 @@ def test_one_hot_many_classes_warns(engine):
     assert np.issubdtype(engine.run(ref.START, ref.END).test.dtype, np.bool_)
 
 
+def test_one_hot_has_no_class_from_padding(dirty_engine, dirty_panel):
+    # -1 is only in the padding slots, the first class is Monday
+    mondays = dirty_panel.index.get_level_values("date").dayofweek == 0
+    assert_array_equal(run_dirty(dirty_engine, factors.WEEKDAY.fill_na(-1).one_hot()[0]), mondays)
+
+
 # ------------------------------------ count of a filter ------------------------------------
 
 

@@ -1,10 +1,11 @@
 import numpy as np
 import pandas as pd
 import pytest
-from numpy.testing import assert_almost_equal, assert_array_equal
+from numpy.testing import assert_allclose, assert_almost_equal, assert_array_equal
 
 import spectre
 from spectre import factors
+from tests.conftest import DELISTED_ON, DIRTY_DATES
 from tests.factors import reference as ref
 
 close = factors.OHLCV.close
@@ -249,6 +250,29 @@ def test_full_run(engine):
 
     assert list(mean_returns.index) == [0, 1]
     assert ("ma_cross", "1D", "mean") in mean_returns.columns
+
+
+@pytest.mark.filterwarnings("ignore:quantile\\(\\) mask parameter not set")
+@pytest.mark.parametrize("filter_zscore", [None, 20])
+def test_full_run_keeps_forward_returns_of_delisted_asset(dirty_engine, dirty_panel, filter_zscore):
+    """Near the delisting, the return is to the last close, it is read from the padding slots."""
+    dirty_engine.add(factors.MA(2), "ma")
+    factor_data, _ = dirty_engine.full_run(
+        DIRTY_DATES[5],
+        DIRTY_DATES[-1],
+        periods=(3,),
+        quantiles=2,
+        filter_zscore=filter_zscore,
+        preview=False,
+    )
+    returns = factor_data[("Returns", "3D")].xs("DELISTED", level="asset")
+
+    closes = dirty_panel.close.xs("DELISTED", level="asset").to_numpy()
+    last = len(closes) - 1
+    assert last == DELISTED_ON
+    forward = [closes[min(bar + 3, last)] / closes[bar] - 1 for bar in range(last)] + [np.nan]
+    assert_allclose(returns, forward[-len(returns) :], rtol=1e-5, atol=1e-6)
+    assert returns.iloc[-2] == pytest.approx(closes[last] / closes[last - 1] - 1, rel=1e-5)
 
 
 def test_factors_reset_after_error(engine):

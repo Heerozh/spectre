@@ -505,6 +505,115 @@ def test_winsorizing_few_values():
     assert not torch.isinf(result).any()
 
 
+# ------------------------------------ padding ------------------------------------
+# An input in the same group is not regrouped, so its padding slots hold whatever it left there.
+# `fill_na` fills them, and a rolling factor goes on after the last bar of a delisted asset.
+
+
+def by_asset(factor):
+    factor.groupby = "asset"
+    return factor
+
+
+def weights_of(x):
+    demeaned_ = x - x.mean()
+    return demeaned_ / demeaned_.abs().sum()
+
+
+@pytest.mark.parametrize(
+    "build, reference",
+    [
+        (lambda f: f.mean(groupby="asset"), lambda x: x.mean()),
+        (lambda f: f.std(groupby="asset"), lambda x: x.std(ddof=0)),
+        (lambda f: f.max(groupby="asset"), lambda x: x.max()),
+        (lambda f: f.min(groupby="asset"), lambda x: x.min()),
+        (lambda f: f.xs_sum(groupby="asset"), lambda x: x.sum()),
+        (lambda f: f.median(groupby="asset"), lambda x: x.median()),
+        (lambda f: f.demedian(groupby="asset"), lambda x: x - x.median()),
+        (lambda f: by_asset(f.demean()), lambda x: x - x.mean()),
+        (lambda f: f.zscore(groupby="asset"), lambda x: (x - x.mean()) / x.std(ddof=0)),
+        (lambda f: by_asset(f.rank()), lambda x: x.rank()),
+        (lambda f: by_asset(f.to_weight()), weights_of),
+        (lambda f: f.mad_clamp(1, groupby="asset"), lambda x: ref.mad_clamp(x, 1)),
+        (lambda f: f.mad_clamp(1, groupby="asset", mean=True), lambda x: ref.mad_clamp(x, 1, True)),
+    ],
+    ids=[
+        "mean",
+        "std",
+        "max",
+        "min",
+        "xs_sum",
+        "median",
+        "demedian",
+        "demean",
+        "zscore",
+        "rank",
+        "to_weight",
+        "mad_clamp",
+        "mad_clamp_mean",
+    ],
+)
+@pytest.mark.parametrize(
+    "fill, values",
+    [
+        (lambda: close.fill_na(0), lambda closes: closes.fillna(0)),
+        (lambda: close.fill_na(ffill=True), lambda closes: closes.groupby(level="asset").ffill()),
+    ],
+    ids=["zero", "ffill"],
+)
+def test_same_group_input_is_read_without_padding(
+    dirty_engine, dirty_panel, build, reference, fill, values
+):
+    expected = values(dirty_panel.close).groupby(level="asset").transform(reference)
+    result = run_dirty(dirty_engine, build(fill()))
+    assert_allclose(result, expected, rtol=1e-6, atol=1e-6)
+
+
+def test_same_group_mask_is_read_without_padding(dirty_engine, dirty_panel):
+    filled = close.fill_na(0)
+    mask = filled >= 0  # True on every row, and in the padding too
+    dirty_engine.add(filled.median(groupby="asset", mask=mask), "median")
+    dirty_engine.add(by_asset(filled.winsorizing(0.2, mask=mask)), "winsorizing")
+    dirty_engine.add(filled.quantile(3, mask=mask, groupby="asset"), "quantile")
+    with pytest.warns(RuntimeWarning, match="delay_factor is set to False"):
+        result = dirty_engine.run(DIRTY_DATES[0], DIRTY_DATES[-1], delay_factor=False)
+
+    by_asset_ = dirty_panel.close.fillna(0).groupby(level="asset")
+    assert_allclose(result["median"], by_asset_.transform("median"))
+    assert_allclose(
+        result["winsorizing"],
+        by_asset_.transform(lambda x: np.asarray(scipy.stats.mstats.winsorize(x, [0.2, 0.2]))),
+    )
+    assert_array_equal(result["quantile"], by_asset_.transform(pd.qcut, 3, labels=False))
+
+
+def test_cross_section_of_cross_section_is_read_without_padding(dirty_engine, dirty_panel):
+    # a mean is expanded to every slot of the date, the padding too
+    mean = dirty_panel.close.groupby(level="date").transform("mean")
+    expected = mean.groupby(level="date").transform("sum")
+    assert_allclose(run_dirty(dirty_engine, close.mean().xs_sum()), expected)
+
+
+def test_filter_in_same_group_is_read_without_padding(dirty_engine, dirty_panel):
+    selected = (dirty_panel.close > 100).astype(float)
+    expected = selected - selected.groupby(level="asset").transform("mean")
+    assert_allclose(run_dirty(dirty_engine, demean_by_asset(close > 100)), expected, atol=1e-6)
+
+
+def test_multiple_outputs_are_read_without_padding(dirty_engine, dirty_panel):
+    closes = dirty_panel.close
+    volumes = dirty_panel.volume
+    means = pd.DataFrame(
+        {
+            "close": closes.groupby(level="date").transform("mean"),
+            "volume": volumes.groupby(level="date").transform("mean"),
+        }
+    )
+    expected = means.sub(means.mean(axis=1), axis=0).div(means.std(axis=1, ddof=0), axis=0)
+    factor = factors.FactorWiseZScore(inputs=[close, volume])[0]
+    assert_allclose(run_dirty(dirty_engine, factor), expected["close"], rtol=1e-5)
+
+
 def test_iqr_normality(engine):
     # interquartile range / std - 1.34898, if only two values, iqr / std = 2
     expected_aapl = [abs(2 - 1.34898)] * 9

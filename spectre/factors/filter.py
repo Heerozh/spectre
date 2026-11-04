@@ -90,6 +90,8 @@ class StaticAssets(FilterFactor):
 
 
 class OneHotEncoder(FilterFactor):
+    _reads_across_group = True
+
     def __init__(self, input_: BaseFactor):
         super().__init__(1, [input_])
 
