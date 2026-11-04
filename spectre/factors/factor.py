@@ -687,7 +687,7 @@ class CustomFactor(BaseFactor):
             else:
                 ret = ret.masked_fill(~mask, np.nan)
 
-        # a regroup has already cleared them
+        # only an input in the same group, a regroup has cleared the padding of the others
         if self._reads_across_group and upstream.groupby == self.groupby:
             padding = self._engine.get_group_padding_mask(self.groupby)
             if ret.ndim > padding.ndim:  # multiple outputs

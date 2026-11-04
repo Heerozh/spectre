@@ -613,13 +613,13 @@ def test_same_group_mask_is_read_without_padding(dirty_engine, dirty_panel):
     with pytest.warns(RuntimeWarning, match="delay_factor is set to False"):
         result = dirty_engine.run(DIRTY_DATES[0], DIRTY_DATES[-1], delay_factor=False)
 
-    by_asset_ = dirty_panel.close.fillna(0).groupby(level="asset")
-    assert_allclose(result["median"], by_asset_.transform("median"))
+    grouped = dirty_panel.close.fillna(0).groupby(level="asset")
+    assert_allclose(result["median"], grouped.transform("median"))
     assert_allclose(
         result["winsorizing"],
-        by_asset_.transform(lambda x: np.asarray(scipy.stats.mstats.winsorize(x, [0.2, 0.2]))),
+        grouped.transform(lambda x: np.asarray(scipy.stats.mstats.winsorize(x, [0.2, 0.2]))),
     )
-    assert_array_equal(result["quantile"], by_asset_.transform(pd.qcut, 3, labels=False))
+    assert_array_equal(result["quantile"], grouped.transform(pd.qcut, 3, labels=False))
 
 
 def test_cross_section_of_cross_section_is_read_without_padding(dirty_engine, dirty_panel):
