@@ -12,7 +12,7 @@ import numpy as np
 import torch
 
 from ..config import Global
-from ..parallel import nanmax, nanmean, nanmin, nansum, unmasked_sum
+from ..parallel import nanmax, nanmean, nanmin, unmasked_sum
 from .engine import OHLCV
 from .factor import BaseFactor, CustomFactor
 
@@ -58,10 +58,7 @@ class WeightedAverageValue(CustomFactor):
     _min_win = 2
 
     def compute(self, base, weight):
-        def _weight_mean(_base, _weight):
-            return nansum(_base * _weight, dim=2) / nansum(_weight, dim=2)
-
-        return base.agg(_weight_mean, weight)
+        return base.agg(_weighted_mean, weight)
 
 
 class LinearWeightedAverage(CustomFactor):

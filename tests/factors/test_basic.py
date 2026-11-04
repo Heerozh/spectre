@@ -226,6 +226,30 @@ def test_vwap(engine):
     assert_almost_equal(expected[1][:3], [103.3029256, 102.5066541, 102.5480467])
 
 
+@pytest.mark.filterwarnings("ignore:Warning!! delay_factor is set to False")
+def test_vwap_of_dirty_assets(dirty_engine, dirty_panel):
+    """A bar with a price and no volume, or the other way around, is left out of both sums."""
+    win = 3
+    result = run_dirty(dirty_engine, factors.VWAP(win))
+    for asset in ("FULL", "LISTED", "DELISTED", "HALTED", "NANBAR"):
+        df = dirty_panel.xs(asset, level="asset")
+        volume = df.volume.where(df.close.notna())
+        amount = (df.close * volume).rolling(win, min_periods=1).sum()
+        expected = amount / volume.rolling(win, min_periods=1).sum()
+        got = result.xs(asset, level="asset")
+        assert_allclose(got.values, expected.values, rtol=1e-6, err_msg=asset)
+
+
+def test_weighted_average_uses_one_set_of_samples(device):
+    base = torch.tensor([[100, nan, 107, 5, 8, 1, nan, nan]], device=device)
+    weight = torch.tensor([[1000, 5000, 1000, nan, nan, nan, 1, 1]], device=device)
+    rolling = parallel.Rolling(base, win=3), parallel.Rolling(weight, win=3)
+    result = factors.WeightedAverageValue(3).compute(*rolling)
+    # valid pairs: (100, 1000) and (107, 1000), so windows from the 6th on have none
+    expected = [100, 100, 103.5, 107, 107, nan, nan, nan]
+    assert_almost_equal(result[0].cpu().numpy(), expected, decimal=4)
+
+
 def test_average_dollar_volume(engine):
     expected = ref.expected(lambda df: (df.close * df.volume).rolling(3).mean())
     assert_factor(engine, factors.AverageDollarVolume(3), *expected, decimal=2)
