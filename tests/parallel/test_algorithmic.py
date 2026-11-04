@@ -1,9 +1,12 @@
+import math
+from fractions import Fraction
+
 import numpy as np
 import pandas as pd
 import pytest
 import scipy.stats
 import torch
-from numpy.testing import assert_almost_equal, assert_array_equal
+from numpy.testing import assert_allclose, assert_almost_equal, assert_array_equal
 
 from spectre import parallel
 
@@ -484,6 +487,114 @@ def test_pearsonr():
         assert result[i].item() == pytest.approx(expected, abs=1e-6)
     # constant input
     assert np.isnan(result[2].item())
+
+
+def exact_corr(x, y):
+    """Correlation of the valid pairs, by exact arithmetic on the values of the floats."""
+    pairs = [(Fraction(float(a)), Fraction(float(b))) for a, b in zip(x, y) if a * b == a * b]
+    n = len(pairs)
+    if n < 2:
+        return nan
+    x_bar, y_bar = sum(a for a, _ in pairs) / n, sum(b for _, b in pairs) / n
+    cov = sum((a - x_bar) * (b - y_bar) for a, b in pairs)
+    x_var = sum((a - x_bar) ** 2 for a, _ in pairs)
+    y_var = sum((b - y_bar) ** 2 for _, b in pairs)
+    if x_var == 0 or y_var == 0:
+        return nan
+    return math.copysign(math.sqrt(float(cov * cov / (x_var * y_var))), float(cov))
+
+
+DTYPES = [torch.float32, torch.float64]
+
+
+@pytest.mark.parametrize("ddof", [0, 1])
+@pytest.mark.parametrize("dtype", DTYPES)
+def test_pearsonr_of_constant_is_nan(device, dtype, ddof):
+    """The mean of a constant is rounded or not depending on its value, so try a lot of them."""
+    rng = np.random.default_rng(0)
+    constant = tensor(np.repeat(rng.uniform(1, 300, (1000, 1)), 30, axis=1), device, dtype)
+    other = tensor(rng.normal(size=(1000, 30)), device, dtype)
+    for x, y in ((constant, other), (other, constant), (constant, constant)):
+        assert torch.isnan(parallel.pearsonr(x, y, ddof=ddof)).all()
+
+
+@pytest.mark.parametrize("dtype", DTYPES)
+def test_pearsonr_of_constant_on_the_common_samples(device, dtype):
+    """x varies, but only on the samples that y doesn't have."""
+    rng = np.random.default_rng(0)
+    x = np.repeat(rng.uniform(1, 300, (1000, 1)), 30, axis=1)
+    x[:, -2:] += rng.uniform(1, 3, (1000, 2))
+    y = rng.normal(size=x.shape)
+    y[:, -2:] = nan
+    result = parallel.pearsonr(tensor(x, device, dtype), tensor(y, device, dtype), ddof=1)
+    assert torch.isnan(result).all()
+
+
+@pytest.mark.parametrize("dtype, tol", [(torch.float32, 1e-5), (torch.float64, 1e-12)])
+def test_pearsonr_in_rolling_windows(device, dtype, tol):
+    """The windows inside the flat part of x have no correlation, all the others have one."""
+    win = 5
+    rng = np.random.default_rng(0)
+    x = rng.normal(100, 1, (100, 30))
+    x[:, 10:20] = rng.uniform(1, 300, (100, 1))
+    y = rng.normal(size=x.shape)
+    y[1, 5] = nan
+    x, y = tensor(x, device, dtype), tensor(y, device, dtype)
+
+    def corr(a, b):
+        return parallel.pearsonr(a, b, dim=2, ddof=1)
+
+    result = to_np(parallel.Rolling(x, win).agg(corr, parallel.Rolling(y, win)))
+    x, y = to_np(x), to_np(y)
+
+    def window_corr(row, bar):
+        start = max(0, bar - win + 1)
+        return exact_corr(x[row, start : bar + 1], y[row, start : bar + 1])
+
+    expected = [[window_corr(row, bar) for bar in range(x.shape[1])] for row in range(x.shape[0])]
+    assert_allclose(result, expected, rtol=tol, atol=tol)
+    assert np.isnan(result[:, 14:20]).all()
+    assert not np.isnan(result[:, 20:]).any()
+
+
+def nearly_constant(rng, shape, spread, np_type):
+    """Rows of a level, plus a whole number of ulps up to `spread`."""
+    level = rng.uniform(1, 300, (shape[0], 1)).astype(np_type)
+    ulp = np.nextafter(level, np.inf, dtype=np_type) - level
+    steps = rng.integers(0, spread + 1, shape)
+    return level + (steps * ulp).astype(np_type), steps
+
+
+@pytest.mark.parametrize("spread", [1, 2, 16, 256])
+@pytest.mark.parametrize(
+    "dtype, np_type, tol", [(torch.float32, np.float32, 1e-6), (torch.float64, np.float64, 1e-14)]
+)
+def test_pearsonr_of_nearly_constant_is_real(device, dtype, np_type, tol, spread):
+    """x only varies by a few ulps, and a mean that is rounded by that much isn't variance."""
+    rng = np.random.default_rng(0)
+    shape = (50, 30)
+    x, steps = nearly_constant(rng, shape, spread, np_type)
+    follows_x = (steps + rng.normal(0, spread * 0.5 + 0.5, shape)).astype(np_type)
+    also_nearly_constant = nearly_constant(rng, shape, spread, np_type)[0]
+    for y in (follows_x, also_nearly_constant):
+        result = parallel.pearsonr(tensor(x, device, dtype), tensor(y, device, dtype), ddof=1)
+        expected = [exact_corr(a, b) for a, b in zip(x, y)]
+        assert_allclose(to_np(result), expected, rtol=tol, atol=tol)
+        assert not np.isnan(expected).any()
+
+
+@pytest.mark.parametrize("ddof", [0, 1])
+def test_pearsonr_of_one_pair_is_nan(device, ddof):
+    x = tensor([[1, nan, 3]], device)
+    y = tensor([[2, 5, nan]], device)
+    assert_array_equal(to_np(parallel.pearsonr(x, y, ddof=ddof)), [nan])
+
+
+@pytest.mark.parametrize("ddof", [0, 1])
+def test_pearsonr_of_two_pairs(device, ddof):
+    x = tensor([[1, 2, nan], [1, 2, nan]], device)
+    y = tensor([[5, 3, 7], [3, 5, 7]], device)
+    assert_allclose(to_np(parallel.pearsonr(x, y, ddof=ddof)), [-1, 1], rtol=1e-6)
 
 
 def test_spearman():

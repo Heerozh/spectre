@@ -212,12 +212,7 @@ class XSMaxCorrCoef(CrossSectionFactor):
         # the diagonal stays NaN, a factor is not one of the others
         corr = xs[0].new_full((dates, len(xs), len(xs)), np.nan)
         for i, j in itertools.combinations(range(len(xs)), 2):
-            mask = torch.isnan(xs[i] * xs[j])
-            # pearsonr rounds the mean, which leaves a constant with a tiny variance, and the noise
-            # from that would pass as a correlation. From its lowest value a constant is exactly 0.
-            x = xs[i] - xs[i].masked_fill(mask, np.inf).amin(dim=1, keepdim=True)
-            y = xs[j] - xs[j].masked_fill(mask, np.inf).amin(dim=1, keepdim=True)
-            corr[:, i, j] = corr[:, j, i] = pearsonr(x, y, dim=1, ddof=1)
+            corr[:, i, j] = corr[:, j, i] = pearsonr(xs[i], xs[j], dim=1, ddof=1)
         max_corr = nanmax(corr, dim=2).unsqueeze(-2)
         return max_corr.expand(dates, assets, len(xs))
 

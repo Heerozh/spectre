@@ -431,6 +431,15 @@ def test_information_coefficient(ic_engine):
     )
 
 
+@pytest.mark.parametrize("dtype", [torch.float32, torch.float64])
+def test_information_coefficient_of_constant_factor_is_nan(device, dtype):
+    rng = np.random.default_rng(0)
+    x = torch.tensor(np.repeat(rng.uniform(1, 300, (500, 1)), 30, axis=1), device=device)
+    y = torch.tensor(rng.normal(size=(500, 30)), device=device)
+    ic = factors.InformationCoefficient(None, None).compute(x.to(dtype), y.to(dtype), None)
+    assert torch.isnan(ic).all()
+
+
 @pytest.mark.filterwarnings("ignore:Warning!! delay_factor is set to False")
 def test_rank_weighted_ic_with_mask(ic_engine):
     a, _b, _c, r = ic_inputs()

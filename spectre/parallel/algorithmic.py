@@ -294,6 +294,10 @@ def covariance(x, y, dim=1, ddof=0):
 
 def pearsonr(x, y, dim=1, ddof=0):
     mask = torch.isnan(x * y)
+    # Measured from its lowest value a constant is exactly 0, and divides to NaN below. From any
+    # other level the rounding of the mean would pass as variance, also on nearly constant data.
+    x = x - x.masked_fill(mask, np.inf).amin(dim=dim, keepdim=True)
+    y = y - y.masked_fill(mask, np.inf).amin(dim=dim, keepdim=True)
     cov = unmasked_covariance(x, y, mask, dim, ddof)
     x_var = unmasked_var(x, mask, dim, ddof)
     y_var = unmasked_var(y, mask, dim, ddof)
