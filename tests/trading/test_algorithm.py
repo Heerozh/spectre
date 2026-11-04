@@ -789,9 +789,9 @@ class RerunAlg(trading.CustomAlgorithm):
         self.records = records
 
 
-def new_rerun_alg(loader):
+def new_rerun_alg(loader, alg_type=RerunAlg):
     blotter = trading.SimulationBlotter(loader)
-    alg = RerunAlg(blotter, main=loader)
+    alg = alg_type(blotter, main=loader)
     evt_mgr = trading.SimulationEventManager()
     evt_mgr.subscribe(blotter)
     evt_mgr.subscribe(alg)
@@ -882,3 +882,41 @@ def test_run_after_a_stop_is_complete(rerun):
 
     evt_mgr.run(start, end)
     assert_same_run(alg, reference)
+
+
+class OpenAlg(trading.CustomAlgorithm):
+    """Trades at each open, and logs the time of the last row each rebalance was given."""
+
+    def initialize(self):
+        self.seen = []
+        self.last_rows = []
+        self.get_factor_engine().add(factors.OHLCV.open, "open")
+        self.blotter.set_commission(0, 0, 0)
+        self.blotter.set_slippage(0, 0)
+        self.schedule_rebalance(trading.event.MarketOpen(self.rebalance))
+
+    def rebalance(self, data, history):
+        self.seen.append(self.current)
+        self.last_rows.append(history.index.get_level_values(0)[-1])
+        self.blotter.batch_order_target_percent(data.index, data.open / data.open.sum())
+
+
+def test_rerun_on_intraday_bars_does_not_see_the_end_of_the_last_run():
+    days = pd.bdate_range("2020-01-06", periods=5, tz="UTC")
+    dates = pd.DatetimeIndex(
+        [day + pd.Timedelta(minutes=870 + 5 * i) for day in days for i in range(3)]
+    )
+    loader = make_loader(make_panel(dates))
+    start, end = days[1], dates[-1]
+    fresh, evt_mgr = new_rerun_alg(loader, OpenAlg)
+    evt_mgr.run(start, end)
+
+    alg, evt_mgr = new_rerun_alg(loader, OpenAlg)
+    evt_mgr.run(start, end)
+    evt_mgr.run(start, end)
+
+    # the bars of the first open come with its first EveryBarData, after it
+    assert fresh.seen == list(days[2:] + pd.Timedelta(minutes=870))
+    assert all(last_row < now for now, last_row in zip(alg.seen, alg.last_rows))
+    assert alg.last_rows == fresh.last_rows
+    assert_same_run(alg, fresh)
