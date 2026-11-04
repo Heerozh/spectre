@@ -65,3 +65,9 @@ def nansplit_bars(panel):
     """
     bars = panel.xs("NANSPLIT", level="asset")
     return bars, (bars.close / bars.clean_close).ffill()
+
+
+def aligned_bars(panel, asset):
+    """Same, on every row align_by_time gives `asset`. Before its first bar nothing moved."""
+    bars = panel.xs(asset, level="asset").reindex(DIRTY_DATES)
+    return bars, (bars.close / bars.clean_close).ffill().bfill()

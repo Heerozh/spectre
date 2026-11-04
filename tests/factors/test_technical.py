@@ -5,9 +5,9 @@ from numpy.testing import assert_allclose, assert_almost_equal
 
 import spectre
 from spectre import factors
-from tests.conftest import DIRTY_ADJUSTMENTS, DIRTY_OHLCV
+from tests.conftest import DELISTED_ON, DIRTY_ADJUSTMENTS, DIRTY_OHLCV
 from tests.factors import reference as ref
-from tests.factors.helpers import assert_factor, nansplit_bars, run_dirty
+from tests.factors.helpers import aligned_bars, assert_factor, nansplit_bars, run_dirty
 
 nan = np.nan
 
@@ -85,6 +85,22 @@ def test_macd_across_split_after_nan_bar(dirty_engine, dirty_panel, params, adju
     assert_allclose(result.values, (histogram * scale).values, rtol=0, atol=2e-3)
 
 
+@pytest.mark.filterwarnings("ignore:Warning!! delay_factor is set to False")
+@pytest.mark.parametrize("adjust", [False, True])
+@pytest.mark.parametrize("params", [(12, 26, 9), (5, 10, 3)])
+def test_macd_on_rows_added_by_align_by_time(added_rows_engine, added_rows_panel, params, adjust):
+    """EMA keeps its value on these rows, so the line is valid there and stays in the window."""
+    signal = run_dirty(added_rows_engine, factors.MACD(*params, adjust=adjust)).unstack("asset")
+    for asset in ("FULL", "NANSPLIT", "LISTED", "DELISTED", "HALTED"):
+        bars, scale = aligned_bars(added_rows_panel, asset)
+        expected = ref.macd(bars.clean_close, *params, adjust=adjust)[1] * scale
+        # later on, the windows of DELISTED run out of valid bars and leave `ewm` behind
+        rows = DELISTED_ON + 10 if asset == "DELISTED" else None
+        got = signal[asset].iloc[:rows]
+        # a window with a gap has fewer bars to decay the truncation error
+        assert_allclose(got, expected.iloc[:rows], rtol=0, atol=5e-3, err_msg=asset)
+
+
 @pytest.mark.parametrize("band", [0, 1, 2])
 def test_bbands(engine, band):
     expected = ref.expected(lambda df: ref.bbands(df.close)[band])
@@ -153,6 +169,12 @@ def test_true_range_across_split(dirty_engine, dirty_panel):
 def test_true_range_across_split_after_nan_bar(dirty_engine, dirty_panel):
     bars, scale = nansplit_bars(dirty_panel)
     check_true_range_of_scaled_bars(dirty_engine, "NANSPLIT", bars, scale)
+
+
+@pytest.mark.filterwarnings("ignore:Warning!! delay_factor is set to False")
+def test_true_range_on_rows_added_by_align_by_time(added_rows_engine, added_rows_panel):
+    bars, scale = aligned_bars(added_rows_panel, "NANSPLIT")
+    check_true_range_of_scaled_bars(added_rows_engine, "NANSPLIT", bars, scale)
 
 
 @pytest.mark.filterwarnings("ignore:Warning!! delay_factor is set to False")

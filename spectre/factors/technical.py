@@ -66,8 +66,8 @@ class _MACDLine(CustomFactor):
     @property
     def adjustments(self):
         multi = self.price.adjustments
-        # a bar with no price has no multiplier, but EMA keeps its value in the scale of the bar
-        # before it
+        # The rows added by engine.align_by_time have no multiplier, but EMA keeps its value on
+        # them, in the scale of the bar before them.
         return None if multi is None else pad_2d(multi)
 
     def compute(self, fast, slow):

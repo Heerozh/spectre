@@ -6,10 +6,21 @@ import pytest
 import torch
 from numpy.testing import assert_allclose, assert_almost_equal, assert_array_equal
 
+import spectre
 from spectre import factors, parallel
-from tests.conftest import DIRTY_DATES, DIVIDEND_ON, NAN_BAR, NANSPLIT_ON, SPLIT_ON
+from tests.conftest import (
+    DIRTY_ADJUSTMENTS,
+    DIRTY_DATES,
+    DIRTY_OHLCV,
+    DIVIDEND_ON,
+    LISTED_ON,
+    NAN_BAR,
+    NANSPLIT_ON,
+    SPLIT_ON,
+)
 from tests.factors import reference as ref
 from tests.factors.helpers import (
+    aligned_bars,
     assert_factor,
     delete,
     nansplit_bars,
@@ -247,8 +258,62 @@ def test_forward_signal_data_of_volume_across_split(dirty_engine, dirty_panel):
 
 
 @pytest.mark.filterwarnings("ignore:Warning!! delay_factor is set to False")
+def test_forward_signal_data_on_rows_added_by_align_by_time(added_rows_engine, added_rows_panel):
+    """
+    The rows before a split are in the scale of the bar before them, as the loader would have made
+    them. So on the rows of NANSPLIT in front of its split, the signal on it is at the old scale.
+    """
+    close = factors.OHLCV.close
+    factor = factors.ForwardSignalData(FORWARD_WIN, close, FORWARD_SIGNAL)
+    result = run_dirty(added_rows_engine, factor).unstack("asset")
+    for asset in ("FULL", "NANSPLIT", "LISTED", "DELISTED", "HALTED"):
+        bars, scale = aligned_bars(added_rows_panel, asset)
+        expected = forward_signal_values(bars.clean_close) * scale
+        assert_allclose(result[asset], expected, rtol=1e-6, err_msg=asset)
+    # the signal of NANSPLIT on the first bar of the split, seen from the 3 added rows
+    assert result.NANSPLIT.iloc[NANSPLIT_ON - 3 : NANSPLIT_ON].notna().all()
+    # LISTED is listed on bar 30 and has a signal on bar 31, seen from 2 added rows
+    assert result.LISTED.iloc[LISTED_ON - 2 : LISTED_ON].notna().all()
+
+
+@pytest.mark.filterwarnings("ignore:Warning!! delay_factor is set to False")
+@pytest.mark.parametrize(
+    "make_factor",
+    [
+        lambda: factors.ForwardSignalData(FORWARD_WIN, factors.OHLCV.close, FORWARD_SIGNAL),
+        lambda: factors.ForwardSignalData(FORWARD_WIN, factors.OHLCV.volume, FORWARD_SIGNAL),
+        lambda: factors.MACD(5, 10, 3),
+    ],
+    ids=["ForwardSignalData close", "ForwardSignalData volume", "MACD"],
+)
+def test_rows_added_by_the_engine_match_rows_from_the_loader(
+    added_rows_engine, added_rows_panel, device, make_factor
+):
+    """
+    A loader with align_by_time adds the rows before it makes the multipliers, the engine after.
+    What is filled in for the engine has to be what the loader would have made.
+    """
+    index = pd.MultiIndex.from_product(
+        [DIRTY_DATES, added_rows_panel.index.get_level_values("asset").unique()],
+        names=added_rows_panel.index.names,
+    )
+    aligned = added_rows_panel.reindex(index).sort_index()
+    aligned["ex-dividend"] = aligned["ex-dividend"].fillna(0)
+    aligned["split_ratio"] = aligned["split_ratio"].fillna(1)
+    engine = factors.FactorEngine(
+        spectre.data.MemoryLoader(aligned, DIRTY_OHLCV, DIRTY_ADJUSTMENTS)
+    )
+    if device == "cuda":
+        engine.to_cuda()
+
+    from_loader = run_dirty(engine, make_factor()).unstack("asset")
+    from_engine = run_dirty(added_rows_engine, make_factor()).unstack("asset")
+    assert_allclose(from_engine.values, from_loader.values, rtol=1e-6)
+
+
+@pytest.mark.filterwarnings("ignore:Warning!! delay_factor is set to False")
 def test_forward_signal_data_on_bar_without_price(dirty_engine, dirty_panel):
-    """A bar with no close has no multiplier, the data of the bars after it is still there."""
+    """A bar with no close still gets the data of the bars after it."""
     close = factors.OHLCV.close
     factor = factors.ForwardSignalData(FORWARD_WIN, close, FORWARD_SIGNAL)
     result = run_dirty(dirty_engine, factor).xs("NANBAR", level="asset")

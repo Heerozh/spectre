@@ -39,8 +39,10 @@ class ForwardSignalData(RollingFirst):
         if multi is None:
             return super().compute(data, mask)
 
-        # a bar with no price has no multiplier, the scale of the next bar is the closest one
-        multi = self.inputs[0].compute(pad_2d(multi.flip(1)).flip(1)).to(data.device)
+        # The rows added by engine.align_by_time have no multiplier. Give them what the loader
+        # would have: the one of the bar before them, or of the first bar of the asset.
+        multi = pad_2d(pad_2d(multi).flip(1)).flip(1)
+        multi = self.inputs[0].compute(multi).to(data.device)
 
         def _first_filter(_data, _mask, _multi):
             return masked_first(_data * _multi, _mask, dim=2) / _multi[:, :, 0]

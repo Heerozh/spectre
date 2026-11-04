@@ -10,6 +10,7 @@ from spectre import factors, parallel
 from tests.conftest import DIRTY_DATES, HALTED_BARS, NANSPLIT_ON, SPLIT_ON
 from tests.factors import reference as ref
 from tests.factors.helpers import (
+    aligned_bars,
     assert_factor,
     nansplit_bars,
     run_dirty,
@@ -139,6 +140,15 @@ def ewm_mean(values, span, adjust):
     return pd.Series(ret, index=values.index)
 
 
+def ewm_of_windows(values, span, adjust):
+    """`ewm_mean` of the bars of each window, so the window is the only difference from `ewm`."""
+
+    def ewm_of_window(window):
+        return ewm_mean(pd.Series(window), span, adjust).iloc[-1]
+
+    return values.rolling(int(4.5 * (span + 1)), min_periods=1).apply(ewm_of_window, raw=True)
+
+
 @pytest.mark.parametrize("span", [11, 50])
 @pytest.mark.parametrize("adjust", [False, True])
 def test_ema(engine, span, adjust):
@@ -220,6 +230,19 @@ def test_ema_across_split_after_nan_bar(dirty_engine, dirty_panel, span, adjust)
 
 @pytest.mark.filterwarnings("ignore:Warning!! delay_factor is set to False")
 @pytest.mark.parametrize("adjust", [False, True])
+@pytest.mark.parametrize("span", [3, 5, 12, 26])
+def test_ema_on_rows_added_by_align_by_time(added_rows_engine, added_rows_panel, span, adjust):
+    factor = factors.EMA(span, adjust=adjust)
+    result = run_dirty(added_rows_engine, factor).unstack("asset")
+    for asset in ("FULL", "NANSPLIT", "LISTED", "DELISTED", "HALTED"):
+        bars, scale = aligned_bars(added_rows_panel, asset)
+        expected = ewm_of_windows(bars.clean_close, span, adjust) * scale
+        # the multipliers of the loader are float32
+        assert_allclose(result[asset], expected, rtol=0, atol=1e-4, err_msg=asset)
+
+
+@pytest.mark.filterwarnings("ignore:Warning!! delay_factor is set to False")
+@pytest.mark.parametrize("adjust", [False, True])
 @pytest.mark.parametrize("span", [1, 2, 3, 5, 12, 26])
 def test_ema_of_missing_bars_in_the_window(dirty_engine, dirty_panel, span, adjust):
     """
@@ -230,17 +253,12 @@ def test_ema_of_missing_bars_in_the_window(dirty_engine, dirty_panel, span, adju
     dirty_engine.align_by_time = True
     result = run_dirty(dirty_engine, factors.EMA(span, adjust=adjust)).unstack("asset")
     closes = dirty_panel.close.unstack("asset")
-    win = int(4.5 * (span + 1))
-
-    def ewm_of_window(window):
-        return ewm_mean(pd.Series(window), span, adjust).iloc[-1]
-
     for asset in ("FULL", "LISTED", "DELISTED", "HALTED", "NANBAR"):
-        expected = closes[asset].rolling(win, min_periods=1).apply(ewm_of_window, raw=True)
+        expected = ewm_of_windows(closes[asset], span, adjust)
         # the weights are float32
         assert_allclose(result[asset], expected, rtol=0, atol=1e-5, err_msg=asset)
     halted = len(DIRTY_DATES[HALTED_BARS])
-    assert result.HALTED.isna().sum() == max(halted - win + 1, 0)
+    assert result.HALTED.isna().sum() == max(halted - int(4.5 * (span + 1)) + 1, 0)
 
 
 @pytest.mark.filterwarnings("ignore:Warning!! delay_factor is set to False")
