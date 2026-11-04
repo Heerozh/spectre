@@ -270,7 +270,7 @@ pf.create_full_tear_sheet(
   at once, so you need to be careful to prevent Look-Ahead Bias, because the inputs are not just
   historical data. Also using `engine.test_lookahead_bias` do some tests.
 * spectre's normally using float32 data type for GPU performance.
-* spectre FactorEngine arranges data by bars, so `Return(win=10)` means 10 bars return, may
+* spectre FactorEngine arranges data by bars, so `Returns(win=11)` means 10 bars return, may
   actually be more than 10 days if some assets not open trading in period. You can change this
   behavior by aligning data: filling missing bars with NaNs in your DataLoader, please refer to the
   `align_by_time` parameter of `CsvDirLoader`.
@@ -281,6 +281,9 @@ pf.create_full_tear_sheet(
   will be different from the stock chart software which only adjusted according to last day.
   If you want adjusted by last day, use like 'AdjustedColumnDataFactor(OHLCV.close)' as input data.
   This will speeds up a lot because it only needs to be adjusted once, but brings Look-Ahead Bias.
+* Adjustment only happens inside rolling windows, on the price and volume columns directly.
+  `close / close.shift(1)` compares raw prices and drops on a split day, without any error. Use
+  `Returns(win=n + 1)` for the return of n bars.
 * Factors that uses the close data will be delayed by 1 bar.
 * spectre's `EMA` uses the algorithm same as `zipline` and `Dataframe.ewm(span=...)`, when `span` is
   greater than 100, it will be slightly different from common EMA.
