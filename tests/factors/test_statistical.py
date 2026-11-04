@@ -118,6 +118,84 @@ def test_rolling_correlation(engine):
     assert_factor(engine, factor, *ref.expected(corr, delayed=False), decimal=6)
 
 
+def half_life(series, mean, win, keep=None):
+    """Half life of each window, from a regression on the samples that have a lag and a diff."""
+    lag = (series.shift(1) - mean).values
+    diff = series.diff().values
+    if keep is not None:
+        lag, diff = np.where(keep, lag, nan), np.where(keep, diff, nan)
+    ret = np.full(len(series), nan)
+    for i in range(len(series)):
+        x, y = lag[max(0, i - win + 1) : i + 1], diff[max(0, i - win + 1) : i + 1]
+        valid = ~np.isnan(x * y)
+        if valid.sum() > 1:
+            ret[i] = -np.log(2) / np.polyfit(x[valid], y[valid], 1)[0]
+    return pd.Series(ret, index=series.index)
+
+
+def rolling_nanmean(series, win):
+    return series.rolling(win, min_periods=1).mean()
+
+
+# the adjustment multipliers are float32, a slope near 0 magnifies them
+HALF_LIFE_RTOL = 1e-4
+
+
+@pytest.mark.filterwarnings("ignore:Warning!! delay_factor is set to False")
+@pytest.mark.parametrize("asset", ["SPLIT", "FULL", "HALTED", "NANBAR"])
+def test_half_life_mean_reversion(dirty_engine, dirty_panel, asset):
+    """A split or a dividend in the window does not change a regression in the adjusted scale."""
+    win, ma_win, start = 10, 5, DIRTY_DATES[15]
+    dirty_engine.add(factors.HalfLifeMeanReversion(win, close, factors.MA(ma_win)), "half_life")
+    result = dirty_engine.run(start, DIRTY_DATES[-1], delay_factor=False)
+
+    clean = dirty_panel.xs(asset, level="asset").clean_close
+    expected = half_life(clean, rolling_nanmean(clean, ma_win), win).loc[start:]
+    got = result.xs(asset, level="asset").half_life
+    assert_allclose(got.values, expected.values, rtol=HALF_LIFE_RTOL)
+
+
+@pytest.mark.filterwarnings("ignore:Warning!! delay_factor is set to False")
+@pytest.mark.parametrize("asset", ["SPLIT", "FULL"])
+def test_half_life_mean_reversion_of_a_number(dirty_engine, dirty_panel, asset):
+    win, start = 10, DIRTY_DATES[15]
+    dirty_engine.add(factors.HalfLifeMeanReversion(win, close, 0.0), "half_life")
+    result = dirty_engine.run(start, DIRTY_DATES[-1], delay_factor=False)
+
+    clean = dirty_panel.xs(asset, level="asset").clean_close
+    expected = half_life(clean, 0.0, win).loc[start:]
+    got = result.xs(asset, level="asset").half_life
+    assert_allclose(got.values, expected.values, rtol=HALF_LIFE_RTOL)
+
+
+@pytest.mark.filterwarnings("ignore:Warning!! delay_factor is set to False")
+def test_half_life_mean_reversion_without_adjustments(ir_engine, ir_panel):
+    win, ma_win, start = 10, 5, IR_DATES[15]
+    ir_engine.add(factors.HalfLifeMeanReversion(win, close, factors.MA(ma_win)), "half_life")
+    result = ir_engine.run(start, IR_DATES[-1], delay_factor=False)
+
+    closes = ir_panel.xs("A", level="asset").close
+    expected = half_life(closes, rolling_nanmean(closes, ma_win), win).loc[start:]
+    assert_allclose(result.xs("A", level="asset").half_life, expected, rtol=1e-6)
+
+
+@pytest.mark.filterwarnings("ignore:Warning!! delay_factor is set to False")
+def test_half_life_mean_reversion_mask_drops_the_samples_of_masked_bars(dirty_engine, dirty_panel):
+    win, ma_win, start = 10, 5, DIRTY_DATES[15]
+    mask = factors.OHLCV.volume > 1400
+    f = factors.HalfLifeMeanReversion(win, close, factors.MA(ma_win), mask=mask)
+    dirty_engine.add(f, "half_life")
+    result = dirty_engine.run(start, DIRTY_DATES[-1], delay_factor=False)
+
+    panel = dirty_panel.xs("FULL", level="asset")
+    # a sample has data of 2 bars, only the last one decides if it stays
+    keep = (panel.volume > 1400).values
+    assert (keep[:-1] & ~keep[1:]).any() and (~keep[:-1] & keep[1:]).any()
+    expected = half_life(panel.clean_close, rolling_nanmean(panel.clean_close, ma_win), win, keep)
+    got = result.xs("FULL", level="asset").half_life
+    assert_allclose(got.values, expected.loc[start:].values, rtol=1e-6)
+
+
 def test_cross_section_r2():
     y = torch.tensor([[1.0, 3, 2, 4, 6, 5, 7, 9], [1.0, nan, nan, nan, nan, nan, nan, nan]])
     y_hat = torch.tensor([1.0, 2, 3, 4, 5, 6, 7, 8]).repeat(2, 1)

@@ -14,6 +14,7 @@ import torch
 from ..config import Global
 from ..parallel import (
     DeviceConstant,
+    Rolling,
     covariance,
     linear_regression_1d,
     nanmax,
@@ -136,15 +137,41 @@ class RollingQuantile(CustomFactor):
         return data.agg(_quantile)
 
 
+class _OwnBarScale(CustomFactor):
+    """
+    A price in the scale of its own bar, made from the window [t-1, t] of `data`, which Rolling
+    has adjusted to the scale of bar t. With the multipliers of `data`, a Rolling over this factor
+    adjusts its windows in the same way.
+    """
+
+    win = 2
+
+    @property
+    def adjustments(self):
+        return self.inputs[0].adjustments
+
+
+class _LagSpread(_OwnBarScale):
+    """`data` of the previous bar minus `mean`, which has to be in the scale of its own bar."""
+
+    def compute(self, data, mean):
+        return data.first() - (mean.last() if isinstance(mean, Rolling) else mean)
+
+
+class _BarDiff(_OwnBarScale):
+    def compute(self, data):
+        return data.last() - data.first()
+
+
 class HalfLifeMeanReversion(CustomFactor):
     _min_win = 2
 
     def __init__(self, win, data, mean, mask=None):
-        lag = data.shift(1) - mean
-        diff = data - data.shift(1)
-        lag.set_mask(mask)
-        diff.set_mask(mask)
+        lag = _LagSpread(inputs=[data, mean])
+        diff = _BarDiff(inputs=[data])
         super().__init__(win=win, inputs=[lag, diff, math.log(2)])
+        # not on `lag` and `diff`, that would also hide the previous bar of their windows
+        self.set_mask(mask)
 
     def compute(self, lag, diff, ln2):
         def calc_h(_x, _y):
