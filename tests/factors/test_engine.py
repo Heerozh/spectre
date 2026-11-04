@@ -688,7 +688,7 @@ def test_full_run(engine):
     expected = (aapl.shift(-5) / aapl - 1).loc[returns.index.tz_localize(None)]
     assert_almost_equal(returns.values, expected.values)
     # last 5 days have no forward returns, dropped
-    assert returns.index[-1] == pd.Timestamp("2019-01-07", tz="UTC")
+    assert returns.index[-1] == pd.Timestamp("2019-01-08", tz="UTC")
 
     assert list(mean_returns.index) == [0, 1]
     assert ("ma_cross", "1D", "mean") in mean_returns.columns
@@ -908,7 +908,7 @@ def test_full_run_trade_at_close(device, make_factor):
     )
     assert_returns(factor_data, "Returns", closes, 0)
     assert factor_data.index.get_level_values(0).min() == FORWARD_DATES[6]
-    assert factor_data.index.get_level_values(0).max() == FORWARD_DATES[-1 - 3 - 1]
+    assert factor_data.index.get_level_values(0).max() == FORWARD_DATES[-1 - 3]
 
 
 @pytest.mark.filterwarnings("ignore:quantile.. mask parameter not set")
@@ -935,6 +935,104 @@ def test_full_run_trade_at_current_close(device):
     pd.testing.assert_frame_equal(
         result, planted.reindex_like(result), check_names=False, check_freq=False
     )
+
+
+# trade_at, factor, prices, entry bar, first bar of the run, and if the filter is delayed in it
+FULL_RETURN_CASES = {
+    "close": ("close", at_open, "close", 0, 6, False),
+    "close_of_a_delayed_factor": ("close", after_close, "close", 0, 6, True),
+    "open_of_a_delayed_factor": ("open", after_close, "open", 0, 6, True),
+    "open_not_delayed": ("open", at_open, "open", 1, 5, False),
+    "current_close": ("current_close", after_close, "close", 0, 5, False),
+    "a_factor": ("a_factor", at_open, "middle", 0, 6, True),
+}
+
+
+@pytest.mark.filterwarnings("ignore:quantile.. mask parameter not set")
+@pytest.mark.filterwarnings("ignore:Warning!! delay_factor is set to False")
+@pytest.mark.parametrize("sparse_filter", [False, True], ids=["every_day", "mondays"])
+@pytest.mark.parametrize(
+    "trade_at, factor, prices, entry, first_bar, delayed_filter",
+    FULL_RETURN_CASES.values(),
+    ids=FULL_RETURN_CASES.keys(),
+)
+def test_full_run_keeps_the_rows_with_a_full_return(
+    device, trade_at, factor, prices, entry, first_bar, delayed_filter, sparse_filter
+):
+    panel, opens, closes = forward_data()
+    n = 3
+    prices = {"open": opens, "close": closes, "middle": (opens + closes) / 2}[prices]
+    universe = None
+    if sparse_filter:
+        universe = factors.WEEKDAY == 0
+        universe.set_delay(delayed_filter)
+    engine = forward_engine(panel, device, universe)
+    engine.add(factor(), "f")
+    factor_data, _ = engine.full_run(
+        FORWARD_START,
+        FORWARD_END,
+        trade_at=(open_price + close) / 2 if trade_at == "a_factor" else trade_at,
+        periods=(n,),
+        quantiles=2,
+        filter_zscore=None,
+        demean=False,
+        preview=False,
+    )
+
+    # by hand: the rows of this run that have all of their n bars
+    expected = forward_return(prices, n, entry).iloc[first_bar:].stack().dropna()
+    if sparse_filter:
+        # a delayed filter on mondays keeps the row after it
+        day_of_week = 1 if delayed_filter else 0
+        expected = expected[expected.index.get_level_values(0).day_of_week == day_of_week]
+    result = factor_data["Returns"].iloc[:, 0]
+    assert sorted(result.index) == sorted(expected.index)
+    assert_allclose(result.reindex(expected.index), expected, rtol=1e-5)
+
+
+@pytest.mark.filterwarnings("ignore:quantile.. mask parameter not set")
+def test_full_run_without_a_row_with_a_full_return(device):
+    """MA(10) loads history, so there are dates to count, but none of them is in the range."""
+    panel, _, _ = forward_data()
+    engine = forward_engine(panel, device)
+    engine.add(factors.MA(10), "f")
+    with pytest.raises(AssertionError, match="No enough data for forward returns"):
+        engine.full_run(FORWARD_DATES[-3], FORWARD_END, periods=(3,), preview=False)
+
+
+@pytest.mark.filterwarnings("ignore:quantile.. mask parameter not set")
+def test_full_run_does_not_drop_a_full_return_for_a_short_asset(device):
+    """Gaps and early ends are per asset, the last row is the same for all assets."""
+    panel, opens, _ = forward_data()
+    n = 3
+    last_bar = len(FORWARD_DATES) - 1
+    ended, gap = "F", "E"
+    panel = panel.drop(index=[(date, ended) for date in FORWARD_DATES[31:]])
+    panel = panel.drop(index=[(FORWARD_DATES[last_bar - 1], gap)])
+    engine = forward_engine(panel, device)
+    engine.add(after_close(), "f")
+    factor_data, _ = engine.full_run(
+        FORWARD_START,
+        FORWARD_END,
+        trade_at="open",
+        periods=(n,),
+        quantiles=2,
+        filter_zscore=None,
+        demean=False,
+        preview=False,
+    )
+    result = factor_data["Returns"].iloc[:, 0]
+    assert result.index.get_level_values(0).max() == FORWARD_DATES[last_bar - n]
+
+    for asset in opens:
+        own_bars = panel.open.xs(asset, level="asset")
+        expected = (own_bars.shift(-n) / own_bars - 1).dropna().iloc[6:]
+        assert_allclose(result.xs(asset, level="asset").loc[expected.index], expected, rtol=1e-5)
+
+    # a row whose asset has a gap after it ends on the last bar, like the other assets of the row
+    own_bars = panel.open.xs(gap, level="asset")
+    row = FORWARD_DATES[last_bar - n]
+    assert result.loc[(row, gap)] == pytest.approx(own_bars.iloc[-1] / own_bars[row] - 1, rel=1e-5)
 
 
 @pytest.mark.filterwarnings("ignore:quantile\\(\\) mask parameter not set")

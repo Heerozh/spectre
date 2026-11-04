@@ -46,7 +46,7 @@ def test_full_run_same_as_alphalens(quandl_loader):
     engine.set_filter(universe)
     f = spectre.factors.MA(5) - spectre.factors.MA(10) - spectre.factors.MA(30)
     engine.add(f.rank(mask=universe).zscore(), "ma_cross")
-    df_prices = engine.get_price_matrix("2014-01-02", "2017-01-18")
+    df_prices = engine.get_price_matrix("2014-01-02", "2017-01-19")
     factor_data, mean_return = engine.full_run(
         "2014-01-02", "2017-01-19", periods=(10,), filter_zscore=None, preview=False
     )

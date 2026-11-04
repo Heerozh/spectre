@@ -721,13 +721,12 @@ class FactorEngine:
         shift = -1
         delay_factor = True
         delay_returns = True
-        # bars to drop at the end on top of the longest period, 'close' could keep one more of them
-        extra_tail = 1
+        # entering a bar later needs a bar more at the end
+        extra_tail = 0
         inputs = (AdjustedColumnDataFactor(OHLCV.close),)
         if isinstance(trade_at, BaseFactor):
             inputs = (trade_at,)
             delay_factor = "all"
-            extra_tail = 0
         elif trade_at == "open":
             inputs = (AdjustedColumnDataFactor(OHLCV.open),)
             # On row t a delayed factor knows close[t - 1], so it can enter at open[t]. A factor
@@ -735,15 +734,14 @@ class FactorEngine:
             with self._masks_know_the_filter():
                 delays = [f.should_delay() for f in self._factors.values()]
             delay_returns = any(delays)
-            if delay_returns:
-                extra_tail = 0
-                if not all(delays):
-                    delay_factor = "all"
+            if not delay_returns:
+                extra_tail = 1
+            elif not all(delays):
+                delay_factor = "all"
         elif trade_at == "current_close":
             shift = 0
             delay_factor = False
             delay_returns = None
-            extra_tail = 0
 
         from .basic import Returns
 
@@ -773,11 +771,14 @@ class FactorEngine:
         self._factors = factors
         factor_data.index = factor_data.index.remove_unused_levels()
         # factor_data = factor_data.sort_index()  # 140 ms
-        assert len(factor_data.index.levels[0]) > max(periods) + extra_tail, (
-            "No enough data for forward returns, please expand the end date"
-        )
-        last_date = factor_data.index.levels[0][-max(periods) - extra_tail - 1]
-        factor_data = factor_data.loc[:last_date].copy()
+        # Count on the loaded dates, a filter can leave out any of them. A value in the column
+        # can't tell it either, on their last rows the short assets read padding.
+        dates = self._dataframe.index.levels[0]
+        tail = max(periods) + extra_tail
+        no_data = "No enough data for forward returns, please expand the end date"
+        assert len(dates) > tail, no_data
+        factor_data = factor_data.loc[: dates[-tail - 1]].copy()
+        assert len(factor_data) > 0, no_data
 
         # infer freq
         delta = min(factor_data.index.levels[0][1:] - factor_data.index.levels[0][:-1])
