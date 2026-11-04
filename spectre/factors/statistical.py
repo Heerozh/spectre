@@ -101,16 +101,28 @@ class RollingMomentum(CustomFactor):
 
     def compute(self, prices):
         def polynomial_reg(_y):
-            x = DeviceConstant.get(_y.device).arange(_y.shape[2], dtype=_y.dtype)
+            x = DeviceConstant.get(_y.device).arange(_y.shape[-1], dtype=_y.dtype)
             ones = torch.ones(x.shape[0], device=_y.device, dtype=_y.dtype)
             x = torch.stack([ones, x, x**2]).T
-            x = x.expand(_y.shape[0], _y.shape[1], x.shape[0], x.shape[1])
+            x = x.expand(*_y.shape, x.shape[1])
 
-            xt = x.transpose(-2, -1)
-            ret = (xt @ x).inverse() @ xt @ _y.unsqueeze(-1)
-            return ret.squeeze(-1)
+            # a missing bar has no row in the regression
+            nans = torch.isnan(_y)
+            xt = x.transpose(-2, -1).masked_fill(nans.unsqueeze(-2), 0)
+            inverse, info = torch.linalg.inv_ex(xt @ x)
+            ret = inverse @ xt @ _y.masked_fill(nans, 0).unsqueeze(-1)
+            singular = (info != 0) | ((~nans).sum(dim=-1) < 3)
+            return ret.squeeze(-1).masked_fill(singular.unsqueeze(-1), np.nan)
 
-        return prices.agg(polynomial_reg)
+        def valid_bars_reg(_y):
+            ret = polynomial_reg(_y)
+            partial = torch.isnan(_y).any(dim=2)
+            if _y.dtype != torch.float64 and partial.any():
+                # a few bars far from x=0 give a matrix that float32 can't invert
+                ret[partial] = polynomial_reg(_y[partial].double()).to(ret.dtype)
+            return ret
+
+        return prices.agg(valid_bars_reg)
 
     @property
     def gain(self):

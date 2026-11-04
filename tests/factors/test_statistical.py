@@ -3,10 +3,10 @@ import pandas as pd
 import pytest
 import scipy.stats
 import torch
-from numpy.testing import assert_allclose, assert_almost_equal
+from numpy.testing import assert_allclose, assert_almost_equal, assert_array_equal
 
 import spectre
-from spectre import factors
+from spectre import factors, parallel
 from tests.conftest import DIRTY_DATES, LISTED_ON
 from tests.factors import reference as ref
 from tests.factors.helpers import assert_factor
@@ -83,6 +83,112 @@ def test_rolling_momentum(engine):
     for coef, factor in enumerate([f.intercept, f.gain, f.accelerate]):
         expected = ref.expected(lambda df, coef=coef: rolling_polyfit(df.close, 5, 2, coef))
         assert_factor(engine, factor, *expected, decimal=5)
+
+
+def polyfit_valid_bars(values, win):
+    """[bar, coef] of np.polyfit on the valid bars of each window, at their positions in it."""
+    ret = np.full((len(values), 3), nan)
+    for i in range(len(values)):
+        window = values[max(0, i - win + 1) : i + 1]
+        x = np.arange(win)[-len(window) :]
+        valid = ~np.isnan(window)
+        if valid.sum() > 2:
+            ret[i] = np.polyfit(x[valid], window[valid], 2)[::-1]
+    return ret
+
+
+def rolling_momentum(values, win):
+    return factors.RollingMomentum(win=win).compute(parallel.Rolling(values, win))
+
+
+@pytest.mark.filterwarnings("ignore:Warning!! delay_factor is set to False")
+@pytest.mark.filterwarnings("ignore:Historical data seems insufficient")
+@pytest.mark.parametrize("asset", ["FULL", "LISTED", "DELISTED", "HALTED", "NANBAR", "SPLIT"])
+def test_rolling_momentum_on_valid_bars(dirty_engine, dirty_panel, asset):
+    win = 6
+    f = factors.RollingMomentum(win)
+    columns = ["intercept", "gain", "accelerate"]
+    for column in columns:
+        dirty_engine.add(getattr(f, column), column)
+    result = dirty_engine.run(DIRTY_DATES[0], DIRTY_DATES[-1], delay_factor=False)
+
+    panel = dirty_panel.xs(asset, level="asset")
+    # an adjusted window moves like clean_close in the scale of its last bar
+    scale = (panel.close / panel.clean_close).fillna(1).values[:, None]
+    expected = polyfit_valid_bars(panel.clean_close.values, win) * scale
+    got = result.xs(asset, level="asset")[columns].values
+    # atol for the float32 adjustment multipliers on a small coefficient
+    assert_allclose(got, expected, rtol=1e-5, atol=1e-5)
+
+
+@pytest.mark.parametrize("dtype", [torch.float32, torch.float64])
+def test_rolling_momentum_of_new_listing_in_a_long_window(device, dtype):
+    """A few bars at high x, float32 can't invert the matrix of these."""
+    win = 60
+    rng = np.random.default_rng(0)
+    values = torch.tensor(100 + rng.normal(0, 1, (20, 40)).cumsum(axis=1), dtype=dtype)
+    result = rolling_momentum(values.to(device), win).cpu().numpy()
+    expected = [polyfit_valid_bars(row, win) for row in values.numpy().astype(np.float64)]
+    assert result.shape == (20, 40, 3)
+    assert_allclose(result, expected, rtol=1e-5)
+
+
+@pytest.mark.parametrize("dtype", [torch.float32, torch.float64])
+def test_rolling_momentum_of_full_windows_does_not_change(device, dtype):
+    win = 20
+    rng = np.random.default_rng(0)
+    values = 100 + rng.normal(0, 1, (6, 60)).cumsum(axis=1)
+    values[2, 30] = nan
+    values = torch.tensor(values, device=device, dtype=dtype)
+
+    x = torch.arange(win, device=device, dtype=dtype)
+    x = torch.stack([torch.ones_like(x), x, x**2]).T
+    windows = values.unfold(1, win, 1)
+    x = x.expand(*windows.shape, 3)
+    xt = x.transpose(-2, -1)
+    expected = ((xt @ x).inverse() @ xt @ windows.unsqueeze(-1)).squeeze(-1).cpu().numpy()
+
+    result = rolling_momentum(values, win)[:, win - 1 :].cpu().numpy()
+    full = ~np.isnan(expected[:, :, 0])
+    assert (~full).sum() == win
+    assert_array_equal(result[full], expected[full])
+
+
+def test_rolling_momentum_of_too_few_bars_is_nan(device):
+    """Windows with 0, 1, 2 and 3 valid bars. The singular ones can't fail the others."""
+    values = [
+        [nan, nan, nan, nan, nan],
+        [nan, 2.0, nan, nan, nan],
+        [nan, 2.0, 3.0, nan, nan],
+        [nan, 2.0, 3.0, nan, 7.0],
+    ]
+    values = torch.tensor(values, device=device, dtype=torch.float64)
+    result = rolling_momentum(values, 5)[:, -1].cpu().numpy()
+    expected = [[nan] * 3, [nan] * 3, [nan] * 3, polyfit_valid_bars(values[3].cpu().numpy(), 5)[-1]]
+    # the gain of the last one is 0
+    assert_allclose(result, expected, rtol=1e-9, atol=1e-9)
+
+
+def test_rolling_momentum_of_2_bars_has_too_few_for_a_quadratic(device):
+    values = torch.arange(10.0, device=device, dtype=torch.float64).repeat(2, 1)
+    assert torch.isnan(rolling_momentum(values, 2)).all()
+
+
+def test_rolling_momentum_in_one_bar_chunks(monkeypatch, device):
+    win = 5
+    rng = np.random.default_rng(0)
+    values = 100 + rng.normal(0, 1, (4, 30)).cumsum(axis=1)
+    values[1, 10:12] = nan
+    values[2, :] = nan
+    values = torch.tensor(values, device=device, dtype=torch.float64)
+    expected = rolling_momentum(values, win).cpu().numpy()
+
+    monkeypatch.setattr(parallel.Rolling, "_split_multi", 1e12)
+    assert len(parallel.Rolling(values, win).split) == values.shape[1]
+    result = rolling_momentum(values, win).cpu().numpy()
+    assert result.shape == (4, 30, 3)
+    assert_allclose(result, expected, rtol=1e-9)
+    assert not np.isnan(result[1, 11]).any()
 
 
 def weekday_and_day(df):
