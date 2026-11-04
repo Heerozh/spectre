@@ -80,7 +80,8 @@ class OneHotEncoder(FilterFactor):
         super().__init__(1, [input_])
 
     def compute(self, data: torch.Tensor) -> torch.Tensor:
-        classes = torch.unique(data, sorted=False)
+        # sorted, so the order of the outputs is deterministic
+        classes = torch.unique(data, sorted=True)
         classes = classes[~torch.isnan(classes)]
         one_hot = []
         if classes.shape[0] > 1000:
@@ -94,6 +95,8 @@ class OneHotEncoder(FilterFactor):
 
 class AnyFilter(FilterFactor):
     _min_win = 2
+    # no data before the first bar, it's not True
+    _rolling_fill = False
 
     def compute(self, data: Rolling) -> torch.Tensor:
         return data.values.any(dim=2)

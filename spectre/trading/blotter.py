@@ -39,15 +39,22 @@ class SlippageModel(CommissionModel):
         super().__init__(max_percentage, 0, 0)
         self.max_ratio = max_amount_to_volume_ratio
 
-    def calculate(self, asset: str, price: float, amount_to_volume_ratio: int):
+    def calculate(self, asset: str, price: float, amount_to_volume_ratio: float):
+        """
+        Returns the fill price, slippage is added to the price of buy orders (positive ratio),
+        and subtracted from the price of sell orders (negative ratio).
+        """
         if self.max_ratio == 0:
             return price
 
         def sigmoid(x, edge0, edge1):
             return (1 + 200 ** (-((x - edge0) / (edge1 - edge0)) + 0.5)) ** (-1)
         slippage = price * self.percentage * sigmoid(
-            amount_to_volume_ratio, 0, self.max_ratio)
-        return price + max(slippage, self.minimum)
+            abs(amount_to_volume_ratio), 0, self.max_ratio)
+        slippage = max(slippage, self.minimum)
+        if amount_to_volume_ratio < 0:
+            return price - slippage
+        return price + slippage
 
 
 class DailyCurbModel:
@@ -416,15 +423,13 @@ class SimulationBlotter(BaseBlotter, EventReceiver):
                 return False
 
         # commission, slippage
+        fill_price = price
         if not self.slippage.is_empty():
             bar_volume = self._prices.get_as_dict(self._current_dt, column_id=4)  # ohlcv=01234
-            price = self.slippage.calculate(asset, price, amount/bar_volume[asset])
-        commission = self.commission.calculate(asset, price, amount)
+            fill_price = self.slippage.calculate(asset, price, amount / bar_volume[asset])
+        commission = self.commission.calculate(asset, fill_price, amount)
         if amount < 0:
-            commission += self.short_fee.calculate(asset, price, amount)
-            fill_price = price
-        else:
-            fill_price = price
+            commission += self.short_fee.calculate(asset, fill_price, amount)
         commission = round(commission, 2)
 
         # update portfolio, pay cash
@@ -609,7 +614,7 @@ class ManualBlotter(BaseBlotter):
             print('Create ManualBlotter with empty orders.')
             for k, v in col_types.items():
                 self.orders[k] = self.orders[k].astype(v)
-            self.orders.set_index('id', inplace=True)
+            self.orders = self.orders.set_index('id')
         else:
             self.orders = pd.concat([
                 pd.read_csv(fn, index_col='id', dtype=col_types, parse_dates=False)
@@ -629,7 +634,8 @@ class ManualBlotter(BaseBlotter):
         for n, g in self.orders.groupby(pd.Grouper(key='date', freq='D')):
             name = n.strftime('orders_%Y-%m-%d.csv')
             if not g.empty:
-                g.round(4).to_csv(os.path.join(self.working_dir, name))
+                numbers = g.select_dtypes('number').columns
+                g.round(dict.fromkeys(numbers, 4)).to_csv(os.path.join(self.working_dir, name))
 
     def set_datetime(self, dt: pd.Timestamp) -> None:
         assert str(dt.tz) == self.time_zone

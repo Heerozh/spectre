@@ -16,6 +16,7 @@ from .datafactor import ColumnDataFactor, AdjustedColumnDataFactor
 from ..plotting import plot_quantile_and_cumulative_returns, plot_chart
 from ..data import DataLoader
 from ..parallel import ParallelGroupBy, DummyParallelGroupBy
+from .._compat import stack_keep_nan
 
 
 class OHLCV:
@@ -53,8 +54,11 @@ class FactorEngine:
         if data_column in self._column_cache:
             return self._column_cache[data_column]
 
-        series = self._dataframe[data_column]
-        data = torch.from_numpy(series.values).to(self._device, non_blocking=True)
+        values = self._dataframe[data_column].to_numpy()
+        if not values.flags.writeable:
+            # Copy-on-Write of pandas 3 returns read-only array, which torch doesn't support
+            values = values.copy()
+        data = torch.from_numpy(values).to(self._device, non_blocking=True)
         self._column_cache[data_column] = data
         return data
 
@@ -146,7 +150,8 @@ class FactorEngine:
         df = self._loader.load(start, end, backwards).copy()
         # If possible, pre-screen
         if isinstance(self._filter, StaticAssets):
-            df = df.loc[(slice(None), list(self._filter.assets)), :]
+            # not `.loc[]`, it raises KeyError if any asset is not found since pandas 2.0
+            df = df[df.index.get_level_values(1).isin(list(self._filter.assets))]
             if df.shape[0] == 0:
                 raise ValueError("The assets {} specified by StaticAssets filter, was not found in "
                                  "DataLoader.".format(self._filter.assets))
@@ -165,7 +170,7 @@ class FactorEngine:
             # since pandas 0.23, MultiIndex reindex is slow, so using a alternative way here,
             # but still very slow.
             # df = df.reindex(pd.MultiIndex.from_product(df.index.levels))
-            df = df.unstack(level=1).stack(dropna=False)
+            df = stack_keep_nan(df.unstack(level=1))
             df[self._loader.time_category] = df[self._loader.time_category].groupby(
                 level=0).transform(lambda x: x.fillna(x.value_counts().index[0]))
         if self.timezone != 'UTC':
@@ -221,7 +226,7 @@ class FactorEngine:
         self._device = torch.device('cpu')
         self._enable_stream = False
         self._align_by_time = False
-        self.timezone = 'UTC'
+        self._timezone = 'UTC'
         self._cache_hash = uuid.uuid4()
         self.max_backwards = np.inf
 
@@ -246,7 +251,22 @@ class FactorEngine:
         If `enable` is `True`, df index will be the product of 'date' and 'asset'.
         This method is slow, recommended to do it in your DataLoader in advance.
         """
+        if enable != self._align_by_time:
+            # cached data was prepared with the old setting
+            self.empty_cache()
         self._align_by_time = enable
+
+    @property
+    def timezone(self):
+        return self._timezone
+
+    @timezone.setter
+    def timezone(self, tz: str):
+        """ Timezone of the datetime index, affects DatetimeDataFactor like WEEKDAY """
+        if tz != self._timezone:
+            # cached data was prepared with the old timezone
+            self.empty_cache()
+        self._timezone = tz
 
     def add(self,
             factor: Union[Iterable[BaseFactor], BaseFactor],
@@ -386,18 +406,27 @@ class FactorEngine:
         for f in factors.values():
             f.clean_up_(force_cleanup)
 
-        # some pre-work
-        if filter_:
-            filter_.pre_compute_(self, start, end)
-        for _, f in factors.items():
-            # print(_)
-            f.pre_compute_(self, start, end)
+        try:
+            # some pre-work
+            if filter_:
+                filter_.pre_compute_(self, start, end)
+            for _, f in factors.items():
+                # print(_)
+                f.pre_compute_(self, start, end)
 
-        # schedule possible gpu work first
-        results = {col: self._compute_and_revert(fct, col) for col, fct in factors.items()}
-        shifted_mask = None
-        if filter_:
-            shifted_mask = self._compute_and_revert(filter_, 'filter')
+            # schedule possible gpu work first
+            results = {col: self._compute_and_revert(fct, col) for col, fct in factors.items()}
+            shifted_mask = None
+            if filter_:
+                shifted_mask = self._compute_and_revert(filter_, 'filter')
+        except BaseException:
+            # Reset reference counts and cached data, otherwise the factors (some of them are
+            # shared, like OHLCV) will use the stale data next time.
+            if filter_:
+                filter_.clean_up_(force=True)
+            for f in factors.values():
+                f.clean_up_(force=True)
+            raise
 
         # do clean up again
         if filter_:
@@ -431,7 +460,7 @@ class FactorEngine:
             if (start_ind + 1) >= len(index):
                 raise ValueError('There is no data between start and end.')
             start = index[start_ind + 1]
-        ret.sort_index(inplace=True)
+        ret = ret.sort_index()
         return ret.loc[start:]
 
     def run_raw(self, start: Union[str, pd.Timestamp], end: Union[str, pd.Timestamp],
@@ -462,7 +491,9 @@ class FactorEngine:
             results = {k: v[start_ind:] for k, v in results.items()}
 
         if return_index:
-            index = index[start_ind:][shifted_mask.cpu().numpy()]
+            index = index[start_ind:]
+            if shifted_mask is not None:
+                index = index[shifted_mask.cpu().numpy()]
             return results, index
         else:
             return results
@@ -627,7 +658,7 @@ class FactorEngine:
         factor_data = self.run(start, end, trade_at != 'current_close')
         self._factors = factors
         factor_data.index = factor_data.index.remove_unused_levels()
-        # factor_data.sort_index(inplace=True)  # 140 ms
+        # factor_data = factor_data.sort_index()  # 140 ms
         assert len(factor_data.index.levels[0]) > max(periods) - shift, \
             'No enough data for forward returns, please expand the end date'
         last_date = factor_data.index.levels[0][-max(periods) + shift - 1]
@@ -645,7 +676,7 @@ class FactorEngine:
                 column_names[str(n) + '_d_'] = ('Demeaned', period_col)
         new_cols = pd.MultiIndex.from_tuples([column_names[c] for c in factor_data.columns])
         factor_data.columns = new_cols
-        factor_data.sort_index(axis=1, inplace=True)
+        factor_data = factor_data.sort_index(axis=1)
 
         # mean return, return std err
         mean_returns = []
@@ -663,9 +694,9 @@ class FactorEngine:
                 mean_return[mean_col] = grouped_mean[demean_col]
             if mean_return.empty:
                 continue
-            mean_return.index.set_names('quantile', level=0, inplace=True)
+            mean_return.index = mean_return.index.set_names('quantile', level=0)
             mean_return = mean_return.groupby(level=0).agg(['mean', 'sem'])
-            mean_return.sort_index(axis=1, inplace=True)
+            mean_return = mean_return.sort_index(axis=1)
             mean_returns.append(mean_return)
         mean_returns = pd.concat(mean_returns, axis=1)
 

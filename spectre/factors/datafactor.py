@@ -137,14 +137,23 @@ class SeriesDataFactor(ColumnDataFactor):
         if self.series.name not in engine.dataframe_.columns:
             engine._dataframe = engine.dataframe_.join(self.series)
             if self.fill_na is not None:
-                engine._dataframe[self.series.name] = engine._dataframe[self.series.name].\
-                    groupby(level=1).fillna(method=self.fill_na)
+                # GroupBy.fillna(method=...) was removed in pandas 3.0
+                fill_methods = {'ffill': 'ffill', 'pad': 'ffill', 'bfill': 'bfill',
+                                'backfill': 'bfill'}
+                if self.fill_na not in fill_methods:
+                    raise ValueError("`fill_na` must be one of {}".format(list(fill_methods)))
+                grouped = engine._dataframe[self.series.name].groupby(level=1, observed=False)
+                engine._dataframe[self.series.name] = getattr(
+                    grouped, fill_methods[self.fill_na])()
         super().pre_compute_(engine, start, end)
 
 
 class DatetimeDataFactor(BaseFactor):
     """ Datetime's attr to DataFactor """
     _instance = {}
+    # deprecated attributes of DatetimeIndex
+    _aliases = {'weekday': 'day_of_week', 'dayofweek': 'day_of_week',
+                'dayofyear': 'day_of_year', 'daysinmonth': 'days_in_month'}
 
     def __new__(cls, attr):
         if attr not in cls._instance:
@@ -165,9 +174,12 @@ class DatetimeDataFactor(BaseFactor):
     def pre_compute_(self, engine, start, end) -> None:
         super().pre_compute_(engine, start, end)
         if self._data is None:
-            data = getattr(engine.dataframe_index[0], self.attr)  # slow
+            attr = self._aliases.get(self.attr, self.attr)
+            data = getattr(engine.dataframe_index[0], attr)  # slow
             if not isinstance(data, np.ndarray):
                 data = data.values
+            if not data.flags.writeable:
+                data = data.copy()
             data = torch.from_numpy(data).to(
                 device=engine.device, dtype=Global.float_type, non_blocking=True)
             self._data = engine.group_by_(data, self.groupby)

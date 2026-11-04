@@ -385,6 +385,7 @@ class CustomFactor(BaseFactor):
     win = 1          # determine include how many previous data
     inputs = None    # any values in `inputs` list will pass to `compute` function by order
     _min_win = None  # assert when `win` less than `_min_win`, prevent user error.
+    _rolling_fill = np.nan  # value of the rolling window before the first data
 
     # internal member variables
     _cache = None
@@ -632,7 +633,7 @@ class CustomFactor(BaseFactor):
             # todo: If the indirect children is a column factor, also need to adjust.
             #  for now, only adjust direct children.
             #  refactor: if any shift occurs, adjust them.
-            ret = Rolling(ret, self.win, upstream.adjustments)
+            ret = Rolling(ret, self.win, upstream.adjustments, self._rolling_fill)
         return ret
 
     def compute_(self, down_stream: Union[torch.cuda.Stream, None]) -> torch.Tensor:
@@ -966,7 +967,7 @@ class DemeanFactor(CrossSectionFactor):
             s = self._revert_to_series(data)
             d = dict.fromkeys(s.index.levels[1], -1)
             d.update(self.group_dict)
-            g = s.groupby([d, 'date'], level=1)
+            g = s.groupby([d, 'date'], level=1, observed=False)
             ret = g.transform(lambda x: x - x.mean())
             print('Spectre: Deprecated, group_dict will be removed in the future')
             return self._regroup(ret)
@@ -1127,9 +1128,10 @@ class MADClampFactor(CustomFactor):
         if fill is None:
             clamp_1d_(ret, lower, upper)
         elif fill == 'center':
+            # masked_scatter_ takes source values in order, select the centers of masked first
+            fill_mask = (ret <= lower) | (ret >= upper)
             ret.masked_scatter_(
-                (ret <= lower) | (ret >= upper),
-                center.expand(data.shape[0], data.shape[1]))
+                fill_mask, center.expand(data.shape[0], data.shape[1]).masked_select(fill_mask))
         else:
             ret.masked_fill_((ret <= lower) | (ret >= upper), fill)
         return ret

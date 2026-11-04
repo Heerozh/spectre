@@ -305,7 +305,7 @@ class SimulationEventManager(EventManager):
         run_engine = alg.run_engine
         if 'save_factor' in alg.__dict__ and os.path.exists(alg.save_factor):
             data = pd.read_feather(alg.save_factor)
-            data.set_index(['date', 'asset'], inplace=True)
+            data = data.set_index(['date', 'asset'])
             print('Reading factors data from file: ', alg.save_factor)
         else:
             data, _ = run_engine(start, end, delay_factor)

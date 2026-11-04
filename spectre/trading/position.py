@@ -121,10 +121,10 @@ class Position:
                 cash = remaining * last_price
         self._shares = int(round(sp, 5))
         self._average_price = self._average_price / inverse_ratio
-        self.last_price = last_price / inverse_ratio
-
         if self.stop_tracker:
-            self.stop_tracker.process_split(last_price)
+            # adjust the tracked prices first, then update it with the adjusted last price
+            self.stop_tracker.process_split(inverse_ratio)
+        self.last_price = last_price / inverse_ratio
         return cash
 
     def process_dividend(self, amount: float, tax: float) -> float:

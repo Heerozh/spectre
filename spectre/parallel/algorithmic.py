@@ -206,7 +206,7 @@ def nanlast(data: torch.Tensor, dim=1, offset=0) -> torch.Tensor:
     if offset > 0:
         s = [slice(None)] * len(data.shape)
         s[dim] = slice(offset, None)
-        data = data[s]
+        data = data[tuple(s)]
     mask = ~torch.isnan(data)
     return masked_last(data, mask, dim)
 
@@ -421,9 +421,14 @@ class Rolling:
         new_x = torch.cat((nan_stack, x), dim=1)
         return new_x.unfold(1, win, 1)
 
-    def __init__(self, x: torch.Tensor, win: int, _adjustment: torch.Tensor = None):
+    def __init__(self, x: torch.Tensor, win: int, _adjustment: torch.Tensor = None,
+                 fill=np.nan):
+        """
+        :param fill: value of the window before the first data. Note that nan is True for bool
+            tensor.
+        """
         # todo win should support negative value
-        self.values = self.unfold(x, win)
+        self.values = self.unfold(x, win, fill)
         self.win = win
         self.device = x.device
 
