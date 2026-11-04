@@ -129,7 +129,7 @@ class PnLDecayTrailingStopTracker(DecayTrailingStopTracker):
     @property
     def current(self):
         pos = self.tracking_position
-        pnl = (self.recorded_price / pos.average_price - 1) * sign(pos.shares)
+        pnl = (self.recorded_price / pos.cost_basis - 1) * sign(pos.shares)
         pnl = max(pnl, 0) if self.target > 0 else min(pnl, 0)
         return pnl
 

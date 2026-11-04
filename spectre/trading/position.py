@@ -20,6 +20,7 @@ class Position:
     ):
         self._shares = shares
         self._average_price = fill_price + commission / shares
+        self._cost_basis = self._average_price
         self._last_price = fill_price
         self._realized = 0
         self._open_dt = dt
@@ -51,6 +52,14 @@ class Position:
         return self._average_price
 
     @property
+    def cost_basis(self):
+        """
+        Average cost of the shares still held. `average_price` is the break-even price instead:
+        it absorbs the proceeds of every sale, so it can reach zero or go negative.
+        """
+        return self._cost_basis
+
+    @property
     def last_price(self):
         return self._last_price
 
@@ -70,7 +79,7 @@ class Position:
 
     @property
     def unrealized_percent(self):
-        return (self._last_price / self._average_price - 1) * sign(self._shares)
+        return (self._last_price / self._cost_basis - 1) * sign(self._shares)
 
     def update(self, amount: int, fill_price: float, commission: float, dt) -> tuple[bool, float]:
         """
@@ -106,6 +115,8 @@ class Position:
                     realized = (before_avg_px - self._average_price) * after_shares
                 else:
                     realized = 0
+                    cost = self._cost_basis * before_shares + amount * fill_price + commission
+                    self._cost_basis = cost / after_shares
                 self._realized += realized
                 self.last_price = fill_price
                 return False, realized
@@ -121,6 +132,7 @@ class Position:
                 cash = remaining * last_price
         self._shares = int(round(sp, 5))
         self._average_price = self._average_price / inverse_ratio
+        self._cost_basis = self._cost_basis / inverse_ratio
         if self.stop_tracker:
             # adjust the tracked prices first, then update it with the adjusted last price
             self.stop_tracker.process_split(inverse_ratio)
@@ -131,6 +143,7 @@ class Position:
         if amount != amount or amount == 0:
             return 0
         self._average_price -= amount
+        self._cost_basis -= amount
         self.last_price -= amount + tax
         cash = self._shares * amount
         return cash

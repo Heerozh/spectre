@@ -110,6 +110,91 @@ def test_short_realized_before_reversing():
     assert pos.realized == 0
 
 
+@pytest.mark.parametrize(
+    "shares, closed, price, average_price, percent",
+    [
+        # long 100 at 10, the 20% move of the shares left doesn't depend on how many were sold
+        (100, -50, 12, 8, 0.2),
+        (100, -90, 12, -8, 0.2),
+        (100, -50, 20, 0, 1.0),
+        (100, -50, 8, 12, -0.2),
+        # short 100 at 10, the price falling 20% is a gain of 20%
+        (-100, 50, 8, 12, 0.2),
+        (-100, 90, 12, -8, -0.2),
+        (-100, 50, 20, 0, -1.0),
+    ],
+)
+def test_unrealized_percent_after_reducing(shares, closed, price, average_price, percent):
+    pos = trading.Position(shares, 10, 0, None)
+    pos.update(closed, price, 0, None)
+    # (cost of the position - proceeds) / shares left, the break-even price of the shares left
+    assert pos.average_price == pytest.approx(average_price)
+    assert pos.unrealized_percent == pytest.approx(percent)
+    assert pos.cost_basis == pytest.approx(10)
+
+
+def lifetime_pnl(pos):
+    """Realized P&L + the shares left marked to market against what they cost."""
+    return pos.realized + (pos.last_price - pos.cost_basis) * pos.shares
+
+
+def test_cost_basis_of_long():
+    # 100 at 10 paying 10, each share cost 10.1
+    pos = trading.Position(100, 10, 10, None)
+    assert pos.cost_basis == pytest.approx(10.1)
+    assert pos.cost_basis == pos.average_price
+
+    # selling doesn't change the cost of the other shares
+    pos.update(-60, 12, 6, None)
+    assert pos.cost_basis == pytest.approx(10.1)
+    # cash flow is -1010 + 720 - 6 = -296, and the 40 shares left are worth 480
+    assert lifetime_pnl(pos) == pytest.approx(-296 + 480)
+
+    # buying 60 at 12 paying 6 averages in: (40 * 10.1 + 60 * 12 + 6) / 100
+    pos.update(60, 12, 6, None)
+    assert pos.cost_basis == pytest.approx(11.3)
+    # -296 - 726 = -1022, and 100 shares worth 1200
+    assert lifetime_pnl(pos) == pytest.approx(-1022 + 1200)
+
+    # a dividend lowers the cost like it lowers average_price, then a 2-for-1 split halves it
+    assert pos.process_dividend(0.3, tax=0) == pytest.approx(30)
+    assert pos.cost_basis == pytest.approx(11)
+    pos.process_split(2, 11.7)
+    assert pos.cost_basis == pytest.approx(5.5)
+    # 5.85 now, the unrealized move is the same as before the split
+    assert pos.unrealized_percent == pytest.approx(11.7 / 11 - 1)
+
+    # reversing starts a new position: 200 shares closed, short 100 at 7 paying 10
+    pos.update(-300, 7, 30, None)
+    assert pos.shares == -100
+    assert pos.cost_basis == pytest.approx(7 + 10 / -100)
+
+
+def test_cost_basis_of_short():
+    # short 100 at 10 paying 10, each share brought in 9.9
+    pos = trading.Position(-100, 10, 10, None)
+    assert pos.cost_basis == pytest.approx(9.9)
+
+    # buying back doesn't change it for the other shares
+    pos.update(60, 8, 6, None)
+    assert pos.cost_basis == pytest.approx(9.9)
+    # cash flow is 990 - 486 = 504, and the short 40 shares left are worth -320
+    assert lifetime_pnl(pos) == pytest.approx(504 - 320)
+
+    # shorting 60 more at 12 paying 6 averages in: (40 * 9.9 + 60 * 12 - 6) / 100
+    pos.update(-60, 12, 6, None)
+    assert pos.cost_basis == pytest.approx(11.1)
+    # 504 + 714 = 1218, and the short 100 shares are worth -1200
+    assert lifetime_pnl(pos) == pytest.approx(1218 - 1200)
+
+    # the short pays the dividend, a 2-for-1 split halves what's left
+    assert pos.process_dividend(0.1, tax=0) == pytest.approx(-10)
+    assert pos.cost_basis == pytest.approx(11)
+    pos.process_split(2, 11.9)
+    assert pos.cost_basis == pytest.approx(5.5)
+    assert pos.shares == -200
+
+
 def test_split():
     pos = trading.Position(10, 10, 0, None)
     assert pos.process_split(2, 12) == 0
