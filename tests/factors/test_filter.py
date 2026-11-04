@@ -1,5 +1,7 @@
 import numpy as np
+import pandas as pd
 import pytest
+import scipy.stats
 import torch
 from numpy.testing import assert_allclose, assert_almost_equal, assert_array_equal
 
@@ -257,6 +259,174 @@ def test_rolling_statistics_of_filter_raise(dirty_engine, build):
     """The kernels reject bool on purpose: a padded False can't be told from a real False."""
     with pytest.raises(RuntimeError, match="can't be cast"):
         run_dirty(dirty_engine, build(close > 100))
+
+
+# ------------------------------------ helpers of a filter ------------------------------------
+# A helper on a filter gives the same as on filter.float(), and both agree with pandas. Padding
+# shows on different filters: read as False, it moves the ranks of one that is always True, but
+# not of one that is always False.
+
+FILTERS = {
+    "mixed": (lambda: close > 100, lambda panel: panel.close > 100),
+    "always_true": (lambda: volume > 0, lambda panel: panel.volume > 0),
+    "always_false": (lambda: close < 0, lambda panel: panel.close < 0),
+}
+
+
+@pytest.fixture(params=FILTERS)
+def selected(request, dirty_panel):
+    """A filter, and its values in pandas as floats."""
+    factor, values = FILTERS[request.param]
+    return factor(), values(dirty_panel).astype(float)
+
+
+@pytest.fixture(params=[False, True], ids=["as_filter", "as_float"])
+def cast(request):
+    return (lambda factor: factor.float()) if request.param else (lambda factor: factor)
+
+
+def assert_values(result, expected):
+    assert_allclose(result.astype(float), expected.astype(float), rtol=1e-5, atol=1e-6)
+
+
+def by_date(x):
+    return x.groupby(level="date")
+
+
+def by_asset(x):
+    return x.groupby(level="asset")
+
+
+def rank_of(x, **kwargs):
+    return by_date(x).rank(**kwargs)
+
+
+def share_of(rank, n):
+    return rank <= by_date(rank).transform("max") * n
+
+
+def quantile_of(x, bins):
+    """Numpy interpolates the cuts, but no value of a filter is between two neighbours."""
+    valid = x.dropna()
+    if len(valid) < 2:
+        return x * nan
+    cuts = np.quantile(valid, np.linspace(0, 1, bins + 1))[1:]
+    labels = np.digitize(valid, cuts, right=True)
+    return pd.Series(labels, index=valid.index, dtype=float).reindex(x.index)
+
+
+def weights_of(x):
+    return x / x.abs().sum()
+
+
+def mad_filled(x, z, fill):
+    center = x.median()
+    mad = (x - center).abs().median()
+    return x.mask(((x <= center - z * mad) | (x >= center + z * mad)) & (x != center), fill)
+
+
+def winsorized(x, z):
+    valid = x.dropna()
+    if valid.empty:
+        return x
+    clipped = np.asarray(scipy.stats.mstats.winsorize(valid.to_numpy(), [z, z]))
+    return pd.Series(clipped, index=valid.index).reindex(x.index)
+
+
+GROUP_HELPERS = {
+    "rank": (lambda f, m: f.rank(mask=m), lambda x: rank_of(x)),
+    "rank_descending": (
+        lambda f, m: f.rank(ascending=False, mask=m),
+        lambda x: rank_of(x, ascending=False),
+    ),
+    "rank_dense": (
+        lambda f, m: f.rank(method="dense", mask=m),
+        lambda x: rank_of(x, method="dense"),
+    ),
+    "rank_ordinal": (
+        lambda f, m: f.rank(method="ordinal", mask=m),
+        lambda x: rank_of(x, method="first"),
+    ),
+    "rank_normalized": (
+        lambda f, m: f.rank(normalize=True, mask=m),
+        lambda x: rank_of(x) / by_date(rank_of(x)).transform("max"),
+    ),
+    "top": (
+        lambda f, m: f.top(2, mask=m),
+        lambda x: rank_of(x, ascending=False, method="first") <= 2,
+    ),
+    "bottom": (lambda f, m: f.bottom(2, mask=m), lambda x: rank_of(x, method="first") <= 2),
+    "top_percent": (
+        lambda f, m: f.top(0.5, mask=m),
+        lambda x: share_of(rank_of(x, ascending=False, method="first"), 0.5),
+    ),
+    "bottom_percent": (
+        lambda f, m: f.bottom(0.5, mask=m),
+        lambda x: share_of(rank_of(x, method="first"), 0.5),
+    ),
+    "max": (lambda f, m: f.max(mask=m), lambda x: by_date(x).transform("max")),
+    "min": (lambda f, m: f.min(mask=m), lambda x: by_date(x).transform("min")),
+    "median": (lambda f, m: f.median(mask=m), lambda x: by_date(x).transform("median")),
+    "demedian": (lambda f, m: f.demedian(mask=m), lambda x: x - by_date(x).transform("median")),
+    "max_by_asset": (
+        lambda f, m: f.max(mask=m, groupby="asset"),
+        lambda x: by_asset(x).transform("max"),
+    ),
+    "min_by_asset": (
+        lambda f, m: f.min(mask=m, groupby="asset"),
+        lambda x: by_asset(x).transform("min"),
+    ),
+    "median_by_asset": (
+        lambda f, m: f.median(mask=m, groupby="asset"),
+        lambda x: by_asset(x).transform("median"),
+    ),
+    "demedian_by_asset": (
+        lambda f, m: f.demedian(mask=m, groupby="asset"),
+        lambda x: x - by_asset(x).transform("median"),
+    ),
+    "quantile": (
+        lambda f, m: f.quantile(3, mask=m if m is not None else volume > 0),
+        lambda x: by_date(x).transform(quantile_of, 3),
+    ),
+    "to_weight": (
+        lambda f, m: f.to_weight(mask=m),
+        lambda x: by_date(x - by_date(x).transform("mean")).transform(weights_of),
+    ),
+    "to_weight_of_values": (
+        lambda f, m: f.to_weight(demean=False, mask=m),
+        lambda x: by_date(x).transform(weights_of),
+    ),
+    "mad_clamp": (
+        lambda f, m: f.mad_clamp(2, mask=m),
+        lambda x: by_date(x).transform(ref.mad_clamp, 2),
+    ),
+    "mad_clamp_fill": (
+        lambda f, m: f.mad_clamp(2, mask=m, fill=-1.0),
+        lambda x: by_date(x).transform(mad_filled, 2, -1.0),
+    ),
+    "winsorizing": (
+        lambda f, m: f.winsorizing(0.2, mask=m),
+        lambda x: by_date(x).transform(winsorized, 0.2),
+    ),
+}
+
+
+@pytest.mark.filterwarnings("ignore:All-NaN slice encountered")
+@pytest.mark.parametrize("helper, reference", GROUP_HELPERS.values(), ids=GROUP_HELPERS)
+def test_group_helpers_of_filter(dirty_engine, selected, cast, helper, reference):
+    factor, values = selected
+    assert_values(run_dirty(dirty_engine, helper(cast(factor), None)), reference(values))
+
+
+@pytest.mark.filterwarnings("ignore:All-NaN slice encountered")
+@pytest.mark.parametrize("helper, reference", GROUP_HELPERS.values(), ids=GROUP_HELPERS)
+def test_group_helpers_of_filter_with_mask(
+    dirty_engine, dirty_panel, selected, cast, helper, reference
+):
+    factor, values = selected
+    masked = values.where(dirty_panel.volume > 1500)
+    result = run_dirty(dirty_engine, helper(cast(factor), volume > 1500))
+    assert_values(result, reference(masked))
 
 
 # ------------------------------------ newly listed asset ------------------------------------

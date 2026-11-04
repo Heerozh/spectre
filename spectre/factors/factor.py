@@ -167,7 +167,7 @@ class BaseFactor:
 
     def rank(self, ascending=True, mask: BaseFactor = None, normalize=False, method="average"):
         """Cross-section rank"""
-        factor = RankFactor(inputs=(self,), mask=mask)
+        factor = RankFactor(inputs=(self._numeric(),), mask=mask)
         factor.method = method
         factor.ascending = ascending
         factor.normalize = normalize
@@ -200,7 +200,7 @@ class BaseFactor:
         return factor
 
     def demedian(self, groupby: str = "date", mask: BaseFactor = None):
-        factor = DemedianFactor(inputs=(self,), mask=mask)
+        factor = DemedianFactor(inputs=(self._numeric(),), mask=mask)
         factor.groupby = groupby
         return factor
 
@@ -219,17 +219,17 @@ class BaseFactor:
         return factor
 
     def median(self, mask: BaseFactor = None, groupby: str = "date"):
-        factor = MedianFactor(inputs=(self,), mask=mask)
+        factor = MedianFactor(inputs=(self._numeric(),), mask=mask)
         factor.groupby = groupby
         return factor
 
     def max(self, mask: BaseFactor = None, groupby: str = "date"):
-        factor = XSMax(inputs=(self,), mask=mask)
+        factor = XSMax(inputs=(self._numeric(),), mask=mask)
         factor.groupby = groupby
         return factor
 
     def min(self, mask: BaseFactor = None, groupby: str = "date"):
-        factor = XSMin(inputs=(self,), mask=mask)
+        factor = XSMin(inputs=(self._numeric(),), mask=mask)
         factor.groupby = groupby
         return factor
 
@@ -250,7 +250,7 @@ class BaseFactor:
                 "quantile() mask parameter not set, normally set mask=universe, is it expected?",
                 RuntimeWarning,
             )
-        factor = QuantileClassifier(inputs=(self,))
+        factor = QuantileClassifier(inputs=(self._numeric(),))
         factor.set_mask(mask)
         factor.groupby = groupby
         factor.bins = bins
@@ -265,7 +265,7 @@ class BaseFactor:
 
     def to_weight(self, demean=True, mask: BaseFactor = None):
         """factor value to portfolio weight, which sum(abs(weight)) == 1"""
-        factor = ToWeightFactor(inputs=(self,), mask=mask)
+        factor = ToWeightFactor(inputs=(self._numeric(),), mask=mask)
         factor.demean_weight = demean
         return factor
 
@@ -354,7 +354,7 @@ class BaseFactor:
 
     def mad_clamp(self, z: float, mask: BaseFactor = None, groupby="date", fill=None, mean=False):
         """Cross-section MAD clamp"""
-        factor = MADClampFactor(inputs=(self, fill))
+        factor = MADClampFactor(inputs=(self._numeric(), fill))
         factor.groupby = groupby
         factor.z = z
         factor.set_mask(mask)
@@ -363,7 +363,7 @@ class BaseFactor:
 
     def winsorizing(self, z: float = 0.05, mask: BaseFactor = None):
         """Cross-section winsorizing clamp"""
-        factor = WinsorizingFactor(inputs=(self,))
+        factor = WinsorizingFactor(inputs=(self._numeric(),))
         factor.groupby = CrossSectionFactor.groupby
         assert 0 < z < 1
         factor.z = z
