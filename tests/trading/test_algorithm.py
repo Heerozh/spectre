@@ -813,3 +813,29 @@ def test_run_after_a_broken_run_is_complete(rerun, trip, raises):
 
     evt_mgr.run(start, end)
     assert_same_run(alg, reference)
+
+
+def test_records_are_of_the_last_run(rerun):
+    loader, start, end, reference = rerun
+    alg, evt_mgr = new_rerun_alg(loader)
+    evt_mgr.run(start, end)
+    pd.testing.assert_frame_equal(alg.records, reference.records)
+
+    shorter_end = reference.seen[9]
+    evt_mgr.run(start, shorter_end)
+
+    assert list(alg.records.index) == reference.seen[:10]
+    pd.testing.assert_frame_equal(alg.records, reference.records[:shorter_end])
+    # they are still there after the run
+    pd.testing.assert_frame_equal(alg._recorder.to_df(), alg.records)
+
+
+def test_records_of_an_interrupted_run_reach_terminate(rerun):
+    loader, start, end, reference = rerun
+    alg, evt_mgr = new_rerun_alg(loader)
+    evt_mgr.run(start, end)
+
+    alg.trip = raise_keyboard_interrupt
+    evt_mgr.run(start, end)
+
+    assert list(alg.records.index) == reference.seen[:5]

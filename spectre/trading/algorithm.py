@@ -245,6 +245,8 @@ class CustomAlgorithm(EventReceiver, ABC):
         self._data, self._last_row = self.run_engine(None, None, delay_factor=self.delay_factor)
 
     def on_run(self):
+        # here and not at the end of a run, the records are read after it
+        self._recorder = Recorder()
         # schedule first, so it will run before rebalance
         self.schedule(EveryBarData(self._data_updated))
         self.initialize()
