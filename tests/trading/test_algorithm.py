@@ -313,3 +313,338 @@ def test_intraday_algorithm(intraday_loader, event, expected_prices):
             ts("2019-01-03 20:55:00"),
             ts("2019-01-04 20:55:00"),
         ]
+
+
+# ------------------------------- get_price_matrix inside a backtest -------------------------------
+
+OHLCV = ("open", "high", "low", "close", "volume")
+BEFORE_OPEN = {"offset_ns": -1}
+BEFORE_CLOSE = {"offset_ns": -10000}
+
+
+def make_panel(dates, assets="ABC", seed=0):
+    """A random walk, with different open, high, low, close and volume on every bar."""
+    rng = np.random.default_rng(seed)
+    shape = len(dates), len(assets)
+    close = 100 * np.exp(np.cumsum(rng.normal(0, 0.02, shape), axis=0))
+    close = pd.DataFrame(close, index=dates, columns=list(assets))
+    opens = close * np.exp(rng.normal(0, 0.01, shape))
+    columns = {
+        "open": opens,
+        "high": np.maximum(opens, close) * 1.01,
+        "low": np.minimum(opens, close) * 0.99,
+        "close": close,
+        "volume": close * rng.uniform(1e3, 1e4, shape),
+    }
+    panel = pd.concat({col: df.stack() for col, df in columns.items()}, axis=1)
+    return panel.rename_axis(["date", "asset"])
+
+
+def make_loader(panel, **kwargs):
+    return spectre.data.MemoryLoader(panel, ohlcv=OHLCV, **kwargs)
+
+
+def matrices_at(event, loader, start, end, length, prices, universe=None):
+    """What `get_price_matrix` returns inside `event`, by the time of the call."""
+    seen = {}
+
+    class Alg(trading.CustomAlgorithm):
+        def initialize(self):
+            engine = self.get_factor_engine()
+            engine.add(factors.OHLCV.open, "open")
+            if universe is not None:
+                engine.set_filter(universe)
+            self.schedule_rebalance(event(self.rebalance))
+
+        def rebalance(self, data, history):
+            seen[self.current] = self.get_price_matrix(length, prices=prices), data
+
+    trading.run_backtest(loader, Alg, start, end)
+    return seen
+
+
+def test_future_close_does_not_change_a_rebalance_at_the_open():
+    dates = pd.bdate_range("2020-01-01", periods=30, tz="UTC")
+    start, bar = dates[10], 20
+    panel = make_panel(dates)
+    changed = panel.copy()
+    changed.loc[(dates[bar], "A"), "close"] *= 1.5
+
+    def run(prices):
+        seen = {}
+
+        class Alg(trading.CustomAlgorithm):
+            def initialize(self):
+                self.get_factor_engine().add(factors.OHLCV.open, "open")
+                self.blotter.set_commission(0, 0, 0)
+                self.blotter.set_slippage(0, 0)
+                self.schedule_rebalance(trading.event.MarketOpen(self.rebalance))
+
+            def rebalance(self, data, history):
+                matrix = self.get_price_matrix(pd.DateOffset(days=7))
+                seen[self.current] = matrix
+                # hold the asset that the last close in the matrix puts the highest over the open
+                best = (matrix.iloc[-1] / data.open).idxmax()
+                weights = (data.index == best).astype(float)
+                self.blotter.batch_order_target_percent(data.index, weights)
+
+        return trading.run_backtest(make_loader(prices), Alg, start, dates[-1]), seen
+
+    results, seen = run(panel)
+    other_results, other_seen = run(changed)
+
+    def orders_up_to_the_bar(run_results):
+        orders = run_results.transactions[: dates[bar]].reset_index()
+        return orders.sort_values(["index", "symbol"]).reset_index(drop=True)
+
+    for date in dates[10 : bar + 1]:
+        pd.testing.assert_frame_equal(seen[date], other_seen[date])
+    pd.testing.assert_frame_equal(
+        orders_up_to_the_bar(results), orders_up_to_the_bar(other_results)
+    )
+    # the next open knows it, so the check above was able to fail
+    assert not seen[dates[bar + 1]].equals(other_seen[dates[bar + 1]])
+
+
+@pytest.mark.parametrize(
+    "event, kwargs",
+    [
+        # fires before the open on daily bars
+        (trading.event.EveryBarData, {}),
+        (trading.event.MarketOpen, BEFORE_OPEN),
+        (trading.event.MarketOpen, {}),
+    ],
+    ids=["every_bar", "before_open", "open"],
+)
+@pytest.mark.parametrize("column", ["high", "low", "close", "volume"])
+def test_price_matrix_stops_before_the_bar_that_has_not_closed(event, kwargs, column):
+    dates = pd.bdate_range("2020-01-01", periods=16, tz="UTC")
+    panel = make_panel(dates)
+    prices = getattr(factors.OHLCV, column)
+    length = pd.DateOffset(days=6)
+
+    seen = matrices_at(
+        lambda cb: event(cb, **kwargs), make_loader(panel), dates[8], dates[-1], length, prices
+    )
+
+    assert list(seen) == list(dates[8:])
+    table = panel[column].unstack()
+    for date, (matrix, _) in seen.items():
+        expected = table.loc[date - length : date].iloc[:-1]
+        assert list(matrix.index) == list(expected.index)
+        assert_almost_equal(matrix.values, expected.values, decimal=3)
+
+
+@pytest.mark.parametrize(
+    "event, kwargs",
+    [
+        (trading.event.EveryBarData, {}),
+        (trading.event.MarketOpen, BEFORE_OPEN),
+        (trading.event.MarketOpen, {}),
+    ],
+    ids=["every_bar", "before_open", "open"],
+)
+def test_price_matrix_has_the_open_of_the_current_bar(event, kwargs):
+    dates = pd.bdate_range("2020-01-01", periods=16, tz="UTC")
+    panel = make_panel(dates)
+    length = pd.DateOffset(days=6)
+
+    seen = matrices_at(
+        lambda cb: event(cb, **kwargs),
+        make_loader(panel),
+        dates[8],
+        dates[-1],
+        length,
+        factors.OHLCV.open,
+    )
+
+    assert list(seen) == list(dates[8:])
+    table = panel["open"].unstack()
+    for date, (matrix, _) in seen.items():
+        expected = table.loc[date - length : date]
+        assert matrix.index[-1] == date
+        assert_almost_equal(matrix.values, expected.values, decimal=3)
+
+
+@pytest.mark.parametrize("kwargs", [BEFORE_CLOSE, {}], ids=["before_close", "after_close"])
+def test_price_matrix_has_the_close_at_the_market_close(kwargs):
+    dates = pd.bdate_range("2020-01-01", periods=16, tz="UTC")
+    panel = make_panel(dates)
+    length = pd.DateOffset(days=6)
+
+    seen = matrices_at(
+        lambda cb: trading.event.MarketClose(cb, **kwargs),
+        make_loader(panel),
+        dates[8],
+        dates[-1],
+        length,
+        factors.OHLCV.close,
+    )
+
+    assert list(seen) == list(dates[8:])
+    table = panel["close"].unstack()
+    for date, (matrix, _) in seen.items():
+        assert_almost_equal(matrix.values, table.loc[date - length : date].values, decimal=3)
+
+
+def test_price_matrix_before_the_close_shows_the_price_of_the_blotter():
+    """Before the close the blotter has moved to the close already, and it fills there."""
+    dates = pd.bdate_range("2020-01-01", periods=16, tz="UTC")
+    last_rows = {}
+
+    class Alg(trading.CustomAlgorithm):
+        def initialize(self):
+            self.get_factor_engine().add(factors.OHLCV.open, "open")
+            self.schedule_rebalance(trading.event.MarketClose(self.rebalance, **BEFORE_CLOSE))
+
+        def rebalance(self, data, history):
+            matrix = self.get_price_matrix(pd.DateOffset(days=6))
+            last_rows[self.current] = matrix["A"].iloc[-1], self.blotter.get_price("A")
+
+    trading.run_backtest(make_loader(make_panel(dates)), Alg, dates[8], dates[-1])
+
+    assert list(last_rows) == list(dates[8:])
+    for in_matrix, in_blotter in last_rows.values():
+        assert in_matrix == pytest.approx(in_blotter, rel=1e-6)
+
+
+def test_price_matrix_on_intraday_bars():
+    """An intraday bar is complete when its EveryBarData fires, the blotter is at its close."""
+    days = pd.bdate_range("2020-01-06", periods=4, tz="UTC")
+    dates = pd.DatetimeIndex(
+        [day + pd.Timedelta(minutes=870 + 5 * i) for day in days for i in range(3)]
+    )
+    panel = make_panel(dates)
+    bar_before = dict(zip(dates[1:], dates[:-1]))
+    length, start = pd.DateOffset(days=1), days[2]
+    loader = make_loader(panel)
+
+    def last_rows(event, prices=factors.OHLCV.close):
+        seen = matrices_at(event, loader, start, dates[-1], length, prices)
+        return {date: matrix.index[-1] for date, (matrix, _) in seen.items()}
+
+    # the first open of a run has no data yet, it comes with the first EveryBarData
+    open_bar = days[3] + pd.Timedelta(minutes=870)
+    assert last_rows(trading.event.MarketOpen) == {open_bar: bar_before[open_bar]}
+    assert last_rows(trading.event.MarketOpen, factors.OHLCV.open) == {open_bar: open_bar}
+
+    bars = dates[dates >= start]
+    assert last_rows(trading.event.EveryBarData) == {date: date for date in bars}
+
+    last_bars = [day + pd.Timedelta(minutes=880) for day in days[2:]]
+    close_rows = last_rows(lambda cb: trading.event.MarketClose(cb, **BEFORE_CLOSE))
+    assert close_rows == {date: date for date in last_bars}
+
+
+@pytest.mark.parametrize(
+    "prices, has_current_bar",
+    [(factors.OHLCV.close, False), (factors.OHLCV.open, True)],
+    ids=["close", "open"],
+)
+def test_filter_of_price_matrix_does_not_read_a_future_close(prices, has_current_bar):
+    dates = pd.bdate_range("2020-01-01", periods=14, tz="UTC")
+    panel = make_panel(dates, "AB")
+    panel["close"] = panel["open"] = 100.0
+    # B reaches the universe on the close of `bar` and stays there, A is in from the start
+    bar = 9
+    panel.loc[(dates, "A"), "close"] = 300.0
+    panel.loc[(dates[bar:], "B"), "close"] = 300.0
+    start = dates[6]
+
+    seen = matrices_at(
+        trading.event.MarketOpen,
+        make_loader(panel),
+        start,
+        dates[-1],
+        pd.DateOffset(days=3),
+        prices,
+        universe=factors.OHLCV.close >= 200,
+    )
+
+    assert list(seen) == list(dates[7:])
+    for date, (matrix, data) in seen.items():
+        assert list(matrix.columns) == (["A", "B"] if date > dates[bar] else ["A"])
+        # what the rebalance is told about is in the matrix
+        assert set(data.index) <= set(matrix.columns)
+        assert (matrix.index[-1] == date) == has_current_bar
+
+
+def test_filter_on_the_open_keeps_the_current_bar_in_price_matrix():
+    dates = pd.bdate_range("2020-01-01", periods=14, tz="UTC")
+    panel = make_panel(dates, "AB")
+    panel["open"] = 100.0
+    # the open of the current bar is known at the open, so the universe has it
+    bar = 9
+    panel.loc[(dates, "A"), "open"] = 300.0
+    panel.loc[(dates[bar:], "B"), "open"] = 300.0
+
+    seen = matrices_at(
+        trading.event.MarketOpen,
+        make_loader(panel),
+        dates[6],
+        dates[-1],
+        pd.DateOffset(days=3),
+        factors.OHLCV.close,
+        universe=factors.OHLCV.open >= 200,
+    )
+
+    for date, (matrix, data) in seen.items():
+        assert list(data.index) == (["A", "B"] if date >= dates[bar] else ["A"])
+        assert list(matrix.columns) == list(data.index)
+
+
+def test_price_matrix_at_the_open_is_adjusted_to_the_current_bar():
+    dates = pd.bdate_range("2020-01-01", periods=14, tz="UTC")
+    panel = make_panel(dates, "AB")
+    bar = 9
+    prices = ["open", "high", "low", "close"]
+    panel.loc[(dates[bar:], "A"), prices] *= 0.5
+    panel = panel.assign(**{"ex-dividend": 0.0, "split_ratio": 1.0})
+    panel.loc[(dates[bar], "A"), "split_ratio"] = 0.5
+    loader = make_loader(panel, adjustments=("ex-dividend", "split_ratio"))
+    length = pd.DateOffset(days=3)
+
+    seen = matrices_at(
+        trading.event.MarketOpen, loader, dates[6], dates[-1], length, factors.OHLCV.close
+    )
+
+    def closes_before(date):
+        return panel["close"].unstack().loc[date - length : date].iloc[:-1]
+
+    # the bar before the ex-date doesn't know the split yet
+    date = dates[bar - 1]
+    assert_almost_equal(seen[date][0].values, closes_before(date).values, 3)
+    # the open of the ex-date does, the blotter trades the new price
+    date = dates[bar]
+    expected = closes_before(date)
+    assert_almost_equal(seen[date][0].A.values, expected.A.values * 0.5, 3)
+    assert_almost_equal(seen[date][0].B.values, expected.B.values, 3)
+
+
+def test_price_matrix_gives_the_filter_back_after_an_error():
+    dates = pd.bdate_range("2020-01-01", periods=14, tz="UTC")
+    loader = make_loader(make_panel(dates))
+    universe = factors.OHLCV.close >= 0
+
+    class Alg(trading.CustomAlgorithm):
+        def initialize(self):
+            engine = self.get_factor_engine()
+            engine.add(factors.OHLCV.open, "open")
+            engine.set_filter(universe)
+            self.schedule_rebalance(trading.event.MarketOpen(self.rebalance))
+
+        def rebalance(self, data, history):
+            self.get_price_matrix(pd.DateOffset(days=3))
+            assert self.get_factor_engine().get_filter() is universe
+            self.get_price_matrix(
+                pd.DateOffset(days=3), prices=factors.ColumnDataFactor(inputs=("no such column",))
+            )
+
+    blotter = trading.SimulationBlotter(loader)
+    alg = Alg(blotter, main=loader)
+    evt_mgr = trading.SimulationEventManager()
+    evt_mgr.subscribe(blotter)
+    evt_mgr.subscribe(alg)
+    with pytest.raises(KeyError):
+        evt_mgr.run(dates[6], dates[-1])
+    assert alg.get_factor_engine().get_filter() is universe

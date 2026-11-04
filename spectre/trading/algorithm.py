@@ -62,6 +62,8 @@ class CustomAlgorithm(EventReceiver, ABC):
         self.blotter = blotter
         self._recorder = Recorder()
         self._current_dt = None
+        # a simulation has the whole of the current bar, this says how much of it has happened
+        self._bar_closed = True
         self._results = CustomAlgorithm.Results(None, None, None)
         self._rebalance_callback = None
         self.delay_factor = True
@@ -90,6 +92,11 @@ class CustomAlgorithm(EventReceiver, ABC):
         return self._engines[name]
 
     def get_price_matrix(self, length: pd.DateOffset, name: str | None = None, prices=OHLCV.close):
+        """
+        Prices of the last `length`, adjusted to the current bar. Until the current bar closes,
+        `prices` that are only known after a close end at the bar before it, and a filter that
+        reads such data decides on the bars before it.
+        """
         if name is None:
             name = next(iter(self._engines))
 
@@ -98,9 +105,20 @@ class CustomAlgorithm(EventReceiver, ABC):
                 f"Data source '{name}' not found, please pass in the algorithm "
                 f"initialization: `YourAlgorithm({name}=DataLoader())`"
             )
-        return self._engines[name].get_price_matrix(
-            self._current_dt - length, self._current_dt, prices=prices
-        )
+        engine = self._engines[name]
+        start, end = self._current_dt - length, self._current_dt
+        if self._bar_closed:
+            return engine.get_price_matrix(start, end, prices=prices)
+
+        universe = engine.get_filter()
+        if universe is not None and universe.should_delay():
+            engine.set_filter(universe.shift(1))
+        try:
+            # up to `end` even if that row is dropped, a split on the current bar is known already
+            matrix = engine.get_price_matrix(start, end, prices=prices)
+        finally:
+            engine.set_filter(universe)
+        return matrix[matrix.index < end] if prices.should_delay() else matrix
 
     def set_datetime(self, dt: pd.Timestamp) -> None:
         self._current_dt = dt
@@ -295,6 +313,7 @@ class SimulationEventManager(EventManager):
     def fire_market_close(self, alg):
         alg.blotter.set_price("close")
         alg.blotter.update_portfolio_value()
+        alg._bar_closed = True
         self.fire_before_event(MarketClose)
         self.fire_after_event(MarketClose)
 
@@ -359,6 +378,7 @@ class SimulationEventManager(EventManager):
             if dt.day != last_day and last_day is not None:
                 self.fire_market_close(alg)
             alg.set_datetime(dt)
+            alg._bar_closed = False
 
             # fire daily data event
             if data_freq == "D":
@@ -372,6 +392,7 @@ class SimulationEventManager(EventManager):
             # fire intraday data event
             if data_freq != "D":
                 alg.blotter.set_price("close")
+                alg._bar_closed = True
                 self.fire_event(self, EveryBarData)
 
         self.fire_market_close(alg)
