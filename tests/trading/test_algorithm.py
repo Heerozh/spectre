@@ -344,13 +344,15 @@ def make_loader(panel, **kwargs):
     return spectre.data.MemoryLoader(panel, ohlcv=OHLCV, **kwargs)
 
 
-def matrices_at(event, loader, start, end, length, prices, universe=None):
+def matrices_at(event, loader, start, end, length, prices, universe=None, device="cpu"):
     """What `get_price_matrix` returns inside `event`, by the time of the call."""
     seen = {}
 
     class Alg(trading.CustomAlgorithm):
         def initialize(self):
             engine = self.get_factor_engine()
+            if device == "cuda":
+                engine.to_cuda()
             engine.add(factors.OHLCV.open, "open")
             if universe is not None:
                 engine.set_filter(universe)
@@ -363,7 +365,7 @@ def matrices_at(event, loader, start, end, length, prices, universe=None):
     return seen
 
 
-def test_future_close_does_not_change_a_rebalance_at_the_open():
+def test_future_close_does_not_change_a_rebalance_at_the_open(device):
     dates = pd.bdate_range("2020-01-01", periods=30, tz="UTC")
     start, bar = dates[10], 20
     panel = make_panel(dates)
@@ -375,7 +377,10 @@ def test_future_close_does_not_change_a_rebalance_at_the_open():
 
         class Alg(trading.CustomAlgorithm):
             def initialize(self):
-                self.get_factor_engine().add(factors.OHLCV.open, "open")
+                engine = self.get_factor_engine()
+                if device == "cuda":
+                    engine.to_cuda()
+                engine.add(factors.OHLCV.open, "open")
                 self.blotter.set_commission(0, 0, 0)
                 self.blotter.set_slippage(0, 0)
                 self.schedule_rebalance(trading.event.MarketOpen(self.rebalance))
@@ -541,7 +546,7 @@ def test_price_matrix_on_intraday_bars():
     [(factors.OHLCV.close, False), (factors.OHLCV.open, True)],
     ids=["close", "open"],
 )
-def test_filter_of_price_matrix_does_not_read_a_future_close(prices, has_current_bar):
+def test_filter_of_price_matrix_does_not_read_a_future_close(device, prices, has_current_bar):
     dates = pd.bdate_range("2020-01-01", periods=14, tz="UTC")
     panel = make_panel(dates, "AB")
     panel["close"] = panel["open"] = 100.0
@@ -559,6 +564,7 @@ def test_filter_of_price_matrix_does_not_read_a_future_close(prices, has_current
         pd.DateOffset(days=3),
         prices,
         universe=factors.OHLCV.close >= 200,
+        device=device,
     )
 
     assert list(seen) == list(dates[7:])
@@ -569,7 +575,7 @@ def test_filter_of_price_matrix_does_not_read_a_future_close(prices, has_current
         assert (matrix.index[-1] == date) == has_current_bar
 
 
-def test_filter_on_the_open_keeps_the_current_bar_in_price_matrix():
+def test_filter_on_the_open_keeps_the_current_bar_in_price_matrix(device):
     dates = pd.bdate_range("2020-01-01", periods=14, tz="UTC")
     panel = make_panel(dates, "AB")
     panel["open"] = 100.0
@@ -586,6 +592,7 @@ def test_filter_on_the_open_keeps_the_current_bar_in_price_matrix():
         pd.DateOffset(days=3),
         factors.OHLCV.close,
         universe=factors.OHLCV.open >= 200,
+        device=device,
     )
 
     for date, (matrix, data) in seen.items():
@@ -593,7 +600,7 @@ def test_filter_on_the_open_keeps_the_current_bar_in_price_matrix():
         assert list(matrix.columns) == list(data.index)
 
 
-def test_price_matrix_at_the_open_is_adjusted_to_the_current_bar():
+def test_price_matrix_at_the_open_is_adjusted_to_the_current_bar(device):
     dates = pd.bdate_range("2020-01-01", periods=14, tz="UTC")
     panel = make_panel(dates, "AB")
     bar = 9
@@ -605,7 +612,13 @@ def test_price_matrix_at_the_open_is_adjusted_to_the_current_bar():
     length = pd.DateOffset(days=3)
 
     seen = matrices_at(
-        trading.event.MarketOpen, loader, dates[6], dates[-1], length, factors.OHLCV.close
+        trading.event.MarketOpen,
+        loader,
+        dates[6],
+        dates[-1],
+        length,
+        factors.OHLCV.close,
+        device=device,
     )
 
     def closes_before(date):
