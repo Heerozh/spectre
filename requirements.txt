@@ -1,5 +1,4 @@
 requests
-python>=3.5
 pyarrow
 numpy
 pandas>=0.22
