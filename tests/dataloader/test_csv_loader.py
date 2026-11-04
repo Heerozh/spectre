@@ -395,9 +395,7 @@ def events_loader(tmp_path, prices, dividends, splits, **kwargs):
 
 
 DAYS = list(pd.date_range("2020-01-06", periods=8).strftime("%Y-%m-%d"))
-# The loader raises if an event folder is empty, so these are far after the last bar.
-NO_DIVIDEND = {"2030-01-01": 0.0}
-NO_SPLIT = {"2030-01-01": 1.0}
+NO_DIVIDEND = NO_SPLIT = {}
 
 
 def test_event_without_a_bar_goes_to_the_next_bar(tmp_path):
@@ -466,6 +464,38 @@ def test_no_valid_event(tmp_path):
     df = events_loader(tmp_path, {"A": closes}, {DAYS[1]: nan}, {DAYS[1]: nan}).test_load()
     assert (df["ex-dividend"] == 0).all()
     assert (df["split_ratio"] == 1).all()
+
+
+@pytest.mark.parametrize(
+    "kwargs", [{}, {"split_ratio_is_fraction": True}, {"align_by_time": True}], ids=str
+)
+def test_event_folders_without_events(tmp_path, kwargs):
+    closes = dict.fromkeys(DAYS[:3], 100.0)
+    if "align_by_time" in kwargs:
+        kwargs = {**kwargs, "calender_asset": "A"}
+    df = events_loader(tmp_path, {"A": closes}, {}, {}, **kwargs).test_load()
+    assert len(df) == 3
+    assert (df["ex-dividend"] == 0).all()
+    assert (df["split_ratio"] == 1).all()
+    assert (df[["price_multi", "vol_multi"]] == 1).all(axis=None)
+
+
+def test_event_files_without_the_event_column(tmp_path):
+    loader = events_loader(tmp_path, {"A": dict.fromkeys(DAYS[:3], 100.0)}, {}, {})
+    for folder in ("dividends", "splits"):
+        frame = pd.DataFrame({"exDate": DAYS[1:2], "description": ["other data"]})
+        frame.to_csv(tmp_path / folder / "A.csv", index=False)
+    df = loader.test_load()
+    assert (df["ex-dividend"] == 0).all()
+    assert (df["split_ratio"] == 1).all()
+
+
+def test_event_folder_without_files_is_an_error(tmp_path):
+    """A wrong path, it must not read as a stock without events."""
+    loader = events_loader(tmp_path, {"A": dict.fromkeys(DAYS[:3], 100.0)}, {}, {})
+    (tmp_path / "splits" / "A.csv").unlink()
+    with pytest.raises(ValueError, match="There are no files"):
+        loader.load()
 
 
 def test_event_on_a_row_dropped_by_the_calendar(tmp_path):

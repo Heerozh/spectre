@@ -38,6 +38,15 @@ def _ffill_zeros(df: pd.DataFrame, groups) -> pd.DataFrame:
     return df
 
 
+def _concat_events(events: dict) -> pd.Series:
+    """Join {asset: events by ex-date, or None}, to a series indexed by (asset, ex-date)."""
+    events = {asset: series for asset, series in events.items() if series is not None}
+    if not events:
+        index = pd.MultiIndex.from_arrays([pd.Index([], dtype=str), pd.DatetimeIndex([])])
+        return pd.Series(index=index, dtype=np.float64)
+    return pd.concat(events, sort=False)
+
+
 class CsvDirLoader(DataLoader):
     def __init__(
         self,
@@ -240,8 +249,7 @@ class CsvDirLoader(DataLoader):
                 return _df.groupby(level=0).agg("sum")
 
             dfs = {k: _agg_duplicated(v) for k, v in dfs.items()}
-            div = pd.concat(dfs, sort=False)
-            div = self._attach_events(div, df.index, "sum")
+            div = self._attach_events(_concat_events(dfs), df.index, "sum")
             div = div.fillna(0)
             div.name = self._adjustments[0]
             # div = df.rename_axis(['asset', 'date'])
@@ -258,7 +266,7 @@ class CsvDirLoader(DataLoader):
                 return _df[~_df.index.duplicated(keep="last")]
 
             dfs = {k: _drop_na_and_duplicated(v) for k, v in dfs.items()}
-            splits = pd.concat(dfs, sort=False)
+            splits = _concat_events(dfs)
             if self._split_ratio_is_fraction:
                 from fractions import Fraction
 
