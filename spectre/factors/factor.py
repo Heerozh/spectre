@@ -266,7 +266,7 @@ class BaseFactor:
     def to_weight(self, demean=True, mask: BaseFactor = None):
         """factor value to portfolio weight, which sum(abs(weight)) == 1"""
         factor = ToWeightFactor(inputs=(self,), mask=mask)
-        factor.demean = demean
+        factor.demean_weight = demean
         return factor
 
     def shift(self, periods=1):
@@ -1176,10 +1176,10 @@ class QuantileClassifier(CrossSectionFactor):
 
 
 class ToWeightFactor(CrossSectionFactor):
-    demean = True
+    demean_weight = True
 
     def compute(self, data: torch.Tensor) -> torch.Tensor:
-        if self.demean:
+        if self.demean_weight:
             data = data - nanmean(data).unsqueeze(-1)
         return data / nansum(data.abs(), dim=1).unsqueeze(-1)
 

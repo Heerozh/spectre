@@ -640,3 +640,12 @@ def test_to_weight(engine):
         close.to_weight(demean=False),
         *ref.expected_xs(lambda df: df.div(df.abs().sum(axis=1), axis=0)),
     )
+
+
+def test_demean_of_to_weight(dirty_engine, dirty_panel):
+    closes = dirty_panel.close
+    by_date = closes.groupby(level="date")
+    weight = closes / by_date.transform(lambda x: x.abs().sum())
+    expected = weight - weight.groupby(level="date").transform("mean")
+    result = run_dirty(dirty_engine, close.to_weight(demean=False).demean())
+    assert_allclose(result, expected, rtol=1e-6, atol=1e-9)
