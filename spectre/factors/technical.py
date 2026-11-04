@@ -10,7 +10,7 @@ from collections.abc import Sequence
 import numpy as np
 import torch
 
-from ..parallel import nanmean
+from ..parallel import nanmean, pad_2d
 from .basic import EMA, MA
 from .engine import OHLCV
 from .factor import BaseFactor, CustomFactor
@@ -56,6 +56,24 @@ class NormalizedBollingerBands(CustomFactor):
         return (closes - ma) / (k * std)
 
 
+class _MACDLine(CustomFactor):
+    """EMA(fast) - EMA(slow). It is a price, so a rolling window over it needs adjusting."""
+
+    def __init__(self, fast, slow, inputs):
+        super().__init__(inputs=(EMA(span=fast, inputs=inputs), EMA(span=slow, inputs=inputs)))
+        self.price = inputs[0]
+
+    @property
+    def adjustments(self):
+        multi = self.price.adjustments
+        # a bar with no price has no multiplier, but EMA keeps its value in the scale of the bar
+        # before it
+        return None if multi is None else pad_2d(multi)
+
+    def compute(self, fast, slow):
+        return fast - slow
+
+
 class MovingAverageConvergenceDivergenceSignal(EMA):
     """
     engine.add( MACD(fast, slow, sign, inputs=[OHLCV.close]) )
@@ -71,7 +89,7 @@ class MovingAverageConvergenceDivergenceSignal(EMA):
         self, fast=12, slow=26, sign=9, inputs: Sequence[BaseFactor] | None = None, adjust=False
     ):
         super().__init__(sign, inputs, adjust)
-        self.inputs = (EMA(inputs=self.inputs, span=fast) - EMA(inputs=self.inputs, span=slow),)
+        self.inputs = (_MACDLine(fast, slow, self.inputs),)
 
     def normalized(self):
         # In order not to double the calculation, reuse `inputs` factor here
@@ -86,6 +104,11 @@ class TrueRange(CustomFactor):
     inputs = (OHLCV.high, OHLCV.low, OHLCV.close)
     win = 2
     _min_win = 2
+
+    @property
+    def adjustments(self):
+        # it is a price in the scale of its own bar, so a rolling window over it needs adjusting
+        return self.inputs[2].adjustments
 
     def compute(self, highs, lows, closes):
         high_to_low = highs.last() - lows.last()
