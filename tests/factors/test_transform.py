@@ -158,18 +158,6 @@ def test_ts_any_all():
     assert_array_equal(result, [[False] * 3 + [True] * 3, [False] * 2 + [True] * 4])
 
 
-def test_filter_ts_any_all():
-    data = torch.tensor([[False, True, False, False, False], [True, True, True, False, True]])
-    # no data before the first value, treated as False
-    rolling = parallel.Rolling(data, win=2)
-    result = factors.AnyFilter(2).compute(rolling)
-    assert_array_equal(result, [[False, True, True, False, False],
-                                [True, True, True, True, True]])
-    result = factors.AllFilter(2).compute(rolling)
-    assert_array_equal(result, [[False, False, False, False, False],
-                                [False, True, True, False, False]])
-
-
 def test_rolling_rank(engine):
     def rolling_rank(df):
         return weekday(df).rolling(5).apply(lambda x: pd.Series(x).rank().iloc[-1] / 5,

@@ -116,12 +116,13 @@ FACTOR_VALUES = [torch.tensor([[1., 2, 2, 4, 5], [1., 3, 3, 4, 5]]),
                  torch.tensor([[1., 1, 3, 3, 4], [2., 2, 0, 6, 6]])]
 
 
-def test_factor_wise_kth_value():
-    result = factors.FactorWiseKthValue(2, []).compute(*FACTOR_VALUES)
-    # 2nd smallest of the cross-section means of each factor
+@pytest.mark.parametrize('kth', [1, 2, 3])
+def test_factor_wise_kth_value(kth):
+    result = factors.FactorWiseKthValue(kth, []).compute(*FACTOR_VALUES)
+    # kth smallest of the cross-section means of each factor
     means = np.stack([x.numpy().mean(axis=1) for x in FACTOR_VALUES], axis=1)
-    expected = np.sort(means, axis=1)[:, 1]
-    assert_almost_equal(expected, [2.8, 3.2])
+    expected = np.sort(means, axis=1)[:, kth - 1]
+    assert_almost_equal(np.sort(means, axis=1), [[2.4, 2.8, 2.8], [2.6, 3.2, 3.2]])
     assert_almost_equal(result.numpy(), np.repeat(expected[:, None], 5, axis=1), decimal=6)
 
 

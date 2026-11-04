@@ -5,7 +5,7 @@ from numpy.testing import assert_almost_equal, assert_array_equal
 
 from spectre import factors
 from tests.factors import reference as ref
-from tests.factors.helpers import assert_factor, delete, run_factor
+from tests.factors.helpers import assert_factor, delete, run_factor, run_late_listed
 
 nan = np.nan
 SOLO = 6  # MSFT has no data on 2019-01-10
@@ -122,7 +122,9 @@ def test_asset_classifier(engine):
     assert_factor(engine, classifier, [2] * 10, [-1] * 9)
 
 
-def test_one_hot(engine):
+def test_one_hot(engine, device):
+    if device == 'cuda':
+        engine.to_cuda()
     one_hot = factors.AssetClassifierDataFactor({'AAPL': 2}, -1).one_hot()
     # classes are sorted: -1, 2
     assert_factor(engine, one_hot[0], [False] * 10, [True] * 9)
@@ -152,3 +154,16 @@ def test_forward_signal_data(engine):
     # MSFT never > 150
     assert np.isnan(expected[1]).all()
     assert_factor(engine, signal_return, *expected, check_bias=False)
+
+
+@pytest.mark.filterwarnings('ignore:Warning!! delay_factor is set to False')
+def test_forward_signal_data_of_new_listed_asset(late_listing_engine):
+    """
+    ForwardSignalData shifts the data backward, so the first `win - 1` bars of a newly listed
+    asset are unknown (nan), the shifted out data is not in the window.
+    """
+    close = factors.OHLCV.close
+    result = run_late_listed(late_listing_engine,
+                             factors.ForwardSignalData(3, close, close > 15))
+    # closes: [10, 20, 11, 30, 12, 13, 14]
+    assert_almost_equal(result, [nan, nan, 30, 30, nan, nan, nan])
