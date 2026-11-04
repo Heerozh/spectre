@@ -29,6 +29,7 @@ from ..parallel import (
     rankdata,
     unmasked_sum,
 )
+from ..parallel.algorithmic import nanprod
 from ..plotting import plot_factor_diagram
 
 if TYPE_CHECKING:
@@ -892,11 +893,16 @@ class AbsFactor(CustomFactor):
         return data.abs()
 
 
+def _nan_if_empty(kernel, data: torch.Tensor, dim: int) -> torch.Tensor:
+    """`nansum` and `nanprod` give 0 and 1 on a group with no valid value, a factor gives NaN."""
+    return kernel(data, dim=dim).masked_fill_(torch.isnan(data).all(dim=dim), np.nan)
+
+
 class SumFactor(CustomFactor):
     _min_win = 2
 
     def compute(self, data: Rolling) -> torch.Tensor:
-        return data.nansum()
+        return data.agg(lambda x: _nan_if_empty(nansum, x, dim=2))
 
 
 class UniqueTSSumFactor(CustomFactor):
@@ -907,21 +913,22 @@ class UniqueTSSumFactor(CustomFactor):
             s = x.roll(1, dims=2)
             s[:, :, 0:1] = np.nan
             u = x.masked_fill(x == s, np.nan)
-            return nansum(u, dim=2)
+            return _nan_if_empty(nansum, u, dim=2)
 
         return data.agg(_uni_sum)
 
 
 class XSSumFactor(CrossSectionFactor):
     def compute(self, data: torch.Tensor) -> torch.Tensor:
-        return data.nansum(dim=-1).unsqueeze(-1).expand(data.shape[0], data.shape[1])
+        total = _nan_if_empty(nansum, data, dim=1).unsqueeze(-1)
+        return total.expand(data.shape[0], data.shape[1])
 
 
 class ProdFactor(CustomFactor):
     _min_win = 2
 
     def compute(self, data: Rolling) -> torch.Tensor:
-        return data.nanprod()
+        return data.agg(lambda x: _nan_if_empty(nanprod, x, dim=2))
 
 
 class LogFactor(CustomFactor):

@@ -164,7 +164,15 @@ def test_median_groupby_asset(engine):
     assert_almost_equal([np.median(returns["AAPL"]), np.median(returns["MSFT"])], [0.0085, 0.007])
 
 
-@pytest.mark.parametrize("helper", ["mean", "median", "max", "min", "std"])
+def test_xs_sum_of_a_date_without_values(dirty_engine, dirty_panel):
+    weekdays = dirty_panel.index.get_level_values("date").dayofweek
+    selected = dirty_panel.close.where(weekdays != 0)
+    expected = selected.groupby(level="date").transform("sum", min_count=1)
+    assert expected.isna().any()
+    assert_allclose(run_dirty(dirty_engine, close.filter(factors.WEEKDAY != 0).xs_sum()), expected)
+
+
+@pytest.mark.parametrize("helper", ["mean", "median", "max", "min", "std", "xs_sum"])
 def test_empty_universe_is_nan(engine, helper):
     never = factors.WEEKDAY < 0
     aapl, msft = run_factor(engine, getattr(close, helper)(mask=never), check_bias=False)
