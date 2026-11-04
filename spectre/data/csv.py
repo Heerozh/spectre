@@ -37,6 +37,37 @@ def _ffill_zeros(df: pd.DataFrame, groups) -> pd.DataFrame:
     return df
 
 
+def _attach_events(events: pd.Series, bars: pd.MultiIndex, how: str) -> pd.Series:
+    """
+    Reindex `events`, indexed by (asset, ex-date), to `bars`, indexed by (date, asset) and sorted by
+    date. An ex-date has no bar on a halt, or when the bars are intraday and the ex-dates are days,
+    so an event goes to the first bar of its asset on or after the ex-date, moving it to an earlier
+    bar would be look-ahead. Events sharing a bar are merged by `how`, a name of a groupby
+    aggregation. An event after the last bar of its asset is dropped, no bars are after it.
+    """
+    dates = bars.get_level_values(0)
+    ex_dates = events.index.get_level_values(1)
+    if dates.tz is None or ex_dates.tz is None:
+        # an ex-date is a local date, so without a timezone use the time as written on both sides
+        ex_dates = ex_dates.tz_localize(None).tz_localize(dates.tz)
+    else:
+        ex_dates = ex_dates.tz_convert(dates.tz)
+    ex_dates = ex_dates.as_unit(dates.unit)
+    left = pd.DataFrame(
+        {
+            "asset": events.index.get_level_values(0),
+            "ex_date": ex_dates,
+            "value": events.to_numpy(),
+        }
+    )
+    left = left.dropna(subset="ex_date").sort_values("ex_date")
+    right = pd.DataFrame({"asset": bars.get_level_values(1), "date": dates})
+    attached = pd.merge_asof(
+        left, right, left_on="ex_date", right_on="date", by="asset", direction="forward"
+    )
+    return attached.groupby(["date", "asset"])["value"].agg(how).reindex(bars)
+
+
 class CsvDirLoader(DataLoader):
     def __init__(
         self,
@@ -68,11 +99,17 @@ class CsvDirLoader(DataLoader):
         :param dividends_path: dividends csv folder, structured as one csv per stock.
             For duplicate data, loader will first drop the exact same rows, and then for the same
             `dividends_index` but different 'dividend amount' rows, loader will sum them up.
+            A dividend goes to the first bar of the stock on or after `dividends_index`, and the
+            ones sharing a bar are summed up. A `dividends_index` without timezone is in the
+            timezone of the prices.
             If `dividends_path` not set, the `adjustments[0]` column is considered to be included
             in the prices csv.
         :param splits_path: splits csv folder, structured as one csv per stock,
             When encountering duplicate indexes data in `splits_index`, Loader will use the last
             non-NaN 'split ratio', drop others.
+            A split goes to the first bar of the stock on or after `splits_index`, and the ones
+            sharing a bar are multiplied. A `splits_index` without timezone is in the timezone of
+            the prices.
             If `splits_path` not set, the `adjustments[1]` column is considered to be included
             in the prices csv.
         :param file_pattern: csv file name pattern, default is '*.csv'.
@@ -201,6 +238,15 @@ class CsvDirLoader(DataLoader):
             # 这里把0当成nan进行ffill（按asset分别填充）
             df[list(self.ohlcv)] = _ffill_zeros(df[list(self.ohlcv)], df.index.get_level_values(0))
 
+        df = df.swaplevel(0, 1).sort_index(level=0)
+
+        if self._calender:
+            # drop the data of the non-trading day by calender,
+            # because there may be some one-line junk data in non-trading day,
+            # causing extra row of nan to all others assets.
+            df = self._align_to(df, self._calender, self._align_by_time)
+            df = df.sort_index(level=[0, 1])
+
         if self._dividends_path is not None:
             dfs = self._walk_dir(self._dividends_path, self._dividends_index)
             ex_div_col = self._adjustment_cols[0]
@@ -216,7 +262,7 @@ class CsvDirLoader(DataLoader):
 
             dfs = {k: _agg_duplicated(v) for k, v in dfs.items()}
             div = pd.concat(dfs, sort=False)
-            div = div.reindex(df.index)
+            div = _attach_events(div, df.index, "sum")
             div = div.fillna(0)
             div.name = self._adjustments[0]
             # div = df.rename_axis(['asset', 'date'])
@@ -244,18 +290,10 @@ class CsvDirLoader(DataLoader):
                         return np.nan
 
                 splits = splits.apply(fraction_2_float)
-            splits = splits.reindex(df.index)
+            splits = _attach_events(splits, df.index, "prod")
             splits = splits.fillna(1)
             splits.name = self._adjustments[1]
             df = pd.concat([df, splits], axis=1)
 
-        df = df.swaplevel(0, 1).sort_index(level=0)
-
-        if self._calender:
-            # drop the data of the non-trading day by calender,
-            # because there may be some one-line junk data in non-trading day,
-            # causing extra row of nan to all others assets.
-            df = self._align_to(df, self._calender, self._align_by_time)
-            df = df.sort_index(level=[0, 1])
         df = self._format(df, self._split_ratio_is_inverse)
         return df

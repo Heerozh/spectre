@@ -8,6 +8,7 @@ from tests.conftest import (
     DAILY_OHLCV,
     DATA_DIR,
     DIRTY_SECTORS,
+    INTRADAY_OHLCV,
     NANSPLIT_ON,
     make_adjusted_daily_loader,
 )
@@ -320,3 +321,210 @@ def test_dirty_panel_multipliers(dirty_loader, dirty_panel):
     assert_allclose(multi.price_multi.iloc[NANSPLIT_ON:], 1)
     assert_allclose(multi.vol_multi.iloc[:NANSPLIT_ON], 2)
     assert_allclose(multi.vol_multi.iloc[NANSPLIT_ON:], 1)
+
+
+def write_prices(folder, asset, closes):
+    """`closes` is {date: close}."""
+    folder.mkdir(exist_ok=True)
+    frame = pd.DataFrame({col: closes.values() for col in MEMORY_OHLCV}, index=list(closes))
+    frame.rename_axis("date").to_csv(folder / f"{asset}.csv")
+
+
+def write_events(folder, asset, column, events):
+    """`events` is {ex-date: value}."""
+    folder.mkdir(exist_ok=True)
+    frame = pd.DataFrame({column: events.values()}, index=list(events))
+    frame.rename_axis("exDate").to_csv(folder / f"{asset}.csv")
+
+
+def events_loader(tmp_path, prices, dividends, splits, **kwargs):
+    """
+    A loader of `prices`, {asset: {date: close}}. `dividends` and `splits` are {ex-date: value},
+    they belong to the first asset.
+    """
+    for asset, closes in prices.items():
+        write_prices(tmp_path / "prices", asset, closes)
+    asset = next(iter(prices))
+    write_events(tmp_path / "dividends", asset, "amount", dividends)
+    write_events(tmp_path / "splits", asset, "ratio", splits)
+    return spectre.data.CsvDirLoader(
+        str(tmp_path / "prices"),
+        ohlcv=MEMORY_OHLCV,
+        dividends_path=str(tmp_path / "dividends"),
+        splits_path=str(tmp_path / "splits"),
+        adjustments=("amount", "ratio"),
+        parse_dates=True,
+        **kwargs,
+    )
+
+
+DAYS = list(pd.date_range("2020-01-06", periods=8).strftime("%Y-%m-%d"))
+# The loader raises if an event folder is empty, so these are far after the last bar.
+NO_DIVIDEND = {"2030-01-01": 0.0}
+NO_SPLIT = {"2030-01-01": 1.0}
+
+
+def test_event_without_a_bar_goes_to_the_next_bar(tmp_path):
+    closes = {DAYS[0]: 100, DAYS[2]: 49, DAYS[3]: 49}
+    df = events_loader(tmp_path, {"A": closes}, {DAYS[1]: 1.0}, {DAYS[1]: 0.5}).test_load()
+    # moved up one row by `_format`, like every event
+    assert list(df["ex-dividend"]) == [1, 0, 0]
+    assert list(df["split_ratio"]) == [0.5, 1, 1]
+    assert_allclose(df.price_multi, [(1 - 1 / 100) * 0.5, 1, 1], rtol=1e-6)
+    assert list(df.vol_multi) == [2, 1, 1]
+
+
+def test_event_is_not_moved_before_its_ex_date(tmp_path):
+    closes = dict.fromkeys(DAYS[:4], 100)
+    # after the bar of DAYS[1], so the first bar on or after it is DAYS[2]
+    splits = {f"{DAYS[1]} 12:00:00": 0.5}
+    df = events_loader(tmp_path, {"A": closes}, NO_DIVIDEND, splits).test_load()
+    assert list(df["split_ratio"]) == [1, 0.5, 1, 1]
+    assert list(df.price_multi) == [0.5, 0.5, 1, 1]
+
+
+def test_events_sharing_a_bar_are_merged(tmp_path):
+    closes = {DAYS[0]: 100, DAYS[5]: 16, DAYS[6]: 16}
+    dividends = {DAYS[1]: 1.0, DAYS[3]: 2.0}
+    splits = {DAYS[2]: 0.5, DAYS[4]: 1 / 3}
+    df = events_loader(tmp_path, {"A": closes}, dividends, splits).test_load()
+    assert_allclose(df["ex-dividend"], [3, 0, 0])
+    assert_allclose(df["split_ratio"], [1 / 6, 1, 1])
+    assert_allclose(df.price_multi, [(1 - 3 / 100) / 6, 1, 1], rtol=1e-6)
+    assert_allclose(df.vol_multi, [6, 1, 1])
+
+
+@pytest.mark.parametrize(
+    "splits, kwargs",
+    [
+        ({DAYS[1]: 2, DAYS[2]: 3}, {"split_ratio_is_inverse": True}),
+        ({DAYS[1]: "1/2", DAYS[2]: "1/3"}, {"split_ratio_is_fraction": True}),
+    ],
+)
+def test_split_formats_of_events_sharing_a_bar(tmp_path, splits, kwargs):
+    closes = {DAYS[0]: 60, DAYS[3]: 10, DAYS[4]: 10}
+    df = events_loader(tmp_path, {"A": closes}, NO_DIVIDEND, splits, **kwargs).test_load()
+    assert_allclose(df["split_ratio"], [1 / 6, 1, 1])
+    assert_allclose(df.vol_multi, [6, 1, 1])
+
+
+def test_events_outside_of_the_bars(tmp_path):
+    closes = dict.fromkeys(DAYS[2:5], 100)
+    dividends = {DAYS[0]: 1.0, DAYS[7]: 2.0}
+    splits = {DAYS[0]: 0.5, DAYS[7]: 0.5}
+    df = events_loader(tmp_path, {"A": closes}, dividends, splits).test_load()
+    assert (df["ex-dividend"] == 0).all()
+    assert (df["split_ratio"] == 1).all()
+    assert (df[["price_multi", "vol_multi"]] == 1).all(axis=None)
+
+
+def test_event_only_goes_to_the_bars_of_its_asset(tmp_path):
+    prices = {"A": dict.fromkeys(DAYS[:2], 100), "B": dict.fromkeys(DAYS[:4], 100)}
+    df = events_loader(tmp_path, prices, NO_DIVIDEND, {DAYS[2]: 0.5}).test_load()
+    assert (df["split_ratio"] == 1).all()
+    assert (df[["price_multi", "vol_multi"]] == 1).all(axis=None)
+
+
+def test_no_valid_event(tmp_path):
+    closes = dict.fromkeys(DAYS[:3], 100)
+    df = events_loader(tmp_path, {"A": closes}, {DAYS[1]: nan}, {DAYS[1]: nan}).test_load()
+    assert (df["ex-dividend"] == 0).all()
+    assert (df["split_ratio"] == 1).all()
+
+
+def test_event_on_a_row_dropped_by_the_calendar(tmp_path):
+    prices = {
+        "A": {DAYS[0]: 100, DAYS[1]: 100, DAYS[2]: 50, DAYS[3]: 50},
+        "CALENDAR": dict.fromkeys([DAYS[0], DAYS[2], DAYS[3]], 1),
+    }
+    loader = events_loader(
+        tmp_path, prices, {DAYS[1]: 1.0}, {DAYS[1]: 0.5}, calender_asset="CALENDAR"
+    )
+    df = loader.test_load().xs("A", level=1)
+    assert list(df["ex-dividend"]) == [1, 0, 0]
+    assert list(df["split_ratio"]) == [0.5, 1, 1]
+
+
+def test_unsorted_csv_files(tmp_path):
+    closes = {DAYS[3]: 50, DAYS[0]: 100, DAYS[2]: 50}
+    dividends = {DAYS[1]: 1.0, DAYS[0]: 2.0}
+    df = events_loader(tmp_path, {"A": closes}, dividends, {DAYS[1]: 0.5}).test_load()
+    assert list(df.close) == [100, 50, 50]
+    assert list(df["ex-dividend"]) == [1, 0, 0]
+    assert list(df["split_ratio"]) == [0.5, 1, 1]
+
+
+@pytest.mark.parametrize(
+    "bar_time, split_time, price_multi",
+    [
+        # without a timezone it's the time of the other side, so it's on the bar of DAYS[1]
+        ("00:00:00-05:00", "00:00:00", [0.5, 1, 1, 1]),
+        ("00:00:00", "00:00:00-05:00", [0.5, 1, 1, 1]),
+        # the same instant as the bar of DAYS[1]
+        ("00:00:00-05:00", "05:00:00+00:00", [0.5, 1, 1, 1]),
+        # after the bar of DAYS[1]
+        ("00:00:00-05:00", "07:00:00+00:00", [0.5, 0.5, 1, 1]),
+        ("00:00:00+08:00", "00:00:00+00:00", [0.5, 0.5, 1, 1]),
+    ],
+)
+def test_ex_date_timezones(tmp_path, bar_time, split_time, price_multi):
+    closes = {f"{day} {bar_time}": 100 for day in DAYS[:4]}
+    splits = {f"{DAYS[1]} {split_time}": 0.5}
+    df = events_loader(tmp_path, {"A": closes}, NO_DIVIDEND, splits).test_load()
+    assert list(df.price_multi) == price_multi
+
+
+def test_daily_ex_date_of_intraday_bars(tmp_path, device):
+    closes = {f"{DAYS[0]} {time}": 100.0 for time in ("09:30:00", "09:35:00", "09:40:00")}
+    closes |= {f"{DAYS[1]} {time}": 50.0 for time in ("09:30:00", "09:35:00", "09:40:00")}
+    loader = events_loader(tmp_path, {"A": closes}, NO_DIVIDEND, {DAYS[1]: 0.5})
+    df = loader.test_load()
+    # it applies once, between the two days
+    assert list(df["split_ratio"]) == [1, 1, 0.5, 1, 1, 1]
+    assert list(df.price_multi) == [0.5, 0.5, 0.5, 1, 1, 1]
+    assert list(df.vol_multi) == [2, 2, 2, 1, 1, 1]
+
+    engine = spectre.factors.FactorEngine(loader)
+    if device == "cuda":
+        engine.to_cuda()
+    engine.add(spectre.factors.Returns(win=2), "returns")
+    dates = dates_of(df)
+    result = engine.run(dates[1], dates[-1], delay_factor=False)
+    assert_allclose(result.returns, 0, atol=1e-6)
+
+
+def test_events_of_the_intraday_test_data():
+    loader = spectre.data.CsvDirLoader(
+        str(DATA_DIR / "5mins"),
+        prices_by_year=True,
+        prices_index="Date",
+        ohlcv=INTRADAY_OHLCV,
+        dividends_path=str(DATA_DIR / "dividends"),
+        splits_path=str(DATA_DIR / "splits"),
+        adjustments=("amount", "ratio"),
+        parse_dates=True,
+    )
+    df = loader.test_load()
+    aapl, msft = df.xs("AAPL", level=1), df.xs("MSFT", level=1)
+    assert (aapl[["price_multi", "vol_multi"]] == 1).all(axis=None)
+
+    # The bars are in New York time and the ex-dates are days, 2019-01-11 and 2019-01-14. Each
+    # event is on the last bar of the day before its ex-date.
+    last_bar_01_10 = pd.Timestamp("2019-01-10 15:55", tz="America/New_York")
+    last_bar_01_11 = pd.Timestamp("2019-01-11 15:55", tz="America/New_York")
+    dividend = msft["ex-dividend"][msft["ex-dividend"] != 0]
+    split = msft["split_ratio"][msft["split_ratio"] != 1]
+    assert list(dividend.index) == [last_bar_01_10]
+    assert list(split.index) == [last_bar_01_11]
+    assert dividend.iloc[0] == pytest.approx(0.46 + 0.11)
+    assert split.iloc[0] == 15
+
+    close = read_raw("MSFT_2019", "5mins", "Date").Close[last_bar_01_10]
+    assert close == 103.58
+    expected = pd.Series(1.0, index=msft.index)
+    expected[:last_bar_01_11] = 15
+    expected[:last_bar_01_10] = 15 * (1 - (0.46 + 0.11) / close)
+    assert_allclose(msft.price_multi, expected, rtol=1e-6)
+    expected = pd.Series(1.0, index=msft.index)
+    expected[:last_bar_01_11] = 1 / 15
+    assert_allclose(msft.vol_multi, expected, rtol=1e-6)
