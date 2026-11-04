@@ -12,9 +12,17 @@ import numpy as np
 import torch
 
 from ..config import Global
-from ..parallel import nanmean, nansum
+from ..parallel import nanmean, nansum, unmasked_sum
 from .engine import OHLCV
 from .factor import BaseFactor, CustomFactor
+
+
+def _weighted_mean(data, weight):
+    """Mean of the last dim of `data`, using only the samples valid in both inputs."""
+    weighted = data * weight
+    mask = torch.isnan(weighted)
+    total_weight = weight.masked_fill(mask, 0).sum(dim=-1, dtype=weighted.dtype)
+    return unmasked_sum(weighted, mask, dim=-1, inplace=True) / total_weight
 
 
 class Returns(CustomFactor):
@@ -69,10 +77,7 @@ class LinearWeightedAverage(CustomFactor):
         self.weight = self.weight.to(device=engine.device, copy=False)
 
     def compute(self, base):
-        def _weight_mean(_base):
-            return nansum(_base * self.weight, dim=2)
-
-        return base.agg(_weight_mean)
+        return base.agg(lambda x: _weighted_mean(x, self.weight))
 
 
 class VWAP(WeightedAverageValue):
@@ -105,22 +110,47 @@ class ExponentialWeightedMovingAverage(CustomFactor):
         self.weight = np.full(self.win, 1 - self.alpha) ** np.arange(self.win - 1, -1, -1)
         if self.adjust:
             self.weight = self.weight / sum(self.weight)  # to sum one
+        else:
+            self.weight[1:] *= self.alpha  # the first bar of a window is the seed
 
     def pre_compute_(self, engine, start, end) -> None:
         super().pre_compute_(engine, start, end)
         if not isinstance(self.weight, torch.Tensor):
             self.weight = torch.tensor(self.weight, dtype=Global.float_type, device=engine.device)
 
+    def _partial_windows(self, data):
+        """
+        `ewm(adjust=False)` of windows with missing bars. From the first valid bar on, every valid
+        bar does `y = share * x + (1 - share) * y`, this turns that into the weight of each bar.
+        """
+        bars = torch.arange(1, self.win + 1, device=data.device, dtype=torch.int32)
+        valid = ~torch.isnan(data)
+        previous = (bars * valid).cummax(dim=-1).values.roll(1, dims=-1)
+        previous[..., 0] = 0
+        # older bars keep decaying over the missing bars, so `share` depends on the distance
+        decay = (1 - self.alpha) ** torch.arange(self.win + 1, device=data.device, dtype=data.dtype)
+        # `ewm` has a branch of its own for com = 1, it only differs after a missing bar
+        new = 1 - decay if self.alpha == 0.5 else self.alpha
+        share = (new / (decay + new))[bars - previous]
+        share = share.masked_fill(previous == 0, 1).masked_fill(~valid, 0)
+        later = (1 - share).flip(-1).cumprod(dim=-1).flip(-1).roll(-1, dims=-1)
+        later[..., -1] = 1
+        return _weighted_mean(data, share * later)
+
+    def _recursive_mean(self, data):
+        ret = _weighted_mean(data, self.weight)
+        nans = torch.isnan(data)
+        partial = nans.any(dim=2) & ~nans.all(dim=2)
+        if partial.any():
+            ret[partial] = self._partial_windows(data[partial])
+        return ret
+
     def compute(self, data):
         self.weight = self.weight.to(device=data.device)
-        weighted_mean = data.agg(lambda x: nansum(x * self.weight, dim=2))
-        if self.adjust:
-            return weighted_mean
-        else:
-            shifted = data.last().roll(self.win - 1, dims=1)
-            shifted[:, 0 : self.win - 1] = 0
-            alpha = self.alpha
-            return alpha * weighted_mean + (shifted * (1 - alpha) ** self.win)
+        # with alpha = 1 the weights of the older bars are 0, and a NaN last bar would leave nothing
+        if not self.adjust or self.alpha == 1:
+            return data.agg(self._recursive_mean)
+        return data.agg(lambda x: _weighted_mean(x, self.weight))
 
 
 class AverageDollarVolume(CustomFactor):

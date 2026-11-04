@@ -2,6 +2,7 @@ import numpy as np
 import pandas as pd
 from numpy.testing import assert_almost_equal
 
+from tests.conftest import DIRTY_DATES
 from tests.factors.reference import END, START
 
 
@@ -44,3 +45,10 @@ def run_late_listed(engine, factor):
     engine.add(factor, "test")
     result = engine.run(LATE_DATES[4], LATE_DATES[-1], delay_factor=False)
     return result.xs("B", level=1).test.values
+
+
+def run_dirty(engine, factor, start=0):
+    """Values of `factor` from bar `start` of the dirty panel, not delayed."""
+    engine.remove_all_factors()
+    engine.add(factor, "test")
+    return engine.run(DIRTY_DATES[start], DIRTY_DATES[-1], delay_factor=False).test

@@ -2,12 +2,14 @@ import numpy as np
 import pandas as pd
 import pytest
 import torch
+from numpy.lib.stride_tricks import sliding_window_view
 from numpy.testing import assert_allclose, assert_almost_equal
 
+import spectre
 from spectre import factors, parallel
-from tests.conftest import DIRTY_DATES, NANSPLIT_ON
+from tests.conftest import DIRTY_DATES, HALTED_BARS, NANSPLIT_ON, SPLIT_ON
 from tests.factors import reference as ref
-from tests.factors.helpers import assert_factor, run_factor
+from tests.factors.helpers import assert_factor, run_dirty, run_factor
 
 nan = np.nan
 
@@ -77,14 +79,15 @@ def test_sma_of_open_not_delayed(engine):
     assert len(expected[0]) == 10
 
 
-def ema_truncation_bound(span, prices):
+def ema_truncation_bound(span, prices, missing=0):
     """
     spectre's EMA only uses the last `4.5 * (span + 1)` bars, the truncation error is
     (1 - alpha) ^ win * (EMA(t - win) - X(t - win + 1)), which is bounded by the price range.
+    A window with `missing` bars has that many fewer bars to decay the error.
     """
     alpha = 2 / (span + 1)
     win = int(4.5 * (span + 1))
-    return (1 - alpha) ** win * (prices.max() - prices.min())
+    return (1 - alpha) ** (win - missing) * (prices.max() - prices.min())
 
 
 @pytest.mark.parametrize("span", [11, 50])
@@ -104,6 +107,114 @@ def test_ema_half_life(engine):
     # window is 15 half-lives, truncation error is 0.5^15 * price range
     assert_almost_equal(aapl, expected[0], decimal=2)
     assert_almost_equal(msft, expected[1], decimal=2)
+
+
+@pytest.mark.filterwarnings("ignore:Warning!! delay_factor is set to False")
+@pytest.mark.parametrize("start", [0, 40])
+@pytest.mark.parametrize("adjust", [False, True])
+@pytest.mark.parametrize("span", [3, 5, 12, 26])
+def test_ema_of_dirty_assets(dirty_engine, dirty_panel, span, adjust, start):
+    """A new listing, a halt without rows and a NaN close. Only the window truncates it."""
+    factor = factors.EMA(span, adjust=adjust)
+    result = run_dirty(dirty_engine, factor, start)
+    # history is loaded by dates, so after a halt fewer bars of that asset are loaded
+    loaded = dirty_panel.loc[DIRTY_DATES[max(start - factor.win + 1, 0)] :]
+    for asset in ("FULL", "LISTED", "DELISTED", "HALTED", "NANBAR"):
+        close = loaded.xs(asset, level="asset").close
+        got = result.xs(asset, level="asset")
+        expected = close.ewm(span=span, adjust=adjust).mean().loc[got.index]
+        # the weights of adjust=True are float32
+        atol = ema_truncation_bound(span, close, missing=1) + 1e-5
+        assert_allclose(got.values, expected.values, rtol=0, atol=atol, err_msg=asset)
+
+
+@pytest.mark.filterwarnings("ignore:Warning!! delay_factor is set to False")
+@pytest.mark.parametrize("adjust", [False, True])
+@pytest.mark.parametrize("span", [3, 5, 12, 26])
+def test_ema_across_split(dirty_engine, dirty_panel, span, adjust):
+    """Each window is in the scale of its last bar, so the split bar must match too."""
+    result = run_dirty(dirty_engine, factors.EMA(span, adjust=adjust)).xs("SPLIT", level="asset")
+    split = dirty_panel.xs("SPLIT", level="asset")
+    scale = split.close / split.clean_close
+    expected = split.clean_close.ewm(span=span, adjust=adjust).mean() * scale
+    # the multipliers of the loader are float32
+    atol = ema_truncation_bound(span, split.clean_close) + 1e-4
+    assert_allclose(result.values, expected.values, rtol=0, atol=atol)
+    assert scale.iloc[SPLIT_ON - 1] == pytest.approx(1)
+    assert scale.iloc[SPLIT_ON] == pytest.approx(0.5)
+
+
+@pytest.mark.filterwarnings("ignore:Warning!! delay_factor is set to False")
+@pytest.mark.parametrize("adjust", [False, True])
+@pytest.mark.parametrize("span", [1, 2, 3, 5, 12, 26])
+def test_ema_of_missing_bars_in_the_window(dirty_engine, dirty_panel, span, adjust):
+    """
+    With align_by_time a halt is a run of NaN rows, and the older bars decay over it. This is
+    `ewm` of the bars of each window, so the window is the only difference from `ewm`. A window
+    with no valid bar left is NaN, where `ewm` would keep its last value.
+    """
+    dirty_engine.align_by_time = True
+    result = run_dirty(dirty_engine, factors.EMA(span, adjust=adjust)).unstack("asset")
+    closes = dirty_panel.close.unstack("asset")
+    win = int(4.5 * (span + 1))
+
+    def ewm_of_window(window):
+        return pd.Series(window).ewm(span=span, adjust=adjust).mean().iloc[-1]
+
+    for asset in ("FULL", "LISTED", "DELISTED", "HALTED", "NANBAR"):
+        expected = closes[asset].rolling(win, min_periods=1).apply(ewm_of_window, raw=True)
+        # the weights are float32
+        assert_allclose(result[asset], expected, rtol=0, atol=1e-5, err_msg=asset)
+    halted = len(DIRTY_DATES[HALTED_BARS])
+    assert result.HALTED.isna().sum() == max(halted - win + 1, 0)
+
+
+@pytest.mark.filterwarnings("ignore:Warning!! delay_factor is set to False")
+@pytest.mark.parametrize("adjust", [False, True])
+def test_ema_of_truncated_history(dirty_engine, dirty_panel, adjust):
+    """With `max_backwards` the first loaded bar is the seed, as in `ewm` of the loaded rows."""
+    span, start, backwards = 12, 30, 10
+    dirty_engine.max_backwards = backwards
+    result = run_dirty(dirty_engine, factors.EMA(span, adjust=adjust), start)
+    loaded = dirty_panel.loc[DIRTY_DATES[start - backwards] :]
+    for asset in ("FULL", "LISTED", "HALTED", "NANBAR"):
+        close = loaded.xs(asset, level="asset").close
+        got = result.xs(asset, level="asset")
+        expected = close.ewm(span=span, adjust=adjust).mean().loc[got.index]
+        assert_allclose(got.values, expected.values, rtol=0, atol=1e-5, err_msg=asset)
+
+
+@pytest.mark.parametrize("span", [2, 3, 5])
+def test_ema_of_nan_runs(device, span):
+    """Leading NaNs are not 0, the first valid bar is the seed, and the last value is kept."""
+    data = torch.tensor([[nan, nan, 4, 8, nan, nan, 2, nan]], device=device, dtype=torch.float64)
+    expected = pd.Series(data[0].cpu().numpy()).ewm(span=span, adjust=False).mean().values
+    factor = factors.EMA(span)
+    factor.weight = torch.tensor(factor.weight, device=device)  # done by pre_compute_
+    result = factor.compute(parallel.Rolling(data, factor.win))
+    assert_allclose(result[0].cpu().numpy(), expected, rtol=1e-12)
+
+
+@pytest.mark.filterwarnings("ignore:Warning!! delay_factor is set to False")
+def test_new_listing_at_a_constant_price(device):
+    dates = pd.date_range("2020-01-01", periods=20, freq="D", tz="UTC")
+    rows = [(date, "A", 100.0 + i) for i, date in enumerate(dates)]
+    rows += [(date, "B", 50.0) for date in dates[12:]]
+    df = pd.DataFrame(rows, columns=["date", "asset", "close"])
+    df = df.set_index(["date", "asset"]).sort_index()
+    for col in ("open", "high", "low"):
+        df[col] = df.close
+    df["volume"] = 1.0
+    ohlcv = ("open", "high", "low", "close", "volume")
+    engine = factors.FactorEngine(spectre.data.MemoryLoader(df[list(ohlcv)], ohlcv=ohlcv))
+    if device == "cuda":
+        engine.to_cuda()
+    engine.add(factors.EMA(10), "ema")
+    engine.add(factors.EMA(10, adjust=True), "adjusted")
+    engine.add(factors.LinearWeightedAverage(10, inputs=[factors.OHLCV.close]), "lwa")
+    result = engine.run(dates[0], dates[-1], delay_factor=False).xs("B", level=1)
+    assert len(result) == 8
+    assert_allclose(result.values, 50.0, rtol=1e-12)
 
 
 def test_vwap(engine):
@@ -145,6 +256,46 @@ def test_linear_weighted_average(engine):
         engine, factors.LinearWeightedAverage(5, inputs=[factors.WEEKDAY]), *expected, decimal=6
     )
     assert_almost_equal(expected[0][:3], [2.0, 2.2666667, 2.8])
+
+
+def linear_weighted_average(close, win):
+    """Weights 1 to `win`, on the valid bars of each window."""
+    windows = sliding_window_view(np.concatenate((np.full(win - 1, nan), close)), win)
+    weights = np.arange(1, win + 1.0)
+    with np.errstate(invalid="ignore"):
+        return np.nansum(windows * weights, axis=1) / (~np.isnan(windows) * weights).sum(axis=1)
+
+
+@pytest.mark.filterwarnings("ignore:Warning!! delay_factor is set to False")
+def test_linear_weighted_average_of_dirty_assets(dirty_engine, dirty_panel):
+    win = 5
+    factor = factors.LinearWeightedAverage(win, inputs=[factors.OHLCV.close])
+    result = run_dirty(dirty_engine, factor)
+    for asset in ("FULL", "LISTED", "DELISTED", "HALTED", "NANBAR"):
+        close = dirty_panel.xs(asset, level="asset").close.values
+        got = result.xs(asset, level="asset").values
+        assert_allclose(got, linear_weighted_average(close, win), rtol=1e-6, err_msg=asset)
+
+    # a bar keeps the weight of its position, only the total is renormalized
+    listed = dirty_panel.xs("LISTED", level="asset").close.values
+    expected = [listed[0], (4 * listed[0] + 5 * listed[1]) / 9]
+    assert_almost_equal(result.xs("LISTED", level="asset").values[:2], expected, decimal=6)
+
+    split = dirty_panel.xs("SPLIT", level="asset")
+    scale = (split.close / split.clean_close).values
+    expected = linear_weighted_average(split.clean_close.values, win) * scale
+    assert_allclose(result.xs("SPLIT", level="asset").values, expected, rtol=1e-6)
+
+
+@pytest.mark.filterwarnings("ignore:Warning!! delay_factor is set to False")
+def test_linear_weighted_average_of_window_without_valid_bars(dirty_engine, dirty_panel):
+    win = 3
+    dirty_engine.align_by_time = True
+    factor = factors.LinearWeightedAverage(win, inputs=[factors.OHLCV.close])
+    result = run_dirty(dirty_engine, factor).unstack("asset").HALTED.values
+    close = dirty_panel.close.unstack("asset").HALTED.values
+    assert_allclose(result, linear_weighted_average(close, win), rtol=1e-6)
+    assert np.isnan(result[HALTED_BARS.start + win - 1 : HALTED_BARS.stop]).all()
 
 
 # ------------------------------------ element wise ------------------------------------
