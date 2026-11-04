@@ -47,6 +47,69 @@ def test_reverse_position():
     assert pos.realized == 0
 
 
+@pytest.mark.parametrize("side", [1, -1], ids=["long", "short"])
+def test_realized_of_each_fill(side):
+    # 150 shares at (100 * 10 + 50 * 8) / 150 = 9.3333 each, adding realizes nothing
+    pos = trading.Position(side * 100, 10, 0, None)
+    empty, realized = pos.update(side * 50, 8, 0, None)
+    assert (empty, realized) == (False, 0)
+    assert pos.realized == 0
+
+    # close 60 at 9, which is 0.3333 under the entry: a long lost that, a short made it
+    empty, realized = pos.update(-side * 60, 9, 0, None)
+    assert not empty
+    assert realized == pytest.approx(side * -20)
+    assert pos.realized == pytest.approx(side * -20)
+
+    # close the last 90 at 9
+    empty, realized = pos.update(-side * 90, 9, 0, None)
+    assert empty
+    assert realized == pytest.approx(side * -30)
+    # cash flow of the long: 150 * 9 - 1400 = -50, the short has the opposite flows
+    assert pos.realized == pytest.approx(side * -50)
+
+
+def test_short_realized_with_commission():
+    # short 100 at 10 paying 10, receives 990, so 9.9 per share
+    pos = trading.Position(-100, 10, 10, None)
+    assert pos.average_price == pytest.approx(9.9)
+
+    # short 50 more at 10 paying 5, receives 495. The cost of adding goes to the average price
+    empty, realized = pos.update(-50, 10, 5, None)
+    assert (empty, realized) == (False, 0)
+    assert pos.average_price == pytest.approx(9.9)
+
+    # buy 50 back at 8 paying 5, each share made 9.9 - 8
+    empty, realized = pos.update(50, 8, 5, None)
+    assert not empty
+    assert realized == pytest.approx(50 * (9.9 - 8) - 5)
+    assert realized == pytest.approx(90)
+
+    # buy the last 100 back at 12 paying 10, each share lost 12 - 9.9
+    empty, realized = pos.update(100, 12, 10, None)
+    assert empty
+    assert realized == pytest.approx(100 * (9.9 - 12) - 10)
+    assert realized == pytest.approx(-220)
+    # cash flow: 990 + 495 - (400 + 5) - (1200 + 10) = -130
+    assert pos.realized == pytest.approx(-130)
+
+
+def test_short_realized_before_reversing():
+    # short 100 at 10, buy 40 back at 8 for (10 - 8) * 40
+    pos = trading.Position(-100, 10, 0, None)
+    empty, realized = pos.update(40, 8, 0, None)
+    assert not empty
+    assert realized == pytest.approx(80)
+
+    # buy 100 at 9, the first 60 close the short for (10 - 9) * 60, the rest open a long
+    empty, realized = pos.update(100, 9, 0, None)
+    assert not empty
+    assert realized == pytest.approx(60)
+    assert pos.shares == 40
+    assert pos.average_price == 9
+    assert pos.realized == 0
+
+
 def test_split():
     pos = trading.Position(10, 10, 0, None)
     assert pos.process_split(2, 12) == 0
