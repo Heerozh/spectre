@@ -59,7 +59,7 @@ class AppleDualEma(trading.CustomAlgorithm):
             sell=sell,
         )
 
-    def terminate(self, records: "pd.DataFrame"):
+    def terminate(self, records: pd.DataFrame):
         # plotting results
         self.plot(benchmark="SPY")
 

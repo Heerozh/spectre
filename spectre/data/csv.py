@@ -240,7 +240,7 @@ class CsvDirLoader(DataLoader):
                 def fraction_2_float(x):
                     try:
                         return float(Fraction(x))
-                    except (ValueError, ZeroDivisionError):
+                    except ValueError, ZeroDivisionError:
                         return np.nan
 
                 splits = splits.apply(fraction_2_float)

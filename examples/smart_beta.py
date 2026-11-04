@@ -40,7 +40,7 @@ class SmartBeta(trading.CustomAlgorithm):
         removes = self.blotter.portfolio.positions.keys() - set(data.index)
         self.blotter.batch_order_target_percent(removes, [0] * len(removes))
 
-    def terminate(self, records: "pd.DataFrame"):
+    def terminate(self, records: pd.DataFrame):
         # plotting results
         self.plot(benchmark="SPY")
 

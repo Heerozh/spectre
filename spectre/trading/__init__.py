@@ -157,7 +157,7 @@ from .stopmodel import (
 
 
 def run_backtest(
-    loader: "DataLoader",
+    loader: DataLoader,
     alg_type: type[CustomAlgorithm],
     start,
     end,
@@ -182,7 +182,7 @@ def run_backtest(
 
 
 def get_algorithm_data(
-    loader: "DataLoader", alg_type: type[CustomAlgorithm], start, end, delay_factor=True
+    loader: DataLoader, alg_type: type[CustomAlgorithm], start, end, delay_factor=True
 ):
     import pandas as pd
 

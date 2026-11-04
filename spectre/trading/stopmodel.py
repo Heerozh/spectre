@@ -169,7 +169,7 @@ class TimeDecayTrailingStopModel(StopModel):
     def __init__(
         self,
         ratio: float,
-        period_target: "pd.Timedelta",
+        period_target: pd.Timedelta,
         callback=None,
         decay_rate=0.05,
         max_decay=0,
