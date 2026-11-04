@@ -323,39 +323,32 @@ def linear_regression_1d(x, y, dim=1):
 def quantile(data, bins, dim=1):
     if data.dtype == torch.bool:
         data = data.char()
-    if data.shape[1] == 1:  # if only one asset in universe
-        return data.new_full(data.shape, 0, dtype=Global.float_type)
+    mask = torch.isnan(data)
+    if data.shape[dim] == 1:  # if only one asset in universe
+        return data.new_full(data.shape, 0, dtype=Global.float_type).masked_fill_(mask, np.nan)
 
     x, _ = torch.sort(data, dim=dim)
     # get non-nan size of each row
-    mask = torch.isnan(data)
     act_size = data.shape[dim] - mask.sum(dim=dim)
-    # get each bin's cut indices of each row by non-nan size
-    q = torch.linspace(0, 1, bins + 1, device=data.device)
-    q = q.view(-1, *[1 for _ in range(dim)])
-    q_index = q * (act_size - 1)
-    # calculate un-perfect cut weight
-    q_weight = q % 1
-    q_index = q_index.long()
-    q_next = q_index + 1
-    q_next[-1] = act_size - 1
+    # get each bin's cut indices of each row by non-nan size, in integers, because a float q
+    # rounds a cut that is on a whole index to the index before it
+    k = torch.arange(bins + 1, device=data.device)
+    k = k.view(-1, *[1 for _ in range(dim)])
+    q_index = k * (act_size - 1).clamp_(min=0) // bins
 
-    # get quantile values of each row
+    # get quantile values of each row. A cut between two neighbours can stay on the lower one:
+    # no value is between them, so interpolating it would not move any value to another bin.
     dim_len = data.shape[dim]
     offset = torch.arange(0, q_index[0].nelement(), device=data.device) * dim_len
     offset = offset.reshape(q_index[0].shape)
     q_index += offset
-    q_next += offset
-    b_start = x.take(q_index)
-    b_end = x.take(q_next)
-    b = b_start + (b_end - b_start) * q_weight
-    b[0] -= 1
-    b = b.unsqueeze(-1)
+    b = x.take(q_index).unsqueeze(-1)
 
     ret = data.new_full(data.shape, np.nan, dtype=Global.float_type)
-    for start, end, tile in zip(b[:-1], b[1:], range(bins)):
+    ret[data <= b[1]] = 0  # the first bin includes the lowest value
+    for start, end, tile in zip(b[1:-1], b[2:], range(1, bins)):
         ret[(data > start) & (data <= end)] = tile
-    return ret
+    return ret.masked_fill_((act_size < 2).unsqueeze(-1), np.nan)
 
 
 def masked_kth_value_1d(

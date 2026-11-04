@@ -434,6 +434,95 @@ def test_quantile_single_column():
     assert_array_equal(result, [[0], [0]])
 
 
+def test_quantile_single_column_nan(device):
+    assert_array_equal(to_np(parallel.quantile(tensor([[nan], [2.0]], device), 5)), [[nan], [0]])
+
+
+def test_quantile_single_row_of_windows(device):
+    """`Rolling.agg` can pass a chunk of one bar, as [asset, 1, win]."""
+    x = [[[3, 1, 2, 6, 5, 4]], [[1, nan, 2, 4, 3, nan]]]
+    result = to_np(parallel.quantile(tensor(x, device), 5, dim=2))
+    for i in range(2):
+        assert_array_equal(result[i, 0], pd.qcut(x[i][0], 5, labels=False))
+
+
+@pytest.mark.parametrize("dtype", [torch.float32, torch.float64])
+@pytest.mark.parametrize("bins", [2, 3, 4, 5, 7, 10, 20])
+def test_quantile_every_row_size(device, dtype, bins):
+    rng = np.random.default_rng(bins)
+    width = 64
+    rows = np.full((width - 1, width), nan)
+    for size in range(2, width + 1):
+        rows[size - 2, :size] = rng.permutation(size)
+    result = to_np(parallel.quantile(tensor(rows, device, dtype), bins))
+    for row, labels in zip(rows, result):
+        assert_array_equal(labels, pd.qcut(row, bins, labels=False), err_msg=str(row))
+
+
+def test_quantile_exact_cuts():
+    # Cuts fall on 3, 6, 9, 12 and 15, and a value on a cut belongs to the lower bin. pd.qcut has
+    # a rounding error of its own here, its cut at 15 is 14.999999999999998.
+    expected = [0, 0, 0, 0, 1, 1, 1, 2, 2, 2, 3, 3, 3, 4, 4, 4, 5, 5, 5]
+    assert_array_equal(parallel.quantile(tensor([list(range(19))]), 6), [expected])
+
+
+@pytest.mark.parametrize("bins", [3, 5])
+def test_quantile_float32_values(device, bins):
+    rng = np.random.default_rng(bins)
+    # every cut is exact, or falls between float32 neighbours
+    normal = rng.standard_normal((50, 301)).astype(np.float32)
+    neighbours = 1 + rng.integers(0, 40, (50, 301)).astype(np.float32) * 2.0**-23
+    for rows in (normal, neighbours):
+        result = to_np(parallel.quantile(torch.tensor(rows, device=device), bins))
+        for row, labels in zip(rows.astype(np.float64), result):
+            assert_array_equal(labels, pd.qcut(row, bins, labels=False))
+
+
+@pytest.mark.parametrize("lowest", [2e7, 1e9, 1e30])
+def test_quantile_large_float32(device, lowest):
+    row = [lowest * i for i in (1, 5, 2, 3, 4)]
+    result = to_np(parallel.quantile(tensor([row], device), 5))
+    assert_array_equal(result[0], pd.qcut(row, 5, labels=False))
+
+
+@pytest.mark.parametrize("dtype", [torch.float32, torch.float64])
+@pytest.mark.parametrize(
+    "row",
+    [
+        [1, 2, 3, 4, 5, 6, 7, 8, 9, np.inf],
+        [-np.inf, 1, 2, 3, 4, 5, 6, 7, 8, 9],
+        [-np.inf, 1, 2, 3, 4, 5, 6, 7, 8, np.inf],
+        [-np.inf, -np.inf, 1, 2, 3, 4, 5, 6, np.inf, np.inf],
+        [1, np.inf, 2, 3, nan, 4, 5, 6],
+    ],
+)
+def test_quantile_inf(device, dtype, row):
+    # pd.qcut can't take -inf, its lowest cut becomes NaN. Bins only depend on the order of the
+    # values, so give it finite values in the same order.
+    finite = np.array(row, dtype=np.float64)
+    finite[np.isinf(finite)] = 1e6 * np.sign(finite[np.isinf(finite)])
+    result = to_np(parallel.quantile(tensor([row], device, dtype), 5))
+    assert_array_equal(result[0], pd.qcut(finite, 5, labels=False))
+
+
+def test_quantile_too_few_values(device):
+    x = tensor([[5, nan, nan, nan], [nan, nan, nan, nan], [nan, 1, 2, nan]], device)
+    expected = [[nan] * 4, [nan] * 4, [nan, 0, 4, nan]]
+    assert_array_equal(to_np(parallel.quantile(x, 5)), expected)
+
+
+def test_quantile_ties_stay_in_one_bin(device):
+    # the cuts are 1, 1, 1, 1, 1.2, 2, so the second to fourth bins are empty
+    x = tensor([[1, 1, 2, 1, 1]], device)
+    assert_array_equal(to_np(parallel.quantile(x, 5)), [[0, 0, 4, 0, 0]])
+    assert_array_equal(to_np(parallel.quantile(tensor([[2, 2, 2]], device), 5)), [[0, 0, 0]])
+
+
+def test_quantile_bool(device):
+    x = torch.tensor([[True, False, False, False, True]], device=device)
+    assert_array_equal(to_np(parallel.quantile(x, 2)), [[1, 0, 0, 0, 1]])
+
+
 def test_masked_kth_value_median():
     x = tensor([[1, 2, nan, 3, 4, 5, 6], [3, 4, 5, 1.01, nan, 1.02, 1.03]])
     mask = torch.tensor(

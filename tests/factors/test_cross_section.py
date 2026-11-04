@@ -262,6 +262,24 @@ def test_rolling_quantile():
     assert_array_equal(result[0].numpy(), expected)
 
 
+@pytest.mark.parametrize("device_", ["cpu", pytest.param("cuda", marks=pytest.mark.cuda)])
+def test_rolling_quantile_one_bar_chunks(monkeypatch, device_):
+    win, bars = 6, 12
+    data = np.random.default_rng(2).standard_normal((3, bars))
+    expected = np.full(data.shape, nan)
+    for asset, row in enumerate(data):
+        for bar in range(1, bars):
+            window = row[max(0, bar - win + 1) : bar + 1]
+            expected[asset, bar] = pd.qcut(window, 5, labels=False)[-1]
+
+    # pretend memory usage is huge, so every bar becomes a chunk
+    monkeypatch.setattr(parallel.Rolling, "_split_multi", 1e12)
+    rolling = parallel.Rolling(torch.tensor(data, device=device_), win)
+    assert len(rolling.split) == bars
+    result = factors.RollingQuantile(win).compute(rolling, 5)
+    assert_array_equal(result.cpu().numpy(), expected)
+
+
 def test_quantile_with_filter(engine):
     """quantile of factor got from engine._factors nan bug"""
     engine.set_filter(close.top(2))
