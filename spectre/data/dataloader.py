@@ -82,12 +82,12 @@ class DataLoader:
         asset_type = pd.api.types.CategoricalDtype(categories=None, ordered=True)
         df.asset = df.asset.astype(asset_type)
         # format index and convert to utc timezone-aware
-        df.set_index(['date', 'asset'], inplace=True)
+        df = df.set_index(['date', 'asset'])
         if df.index.levels[0].tzinfo is None:
             df = df.tz_localize('UTC', level=0)
         else:
             df = df.tz_convert('UTC', level=0)
-        df.sort_index(level=[0, 1], inplace=True)
+        df = df.sort_index(level=[0, 1])
         # generate time key for parallel
         # print(pd.Timestamp.now(), 'Formatting time key for gpu sorting...')
         date_index = df.index.get_level_values(0)
@@ -148,7 +148,7 @@ class DataLoader:
         assert not any(df.index.duplicated()), \
             "There are duplicate indexes in df, you need handle them up."
         assert df.index.is_monotonic_increasing, \
-            "df.index must be sorted, try using df.sort_index(level=0, inplace=True)"
+            "df.index must be sorted, try using df = df.sort_index(level=0)"
         assert str(df.index.levels[0].tzinfo) == 'UTC', \
             "df.index.date must be UTC timezone."
         assert df.index.levels[-1].ordered, \

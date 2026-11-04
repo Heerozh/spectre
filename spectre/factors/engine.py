@@ -54,8 +54,11 @@ class FactorEngine:
         if data_column in self._column_cache:
             return self._column_cache[data_column]
 
-        series = self._dataframe[data_column]
-        data = torch.from_numpy(series.values).to(self._device, non_blocking=True)
+        values = self._dataframe[data_column].to_numpy()
+        if not values.flags.writeable:
+            # Copy-on-Write of pandas 3 returns read-only array, which torch doesn't support
+            values = values.copy()
+        data = torch.from_numpy(values).to(self._device, non_blocking=True)
         self._column_cache[data_column] = data
         return data
 
@@ -147,7 +150,8 @@ class FactorEngine:
         df = self._loader.load(start, end, backwards).copy()
         # If possible, pre-screen
         if isinstance(self._filter, StaticAssets):
-            df = df.loc[(slice(None), list(self._filter.assets)), :]
+            # not `.loc[]`, it raises KeyError if any asset is not found since pandas 2.0
+            df = df[df.index.get_level_values(1).isin(list(self._filter.assets))]
             if df.shape[0] == 0:
                 raise ValueError("The assets {} specified by StaticAssets filter, was not found in "
                                  "DataLoader.".format(self._filter.assets))
@@ -432,7 +436,7 @@ class FactorEngine:
             if (start_ind + 1) >= len(index):
                 raise ValueError('There is no data between start and end.')
             start = index[start_ind + 1]
-        ret.sort_index(inplace=True)
+        ret = ret.sort_index()
         return ret.loc[start:]
 
     def run_raw(self, start: Union[str, pd.Timestamp], end: Union[str, pd.Timestamp],
@@ -628,7 +632,7 @@ class FactorEngine:
         factor_data = self.run(start, end, trade_at != 'current_close')
         self._factors = factors
         factor_data.index = factor_data.index.remove_unused_levels()
-        # factor_data.sort_index(inplace=True)  # 140 ms
+        # factor_data = factor_data.sort_index()  # 140 ms
         assert len(factor_data.index.levels[0]) > max(periods) - shift, \
             'No enough data for forward returns, please expand the end date'
         last_date = factor_data.index.levels[0][-max(periods) + shift - 1]
@@ -646,7 +650,7 @@ class FactorEngine:
                 column_names[str(n) + '_d_'] = ('Demeaned', period_col)
         new_cols = pd.MultiIndex.from_tuples([column_names[c] for c in factor_data.columns])
         factor_data.columns = new_cols
-        factor_data.sort_index(axis=1, inplace=True)
+        factor_data = factor_data.sort_index(axis=1)
 
         # mean return, return std err
         mean_returns = []
@@ -664,9 +668,9 @@ class FactorEngine:
                 mean_return[mean_col] = grouped_mean[demean_col]
             if mean_return.empty:
                 continue
-            mean_return.index.set_names('quantile', level=0, inplace=True)
+            mean_return.index = mean_return.index.set_names('quantile', level=0)
             mean_return = mean_return.groupby(level=0).agg(['mean', 'sem'])
-            mean_return.sort_index(axis=1, inplace=True)
+            mean_return = mean_return.sort_index(axis=1)
             mean_returns.append(mean_return)
         mean_returns = pd.concat(mean_returns, axis=1)
 
