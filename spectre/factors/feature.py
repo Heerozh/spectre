@@ -4,20 +4,22 @@
 @license: GPL-3.0-only
 @email: heeroz@gmail.com
 """
+
 import warnings
+
+from ..config import Global
+from ..parallel import nanmean, nanstd, nansum
+from .basic import Returns
 from .datafactor import DatetimeDataFactor
 from .factor import CrossSectionFactor, CustomFactor
-from .basic import Returns
-from ..parallel import nanstd, nanmean, nansum
-from ..config import Global
-
 
 # ----------- Common Market Features -----------
 
 
 class MarketDispersion(CrossSectionFactor):
     """Cross-section standard deviation of universe stocks returns."""
-    inputs = (Returns(), )
+
+    inputs = (Returns(),)
     win = 1
 
     def compute(self, returns):
@@ -27,7 +29,8 @@ class MarketDispersion(CrossSectionFactor):
 
 class MarketReturn(CrossSectionFactor):
     """Cross-section mean returns of universe stocks."""
-    inputs = (Returns(), )
+
+    inputs = (Returns(),)
     win = 1
 
     def compute(self, returns):
@@ -37,6 +40,7 @@ class MarketReturn(CrossSectionFactor):
 
 class MarketVolatility(CustomFactor):
     """MarketReturn Rolling standard deviation."""
+
     inputs = (MarketReturn(), 252)
     win = 252
     _min_win = 2
@@ -47,7 +51,8 @@ class MarketVolatility(CustomFactor):
 
 class AdvanceDeclineRatio(CrossSectionFactor):
     """Need to work with MA, and could be applied to volume too"""
-    inputs = (Returns(), )
+
+    inputs = (Returns(),)
     win = 1
 
     def compute(self, returns):
@@ -69,9 +74,11 @@ class AssetData(CustomFactor):
     def pre_compute_(self, engine, start, end):
         super().pre_compute_(engine, start, end)
         if not engine.align_by_time:
-            warnings.warn("Make sure your data is aligned by time, otherwise will cause data "
-                          "disorder. Or set engine.align_by_time = True.",
-                          RuntimeWarning)
+            warnings.warn(
+                "Make sure your data is aligned by time, otherwise will cause data "
+                "disorder. Or set engine.align_by_time = True.",
+                RuntimeWarning,
+            )
         self.asset_ind = engine.dataframe_index[1].unique().categories.get_loc(self.asset)
 
     def compute(self, data):
@@ -82,10 +89,10 @@ class AssetData(CustomFactor):
 # ----------- Common Calendar Features -----------
 
 
-MONTH = DatetimeDataFactor('month')
-WEEKDAY = DatetimeDataFactor('weekday')
-QUARTER = DatetimeDataFactor('quarter')
-TIME = DatetimeDataFactor('hour') + DatetimeDataFactor('minute') / 60.0
+MONTH = DatetimeDataFactor("month")
+WEEKDAY = DatetimeDataFactor("weekday")
+QUARTER = DatetimeDataFactor("quarter")
+TIME = DatetimeDataFactor("hour") + DatetimeDataFactor("minute") / 60.0
 
 IS_JANUARY = MONTH == 1
 IS_DECEMBER = MONTH == 12
@@ -95,4 +102,3 @@ IS_MONTH_END = MONTH.shift(-1) != MONTH
 IS_MONTH_START = MONTH.shift(1) != MONTH
 IS_QUARTER_END = QUARTER.shift(-1) != QUARTER
 IS_QUARTER_START = QUARTER.shift(1) != QUARTER
-

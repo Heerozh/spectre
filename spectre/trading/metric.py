@@ -4,6 +4,7 @@
 @license: GPL-3.0-only
 @email: heeroz@gmail.com
 """
+
 import numpy as np
 import pandas as pd
 
@@ -24,7 +25,7 @@ def drawdown(cumulative_returns):
 
 
 def sharpe_ratio(daily_returns: pd.Series, annual_risk_free_rate):
-    risk_adj_ret = daily_returns.sub(annual_risk_free_rate/252)
+    risk_adj_ret = daily_returns.sub(annual_risk_free_rate / 252)
     annual_factor = np.sqrt(252)
     return annual_factor * risk_adj_ret.mean() / risk_adj_ret.std(ddof=1)
 

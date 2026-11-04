@@ -4,15 +4,18 @@
 @license: GPL-3.0-only
 @email: heeroz@gmail.com
 """
-from typing import Optional, Sequence
-from .factor import BaseFactor, CustomFactor
-from .datafactor import ColumnDataFactor
-from ..parallel import Rolling
-from .._compat import stack_keep_nan
-import pandas as pd
-import numpy as np
+
+from collections.abc import Sequence
 from multiprocessing import Pool, cpu_count
 from multiprocessing.pool import ThreadPool
+
+import numpy as np
+import pandas as pd
+
+from .._compat import stack_keep_nan
+from ..parallel import Rolling
+from .datafactor import ColumnDataFactor
+from .factor import BaseFactor, CustomFactor
 
 
 class CPFCaller:
@@ -39,18 +42,25 @@ class CPUParallelFactor(CustomFactor):
     using the vectorization library directly.
     """
 
-    def __init__(self, win: Optional[int] = None, inputs: Optional[Sequence[BaseFactor]] = None,
-                 multiprocess=False, core=None):
+    def __init__(
+        self,
+        win: int | None = None,
+        inputs: Sequence[BaseFactor] | None = None,
+        multiprocess=False,
+        core=None,
+    ):
         """
         `multiprocess=True` may not working on windows If your code is written in a notebook cell.
          So it is recommended that you write the CPUParallelFactor code in a file.
-         """
+        """
         super().__init__(win, inputs)
 
         for data in inputs:
             if isinstance(data, ColumnDataFactor):
-                raise ValueError('Cannot use ColumnDataFactor in CPUParallelFactor, '
-                                 'please use AdjustedColumnDataFactor instead.')
+                raise ValueError(
+                    "Cannot use ColumnDataFactor in CPUParallelFactor, "
+                    "please use AdjustedColumnDataFactor instead."
+                )
         if multiprocess:
             self.pool = Pool
         else:
@@ -81,24 +91,25 @@ class CPUParallelFactor(CustomFactor):
         first_win_beg = backwards - self.win + 1
         first_win_end = backwards + 1
         windows = date_count - backwards
-        ranges = list(zip(range(first_win_beg, first_win_beg + windows),
-                          range(first_win_end, date_count + 1)))
+        ranges = list(
+            zip(range(first_win_beg, first_win_beg + windows), range(first_win_end, date_count + 1))
+        )
         caller = CPFCaller()
         caller.inputs = converted_inputs
         caller.callback = type(self).mp_compute
 
-        if len(ranges) < n_cores:
-            n_cores = len(ranges)
+        n_cores = min(n_cores, len(ranges))
         split_range = np.array_split(ranges, n_cores)
 
         with self.pool(n_cores) as p:
             pool_ret = p.map(caller.split_call, split_range)
 
         pool_ret = np.concatenate(pool_ret)
-        ret = pd.Series(index=origin_input.index, dtype='float64').unstack(level=1)
+        ret = pd.Series(index=origin_input.index, dtype="float64").unstack(level=1)
         if pool_ret.shape != ret.iloc[backwards:].shape:
-            raise ValueError('return value shape {} != original {}'.format(
-                pool_ret.shape, ret.iloc[backwards:].shape))
+            raise ValueError(
+                f"return value shape {pool_ret.shape} != original {ret.iloc[backwards:].shape}"
+            )
 
         ret.iloc[backwards:] = pool_ret
         ret = stack_keep_nan(ret)[origin_input.index]

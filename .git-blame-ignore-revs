@@ -1,0 +1,9 @@
+# Style-only commits. GitHub skips these in blame. To skip them locally too, run:
+#   git config blame.ignoreRevsFile .git-blame-ignore-revs
+
+# STY: apply ruff's safe fixes
+cc2ddaf6b114faaac386308738d27abd4ec80f7c
+# STY: format with ruff
+7502d190609ed92ca1a68404170ead0fc73c79dd
+# STY: use ruff's default double quotes
+157dbd0ecc3662e590a2cac4459ec8ed62ea757d

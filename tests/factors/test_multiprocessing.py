@@ -17,20 +17,24 @@ class MeanOfProduct(factors.CPUParallelFactor):
 
 
 def test_column_data_not_allowed():
-    with pytest.raises(ValueError, match='Cannot use ColumnDataFactor in CPUParallelFactor'):
+    with pytest.raises(ValueError, match="Cannot use ColumnDataFactor in CPUParallelFactor"):
         MeanOfProduct(inputs=[factors.OHLCV.open])
 
 
 # Pool forks the process which has torch threads, python warns it may deadlock.
-@pytest.mark.filterwarnings('ignore:This process .* is multi-threaded:DeprecationWarning')
-@pytest.mark.parametrize('multiprocess', [False, True])
+@pytest.mark.filterwarnings("ignore:This process .* is multi-threaded:DeprecationWarning")
+@pytest.mark.parametrize("multiprocess", [False, True])
 def test_cpu_parallel_factor(engine_no_calendar, device, multiprocess):
     engine = engine_no_calendar
-    if device == 'cuda':
+    if device == "cuda":
         engine.to_cuda()
-    engine.add(MeanOfProduct(win=10, core=3, inputs=[adjusted_open, adjusted_close],
-                             multiprocess=multiprocess), 'f')
-    engine.add(factors.MA(win=10, inputs=[adjusted_open * adjusted_close]), 'f2')
+    engine.add(
+        MeanOfProduct(
+            win=10, core=3, inputs=[adjusted_open, adjusted_close], multiprocess=multiprocess
+        ),
+        "f",
+    )
+    engine.add(factors.MA(win=10, inputs=[adjusted_open * adjusted_close]), "f2")
     result = engine.run("2018-12-25", "2019-01-05")
     assert_almost_equal(result.f.values, result.f2.values)
     assert not np.isnan(result.f.values).all()
@@ -44,7 +48,7 @@ def test_nested_window(engine):
     # CPUParallelFactor rolls on dates (the inputs are unstacked), it's same as other factors
     # only when the data is aligned by time.
     engine.align_by_time = True
-    engine.add(MeanOfProduct(win=10, core=3, inputs=[factors.MA(3), factors.MA(4)]), 'f')
-    engine.add(factors.MA(win=10, inputs=[factors.MA(3) * factors.MA(4)]), 'f2')
+    engine.add(MeanOfProduct(win=10, core=3, inputs=[factors.MA(3), factors.MA(4)]), "f")
+    engine.add(factors.MA(win=10, inputs=[factors.MA(3) * factors.MA(4)]), "f2")
     result = engine.run("2019-01-04", "2019-01-15")
     assert_almost_equal(result.f.values, result.f2.values)

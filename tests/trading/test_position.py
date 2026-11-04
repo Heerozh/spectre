@@ -5,7 +5,7 @@ from spectre import trading
 
 
 def test_open_position():
-    dt = pd.Timestamp('2019-01-02', tz='UTC')
+    dt = pd.Timestamp("2019-01-02", tz="UTC")
     pos = trading.Position(10, 9, 10, dt)
     # commission is included in average price
     assert pos.average_price == 10
@@ -70,7 +70,7 @@ def test_dividend():
     assert pos.process_dividend(0.5, tax=0.1) == 5
     assert pos.average_price == 9.5
     assert pos.last_price == pytest.approx(10 - 0.6)
-    assert pos.process_dividend(float('nan'), tax=0) == 0
+    assert pos.process_dividend(float("nan"), tax=0) == 0
 
 
 def test_split_adjusts_trailing_stop():

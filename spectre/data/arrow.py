@@ -4,25 +4,29 @@
 @license: GPL-3.0-only
 @email: heeroz@gmail.com
 """
-import pandas as pd
+
 import os
 import warnings
+
+import pandas as pd
+
 from .dataloader import DataLoader
 
 
 class ArrowLoader(DataLoader):
-    """ Read from persistent data. """
+    """Read from persistent data."""
 
-    def __init__(self, path: str = None, keep_in_memory: bool = True) -> None:
-        if not os.path.exists(path + '.meta'):
-            raise FileNotFoundError(os.path.abspath(path + '.meta'))
+    def __init__(self, path: str | None = None, keep_in_memory: bool = True) -> None:
+        if not os.path.exists(path + ".meta"):
+            raise FileNotFoundError(os.path.abspath(path + ".meta"))
 
         # pandas 0.22 has the fastest MultiIndex
-        if pd.__version__.startswith('0.22'):
+        if pd.__version__.startswith("0.22"):
             import feather
-            cols = feather.read_dataframe(path + '.meta')
+
+            cols = feather.read_dataframe(path + ".meta")
         else:
-            cols = pd.read_feather(path + '.meta')
+            cols = pd.read_feather(path + ".meta")
 
         ohlcv = tuple(cols.ohlcv)
         adjustments = tuple(cols.adjustments.values[:2])
@@ -48,9 +52,11 @@ class ArrowLoader(DataLoader):
     @classmethod
     def ingest(cls, source: DataLoader, save_to, force: bool = False) -> None:
         if not force and (source.last_modified <= cls._last_modified(save_to)):
-            warnings.warn("You called `ingest()`, but `source` seems unchanged, "
-                          "no ingestion required. Set `force=True` to re-ingest.",
-                          RuntimeWarning)
+            warnings.warn(
+                "You called `ingest()`, but `source` seems unchanged, "
+                "no ingestion required. Set `force=True` to re-ingest.",
+                RuntimeWarning,
+            )
             return
 
         df = source.test_load()
@@ -59,10 +65,10 @@ class ArrowLoader(DataLoader):
 
         # don't use chained assignment like `meta.adjustments[:2] = ...` here, it does nothing
         # under the Copy-on-Write of pandas 3.
-        meta = pd.DataFrame({'ohlcv': list(source.ohlcv)})
+        meta = pd.DataFrame({"ohlcv": list(source.ohlcv)})
         adjustments = list(source.adjustments or [])
-        meta['adjustments'] = adjustments + [None] * (len(meta) - len(adjustments))
-        meta.to_feather(save_to + '.meta')
+        meta["adjustments"] = adjustments + [None] * (len(meta) - len(adjustments))
+        meta.to_feather(save_to + ".meta")
 
     def filter(self, func):
         self._filter = func
@@ -72,12 +78,13 @@ class ArrowLoader(DataLoader):
         if self._cache is not None:
             return self._cache
 
-        if pd.__version__.startswith('0.22'):
+        if pd.__version__.startswith("0.22"):
             import feather
+
             df = feather.read_dataframe(self._path)
         else:
             df = pd.read_feather(self._path)
-        df = df.set_index(['date', 'asset'])
+        df = df.set_index(["date", "asset"])
 
         if self._filter is not None:
             df = self._filter(df)

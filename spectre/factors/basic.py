@@ -4,18 +4,22 @@
 @license: GPL-3.0-only
 @email: heeroz@gmail.com
 """
-from typing import Sequence
+
+import math
+from collections.abc import Sequence
+
 import numpy as np
 import torch
-import math
-from .factor import BaseFactor, CustomFactor
-from ..parallel import nansum, nanmean
-from .engine import OHLCV
+
 from ..config import Global
+from ..parallel import nanmean, nansum
+from .engine import OHLCV
+from .factor import BaseFactor, CustomFactor
 
 
 class Returns(CustomFactor):
-    """ Returns by tick (not by time) """
+    """Returns by tick (not by time)"""
+
     inputs = [OHLCV.close]
     win = 2
     _min_win = 2
@@ -80,10 +84,15 @@ class ExponentialWeightedMovingAverage(CustomFactor):
     win = 2
     _min_win = 2
 
-    def __init__(self, span: int = None, inputs: Sequence[BaseFactor] = None,
-                 adjust=False, half_life: float = None):
+    def __init__(
+        self,
+        span: int | None = None,
+        inputs: Sequence[BaseFactor] | None = None,
+        adjust=False,
+        half_life: float | None = None,
+    ):
         if span is not None:
-            self.alpha = (2.0 / (1.0 + span))
+            self.alpha = 2.0 / (1.0 + span)
             # Length required to achieve 99.97% accuracy, np.log(1-99.97/100) / np.log(alpha)
             # simplification to 4 * (span+1). 3.45 achieve 99.90%, 2.26 99.00%
             self.win = int(4.5 * (span + 1))
@@ -109,7 +118,7 @@ class ExponentialWeightedMovingAverage(CustomFactor):
             return weighted_mean
         else:
             shifted = data.last().roll(self.win - 1, dims=1)
-            shifted[:, 0:self.win - 1] = 0
+            shifted[:, 0 : self.win - 1] = 0
             alpha = self.alpha
             return alpha * weighted_mean + (shifted * (1 - alpha) ** self.win)
 
@@ -130,7 +139,7 @@ class AnnualizedVolatility(CustomFactor):
     _min_win = 2
 
     def compute(self, returns, annualization_factor):
-        return returns.nanstd() * (annualization_factor ** .5)
+        return returns.nanstd() * (annualization_factor**0.5)
 
 
 class ElementWiseMax(CustomFactor):
@@ -176,7 +185,7 @@ class RollingArgMax(CustomFactor):
 
     def compute(self, data):
         def _argmax(_data):
-            ret = (_data.argmax(dim=2) + 1.) / self.win
+            ret = (_data.argmax(dim=2) + 1.0) / self.win
             return ret.to(Global.float_type)
 
         return data.agg(_argmax)
@@ -187,7 +196,7 @@ class RollingArgMin(CustomFactor):
 
     def compute(self, data):
         def _argmin(_data):
-            ret = (_data.argmin(dim=2) + 1.) / self.win
+            ret = (_data.argmin(dim=2) + 1.0) / self.win
             return ret.to(Global.float_type)
 
         return data.agg(_argmin)

@@ -4,8 +4,8 @@
 @license: GPL-3.0-only
 @email: heeroz@gmail.com
 """
+
 import math
-from typing import Tuple
 
 from .stopmodel import StopModel
 
@@ -15,8 +15,9 @@ def sign(x):
 
 
 class Position:
-    def __init__(self, shares: int, fill_price: float, commission: float,
-                 dt, stop_model: StopModel = None):
+    def __init__(
+        self, shares: int, fill_price: float, commission: float, dt, stop_model: StopModel = None
+    ):
         self._shares = shares
         self._average_price = fill_price + commission / shares
         self._last_price = fill_price
@@ -26,8 +27,7 @@ class Position:
         self.stop_model = stop_model
         self.stop_tracker = None
         if stop_model is not None:
-            self.stop_tracker = stop_model.new_tracker(
-                fill_price, True if self._shares < 0 else False)
+            self.stop_tracker = stop_model.new_tracker(fill_price, self._shares < 0)
             self.stop_tracker.tracking_position = self
 
     @property
@@ -72,7 +72,7 @@ class Position:
     def unrealized_percent(self):
         return (self._last_price / self._average_price - 1) * sign(self._shares)
 
-    def update(self, amount: int, fill_price: float, commission: float, dt) -> Tuple[bool, float]:
+    def update(self, amount: int, fill_price: float, commission: float, dt) -> tuple[bool, float]:
         """
         position + amount, fill_price and commission is for calculation average_price and P&L
         return (True, realized) when position is empty.

@@ -4,25 +4,27 @@
 @license: GPL-3.0-only
 @email: heeroz@gmail.com
 """
-import numpy as np
-import torch
-import pandas as pd
 
-from typing import Optional, Sequence, Union
+from collections.abc import Sequence
+
+import numpy as np
+import pandas as pd
+import torch
+
+from ..config import Global
 from ..parallel import nanlast
 from .factor import BaseFactor, CustomFactor
-from ..config import Global
 
 
 class ColumnDataFactor(BaseFactor):
-    def __init__(self, inputs: Optional[Sequence[str]] = None,
-                 should_delay=True, dtype=None) -> None:
+    def __init__(self, inputs: Sequence[str] | None = None, should_delay=True, dtype=None) -> None:
         super().__init__()
         if inputs:
             self.inputs = inputs
-        assert (3 > len(self.inputs) > 0), \
-            "ColumnDataFactor's `inputs` can only contains one data column and corresponding " \
+        assert 3 > len(self.inputs) > 0, (
+            "ColumnDataFactor's `inputs` can only contains one data column and corresponding "
             "adjustments column"
+        )
         self._data = None
         self._multiplier = None
         self._should_delay = should_delay
@@ -60,11 +62,12 @@ class ColumnDataFactor(BaseFactor):
         self._multiplier = None
         self._clean_required = False
 
-    def compute_(self, stream: Union[torch.cuda.Stream, None]) -> torch.Tensor:
+    def compute_(self, stream: torch.cuda.Stream | None) -> torch.Tensor:
         return self._data
 
     def compute(self, *inputs: Sequence[torch.Tensor]) -> torch.Tensor:
         pass
+
 
 #     def adjusted_shift(self, periods=1):
 #         factor = AdjustedShiftFactor(win=periods, inputs=(self,))
@@ -91,7 +94,8 @@ class AdjustedColumnDataFactor(CustomFactor):
 
 
 class AssetClassifierDataFactor(BaseFactor):
-    """ Dict to categorical output for asset, slow """
+    """Dict to categorical output for asset, slow"""
+
     def __init__(self, sector: dict, default: int):
         super().__init__()
         self.sector = sector
@@ -117,7 +121,7 @@ class AssetClassifierDataFactor(BaseFactor):
         super().clean_up_(force)
         self._data = None
 
-    def compute_(self, stream: Union[torch.cuda.Stream, None]) -> torch.Tensor:
+    def compute_(self, stream: torch.cuda.Stream | None) -> torch.Tensor:
         return self._data
 
     def compute(self, *inputs: Sequence[torch.Tensor]) -> torch.Tensor:
@@ -125,12 +129,14 @@ class AssetClassifierDataFactor(BaseFactor):
 
 
 class SeriesDataFactor(ColumnDataFactor):
-    """ Add series to engine, slow """
+    """Add series to engine, slow"""
+
     def __init__(self, series: pd.Series, fill_na=None, should_delay=True):
         self.series = series
         self.fill_na = fill_na
-        assert series.index.names == ['date', 'asset'], \
+        assert series.index.names == ["date", "asset"], (
             "df.index.names should be ['date', 'asset'] "
+        )
         super().__init__(inputs=[str(series.name)], should_delay=should_delay)
 
     def pre_compute_(self, engine, start, end) -> None:
@@ -138,22 +144,30 @@ class SeriesDataFactor(ColumnDataFactor):
             engine._dataframe = engine.dataframe_.join(self.series)
             if self.fill_na is not None:
                 # GroupBy.fillna(method=...) was removed in pandas 3.0
-                fill_methods = {'ffill': 'ffill', 'pad': 'ffill', 'bfill': 'bfill',
-                                'backfill': 'bfill'}
+                fill_methods = {
+                    "ffill": "ffill",
+                    "pad": "ffill",
+                    "bfill": "bfill",
+                    "backfill": "bfill",
+                }
                 if self.fill_na not in fill_methods:
-                    raise ValueError("`fill_na` must be one of {}".format(list(fill_methods)))
+                    raise ValueError(f"`fill_na` must be one of {list(fill_methods)}")
                 grouped = engine._dataframe[self.series.name].groupby(level=1, observed=False)
-                engine._dataframe[self.series.name] = getattr(
-                    grouped, fill_methods[self.fill_na])()
+                engine._dataframe[self.series.name] = getattr(grouped, fill_methods[self.fill_na])()
         super().pre_compute_(engine, start, end)
 
 
 class DatetimeDataFactor(BaseFactor):
-    """ Datetime's attr to DataFactor """
+    """Datetime's attr to DataFactor"""
+
     _instance = {}
     # deprecated attributes of DatetimeIndex
-    _aliases = {'weekday': 'day_of_week', 'dayofweek': 'day_of_week',
-                'dayofyear': 'day_of_year', 'daysinmonth': 'days_in_month'}
+    _aliases = {
+        "weekday": "day_of_week",
+        "dayofweek": "day_of_week",
+        "dayofyear": "day_of_year",
+        "daysinmonth": "days_in_month",
+    }
 
     def __new__(cls, attr):
         if attr not in cls._instance:
@@ -181,7 +195,8 @@ class DatetimeDataFactor(BaseFactor):
             if not data.flags.writeable:
                 data = data.copy()
             data = torch.from_numpy(data).to(
-                device=engine.device, dtype=Global.float_type, non_blocking=True)
+                device=engine.device, dtype=Global.float_type, non_blocking=True
+            )
             self._data = engine.group_by_(data, self.groupby)
             self._clean_required = True
 
@@ -190,7 +205,7 @@ class DatetimeDataFactor(BaseFactor):
         self._data = None
         self._clean_required = False
 
-    def compute_(self, stream: Union[torch.cuda.Stream, None]) -> torch.Tensor:
+    def compute_(self, stream: torch.cuda.Stream | None) -> torch.Tensor:
         return self._data
 
     def compute(self, *inputs: Sequence[torch.Tensor]) -> torch.Tensor:

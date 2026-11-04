@@ -36,23 +36,20 @@ def test_returns_window(engine):
 
 def test_returns_with_nan(device):
     """missing data considered as delisted, returns are calculated by the last valid data."""
-    data = torch.tensor([[1, 2, nan, 4, 8, nan],
-                         [3, 4, 4.5, 6, nan, nan]], device=device)
+    data = torch.tensor([[1, 2, nan, 4, 8, nan], [3, 4, 4.5, 6, nan, nan]], device=device)
     result = factors.Returns().compute(parallel.Rolling(data, win=3)).cpu().numpy()
-    expected = [[nan, nan, 1, 1, nan, 1],
-                [nan, nan, 0.5, 0.5, 1 / 3, nan]]
+    expected = [[nan, nan, 1, 1, nan, 1], [nan, nan, 0.5, 0.5, 1 / 3, nan]]
     assert_almost_equal(result, expected)
 
 
 def test_log_returns(engine):
-    assert_factor(engine, factors.LogReturns(),
-                  *ref.expected(lambda df: ref.log_returns(df.close)))
+    assert_factor(engine, factors.LogReturns(), *ref.expected(lambda df: ref.log_returns(df.close)))
 
 
 # ------------------------------------ moving averages ------------------------------------
 
 
-@pytest.mark.parametrize('win', [3, 11])
+@pytest.mark.parametrize("win", [3, 11])
 def test_sma(engine, win):
     assert_factor(engine, factors.SMA(win), *ref.expected(lambda df: ref.sma(df.close, win)))
 
@@ -74,8 +71,8 @@ def ema_truncation_bound(span, prices):
     return (1 - alpha) ** win * (prices.max() - prices.min())
 
 
-@pytest.mark.parametrize('span', [11, 50])
-@pytest.mark.parametrize('adjust', [False, True])
+@pytest.mark.parametrize("span", [11, 50])
+@pytest.mark.parametrize("adjust", [False, True])
 def test_ema(engine, span, adjust):
     aapl, msft = run_factor(engine, factors.EMA(span, adjust=adjust))
     expected = ref.expected(lambda df: df.close.ewm(span=span, adjust=adjust).mean())
@@ -106,8 +103,12 @@ def test_average_dollar_volume(engine):
     expected = ref.expected(lambda df: (df.close * df.volume).rolling(3).mean())
     assert_factor(engine, factors.AverageDollarVolume(3), *expected, decimal=2)
     # win=1 is close * volume
-    assert_factor(engine, factors.AverageDollarVolume(1),
-                  *ref.expected(lambda df: df.close * df.volume), decimal=2)
+    assert_factor(
+        engine,
+        factors.AverageDollarVolume(1),
+        *ref.expected(lambda df: df.close * df.volume),
+        decimal=2,
+    )
 
 
 def test_annualized_volatility(engine):
@@ -124,59 +125,61 @@ def test_linear_weighted_average(engine):
         return weekday(df).rolling(5).apply(lambda x: (x * weights).sum(), raw=True)
 
     expected = ref.expected(lwa, delayed=False)
-    assert_factor(engine, factors.LinearWeightedAverage(5, inputs=[factors.WEEKDAY]), *expected,
-                  decimal=6)
-    assert_almost_equal(expected[0][:3], [2., 2.2666667, 2.8])
+    assert_factor(
+        engine, factors.LinearWeightedAverage(5, inputs=[factors.WEEKDAY]), *expected, decimal=6
+    )
+    assert_almost_equal(expected[0][:3], [2.0, 2.2666667, 2.8])
 
 
 # ------------------------------------ element wise ------------------------------------
 
 
 def test_element_wise_max(engine):
-    factor = factors.ElementWiseMax(inputs=[factors.WEEKDAY, factors.DatetimeDataFactor('day')])
+    factor = factors.ElementWiseMax(inputs=[factors.WEEKDAY, factors.DatetimeDataFactor("day")])
     expected = ref.expected(lambda df: np.maximum(weekday(df), day(df)), delayed=False)
     assert_factor(engine, factor, *expected)
-    assert_almost_equal(expected[0], [2., 3, 4, 7, 8, 9, 10, 11, 14, 15])
+    assert_almost_equal(expected[0], [2.0, 3, 4, 7, 8, 9, 10, 11, 14, 15])
 
 
 def test_element_wise_min(engine):
-    factor = factors.ElementWiseMin(
-        inputs=[factors.WEEKDAY, factors.DatetimeDataFactor('day') - 1])
+    factor = factors.ElementWiseMin(inputs=[factors.WEEKDAY, factors.DatetimeDataFactor("day") - 1])
     expected = ref.expected(lambda df: np.minimum(weekday(df), day(df) - 1), delayed=False)
     assert_factor(engine, factor, *expected)
-    assert_almost_equal(expected[0], [1., 2, 3, 0, 1, 2, 3, 4, 0, 1])
+    assert_almost_equal(expected[0], [1.0, 2, 3, 0, 1, 2, 3, 4, 0, 1])
 
 
 def test_element_wise_max_nan():
-    a = torch.tensor([[1., nan, nan, 4]])
-    b = torch.tensor([[2., 1., nan, 3]])
+    a = torch.tensor([[1.0, nan, nan, 4]])
+    b = torch.tensor([[2.0, 1.0, nan, 3]])
     assert_almost_equal(factors.ElementWiseMax().compute(a, b), [[2, 1, nan, 4]])
     assert_almost_equal(factors.ElementWiseMin().compute(a, b), [[1, 1, nan, 3]])
 
 
 # weekday has same values in the window, use day as a decimal point to break the ties
-WEEKDAY_DAY = factors.WEEKDAY + factors.DatetimeDataFactor('day') / 100
+WEEKDAY_DAY = factors.WEEKDAY + factors.DatetimeDataFactor("day") / 100
 
 
 def rolling_arg(func):
     def _arg(df):
-        return (weekday(df) + day(df) / 100).rolling(5).apply(lambda x: (func(x) + 1) / 5,
-                                                              raw=True)
+        return (weekday(df) + day(df) / 100).rolling(5).apply(lambda x: (func(x) + 1) / 5, raw=True)
+
     return _arg
 
 
 def test_rolling_argmax(engine):
     expected = ref.expected(rolling_arg(np.argmax), delayed=False)
     assert_factor(engine, factors.RollingArgMax(5, inputs=[WEEKDAY_DAY]), *expected)
-    assert_almost_equal(expected[0], [3 / 5, 2 / 5, 1 / 5, 4 / 5, 3 / 5, 2 / 5, 1 / 5, 5 / 5,
-                                      4 / 5, 3 / 5])
+    assert_almost_equal(
+        expected[0], [3 / 5, 2 / 5, 1 / 5, 4 / 5, 3 / 5, 2 / 5, 1 / 5, 5 / 5, 4 / 5, 3 / 5]
+    )
 
 
 def test_rolling_argmin(engine):
     expected = ref.expected(rolling_arg(np.argmin), delayed=False)
     assert_factor(engine, factors.RollingArgMin(5, inputs=[WEEKDAY_DAY]), *expected)
-    assert_almost_equal(expected[1], [4 / 5, 3 / 5, 2 / 5, 5 / 5, 4 / 5, 3 / 5, 2 / 5, 1 / 5,
-                                      4 / 5])
+    assert_almost_equal(
+        expected[1], [4 / 5, 3 / 5, 2 / 5, 5 / 5, 4 / 5, 3 / 5, 2 / 5, 1 / 5, 4 / 5]
+    )
 
 
 def test_constants_factor(engine):
@@ -186,5 +189,5 @@ def test_constants_factor(engine):
 
 
 def test_min_win():
-    with pytest.raises(ValueError, match='win'):
+    with pytest.raises(ValueError, match="win"):
         factors.SMA(1)

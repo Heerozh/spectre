@@ -29,9 +29,12 @@ and factors.
 
 ## Lint and packaging
 
-- There is no lint config. Lines are limited to 100 columns. `uvx flake8 --max-line-length=100
-  tests/` is clean. `spectre/` has about 200 existing findings, mostly `__init__.py` re-exports.
-- `pyproject.toml` holds the metadata, dependencies and pytest config, and `uv.lock` is committed.
+- Run `uv run ruff check` and `uv run ruff format` before committing. Lines are limited to 100
+  columns, and wide characters such as Chinese count as two. Mark a table of numbers `# fmt: skip`
+  if the formatter splits it into one number per line.
+- Don't select all of `SIM`. `SIM300` autofixes `2 == f` into `f == 2`, but `test_ops.py` tests
+  those reflected operators on purpose, and it still passes after the fix, so nothing flags it.
+- `pyproject.toml` holds the metadata, dependencies and tool config, and `uv.lock` is committed.
   Change dependencies with `uv add` and `uv remove`. `uv build` needs no package list, it takes all
   of `spectre/`. `.python-version` pins development to 3.13.
 - `tool.uv.sources` chooses the torch build with the `cuda` and `cpu` groups. uv is the only tool

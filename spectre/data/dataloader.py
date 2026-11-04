@@ -4,14 +4,18 @@
 @license: GPL-3.0-only
 @email: heeroz@gmail.com
 """
-from typing import Optional
-import pandas as pd
+
 import numpy as np
+import pandas as pd
 
 
 class DataLoader:
-    def __init__(self, path: str, ohlcv=('open', 'high', 'low', 'close', 'volume'),
-                 adjustments=('ex-dividend', 'split_ratio')) -> None:
+    def __init__(
+        self,
+        path: str,
+        ohlcv=("open", "high", "low", "close", "volume"),
+        adjustments=("ex-dividend", "split_ratio"),
+    ) -> None:
         self._path = path
         self._ohlcv = ohlcv
         self._adjustments = adjustments
@@ -26,26 +30,26 @@ class DataLoader:
 
     @property
     def adjustment_multipliers(self):
-        return ['price_multi', 'vol_multi']
+        return ["price_multi", "vol_multi"]
 
     @property
     def time_category(self):
-        return '_time_cat_id'
+        return "_time_cat_id"
 
     @property
     def last_modified(self) -> float:
-        """ data source last modification time """
+        """data source last modification time"""
         raise NotImplementedError("abstractmethod")
 
     @property
     def min_timedelta(self) -> pd.Timedelta:
-        """ Minimum time delta of date index """
+        """Minimum time delta of date index"""
         date_idx = self.load().index.levels[0]
         return min(date_idx[1:] - date_idx[:-1])
 
     @classmethod
     def _align_to(cls, df, calender_asset, align_by_time=False):
-        """ helper method for align index """
+        """helper method for align index"""
         index = df.loc[(slice(None), calender_asset), :].index.get_level_values(0)
         df = df[df.index.get_level_values(0).isin(index)]
         df.index = df.index.remove_unused_levels()
@@ -75,18 +79,18 @@ class DataLoader:
         * create adjustment multipliers columns
         """
         # print(pd.Timestamp.now(), 'Formatting index...')
-        df = df.rename_axis(['date', 'asset'])
+        df = df.rename_axis(["date", "asset"])
         # speed up asset index search time
         df = df.reset_index()
         # categories=None: categories are inferred from the sorted unique values
         asset_type = pd.api.types.CategoricalDtype(categories=None, ordered=True)
         df.asset = df.asset.astype(asset_type)
         # format index and convert to utc timezone-aware
-        df = df.set_index(['date', 'asset'])
+        df = df.set_index(["date", "asset"])
         if df.index.levels[0].tzinfo is None:
-            df = df.tz_localize('UTC', level=0)
+            df = df.tz_localize("UTC", level=0)
         else:
-            df = df.tz_convert('UTC', level=0)
+            df = df.tz_convert("UTC", level=0)
         df = df.sort_index(level=[0, 1])
         # generate time key for parallel
         # print(pd.Timestamp.now(), 'Formatting time key for gpu sorting...')
@@ -143,34 +147,40 @@ class DataLoader:
         """
         df = self._load()
 
-        assert df.index.names == ['date', 'asset'], \
-            "df.index.names should be ['date', 'asset'] "
-        assert not any(df.index.duplicated()), \
+        assert df.index.names == ["date", "asset"], "df.index.names should be ['date', 'asset'] "
+        assert not any(df.index.duplicated()), (
             "There are duplicate indexes in df, you need handle them up."
-        assert df.index.is_monotonic_increasing, \
+        )
+        assert df.index.is_monotonic_increasing, (
             "df.index must be sorted, try using df = df.sort_index(level=0)"
-        assert str(df.index.levels[0].tzinfo) == 'UTC', \
-            "df.index.date must be UTC timezone."
-        assert df.index.levels[-1].ordered, \
-            "df.index.asset must ordered categorical."
-        assert self.time_category in df, \
+        )
+        assert str(df.index.levels[0].tzinfo) == "UTC", "df.index.date must be UTC timezone."
+        assert df.index.levels[-1].ordered, "df.index.asset must ordered categorical."
+        assert self.time_category in df, (
             "You must create a time_category column, convert time to category id"
+        )
 
         if self.adjustments:
-            assert all(x in df for x in self.adjustments), \
-                "Adjustments columns `{}` not found.".format(self.adjustments)
-            assert all(x in df for x in self.adjustment_multipliers), \
-                "Adjustment multipliers columns `{}` not found.".format(self.adjustment_multipliers)
-            assert not any(df[self.adjustments[0]].isna()), \
+            assert all(x in df for x in self.adjustments), (
+                f"Adjustments columns `{self.adjustments}` not found."
+            )
+            assert all(x in df for x in self.adjustment_multipliers), (
+                f"Adjustment multipliers columns `{self.adjustment_multipliers}` not found."
+            )
+            assert not any(df[self.adjustments[0]].isna()), (
                 "There is nan value in ex-dividend column, should be filled with 0."
-            assert not any(df[self.adjustments[1]].isna()), \
+            )
+            assert not any(df[self.adjustments[1]].isna()), (
                 "There is nan value in split_ratio column, should be filled with 1."
-            assert not any(df[self.time_category].isna()), \
+            )
+            assert not any(df[self.time_category].isna()), (
                 "There is nan value in time_category column, should be filled with time id."
+            )
         return df
 
-    def load(self, start: Optional[pd.Timestamp] = None, end: Optional[pd.Timestamp] = None,
-             backwards: int = 0) -> pd.DataFrame:
+    def load(
+        self, start: pd.Timestamp | None = None, end: pd.Timestamp | None = None, backwards: int = 0
+    ) -> pd.DataFrame:
         df = self._load()
 
         index = df.index.levels[0]
@@ -182,20 +192,18 @@ class DataLoader:
 
         if index[0] > start:
             raise ValueError(
-                f"`start` time ({start}) cannot be less " \
-                f"than earliest time of data: {index[0]}."
+                f"`start` time ({start}) cannot be less than earliest time of data: {index[0]}."
             )
 
         if index[-1] < end:
             raise ValueError(
-                f"`end` time ({end}) cannot be greater " \
-                f"than latest time of data: {index[-1]}."
+                f"`end` time ({end}) cannot be greater than latest time of data: {index[-1]}."
             )
 
-        start_loc = index.get_indexer([start], method='bfill')[0]
+        start_loc = index.get_indexer([start], method="bfill")[0]
         backward_loc = max(start_loc - backwards, 0)
-        end_loc = index.get_indexer([end], method='ffill')[0]
-        assert end_loc >= start_loc, 'There is no data between `start` and `end`.'
+        end_loc = index.get_indexer([end], method="ffill")[0]
+        assert end_loc >= start_loc, "There is no data between `start` and `end`."
 
         backward_start = index[backward_loc]
         return df.loc[backward_start:end]
@@ -203,6 +211,7 @@ class DataLoader:
 
 class DataLoaderFastGetter:
     """Fast get method for dataloader's DataFrame"""
+
     class DictLikeCursor:
         def __init__(self, parent, row_slice, column_id):
             self.parent = parent
@@ -219,9 +228,9 @@ class DataLoaderFastGetter:
             cursor_index = self.index
             i = cursor_index.searchsorted(asset_id)
             if i >= self.length:
-                raise KeyError('{} not found'.format(asset))
+                raise KeyError(f"{asset} not found")
             if cursor_index[i] != asset_id:
-                raise KeyError('{} not found'.format(asset))
+                raise KeyError(f"{asset} not found")
             return self.data[i]
 
         def items(self):
@@ -255,7 +264,7 @@ class DataLoaderFastGetter:
             return start
         idx = self.indexes[0]
         stop = stop or start
-        row_slice = slice(idx.searchsorted(start), idx.searchsorted(stop, side='right'))
+        row_slice = slice(idx.searchsorted(start), idx.searchsorted(stop, side="right"))
         return row_slice
 
     def get_as_dict(self, start, stop=None, column_id=slice(None)):

@@ -4,8 +4,9 @@
 @license: GPL-3.0-only
 @email: heeroz@gmail.com
 """
-from .factor import CustomFactor
+
 from ..parallel import masked_first
+from .factor import CustomFactor
 
 
 class RollingFirst(CustomFactor):
@@ -25,5 +26,6 @@ class RollingFirst(CustomFactor):
 
 class ForwardSignalData(RollingFirst):
     """Data in future window periods where signal = True. Lookahead biased."""
+
     def __init__(self, win, data, signal):
-        super().__init__(win, data.shift(-win+1), signal.shift(-win+1))
+        super().__init__(win, data.shift(-win + 1), signal.shift(-win + 1))

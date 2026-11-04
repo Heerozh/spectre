@@ -4,20 +4,39 @@
 @license: GPL-3.0-only
 @email: heeroz@gmail.com
 """
-from abc import ABC
-from typing import Optional, Sequence, Union
-import numpy as np
+
 import warnings
+from abc import ABC
+from collections.abc import Sequence
+from typing import TYPE_CHECKING, Union
+
+import numpy as np
 import torch
-from ..parallel import (nansum, nanmean, nanstd, nanmax, nanmin, pad_2d, Rolling, quantile,
-                        masked_kth_value_1d, clamp_1d_, rankdata)
-from ..plotting import plot_factor_diagram
+
 from ..config import Global
+from ..parallel import (
+    Rolling,
+    clamp_1d_,
+    masked_kth_value_1d,
+    nanmax,
+    nanmean,
+    nanmin,
+    nanstd,
+    nansum,
+    pad_2d,
+    quantile,
+    rankdata,
+)
+from ..plotting import plot_factor_diagram
+
+if TYPE_CHECKING:
+    from .engine import FactorEngine
 
 
 class BaseFactor:
-    """ Basic factor class, only helper methods """
-    groupby = 'asset'  # indicates inputs and return value of this factor are grouped by what
+    """Basic factor class, only helper methods"""
+
+    groupby = "asset"  # indicates inputs and return value of this factor are grouped by what
     _engine = None
     _clean_required = None  # If your factor caches data, this should be set to True when caching
 
@@ -69,45 +88,55 @@ class BaseFactor:
     # op: and
     def __and__(self, other):
         from .filter import AndFactor
+
         return AndFactor(inputs=(self, other))
 
     # op: or
     def __or__(self, other):
         from .filter import OrFactor
+
         return OrFactor(inputs=(self, other))
 
     def __xor__(self, other):
         from .filter import XorFactor
+
         return XorFactor(inputs=(self, other))
 
     # op: <=>==!=
     def __lt__(self, other):
         from .filter import LtFactor
+
         return LtFactor(inputs=(self, other))
 
     def __le__(self, other):
         from .filter import LeFactor
+
         return LeFactor(inputs=(self, other))
 
     def __gt__(self, other):
         from .filter import GtFactor
+
         return GtFactor(inputs=(self, other))
 
     def __ge__(self, other):
         from .filter import GeFactor
+
         return GeFactor(inputs=(self, other))
 
     def __eq__(self, other):
         from .filter import EqFactor
+
         return EqFactor(inputs=(self, other))
 
     def __ne__(self, other):
         from .filter import NeFactor
+
         return NeFactor(inputs=(self, other))
 
     # op: ~
     def __invert__(self):
         from .filter import InvertFactor
+
         return InvertFactor(inputs=(self,))
 
     # op: []
@@ -116,38 +145,42 @@ class BaseFactor:
 
     # --------------- helper functions ---------------
 
-    def top(self, n: Union[int, float], mask: 'BaseFactor' = None):
-        """ Cross-section top values """
-        rank_data = self.rank(ascending=False, mask=mask, method='ordinal')
+    def top(self, n: float, mask: "BaseFactor" = None):
+        """Cross-section top values"""
+        rank_data = self.rank(ascending=False, mask=mask, method="ordinal")
         if type(n) is float:
             assert 0 < n < 1
             return rank_data <= (XSMax(inputs=[rank_data]) * n)
         else:
             return rank_data <= n
 
-    def bottom(self, n: Union[int, float], mask: 'BaseFactor' = None):
-        rank_data = self.rank(ascending=True, mask=mask, method='ordinal')
+    def bottom(self, n: float, mask: "BaseFactor" = None):
+        rank_data = self.rank(ascending=True, mask=mask, method="ordinal")
         if type(n) is float:
             assert 0 < n < 1
             return rank_data <= (XSMax(inputs=[rank_data]) * n)
         else:
             return rank_data <= n
 
-    def rank(self, ascending=True, mask: 'BaseFactor' = None, normalize=False, method='average'):
-        """ Cross-section rank """
+    def rank(self, ascending=True, mask: "BaseFactor" = None, normalize=False, method="average"):
+        """Cross-section rank"""
         factor = RankFactor(inputs=(self,), mask=mask)
         factor.method = method
         factor.ascending = ascending
         factor.normalize = normalize
         return factor
 
-    def zscore(self, groupby: str = 'date', mask: 'BaseFactor' = None, weight: 'BaseFactor' = None):
-        """ Cross-section zscore """
+    def zscore(self, groupby: str = "date", mask: "BaseFactor" = None, weight: "BaseFactor" = None):
+        """Cross-section zscore"""
         factor = ZScoreFactor(data=self, mask=mask, groupby=groupby, weight=weight)
         return factor
 
-    def demean(self, groupby: Union[str, dict] = None, mask: 'BaseFactor' = None,
-               beta: 'BaseFactor' = None):
+    def demean(
+        self,
+        groupby: str | dict | None = None,
+        mask: "BaseFactor" = None,
+        beta: "BaseFactor" = None,
+    ):
         """
         Cross-section demean.
         Set `groupby` to the name of a column, like 'sector'.
@@ -163,13 +196,18 @@ class BaseFactor:
             raise ValueError()
         return factor
 
-    def demedian(self, groupby: str = 'date', mask: 'BaseFactor' = None):
-        factor = DemedianFactor(inputs=(self, ), mask=mask)
+    def demedian(self, groupby: str = "date", mask: "BaseFactor" = None):
+        factor = DemedianFactor(inputs=(self,), mask=mask)
         factor.groupby = groupby
         return factor
 
-    def mean(self, groupby: str = 'date', mask: Union['BaseFactor', str] = None,
-             weight: 'BaseFactor' = None, weight_sum: float = None):
+    def mean(
+        self,
+        groupby: str = "date",
+        mask: Union["BaseFactor", str] = None,
+        weight: "BaseFactor" = None,
+        weight_sum: float | None = None,
+    ):
         """
         Cross-section mean.
         """
@@ -177,49 +215,53 @@ class BaseFactor:
         factor.groupby = groupby
         return factor
 
-    def median(self, mask: 'BaseFactor' = None, groupby: str = 'date'):
+    def median(self, mask: "BaseFactor" = None, groupby: str = "date"):
         factor = MedianFactor(inputs=(self,), mask=mask)
         factor.groupby = groupby
         return factor
 
-    def max(self, mask: 'BaseFactor' = None, groupby: str = 'date'):
+    def max(self, mask: "BaseFactor" = None, groupby: str = "date"):
         factor = XSMax(inputs=(self,), mask=mask)
         factor.groupby = groupby
         return factor
 
-    def min(self, mask: 'BaseFactor' = None, groupby: str = 'date'):
+    def min(self, mask: "BaseFactor" = None, groupby: str = "date"):
         factor = XSMin(inputs=(self,), mask=mask)
         factor.groupby = groupby
         return factor
 
     def ts_max(self, win=2):
         from .statistical import RollingHigh
+
         return RollingHigh(win=win, inputs=(self,))
 
     def ts_min(self, win=2):
         from .statistical import RollingLow
+
         return RollingLow(win=win, inputs=(self,))
 
-    def quantile(self, bins=5, mask: 'BaseFactor' = None, groupby: str = 'date'):
-        """ Cross-section quantiles to which the factor belongs """
+    def quantile(self, bins=5, mask: "BaseFactor" = None, groupby: str = "date"):
+        """Cross-section quantiles to which the factor belongs"""
         if not mask:
-            warnings.warn("quantile() mask parameter not set, normally set mask=universe, "
-                          "is it expected?",
-                          RuntimeWarning)
+            warnings.warn(
+                "quantile() mask parameter not set, normally set mask=universe, is it expected?",
+                RuntimeWarning,
+            )
         factor = QuantileClassifier(inputs=(self,))
         factor.set_mask(mask)
         factor.groupby = groupby
         factor.bins = bins
         return factor
 
-    def std(self, groupby: str = 'date', mask: 'BaseFactor' = None):
+    def std(self, groupby: str = "date", mask: "BaseFactor" = None):
         from .statistical import XSStandardDeviation
+
         factor = XSStandardDeviation(inputs=(self,), mask=mask)
         factor.groupby = groupby
         return factor
 
-    def to_weight(self, demean=True, mask: 'BaseFactor' = None):
-        """ factor value to portfolio weight, which sum(abs(weight)) == 1 """
+    def to_weight(self, demean=True, mask: "BaseFactor" = None):
+        """factor value to portfolio weight, which sum(abs(weight)) == 1"""
         factor = ToWeightFactor(inputs=(self,), mask=mask)
         factor.demean = demean
         return factor
@@ -238,12 +280,12 @@ class BaseFactor:
     def sign(self):
         return SignFactor(inputs=(self,))
 
-    def ts_sum(self, win: int, mask: 'BaseFactor' = None):
+    def ts_sum(self, win: int, mask: "BaseFactor" = None):
         ret = SumFactor(win, inputs=(self,))
         ret.set_mask(mask)
         return ret
 
-    def xs_sum(self, mask: 'BaseFactor' = None, groupby='date'):
+    def xs_sum(self, mask: "BaseFactor" = None, groupby="date"):
         # todo future name will change to sum
         ret = XSSumFactor(inputs=(self,), mask=mask)
         ret.groupby = groupby
@@ -258,52 +300,55 @@ class BaseFactor:
     def tanh(self):
         return TanhFactor(inputs=(self,))
 
-    def filter(self, mask: 'BaseFactor'):
-        """ Local filter, fill unmasked elements with NaNs. """
+    def filter(self, mask: "BaseFactor"):
+        """Local filter, fill unmasked elements with NaNs."""
         mf = DoNothingFactor(inputs=(self,))
         mf.set_mask(mask)
         return mf
 
     def one_hot(self):
         from .filter import OneHotEncoder
+
         factor = OneHotEncoder(self)
         return factor
 
-    def fill_na(self, value: float = None, ffill: bool = None, inf=False, nan=True):
+    def fill_na(self, value: float | None = None, ffill: bool | None = None, inf=False, nan=True):
         if value is not None:
             factor = FillNANFactor(inputs=(self, value))
         elif ffill:
             factor = PadFactor(inputs=(self,))
         else:
-            raise ValueError('Either `value=number` or `ffill=True` must be specified.')
+            raise ValueError("Either `value=number` or `ffill=True` must be specified.")
         factor.inf = inf
         factor.nan = nan
         return factor
 
     fill_nan = fill_na
 
-    def masked_fill(self, mask: 'BaseFactor', fill: Union['BaseFactor', float, int, bool]):
+    def masked_fill(self, mask: "BaseFactor", fill: Union["BaseFactor", float, bool]):
         return MaskedFillFactor(inputs=(self, mask, fill))
 
     def ts_any(self, win: int):
-        """ Return True if Rolling window contains any Non-NaNs """
+        """Return True if Rolling window contains any Non-NaNs"""
         from .filter import AnyNonNaNFactor
+
         return AnyNonNaNFactor(win, inputs=(self,))
 
     def ts_all(self, win: int):
-        """ Return True if Rolling window all are Non-NaNs """
+        """Return True if Rolling window all are Non-NaNs"""
         from .filter import AllNonNaNFactor
+
         return AllNonNaNFactor(win, inputs=(self,))
 
     def ts_count(self, win: int):
-        """ Return Non-NaN data count """
+        """Return Non-NaN data count"""
         return NonNaNCountFactor(win, inputs=(self,))
 
-    def clamp(self, left: Union[float, int], right: Union[float, int], fill=None):
+    def clamp(self, left: float, right: float, fill=None):
         return ClampFactor(self, left, right, fill)
 
-    def mad_clamp(self, z: float, mask: 'BaseFactor' = None, groupby='date', fill=None, mean=False):
-        """ Cross-section MAD clamp """
+    def mad_clamp(self, z: float, mask: "BaseFactor" = None, groupby="date", fill=None, mean=False):
+        """Cross-section MAD clamp"""
         factor = MADClampFactor(inputs=(self, fill))
         factor.groupby = groupby
         factor.z = z
@@ -311,8 +356,8 @@ class BaseFactor:
         factor.m_is_mean = mean
         return factor
 
-    def winsorizing(self, z: float = 0.05, mask: 'BaseFactor' = None):
-        """ Cross-section winsorizing clamp """
+    def winsorizing(self, z: float = 0.05, mask: "BaseFactor" = None):
+        """Cross-section winsorizing clamp"""
         factor = WinsorizingFactor(inputs=(self,))
         factor.groupby = CrossSectionFactor.groupby
         assert 0 < z < 1
@@ -361,14 +406,14 @@ class BaseFactor:
         """Is this factor should be delayed?"""
         return False
 
-    def pre_compute_(self, engine: 'FactorEngine', start, end) -> None:
+    def pre_compute_(self, engine: "FactorEngine", start, end) -> None:
         self._engine = engine
         engine.column_to_parallel_groupby_(self.groupby)
 
     def clean_up_(self, force=False) -> None:
         self._engine = None
 
-    def compute_(self, stream: Union[torch.cuda.Stream, None]) -> torch.Tensor:
+    def compute_(self, stream: torch.cuda.Stream | None) -> torch.Tensor:
         raise NotImplementedError("abstractmethod")
 
     def __init__(self) -> None:
@@ -379,11 +424,12 @@ class BaseFactor:
 
 
 class CustomFactor(BaseFactor):
-    """ Common base class for factor, that can contain child factors and handle
-    hierarchical relationships """
+    """Common base class for factor, that can contain child factors and handle
+    hierarchical relationships"""
+
     # settable member variables
-    win = 1          # determine include how many previous data
-    inputs = None    # any values in `inputs` list will pass to `compute` function by order
+    win = 1  # determine include how many previous data
+    inputs = None  # any values in `inputs` list will pass to `compute` function by order
     _min_win = None  # assert when `win` less than `_min_win`, prevent user error.
     _rolling_fill = np.nan  # value of the rolling window before the first data
 
@@ -398,7 +444,7 @@ class CustomFactor(BaseFactor):
     _total_backwards = None
     _cache_hash = None
 
-    def __init__(self, win: Optional[int] = None, inputs: Optional[Sequence[BaseFactor]] = None):
+    def __init__(self, win: int | None = None, inputs: Sequence[BaseFactor] | None = None):
         """
         :param win:  Optional[int]
             Including additional past data with 'window length' in `input`
@@ -413,24 +459,24 @@ class CustomFactor(BaseFactor):
             self.win = win
         if inputs:
             self.inputs = inputs
-        assert isinstance(self.inputs, (list, tuple, type(None))), '`factor.inputs` must be a list.'
-        assert isinstance(self.win, int), '`factor.win` must be a integer.'
+        assert isinstance(self.inputs, (list, tuple, type(None))), "`factor.inputs` must be a list."
+        assert isinstance(self.win, int), "`factor.win` must be a integer."
 
         if not (self.win >= (self._min_win or 1)):
-            raise ValueError('factor({}) win ({}) must  >= [_min_win({}) and 1]'.format(
-                str(self), self.win, self._min_win))
+            raise ValueError(
+                f"factor({self!s}) win ({self.win}) must  >= [_min_win({self._min_win}) and 1]"
+            )
 
         if self.inputs:
-            self.inputs = list(ipt() if callable(ipt) else ipt for ipt in self.inputs)
+            self.inputs = [ipt() if callable(ipt) else ipt for ipt in self.inputs]
             for ipt in self.inputs:
-                if isinstance(ipt, BaseFactor):
-                    if ipt._clean_required is not None:
-                        self._clean_required = ipt._clean_required
-                        break
+                if isinstance(ipt, BaseFactor) and ipt._clean_required is not None:
+                    self._clean_required = ipt._clean_required
+                    break
 
     @classmethod
     def sequential(cls, *args):
-        """ Helper method for fast initialization """
+        """Helper method for fast initialization"""
         if isinstance(args[0], int):
             win = args[0]
             if cls._min_win is not None:
@@ -439,8 +485,8 @@ class CustomFactor(BaseFactor):
         else:
             return cls(inputs=[*args[0:]])
 
-    def set_mask(self, mask: Union[BaseFactor, str] = None):
-        """ Input data mask, fill all unmasked **INPUT** data to NaN """
+    def set_mask(self, mask: BaseFactor | str = None):
+        """Input data mask, fill all unmasked **INPUT** data to NaN"""
         self._mask = mask
         self._total_backwards = None
         if isinstance(mask, BaseFactor) and mask._clean_required is not None:
@@ -452,13 +498,13 @@ class CustomFactor(BaseFactor):
 
     def _get_mask_factor(self):
         # todo add a placeholder factor for universe
-        if type(self._mask) is str and (self._mask == 'universe') is True:
+        if type(self._mask) is str and (self._mask == "universe") is True:
             return self._engine.get_filter()
         else:
             return self._mask
 
     def _get_computed_mask(self):
-        """ Allow subclass get the current mask result in compute() """
+        """Allow subclass get the current mask result in compute()"""
         if self._mask_out is None:
             return ~self._engine.get_group_padding_mask(self.groupby)
         else:
@@ -470,8 +516,10 @@ class CustomFactor(BaseFactor):
 
         backwards = 0
         if self.inputs:
-            backwards = max([up.get_total_backwards_() for up in self.inputs
-                             if isinstance(up, BaseFactor)] or (0,))
+            backwards = max(
+                [up.get_total_backwards_() for up in self.inputs if isinstance(up, BaseFactor)]
+                or (0,)
+            )
         backwards = backwards + self.win - 1
 
         if isinstance(self._mask, BaseFactor):
@@ -507,14 +555,10 @@ class CustomFactor(BaseFactor):
 
         if self.inputs:
             for upstream in self.inputs:
-                if isinstance(upstream, CustomFactor):
-                    if upstream.is_keep_cache():
-                        return True
+                if isinstance(upstream, CustomFactor) and upstream.is_keep_cache():
+                    return True
 
-        if isinstance(self._mask, CustomFactor):
-            if self._mask.is_keep_cache():
-                return True
-        return False
+        return isinstance(self._mask, CustomFactor) and self._mask.is_keep_cache()
 
     def show_graph(self):
         plot_factor_diagram(self)
@@ -525,6 +569,7 @@ class CustomFactor(BaseFactor):
         def cum(_):
             nonlocal ret
             ret += 1
+
         self.iter(cum)
 
         return ret
@@ -587,8 +632,10 @@ class CustomFactor(BaseFactor):
         # TODO If the same factor added to 2 different engines, the _keep_cache should not able to
         #  be enabled. alert or rise.
         if engine.cache_hash != self._cache_hash and self._cache is not None:
-            print('The factor({}) data cached for the original engine is invalidated due to engine '
-                  'changes.'.format(self))
+            print(
+                f"The factor({self}) data cached for the original engine is invalidated "
+                "due to engine changes."
+            )
             self._cache = None
             self._cache_stream = None
 
@@ -626,24 +673,28 @@ class CustomFactor(BaseFactor):
         # if need rolling and adjustment
         if self.win > 1:
             if len(ret.shape) >= 3:
-                raise ValueError("upstream factor `{}` has multiple outputs ({}), "
-                                 "rolling win > 1 only supports one output, "
-                                 "use slice to select a value before using it, for example: "
-                                 "`factor[0]`.".format(str(upstream), ret.shape[2]))
+                raise ValueError(
+                    f"upstream factor `{upstream!s}` has multiple outputs ({ret.shape[2]}), "
+                    "rolling win > 1 only supports one output, "
+                    "use slice to select a value before using it, for example: "
+                    "`factor[0]`."
+                )
             # todo: If the indirect children is a column factor, also need to adjust.
             #  for now, only adjust direct children.
             #  refactor: if any shift occurs, adjust them.
             ret = Rolling(ret, self.win, upstream.adjustments, self._rolling_fill)
         return ret
 
-    def compute_(self, down_stream: Union[torch.cuda.Stream, None]) -> torch.Tensor:
+    def compute_(self, down_stream: torch.cuda.Stream | None) -> torch.Tensor:
         # return cached result
         self._ref_count -= 1
         if self._ref_count < 0:
-            raise ValueError('Reference count error: possible circular reference! '
-                             'Do not set_mask="universe" in global filter.'
-                             'Or maybe you override `pre_compute_`, '
-                             'but did not call super() method.')
+            raise ValueError(
+                "Reference count error: possible circular reference! "
+                'Do not set_mask="universe" in global filter.'
+                "Or maybe you override `pre_compute_`, "
+                "but did not call super() method."
+            )
         if self._cache is not None:
             if down_stream:
                 down_stream.wait_event(self._cache_stream.record_event())
@@ -689,13 +740,13 @@ class CustomFactor(BaseFactor):
             try:
                 out = self.compute(*inputs)
             except RuntimeError as e:
-                if 'CUDA out of memory' in repr(e):
-                    out = self.compute(*[
-                        t.cpu() if isinstance(t, (torch.Tensor, Rolling)) else t
-                        for t in inputs])
+                if "CUDA out of memory" in repr(e):
+                    out = self.compute(
+                        *[t.cpu() if isinstance(t, (torch.Tensor, Rolling)) else t for t in inputs]
+                    )
                     out = out.to(self._engine.device)
                 else:
-                    raise e
+                    raise
 
         self._mask_out = None
         if self._ref_count > 0:
@@ -757,14 +808,19 @@ class CustomFactor(BaseFactor):
 
 class CrossSectionFactor(CustomFactor, ABC):
     """Class that inputs and return value is grouped by datetime"""
-    groupby = 'date'
+
+    groupby = "date"
     win = 1
 
-    def __init__(self, win: Optional[int] = None, inputs: Optional[Sequence[BaseFactor]] = None,
-                 mask: Optional[BaseFactor] = None):
+    def __init__(
+        self,
+        win: int | None = None,
+        inputs: Sequence[BaseFactor] | None = None,
+        mask: BaseFactor | None = None,
+    ):
         super().__init__(win, inputs)
         self.set_mask(mask)
-        assert self.win == 1, 'CrossSectionFactor.win can only be 1'
+        assert self.win == 1, "CrossSectionFactor.win can only be 1"
 
     def __getitem__(self, key):
         return MultiRetSelectorXS(inputs=(self, key))
@@ -781,12 +837,14 @@ class MultiRetSelector(CustomFactor):
 
     def compute(self, data: torch.Tensor, key) -> torch.Tensor:
         if len(data.shape) < 3:
-            raise KeyError('This factor({}) has only one return value, cannot slice.'.format(
-                type(self.inputs[0]).__name__
-            ))
+            raise KeyError(
+                f"This factor({type(self.inputs[0]).__name__}) has only one return value, "
+                "cannot slice."
+            )
         elif data.shape[2] <= key:
-            raise KeyError('OutOfBounds: factor has only {} return values, and slice is [{}].'.
-                           format(data.shape[2], key))
+            raise KeyError(
+                f"OutOfBounds: factor has only {data.shape[2]} return values, and slice is [{key}]."
+            )
         return data[:, :, key]
 
 
@@ -798,21 +856,23 @@ class RawShiftFactor(CustomFactor):
     """
     Shift the input data directly, note that this method will not process adjustment.
     """
+
     def __init__(self, data, periods=1):
         super().__init__(inputs=[data])
         self.periods = periods
 
     def compute(self, data: torch.Tensor) -> torch.Tensor:
         if data.dtype in {torch.bool, torch.int8, torch.int16, torch.int32, torch.int64}:
-            raise ValueError('RawShiftFactor does not support `int` or `bool` type, '
-                             'please convert to float by using `factor.float()`, upstreams: {}'
-                             .format(self.inputs))
+            raise ValueError(
+                "RawShiftFactor does not support `int` or `bool` type, "
+                f"please convert to float by using `factor.float()`, upstreams: {self.inputs}"
+            )
 
         shift = data.roll(self.periods, dims=1)
         if self.periods > 0:
-            shift[:, 0:self.periods] = np.nan
+            shift[:, 0 : self.periods] = np.nan
         elif self.periods < 0:
-            shift[:, self.periods:] = np.nan
+            shift[:, self.periods :] = np.nan
         else:
             raise ValueError("Cannot shift with 0")
         return shift
@@ -839,11 +899,11 @@ class UniqueTSSumFactor(CustomFactor):
             s[:, :, 0:1] = np.nan
             u = x.masked_fill(x == s, np.nan)
             return nansum(u, dim=2)
+
         return data.agg(_uni_sum)
 
 
 class XSSumFactor(CrossSectionFactor):
-
     def compute(self, data: torch.Tensor) -> torch.Tensor:
         return data.nansum(dim=-1).unsqueeze(-1).expand(data.shape[0], data.shape[1])
 
@@ -867,7 +927,7 @@ class SignFactor(CustomFactor):
 
 class RoundFactor(CustomFactor):
     def compute(self, data: torch.Tensor, decimal) -> torch.Tensor:
-        digits = 10 ** decimal
+        digits = 10**decimal
         return (data * digits).round() / digits
 
 
@@ -882,6 +942,7 @@ class NonNaNCountFactor(CustomFactor):
     def compute(self, data: Rolling) -> torch.Tensor:
         def _nan_count(_data):
             return (~torch.isnan(_data)).to(Global.float_type).sum(dim=2)
+
         return data.agg(_nan_count)
 
 
@@ -917,6 +978,7 @@ class FillNANFactor(CustomFactor):
             value = value.type(data.dtype)
         return data.masked_scatter(mask, value.masked_select(mask))
 
+
 class MaskedFillFactor(CustomFactor):
     def compute(self, data, mask, fill) -> torch.Tensor:
         if isinstance(fill, (int, float, bool)):
@@ -937,7 +999,7 @@ PlaceHolderFactor = DoNothingFactor
 class RankFactor(CrossSectionFactor):
     ascending = True
     normalize = False
-    method = 'average'
+    method = "average"
 
     def compute(self, data: torch.Tensor) -> torch.Tensor:
         ret = rankdata(data, 1, ascending=self.ascending, method=self.method)
@@ -947,13 +1009,14 @@ class RankFactor(CrossSectionFactor):
 
 
 class RollingRankFactor(CustomFactor):
-    """ rank over rolling period, scaled to the interval [1/days, 1] """
-    ascending = True,
+    """rank over rolling period, scaled to the interval [1/days, 1]"""
+
+    ascending = (True,)
     _min_win = 2
 
     def compute(self, data) -> torch.Tensor:
         def _rolling_rank(_data):
-            ret = rankdata(_data, 2, ascending=self.ascending, method='average', normalize=True)
+            ret = rankdata(_data, 2, ascending=self.ascending, method="average", normalize=True)
             return ret[:, :, -1]
 
         return data.agg(_rolling_rank)
@@ -967,9 +1030,9 @@ class DemeanFactor(CrossSectionFactor):
             s = self._revert_to_series(data)
             d = dict.fromkeys(s.index.levels[1], -1)
             d.update(self.group_dict)
-            g = s.groupby([d, 'date'], level=1, observed=False)
+            g = s.groupby([d, "date"], level=1, observed=False)
             ret = g.transform(lambda x: x - x.mean())
-            print('Spectre: Deprecated, group_dict will be removed in the future')
+            print("Spectre: Deprecated, group_dict will be removed in the future")
             return self._regroup(ret)
         else:
             # Why double?
@@ -990,18 +1053,16 @@ class DemeanFactor(CrossSectionFactor):
 
 
 class DemedianFactor(CrossSectionFactor):
-    nan_policy = 'omit'
+    nan_policy = "omit"
 
     def compute(self, data: torch.Tensor) -> torch.Tensor:
         universe_mask = self._get_computed_mask()
-        median, _ = masked_kth_value_1d(
-            data, universe_mask, [0.5], nan_policy=self.nan_policy)
+        median, _ = masked_kth_value_1d(data, universe_mask, [0.5], nan_policy=self.nan_policy)
 
         return data - median[0].expand(data.shape[0], data.shape[1])
 
 
 class MeanFactor(CrossSectionFactor):
-
     def compute(self, data: torch.Tensor, weight=None, weight_sum=None) -> torch.Tensor:
         if weight is None:
             return nanmean(data).unsqueeze(-1).expand(data.shape[0], data.shape[1])
@@ -1014,29 +1075,24 @@ class MeanFactor(CrossSectionFactor):
 
 
 class MedianFactor(CrossSectionFactor):
-
     def compute(self, data: torch.Tensor) -> torch.Tensor:
         universe_mask = self._get_computed_mask()
-        median, _ = masked_kth_value_1d(
-            data, universe_mask, [0.5], nan_policy='omit')
+        median, _ = masked_kth_value_1d(data, universe_mask, [0.5], nan_policy="omit")
         return median[0].expand(data.shape[0], data.shape[1])
 
 
 class XSMax(CrossSectionFactor):
-
     def compute(self, data: torch.Tensor) -> torch.Tensor:
         return nanmax(data).unsqueeze(-1).expand(data.shape[0], data.shape[1])
 
 
 class XSMin(CrossSectionFactor):
-
     def compute(self, data: torch.Tensor) -> torch.Tensor:
         return nanmin(data).unsqueeze(-1).expand(data.shape[0], data.shape[1])
 
 
 class ZScoreFactor(CrossSectionFactor):
-
-    def __init__(self, data, mask=None, groupby: str = 'date', weight=None):
+    def __init__(self, data, mask=None, groupby: str = "date", weight=None):
         super().__init__(inputs=[data, weight], mask=mask)
         self.groupby = groupby
 
@@ -1052,7 +1108,8 @@ class ZScoreFactor(CrossSectionFactor):
 
 
 class RollingZScoreFactor(CustomFactor):
-    """ ZScore over rolling period """
+    """ZScore over rolling period"""
+
     _min_win = 2
 
     def compute(self, data) -> torch.Tensor:
@@ -1066,6 +1123,7 @@ class RollingZScoreFactor(CustomFactor):
 
 class QuantileClassifier(CrossSectionFactor):
     """Returns the quantile of the factor at each datetime"""
+
     bins = 5
 
     def compute(self, data: torch.Tensor) -> torch.Tensor:
@@ -1082,7 +1140,8 @@ class ToWeightFactor(CrossSectionFactor):
 
 
 class ClampFactor(CustomFactor):
-    """ Simple Winsorizing """
+    """Simple Winsorizing"""
+
     _min_win = 1
 
     def __init__(self, data, left, right, fill=None):
@@ -1100,8 +1159,9 @@ class MADClampFactor(CustomFactor):
     Median Absolute Deviation Clamping
     median of the absolute deviations from the data's median
     """
+
     z = 5
-    nan_policy = 'omit'
+    nan_policy = "omit"
     m_is_mean = False  # switch to mean abs deviation
 
     def compute(self, data, fill):
@@ -1113,8 +1173,9 @@ class MADClampFactor(CustomFactor):
             diff = (data - center).abs()
             mad = nanmean(diff).unsqueeze(-1)
         else:
-            center, kth = masked_kth_value_1d(data, universe_mask, [0.5],
-                                              nan_policy=self.nan_policy)
+            center, kth = masked_kth_value_1d(
+                data, universe_mask, [0.5], nan_policy=self.nan_policy
+            )
             center, kth = center[0], kth[0]
             diff = (data - center).abs()
             # sort mad
@@ -1127,11 +1188,12 @@ class MADClampFactor(CustomFactor):
         lower = center - self.z * mad
         if fill is None:
             clamp_1d_(ret, lower, upper)
-        elif fill == 'center':
+        elif fill == "center":
             # masked_scatter_ takes source values in order, select the centers of masked first
             fill_mask = (ret <= lower) | (ret >= upper)
             ret.masked_scatter_(
-                fill_mask, center.expand(data.shape[0], data.shape[1]).masked_select(fill_mask))
+                fill_mask, center.expand(data.shape[0], data.shape[1]).masked_select(fill_mask)
+            )
         else:
             ret.masked_fill_((ret <= lower) | (ret >= upper), fill)
         return ret
@@ -1139,12 +1201,13 @@ class MADClampFactor(CustomFactor):
 
 class WinsorizingFactor(CustomFactor):
     z = 0.05
-    nan_policy = 'omit'
+    nan_policy = "omit"
 
     def compute(self, data):
         universe_mask = self._get_computed_mask()
-        k_values, _ = masked_kth_value_1d(data, universe_mask, [self.z, -self.z], even_mean=False,
-                                          nan_policy=self.nan_policy)
+        k_values, _ = masked_kth_value_1d(
+            data, universe_mask, [self.z, -self.z], even_mean=False, nan_policy=self.nan_policy
+        )
         lower, upper = k_values
 
         ret = data.clone()
@@ -1154,15 +1217,17 @@ class WinsorizingFactor(CustomFactor):
 
 class IQRNormalityFactor(CrossSectionFactor):
     """
-     0 = most likely be normal dist
-     > 0: how many times away from the standard deviation
+    0 = most likely be normal dist
+    > 0: how many times away from the standard deviation
     """
-    nan_policy = 'omit'
+
+    nan_policy = "omit"
 
     def compute(self, data):
         universe_mask = self._get_computed_mask()
-        k_values, _ = masked_kth_value_1d(data, universe_mask, [-0.25, 0.25], even_mean=False,
-                                          nan_policy=self.nan_policy)
+        k_values, _ = masked_kth_value_1d(
+            data, universe_mask, [-0.25, 0.25], even_mean=False, nan_policy=self.nan_policy
+        )
         q3, q1 = k_values
         iqr = q3 - q1
         std = nanstd(data).unsqueeze(-1)
@@ -1170,6 +1235,7 @@ class IQRNormalityFactor(CrossSectionFactor):
         normality = ((iqr / std) - 1.34898).abs()
 
         return normality.expand(data.shape[0], data.shape[1])
+
 
 # --------------- op factors ---------------
 
@@ -1204,7 +1270,7 @@ class ModFactor(CustomFactor):
 
 class PowFactor(CustomFactor):
     def compute(self, left, right) -> torch.Tensor:
-        return left ** right
+        return left**right
 
 
 class NegFactor(CustomFactor):

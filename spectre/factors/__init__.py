@@ -1,96 +1,114 @@
-from .engine import (
-    FactorEngine,
-    OHLCV,
+from .basic import (
+    EMA,
+    MA,
+    SMA,
+    VWAP,
+    AnnualizedVolatility,
+    AverageDollarVolume,
+    ConstantsFactor,
+    ElementWiseMax,
+    ElementWiseMin,
+    ExponentialWeightedMovingAverage,
+    LinearWeightedAverage,
+    LogReturns,
+    Returns,
+    RollingArgMax,
+    RollingArgMin,
+    SimpleMovingAverage,
+    WeightedAverageValue,
 )
-
-from .factor import (
-    BaseFactor, PlaceHolderFactor,
-    CustomFactor,
-    CrossSectionFactor,
-    RankFactor, RollingRankFactor,
-    ZScoreFactor, RollingZScoreFactor,
-    XSMax, XSMin,
-    QuantileClassifier,
-    SumFactor, ProdFactor, UniqueTSSumFactor,
-    MADClampFactor,
-    WinsorizingFactor,
-    IQRNormalityFactor,
-)
-
 from .datafactor import (
-    ColumnDataFactor,
     AdjustedColumnDataFactor,
     AssetClassifierDataFactor,
-    SeriesDataFactor,
+    ColumnDataFactor,
     DatetimeDataFactor,
+    SeriesDataFactor,
 )
-
-from .filter import (
-    FilterFactor,
-    StaticAssets,
-    OneHotEncoder,
-    AndFactor,
-    AnyFilter,
-    AllFilter,
-    PlaceHolderFilter,
+from .engine import (
+    OHLCV,
+    FactorEngine,
 )
-
-from .multiprocessing import (
-    CPUParallelFactor
+from .factor import (
+    BaseFactor,
+    CrossSectionFactor,
+    CustomFactor,
+    IQRNormalityFactor,
+    MADClampFactor,
+    PlaceHolderFactor,
+    ProdFactor,
+    QuantileClassifier,
+    RankFactor,
+    RollingRankFactor,
+    RollingZScoreFactor,
+    SumFactor,
+    UniqueTSSumFactor,
+    WinsorizingFactor,
+    XSMax,
+    XSMin,
+    ZScoreFactor,
 )
-
-from .basic import (
-    Returns,
-    LogReturns,
-    SimpleMovingAverage, MA, SMA,
-    WeightedAverageValue,
-    LinearWeightedAverage,
-    VWAP,
-    ExponentialWeightedMovingAverage, EMA,
-    AverageDollarVolume,
-    AnnualizedVolatility,
-    ElementWiseMax, ElementWiseMin,
-    RollingArgMax, RollingArgMin,
-    ConstantsFactor,
-)
-
-from .technical import (
-    BollingerBands, BBANDS,
-    MovingAverageConvergenceDivergenceSignal, MACD,
-    TrueRange, TRANGE,
-    RSI,
-    FastStochasticOscillator, STOCHF,
-)
-
-from .statistical import (
-    StandardDeviation, STDDEV,
-    RollingHigh, MAX,
-    RollingLow, MIN,
-    RollingLinearRegression,
-    RollingMomentum,
-    RollingQuantile,
-    HalfLifeMeanReversion,
-    RollingCorrelation,
-    RollingCovariance,
-    XSMaxCorrCoef,
-    InformationCoefficient, RankWeightedInformationCoefficient,
-    RollingInformationCoefficient,
-    TTest1Samp, StudentCDF,
-    CrossSectionR2,
-    FactorWiseKthValue, FactorWiseZScore,
-)
-
 from .feature import (
+    IS_DECEMBER,
+    IS_JANUARY,
+    IS_MONTH_END,
+    IS_MONTH_START,
+    IS_QUARTER_END,
+    IS_QUARTER_START,
+    MONTH,
+    QUARTER,
+    TIME,
+    WEEKDAY,
+    AdvanceDeclineRatio,
+    AssetData,
     MarketDispersion,
     MarketReturn,
     MarketVolatility,
-    AdvanceDeclineRatio,
-    AssetData,
-    MONTH, WEEKDAY, QUARTER, TIME,
-    IS_JANUARY, IS_DECEMBER, IS_MONTH_END, IS_MONTH_START, IS_QUARTER_END, IS_QUARTER_START,
 )
-
+from .filter import (
+    AllFilter,
+    AndFactor,
+    AnyFilter,
+    FilterFactor,
+    OneHotEncoder,
+    PlaceHolderFilter,
+    StaticAssets,
+)
 from .label import (
-    RollingFirst,
     ForwardSignalData,
+    RollingFirst,
+)
+from .multiprocessing import CPUParallelFactor
+from .statistical import (
+    MAX,
+    MIN,
+    STDDEV,
+    CrossSectionR2,
+    FactorWiseKthValue,
+    FactorWiseZScore,
+    HalfLifeMeanReversion,
+    InformationCoefficient,
+    RankWeightedInformationCoefficient,
+    RollingCorrelation,
+    RollingCovariance,
+    RollingHigh,
+    RollingInformationCoefficient,
+    RollingLinearRegression,
+    RollingLow,
+    RollingMomentum,
+    RollingQuantile,
+    StandardDeviation,
+    StudentCDF,
+    TTest1Samp,
+    XSMaxCorrCoef,
+)
+from .technical import (
+    BBANDS,
+    MACD,
+    RSI,
+    STOCHF,
+    TRANGE,
+    BollingerBands,
+    FastStochasticOscillator,
+    MovingAverageConvergenceDivergenceSignal,
+    TrueRange,
 )

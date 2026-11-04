@@ -4,12 +4,14 @@
 @license: GPL-3.0-only
 @email: heeroz@gmail.com
 """
-from abc import ABC
-from typing import Set
-from .factor import BaseFactor, CustomFactor, MultiRetSelector
-from ..parallel import Rolling
-import torch
+
 import warnings
+from abc import ABC
+
+import torch
+
+from ..parallel import Rolling
+from .factor import BaseFactor, CustomFactor, MultiRetSelector
 
 
 class FilterFactor(CustomFactor, ABC):
@@ -22,25 +24,28 @@ class FilterFactor(CustomFactor, ABC):
         return factor
 
     def sum(self, win):
-        raise ValueError("FilterFactor does not support `.sum()` method, "
-                         "please convert to float by using `filter_factor.float()`")
+        raise ValueError(
+            "FilterFactor does not support `.sum()` method, "
+            "please convert to float by using `filter_factor.float()`"
+        )
 
     def filter(self, mask):
-        raise ValueError("FilterFactor does not support local filtering `.filter()` method, "
-                         "please convert to float by using `filter_factor.float()`")
+        raise ValueError(
+            "FilterFactor does not support local filtering `.filter()` method, "
+            "please convert to float by using `filter_factor.float()`"
+        )
 
     def ts_any(self, win):
-        """ Return True if Rolling window contains any True """
+        """Return True if Rolling window contains any True"""
         return AnyFilter(win, inputs=(self,))
 
     def ts_all(self, win):
-        """ Return True if Rolling window all are True """
+        """Return True if Rolling window all are True"""
         return AllFilter(win, inputs=(self,))
 
 
 class FilterMultiRetSelector(MultiRetSelector, FilterFactor):
     """MultiRetSelector returns CustomFactor, we're override here as FilterFactor"""
-    pass
 
 
 class PlaceHolderFilter(FilterFactor):
@@ -49,23 +54,26 @@ class PlaceHolderFilter(FilterFactor):
 
 
 class FilterRawShiftFactor(FilterFactor):
-    """For "roll_cuda" not implemented for 'Bool' """
+    """For "roll_cuda" not implemented for 'Bool'"""
+
     periods = 1
 
     def compute(self, data: torch.Tensor) -> torch.Tensor:
         shift = data.char().roll(self.periods, dims=1)
         if self.periods > 0:
-            shift[:, 0:self.periods] = 0
+            shift[:, 0 : self.periods] = 0
         else:
-            shift[:, self.periods:] = 0
+            shift[:, self.periods :] = 0
 
         return shift.bool()
 
 
 class StaticAssets(FilterFactor):
     """Useful for remove specific outliers or debug some assets"""
-    def __init__(self, assets: Set[str]):
+
+    def __init__(self, assets: set[str]):
         from .engine import OHLCV
+
         super().__init__(win=1, inputs=[OHLCV.open])
         self.assets = assets
 
@@ -85,9 +93,9 @@ class OneHotEncoder(FilterFactor):
         classes = classes[~torch.isnan(classes)]
         one_hot = []
         if classes.shape[0] > 1000:
-            warnings.warn("One hot encoding with too many features: ({}). "
-                          .format(classes.shape[0]),
-                          RuntimeWarning)
+            warnings.warn(
+                f"One hot encoding with too many features: ({classes.shape[0]}). ", RuntimeWarning
+            )
         for i in range(classes.shape[0]):
             one_hot.append((data == classes[i]).unsqueeze(-1))
         return torch.cat(one_hot, dim=-1)

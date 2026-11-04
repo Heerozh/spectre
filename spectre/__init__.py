@@ -1,15 +1,9 @@
-
-from . import data
-from . import factors
-from . import parallel
-from . import trading
-from . import plotting
-
+from . import data, factors, parallel, plotting, trading
 
 __all__ = [
     "data",
     "factors",
     "parallel",
-    "trading",
     "plotting",
+    "trading",
 ]

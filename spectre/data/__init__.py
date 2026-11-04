@@ -1,12 +1,12 @@
-from .dataloader import (
-    DataLoader,
-    DataLoaderFastGetter,
-)
 from .arrow import (
     ArrowLoader,
 )
 from .csv import (
     CsvDirLoader,
+)
+from .dataloader import (
+    DataLoader,
+    DataLoaderFastGetter,
 )
 from .memory import (
     MemoryLoader,

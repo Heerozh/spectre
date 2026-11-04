@@ -4,6 +4,7 @@
 @license: GPL-3.0-only
 @email: heeroz@gmail.com
 """
+
 import warnings
 
 
@@ -14,34 +15,33 @@ def plot_chart(df_prices, ohlcv, df_factor, trace_types=None, styles=None, inlin
     asset_group = df_factor.index.get_level_values(1).remove_unused_categories()
     dfs = list(df_factor.groupby(asset_group))
     if len(dfs) > 5:
-        warnings.warn("Warning!! Too many assets {}, only plotting top 5.".format(len(dfs)),
-                      RuntimeWarning)
+        warnings.warn(f"Warning!! Too many assets {len(dfs)}, only plotting top 5.", RuntimeWarning)
         dfs = dfs[:5]
     dfs = [(asset, factors) for (asset, factors) in dfs if factors.shape[0] > 0]
     trace_types = trace_types and trace_types or {}
 
     # init styles
     styles = styles and styles or {}
-    styles['price'] = styles.get('price', {})
-    styles['volume'] = styles.get('volume', {})
+    styles["price"] = styles.get("price", {})
+    styles["volume"] = styles.get("volume", {})
 
     # default styles
-    styles['height'] = styles.get('height', 500)
-    styles['price']['line'] = styles['price'].get('line', dict(width=1))
-    styles['price']['name'] = styles['price'].get('name', 'price')
-    styles['volume']['opacity'] = styles['volume'].get('opacity', 0.2)
-    styles['volume']['yaxis'] = styles['volume'].get('yaxis', 'y2')
-    styles['volume']['name'] = styles['volume'].get('name', 'volume')
+    styles["height"] = styles.get("height", 500)
+    styles["price"]["line"] = styles["price"].get("line", dict(width=1))
+    styles["price"]["name"] = styles["price"].get("name", "price")
+    styles["volume"]["opacity"] = styles["volume"].get("opacity", 0.2)
+    styles["volume"]["yaxis"] = styles["volume"].get("yaxis", "y2")
+    styles["volume"]["name"] = styles["volume"].get("name", "volume")
 
     # get y_axes
     y_axes = set()
-    for k, v in styles.items():
+    for v in styles.values():
         if not isinstance(v, dict):
             continue
-        if 'yaxis' in v:
-            y_axes.add('yaxis' + v['yaxis'][1:])
-        if 'yref' in v:
-            y_axes.add('yaxis' + v['yref'][1:])
+        if "yaxis" in v:
+            y_axes.add("yaxis" + v["yaxis"][1:])
+        if "yref" in v:
+            y_axes.add("yaxis" + v["yref"][1:])
 
     figs = {}
     # plotting
@@ -57,26 +57,30 @@ def plot_chart(df_prices, ohlcv, df_factor, trace_types=None, styles=None, inlin
         if ohlcv[0] is not None:
             # add candlestick
             fig.add_trace(
-                go.Candlestick(x=index, open=prices[ohlcv[0]], high=prices[ohlcv[1]],
-                               low=prices[ohlcv[2]], close=prices[ohlcv[3]], **styles['price']))
-            fig.add_trace(
-                go.Bar(x=index, y=prices[ohlcv[4]], **styles['volume']))
+                go.Candlestick(
+                    x=index,
+                    open=prices[ohlcv[0]],
+                    high=prices[ohlcv[1]],
+                    low=prices[ohlcv[2]],
+                    close=prices[ohlcv[3]],
+                    **styles["price"],
+                )
+            )
+            fig.add_trace(go.Bar(x=index, y=prices[ohlcv[4]], **styles["volume"]))
         else:
             # add line plot
             if ohlcv[3] is not None:
-                fig.add_trace(
-                    go.Scatter(x=index, y=prices[ohlcv[3]], **styles['price']))
+                fig.add_trace(go.Scatter(x=index, y=prices[ohlcv[3]], **styles["price"]))
             if ohlcv[4] is not None:
-                fig.add_trace(
-                    go.Scatter(x=index, y=prices[ohlcv[4]], **styles['volume']))
+                fig.add_trace(go.Scatter(x=index, y=prices[ohlcv[4]], **styles["volume"]))
 
         # add factors
         for col in factors.columns:
-            trace_type = trace_types.get(col, 'Scatter')
+            trace_type = trace_types.get(col, "Scatter")
             if trace_type is None:
                 continue
             style = styles.get(col, {})
-            style['name'] = style.get('name', col)
+            style["name"] = style.get("name", col)
             fig.add_trace(getattr(go, trace_type)(x=index, y=factors[col], **style))
 
         new_axis = dict(anchor="free", overlaying="y", side="right", position=1)
@@ -84,15 +88,16 @@ def plot_chart(df_prices, ohlcv, df_factor, trace_types=None, styles=None, inlin
         alpha_ordered_axises.sort()
         for y_axis in alpha_ordered_axises:
             fig.update_layout(**{y_axis: new_axis})
-            new_axis['position'] -= 0.03
-        x_right = new_axis['position'] + 0.03
+            new_axis["position"] -= 0.03
+        x_right = new_axis["position"] + 0.03
 
         fig.update_layout(xaxis=dict(domain=[0, x_right]))
         fig.update_xaxes(rangeslider=dict(visible=False))
         fig.update_yaxes(showgrid=False, scaleanchor="x", scaleratio=1)
-        fig.update_layout(legend=dict(xanchor='right', x=x_right, y=1, bgcolor='rgba(0,0,0,0)'))
-        fig.update_layout(height=styles['height'], barmode='group', bargap=0.5, margin={'t': 50},
-                          title=asset)
+        fig.update_layout(legend=dict(xanchor="right", x=x_right, y=1, bgcolor="rgba(0,0,0,0)"))
+        fig.update_layout(
+            height=styles["height"], barmode="group", bargap=0.5, margin={"t": 50}, title=asset
+        )
 
         if inline:
             fig.show()

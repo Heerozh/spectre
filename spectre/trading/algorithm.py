@@ -4,19 +4,21 @@
 @license: GPL-3.0-only
 @email: heeroz@gmail.com
 """
-from abc import ABC
-from typing import Union
-import pandas as pd
-import numpy as np
+
 import gc
 import os
-import torch
+from abc import ABC
 from collections import namedtuple
-from .event import Event, EventReceiver, EventManager, EveryBarData, MarketOpen, MarketClose
+
+import numpy as np
+import pandas as pd
+import torch
+
+from ..data import DataLoader, DataLoaderFastGetter
+from ..factors import OHLCV, FactorEngine, StaticAssets
 from ..plotting import cumulative_returns_fig
 from .blotter import BaseBlotter, SimulationBlotter
-from ..factors import FactorEngine, OHLCV, StaticAssets
-from ..data import DataLoader, DataLoaderFastGetter
+from .event import Event, EventManager, EventReceiver, EveryBarData, MarketClose, MarketOpen
 
 
 class Recorder:
@@ -24,25 +26,26 @@ class Recorder:
         self._records = []
 
     def record(self, date, table):
-        if 'date' in table:
-            raise ValueError('`date` is reserved key for record.')
+        if "date" in table:
+            raise ValueError("`date` is reserved key for record.")
         if np.any([isinstance(v, np.ndarray) for v in table.values()]):
             raise ValueError("recorder does not support np.ndarray datatype")
-        table['date'] = date
+        table["date"] = date
         self._records.append(table)
 
     def to_df(self):
         ret = pd.DataFrame(self._records)
         if ret.shape[0] > 0:
-            ret = ret.set_index('date').sort_index(axis=0)
+            ret = ret.set_index("date").sort_index(axis=0)
         return ret.groupby(level=0).last()
 
 
 class CustomAlgorithm(EventReceiver, ABC):
-    Results = namedtuple('Results', ['returns', 'positions', 'transactions'])
+    Results = namedtuple("Results", ["returns", "positions", "transactions"])
     """
     Base class for custom trading algorithm.
     """
+
     def __init__(self, blotter: BaseBlotter, **data_sources: DataLoader):
         """
         :param blotter: order management system for this algorithm.
@@ -75,24 +78,29 @@ class CustomAlgorithm(EventReceiver, ABC):
         self._engines[name] = FactorEngine(loader)
         return self._engines[name]
 
-    def get_factor_engine(self, name: str = None):
+    def get_factor_engine(self, name: str | None = None):
         if name is None:
             name = next(iter(self._engines))
 
         if name not in self._engines:
-            raise KeyError("Data source '{0}' not found, please pass in the algorithm "
-                           "initialization: `YourAlgorithm({0}=DataLoader())`".format(name))
+            raise KeyError(
+                f"Data source '{name}' not found, please pass in the algorithm "
+                f"initialization: `YourAlgorithm({name}=DataLoader())`"
+            )
         return self._engines[name]
 
-    def get_price_matrix(self, length: pd.DateOffset, name: str = None, prices=OHLCV.close):
+    def get_price_matrix(self, length: pd.DateOffset, name: str | None = None, prices=OHLCV.close):
         if name is None:
             name = next(iter(self._engines))
 
         if name not in self._engines:
-            raise KeyError("Data source '{0}' not found, please pass in the algorithm "
-                           "initialization: `YourAlgorithm({0}=DataLoader())`".format(name))
+            raise KeyError(
+                f"Data source '{name}' not found, please pass in the algorithm "
+                f"initialization: `YourAlgorithm({name}=DataLoader())`"
+            )
         return self._engines[name].get_price_matrix(
-            self._current_dt - length, self._current_dt, prices=prices)
+            self._current_dt - length, self._current_dt, prices=prices
+        )
 
     def set_datetime(self, dt: pd.Timestamp) -> None:
         self._current_dt = dt
@@ -104,19 +112,19 @@ class CustomAlgorithm(EventReceiver, ABC):
 
     @property
     def long_only(self):
-        raise RuntimeError('Please using self.blotter.long_only')
+        raise RuntimeError("Please using self.blotter.long_only")
 
     @long_only.setter
     def long_only(self, b):
-        raise RuntimeError('Please using self.blotter.long_only')
+        raise RuntimeError("Please using self.blotter.long_only")
 
     @property
     def daily_curb(self):
-        raise RuntimeError('Please using self.blotter.daily_curb')
+        raise RuntimeError("Please using self.blotter.daily_curb")
 
     @daily_curb.setter
     def daily_curb(self, b):
-        raise RuntimeError('Please using self.blotter.daily_curb')
+        raise RuntimeError("Please using self.blotter.daily_curb")
 
     @property
     def results(self):
@@ -136,12 +144,12 @@ class CustomAlgorithm(EventReceiver, ABC):
     def cumulative_returns_fig(self, annual_risk_free, benchmark, start=0):
         returns = self._results.returns
         if returns.shape[0] <= 1 or returns.isna().all():
-            print('plot failed: Insufficient data')
+            print("plot failed: Insufficient data")
             return
 
         bench = None
         if isinstance(benchmark, pd.Series):
-            bench = benchmark.loc[returns.index[0]:returns.index[-1]]
+            bench = benchmark.loc[returns.index[0] : returns.index[-1]]
         elif isinstance(benchmark, str):
             engine = self.get_factor_engine()
             filter_ = engine.get_filter()
@@ -150,17 +158,23 @@ class CustomAlgorithm(EventReceiver, ABC):
             df = engine.get_price_matrix(returns.index[0], returns.index[-1])
             engine.set_filter(filter_)
             bench = df[benchmark]
-            bench = bench.resample('D').last().dropna()
+            bench = bench.resample("D").last().dropna()
             if len(bench) > 2:
                 bench = bench.pct_change()
             else:
                 bench = None
 
-        fig = cumulative_returns_fig(returns, self._results.positions,  self._results.transactions,
-                                     bench, annual_risk_free, start=start)
+        fig = cumulative_returns_fig(
+            returns,
+            self._results.positions,
+            self._results.transactions,
+            bench,
+            annual_risk_free,
+            start=start,
+        )
         return fig
 
-    def plot(self, annual_risk_free=0.04, benchmark: Union[pd.Series, str] = None) -> None:
+    def plot(self, annual_risk_free=0.04, benchmark: pd.Series | str = None) -> None:
         fig = self.cumulative_returns_fig(annual_risk_free, benchmark)
         if fig:
             fig.show()
@@ -169,14 +183,16 @@ class CustomAlgorithm(EventReceiver, ABC):
         history = self._data
         if isinstance(self._data, dict):
             if self._history_window is not None and self._history_window.n != 0:
-                history = {k: v.loc[(self._current_dt - self._history_window):]
-                           for k, v in self._data.items()}
+                history = {
+                    k: v.loc[(self._current_dt - self._history_window) :]
+                    for k, v in self._data.items()
+                }
         elif self._data is None:
             # data not ready
             return
         else:
             if self._history_window is not None and self._history_window.n != 0:
-                history = self._data.loc[(self._current_dt - self._history_window):]
+                history = self._data.loc[(self._current_dt - self._history_window) :]
         self._rebalance_callback(self._last_row, history)
 
     def schedule_rebalance(self, event: Event):
@@ -200,8 +216,9 @@ class CustomAlgorithm(EventReceiver, ABC):
             last_dt = df.index.get_level_values(0)[-1]
             return df, df.loc[last_dt]
         else:
-            dfs = {name: engine.run(start, end, delay_factor)
-                   for name, engine in self._engines.items()}
+            dfs = {
+                name: engine.run(start, end, delay_factor) for name, engine in self._engines.items()
+            }
             lasts = {k: v.loc[v.index.get_level_values(0)[-1]] for k, v in dfs.items()}
             return dfs, lasts
 
@@ -218,7 +235,8 @@ class CustomAlgorithm(EventReceiver, ABC):
         self._results = CustomAlgorithm.Results(
             returns=self.blotter.get_returns(),
             positions=self.blotter.get_historical_positions(),
-            transactions=self.blotter.get_transactions())
+            transactions=self.blotter.get_transactions(),
+        )
         self.terminate(self._recorder.to_df())
 
     def initialize(self):
@@ -237,7 +255,7 @@ class SimulationEventManager(EventManager):
 
     @classmethod
     def _get_most_granular(cls, data):
-        freq = {k: min(v.index.levels[0][1:]-v.index.levels[0][:-1]) for k, v in data.items()}
+        freq = {k: min(v.index.levels[0][1:] - v.index.levels[0][:-1]) for k, v in data.items()}
         return data[min(freq, key=freq.get)]
 
     @classmethod
@@ -257,27 +275,25 @@ class SimulationEventManager(EventManager):
             return func(data)
 
     def fire_before_event(self, event_type):
-        for _, events in self._subscribers.items():
+        for events in self._subscribers.values():
             for event in events:
-                if isinstance(event, event_type):
-                    if event.offset < 0:
-                        event.callback(self)
+                if isinstance(event, event_type) and event.offset < 0:
+                    event.callback(self)
 
     def fire_after_event(self, event_type):
-        for _, events in self._subscribers.items():
+        for events in self._subscribers.values():
             for event in events:
-                if isinstance(event, event_type):
-                    if event.offset >= 0:
-                        event.callback(self)
+                if isinstance(event, event_type) and event.offset >= 0:
+                    event.callback(self)
 
     def fire_market_open(self, alg):
         self.fire_before_event(MarketOpen)
-        alg.blotter.set_price('open')
+        alg.blotter.set_price("open")
         alg.blotter.update_portfolio_value()
         self.fire_after_event(MarketOpen)
 
     def fire_market_close(self, alg):
-        alg.blotter.set_price('close')
+        alg.blotter.set_price("close")
         alg.blotter.update_portfolio_value()
         self.fire_before_event(MarketClose)
         self.fire_after_event(MarketClose)
@@ -285,7 +301,7 @@ class SimulationEventManager(EventManager):
     def mock_data(self, data, datetime):
         def _mock_one(_getter):
             last = _getter.get_as_df(datetime)
-            head = _getter.source.iloc[:_getter.last_row_slice.stop]
+            head = _getter.source.iloc[: _getter.last_row_slice.stop]
             return last, head
 
         if isinstance(data, dict):
@@ -303,13 +319,13 @@ class SimulationEventManager(EventManager):
 
         # get factor data from algorithm or file
         run_engine = alg.run_engine
-        if 'save_factor' in alg.__dict__ and os.path.exists(alg.save_factor):
+        if "save_factor" in alg.__dict__ and os.path.exists(alg.save_factor):
             data = pd.read_feather(alg.save_factor)
-            data = data.set_index(['date', 'asset'])
-            print('Reading factors data from file: ', alg.save_factor)
+            data = data.set_index(["date", "asset"])
+            print("Reading factors data from file: ", alg.save_factor)
         else:
             data, _ = run_engine(start, end, delay_factor)
-            if 'save_factor' in alg.__dict__:
+            if "save_factor" in alg.__dict__:
                 data.reset_index().to_feather(alg.save_factor)
         # process data
         ticks = self.get_data_ticks(data, start)
@@ -318,7 +334,7 @@ class SimulationEventManager(EventManager):
         data = self.wrap_data(data, DataLoaderFastGetter)
         # mock CustomAlgorithm
         alg.run_engine = lambda *args, **kwargs: (self._mocked_data, self._mocked_last)
-        if 'empty_cache_after_run' in alg.__dict__:
+        if "empty_cache_after_run" in alg.__dict__:
             for eng in alg._engines.values():
                 eng.empty_cache()
             gc.collect()
@@ -340,13 +356,12 @@ class SimulationEventManager(EventManager):
             self.mock_data(data, dt)
 
             # if date changed
-            if dt.day != last_day:
-                if last_day is not None:
-                    self.fire_market_close(alg)
+            if dt.day != last_day and last_day is not None:
+                self.fire_market_close(alg)
             alg.set_datetime(dt)
 
             # fire daily data event
-            if data_freq == 'D':
+            if data_freq == "D":
                 self.fire_event(self, EveryBarData)
 
             # fire open event
@@ -355,8 +370,8 @@ class SimulationEventManager(EventManager):
                 last_day = dt.day
 
             # fire intraday data event
-            if data_freq != 'D':
-                alg.blotter.set_price('close')
+            if data_freq != "D":
+                alg.blotter.set_price("close")
                 self.fire_event(self, EveryBarData)
 
         self.fire_market_close(alg)
@@ -380,10 +395,10 @@ class SimulationEventManager(EventManager):
                 if not isinstance(alg, CustomAlgorithm):
                     continue
                 if not isinstance(alg.blotter, SimulationBlotter):
-                    raise ValueError('SimulationEventManager only supports SimulationBlotter.')
+                    raise ValueError("SimulationEventManager only supports SimulationBlotter.")
                 self.run_simulation_alg(alg, start, end, delay_factor)
         except KeyboardInterrupt:
-            print('Interrupted, terminating..')
+            print("Interrupted, terminating..")
 
-        for r in self._subscribers.keys():
+        for r in self._subscribers:
             r.on_end_of_run()

@@ -4,9 +4,11 @@
 @license: GPL-3.0-only
 @email: heeroz@gmail.com
 """
+
 import time
-from typing import Type
+
 import pandas as pd
+
 from .calendar import Calendar
 
 
@@ -23,18 +25,21 @@ class Event:
 
 class EveryBarData(Event):
     """This event is triggered passively"""
+
     def should_trigger(self) -> bool:
         return False
 
 
 class Always(Event):
     """Always event is useful for live date IO function like asio.read_until_complete()"""
+
     def should_trigger(self) -> bool:
         return True
 
 
 class CalendarEvent(Event):
-    """ The following code is for live trading, will not work on back-testing """
+    """The following code is for live trading, will not work on back-testing"""
+
     def __init__(self, calendar_event_name, callback, offset_ns=0) -> None:
         super().__init__(callback)
         self.offset = offset_ns
@@ -50,8 +55,9 @@ class CalendarEvent(Event):
             pass
 
     def calculate_range(self):
-        self.trigger_time = self.calendar.events[self.event_name][0] + \
-                            pd.Timedelta(self.offset, unit='ns')
+        self.trigger_time = self.calendar.events[self.event_name][0] + pd.Timedelta(
+            self.offset, unit="ns"
+        )
 
     def should_trigger(self) -> bool:
         if self.calendar.hr_now() >= self.trigger_time:
@@ -62,15 +68,17 @@ class CalendarEvent(Event):
 
 
 class MarketOpen(CalendarEvent):
-    """ Works on both live and backtest """
+    """Works on both live and backtest"""
+
     def __init__(self, callback, offset_ns=0) -> None:
-        super().__init__('Open', callback, offset_ns)
+        super().__init__("Open", callback, offset_ns)
 
 
 class MarketClose(CalendarEvent):
-    """ Works on both live and backtest """
+    """Works on both live and backtest"""
+
     def __init__(self, callback, offset_ns=0) -> None:
-        super().__init__('Close', callback, offset_ns)
+        super().__init__("Close", callback, offset_ns)
 
 
 # ----------------------------------------------------------------
@@ -90,7 +98,7 @@ class EventReceiver:
     def stop_event_manager(self):
         self._event_manager.stop()
 
-    def fire_event(self, evt_type: Type[Event]):
+    def fire_event(self, evt_type: type[Event]):
         self._event_manager.fire_event(self, evt_type)
 
     def on_run(self):
@@ -106,12 +114,12 @@ class EventManager:
         self._stop = False
 
     def subscribe(self, receiver: EventReceiver):
-        assert receiver not in self._subscribers, 'Duplicate subscribe'
+        assert receiver not in self._subscribers, "Duplicate subscribe"
         self._subscribers[receiver] = []
         receiver._event_manager = self
 
     def unsubscribe(self, receiver: EventReceiver):
-        assert receiver in self._subscribers, 'Subscriber not exists'
+        assert receiver in self._subscribers, "Subscriber not exists"
         del self._subscribers[receiver]
         receiver._event_manager = None
 
@@ -119,8 +127,8 @@ class EventManager:
         self._subscribers[receiver].append(event)
         event.on_schedule(self)
 
-    def fire_event(self, source, evt_type: Type[Event]):
-        for r, events in self._subscribers.items():
+    def fire_event(self, source, evt_type: type[Event]):
+        for events in self._subscribers.values():
             for evt in events:
                 if isinstance(evt, evt_type):
                     evt.callback(source)
@@ -138,11 +146,11 @@ class EventManager:
             r.on_run()
 
     def _end_run(self):
-        for r in self._subscribers.keys():
+        for r in self._subscribers:
             r.on_end_of_run()
 
     def _run_once(self):
-        for r, events in self._subscribers.items():
+        for events in self._subscribers.values():
             for event in events:
                 if event.should_trigger():
                     event.callback(self)
@@ -164,4 +172,3 @@ class MarketEventManager(EventManager):
     def __init__(self, calendar: Calendar) -> None:
         self.calendar = calendar
         super().__init__()
-

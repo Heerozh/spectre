@@ -4,9 +4,12 @@
 @license: GPL-3.0-only
 @email: heeroz@gmail.com
 """
-from typing import Union, Callable
-import pandas as pd
+
+from collections.abc import Callable
+
 import numpy as np
+import pandas as pd
+
 from .position import Position
 from .stopmodel import StopModel
 
@@ -31,12 +34,12 @@ class Portfolio:
     def history(self):
         ret = pd.DataFrame(self._history + [self._get_today_record()])
         ret.columns = pd.MultiIndex.from_tuples(ret.columns)
-        ret = ret.set_index('index').sort_index(axis=0).sort_index(axis=1)
+        ret = ret.set_index("index").sort_index(axis=0).sort_index(axis=1)
         return ret
 
     @property
     def fund_history(self):
-        return pd.DataFrame(self._funds_change).set_index('index')
+        return pd.DataFrame(self._funds_change).set_index("index")
 
     @property
     def returns(self):
@@ -45,10 +48,11 @@ class Portfolio:
             funds = pd.DataFrame(self._funds_change)
             # funds transferred before the first datetime is set have no date (None or NaT),
             # convert to datetime explicitly, or it may be an object index which can't align.
-            funds['index'] = pd.to_datetime([value.index[0] if pd.isna(date) else date
-                                             for date in funds['index']])
+            funds["index"] = pd.to_datetime(
+                [value.index[0] if pd.isna(date) else date for date in funds["index"]]
+            )
             # sum up multiple transfers on the same day, or the result has duplicate dates.
-            funds = funds.groupby('index').amount.sum()
+            funds = funds.groupby("index").amount.sum()
             return value.sub(funds, fill_value=0) / value.shift(1) - 1
         else:
             return self.history.value.sum(axis=1).pct_change()
@@ -92,11 +96,11 @@ class Portfolio:
 
     def _get_today_record(self):
         current_date = self._current_dt.normalize()
-        record = {('index', ''): current_date, ('value', 'cash'): self._cash}
+        record = {("index", ""): current_date, ("value", "cash"): self._cash}
         for asset, pos in self._positions.items():
-            record[('avg_px', asset)] = pos.average_price
-            record[('shares', asset)] = pos.shares
-            record[('value', asset)] = pos.value
+            record[("avg_px", asset)] = pos.average_price
+            record[("shares", asset)] = pos.shares
+            record[("value", asset)] = pos.value
         return record
 
     def set_datetime(self, dt):
@@ -106,7 +110,7 @@ class Portfolio:
         if self._current_dt is not None:
             current_date = self._current_dt.normalize()
             if dt < self._current_dt:
-                raise ValueError('Cannot set a date less than the current date')
+                raise ValueError("Cannot set a date less than the current date")
             elif date > current_date:
                 # today add to history
                 self._history.append(self._get_today_record())
@@ -122,17 +126,19 @@ class Portfolio:
             return 0
         if asset in self._positions:
             empty, realized = self._positions[asset].update(
-                amount, fill_price, commission, self._current_dt)
+                amount, fill_price, commission, self._current_dt
+            )
             if empty:
                 del self._positions[asset]
             return realized
         else:
             self._positions[asset] = Position(
-                amount, fill_price, commission, self._current_dt, self.stop_model)
+                amount, fill_price, commission, self._current_dt, self.stop_model
+            )
             return 0
 
     def update_cash(self, amount, is_funds=False):
-        """ is_funds: Is this cash update related to funds transfer, (deposits/withdraw) """
+        """is_funds: Is this cash update related to funds transfer, (deposits/withdraw)"""
         assert amount == amount
         self._cash += amount
         if is_funds:
@@ -140,7 +146,7 @@ class Portfolio:
                 current_date = None
             else:
                 current_date = self._current_dt.normalize()
-            self._funds_change.append({'index': current_date, 'amount': amount})
+            self._funds_change.append({"index": current_date, "amount": amount})
 
     def process_split(self, asset, inverse_ratio: float, last_price):
         if asset not in self._positions:
@@ -158,7 +164,7 @@ class Portfolio:
 
     def process_borrow_interest(self, day_passed, money_interest_rate, stock_interest_rate):
         interest = 0
-        for asset, pos in self._positions.items():
+        for pos in self._positions.values():
             # 有的时候运行到这pos.last_price没更新会导致cash变成nan，还没找到哪里没更新
             if pos.shares < 0 and pos.value == pos.value:
                 interest += pos.value * (stock_interest_rate / 365) * day_passed
@@ -178,13 +184,13 @@ class Portfolio:
             if price == price:
                 pos.last_price = price
 
-    def update_value(self, prices: Union[Callable, dict]):
+    def update_value(self, prices: Callable | dict):
         if callable(prices):
             self._update_value_func(prices)
         elif isinstance(prices, dict):
             self._update_value_dict(prices)
         else:
-            raise ValueError('prices either callable or dict')
+            raise ValueError("prices either callable or dict")
 
     def check_stop_trigger(self, *args):
         ret = []

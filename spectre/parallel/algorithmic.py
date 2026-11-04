@@ -4,15 +4,20 @@
 @license: GPL-3.0-only
 @email: heeroz@gmail.com
 """
-from typing import Callable, Union
-import torch
+
+import itertools
+from collections.abc import Callable
+
 import numpy as np
-from .constants import DeviceConstant
+import torch
+
 from ..config import Global
+from .constants import DeviceConstant
 
 
 class ParallelGroupBy:
     """Fast parallel group by"""
+
     GROUPBY_SORT_IN_GPU = False  # Enable it if your GPU >20G VRAM
 
     def __init__(self, keys: torch.Tensor):
@@ -32,7 +37,7 @@ class ParallelGroupBy:
         groups = len(boundary) - 1
         inverse_indices = sorted_indices.new_full((groups, width), n + 1)
         for start, end, i in zip(boundary[:-1], boundary[1:], range(groups)):
-            inverse_indices[i, 0:(end - start)] = sorted_indices[start:end]
+            inverse_indices[i, 0 : (end - start)] = sorted_indices[start:end]
         # flatten inverse_indices for sorting
         inverse_indices = inverse_indices.view(-1)
         # sorting in CPU or GPU?
@@ -45,7 +50,7 @@ class ParallelGroupBy:
         # for fast split
         take_indices = sorted_indices.new_full((groups, width), -1)
         for start, end, i in zip(boundary[:-1], boundary[1:], range(groups)):
-            take_indices[i, 0:(end - start)] = sorted_indices[start:end]
+            take_indices[i, 0 : (end - start)] = sorted_indices[start:end]
         take_indices = take_indices.to(keys.device, non_blocking=True)
         # class members
         self._boundary = boundary
@@ -64,24 +69,28 @@ class ParallelGroupBy:
         ret = torch.take(data, self._sorted_indices)
         if ret.dtype in {torch.int8, torch.int16, torch.int32, torch.int64}:
             print(data)
-            raise ValueError('tensor cannot be any type of int, recommended to use float32')
+            raise ValueError("tensor cannot be any type of int, recommended to use float32")
         if ret.dtype == torch.bool:
             ret.masked_fill_(self._padding_mask, False)
         else:
             ret.masked_fill_(self._padding_mask, np.nan)
         return ret
 
-    def revert(self, split_data: torch.Tensor, dbg_str='None') -> torch.Tensor:
+    def revert(self, split_data: torch.Tensor, dbg_str="None") -> torch.Tensor:
         if tuple(split_data.shape) != self._data_shape:
             if tuple(split_data.shape[:2]) == self._data_shape[:2]:
-                raise ValueError('The downstream needs shape{2}, and the input factor "{1}" is '
-                                 'shape{0}. Look like this factor has multiple return values, '
-                                 'using slice to select a value before using it, for example: '
-                                 '`factor[0]`.'
-                                 .format(tuple(split_data.shape), dbg_str, self._data_shape))
+                raise ValueError(
+                    f"The downstream needs shape{self._data_shape}, "
+                    f'and the input factor "{dbg_str}" is shape{tuple(split_data.shape)}. '
+                    "Look like this factor has multiple return values, "
+                    "using slice to select a value before using it, for example: "
+                    "`factor[0]`."
+                )
             else:
-                raise ValueError('The return data shape{} of Factor `{}` must same as input{}.'
-                                 .format(tuple(split_data.shape), dbg_str, self._data_shape))
+                raise ValueError(
+                    f"The return data shape{tuple(split_data.shape)} of Factor `{dbg_str}` "
+                    f"must same as input{self._data_shape}."
+                )
         return torch.take(split_data, self._inverse_indices)
 
     def create(self, dtype, values, nan_fill=np.nan):
@@ -102,12 +111,13 @@ class DummyParallelGroupBy:
     def split(self, data: torch.Tensor) -> torch.Tensor:
         return data.unsqueeze(self.dim)
 
-    def revert(self, split_data: torch.Tensor, dbg_str='None') -> torch.Tensor:
+    def revert(self, split_data: torch.Tensor, dbg_str="None") -> torch.Tensor:
         return split_data.squeeze()
 
     def create(self, dtype, values, nan_fill=np.nan):
-        ret = torch.full(self._padding_mask.shape, values, dtype=dtype,
-                         device=self._padding_mask.device).squeeze()
+        ret = torch.full(
+            self._padding_mask.shape, values, dtype=dtype, device=self._padding_mask.device
+        ).squeeze()
         return ret
 
 
@@ -223,7 +233,7 @@ def pad_2d(data: torch.Tensor, including_inf=False, including_nan=True) -> torch
     return torch.gather(data, 1, idx)
 
 
-def rankdata(data: torch.Tensor, dim=1, ascending=True, method='average', normalize=False):
+def rankdata(data: torch.Tensor, dim=1, ascending=True, method="average", normalize=False):
     nans = torch.isnan(data)
     if not ascending:
         filled = data.masked_fill(nans, -np.inf)
@@ -233,8 +243,8 @@ def rankdata(data: torch.Tensor, dim=1, ascending=True, method='average', normal
     rank, inv = torch.sort(sorter.to(torch.int32), dim=dim)
     del sorter
 
-    if method == 'ordinal':
-        ret = (inv.to(Global.float_type) + 1.)
+    if method == "ordinal":
+        ret = inv.to(Global.float_type) + 1.0
     else:
         flt = DeviceConstant.get(inv.device).arange(np.prod(inv.shape[:dim]), dtype=inv.dtype)
         inv += (flt * inv.shape[dim]).view(*inv.shape[:dim], 1)
@@ -242,16 +252,16 @@ def rankdata(data: torch.Tensor, dim=1, ascending=True, method='average', normal
         obs = arr != arr.roll(1, dims=dim)
         del arr
 
-        if method == 'average':
+        if method == "average":
             lower = rank.masked_fill(~obs, 0)
             upper = rank.masked_fill(~obs.roll(-1, dims=dim), rank.shape[dim]).flip(dims=[dim])
             del rank, obs
             lower = lower.cummax(dim=dim).values
             upper = upper.cummin(dim=dim).values.flip(dims=[dim])
 
-            avg = (upper + lower + 2) * .5
+            avg = (upper + lower + 2) * 0.5
             ret = torch.take(avg, inv)
-        elif method == 'dense':
+        elif method == "dense":
             dense = obs.cumsum(dim=1).to(Global.float_type)
             ret = torch.take(dense, inv)
 
@@ -288,7 +298,7 @@ def spearman(rank_x, rank_y, dim=1):
     se = (rank_x - rank_y) ** 2
     mask = torch.isnan(se)
     n = (~mask).sum(dim=dim)
-    p = 1 - 6 * unmasked_sum(se, mask, dim=dim) / (n * (n ** 2 - 1))
+    p = 1 - 6 * unmasked_sum(se, mask, dim=dim) / (n * (n**2 - 1))
     return p
 
 
@@ -343,8 +353,9 @@ def quantile(data, bins, dim=1):
     return ret
 
 
-def masked_kth_value_1d(data, universe_mask, k_percents, even_mean=True,
-                        nan_policy: Union[str, float] = 'omit', dim=1):
+def masked_kth_value_1d(
+    data, universe_mask, k_percents, even_mean=True, nan_policy: str | float = "omit", dim=1
+):
     """
     :param data:
     :param universe_mask:
@@ -421,8 +432,7 @@ class Rolling:
         new_x = torch.cat((nan_stack, x), dim=1)
         return new_x.unfold(1, win, 1)
 
-    def __init__(self, x: torch.Tensor, win: int, _adjustment: torch.Tensor = None,
-                 fill=np.nan):
+    def __init__(self, x: torch.Tensor, win: int, _adjustment: torch.Tensor = None, fill=np.nan):
         """
         :param fill: value of the window before the first data. Note that nan is True for bool
             tensor.
@@ -433,11 +443,11 @@ class Rolling:
         self.device = x.device
 
         # rolling multiplication will consume lot of memory, split it by size
-        memory_usage = self.values.nelement() * win / (1024. ** 3)
+        memory_usage = self.values.nelement() * win / (1024.0**3)
         memory_usage *= Rolling._split_multi
         step = max(int(self.values.shape[1] / memory_usage), 1)
         boundary = list(range(0, self.values.shape[1], step)) + [self.values.shape[1]]
-        self.split = list(zip(boundary[:-1], boundary[1:]))
+        self.split = list(itertools.pairwise(boundary))
 
         if _adjustment is not None:
             rolling_adj = Rolling(_adjustment, win)
@@ -453,8 +463,10 @@ class Rolling:
         new_x = self.values.as_strided(size, (size[1], 1)).cpu()
         self.values = new_x.unfold(1, self.win, 1)
         if self.adjustments is not None:
-            size = (self.adjustments.shape[0],
-                    self.adjustments.shape[1] + self.adjustments.shape[2] - 1)
+            size = (
+                self.adjustments.shape[0],
+                self.adjustments.shape[1] + self.adjustments.shape[2] - 1,
+            )
             new_x = self.adjustments.as_strided(size, (size[1], 1)).cpu()
             self.adjustments = new_x.unfold(1, self.win, 1)
             self.adjustment_last = self.adjustment_last.cpu()
@@ -469,16 +481,18 @@ class Rolling:
             return self.values[:, s:e]
 
     def __repr__(self):
-        return 'spectre.parallel.Rolling object contains:\n' + self.values.__repr__()
+        return "spectre.parallel.Rolling object contains:\n" + self.values.__repr__()
 
-    def agg(self, op: Callable, *others: 'Rolling'):
+    def agg(self, op: Callable, *others: "Rolling"):
         """
         Call `op` on the split rolling data one by one, pass in all the adjusted values,
         and finally aggregate them into a whole.
         """
-        assert all(r.win == self.win for r in others), '`others` must have same `win` with `self`'
-        seq = [op(self.adjust(s, e), *[r.adjust(s, e) for r in others]).contiguous()
-               for s, e in self.split]
+        assert all(r.win == self.win for r in others), "`others` must have same `win` with `self`"
+        seq = [
+            op(self.adjust(s, e), *[r.adjust(s, e) for r in others]).contiguous()
+            for s, e in self.split
+        ]
         return torch.cat(seq, dim=1)
 
     def loc(self, i):
