@@ -158,6 +158,18 @@ class CsvDirLoader(DataLoader):
             raise ValueError(f"Dir '{self._path}' does not contains any csv files.")
         return max([os.path.getmtime(fn) for fn in files])
 
+    def _index_by_datetime(self, df: pd.DataFrame) -> pd.DataFrame:
+        if isinstance(df.index, pd.DatetimeIndex):
+            return df
+        if not self._read_csv.get("parse_dates"):
+            raise ValueError(
+                "df must index by datetime, set correct `read_csv`, "
+                "for example index_col='date', parse_dates=True."
+            )
+        # pandas leaves a column with several UTC offsets as it is, a file gets them by crossing a
+        # change of the daylight saving time
+        return df.set_axis(pd.to_datetime(df.index, utc=True))
+
     def _walk_split_by_year_dir(self, csv_path, index_col):
         years = range(pd.Timestamp(self._earliest_date or 0).year, pd.Timestamp.now().year + 1)
         pattern = os.path.join(csv_path, self._file_pattern)
@@ -178,14 +190,7 @@ class CsvDirLoader(DataLoader):
             df = pd.concat(
                 [pd.read_csv(_fn, index_col=index_col, **self._read_csv) for _fn in file_list]
             )
-            if not isinstance(df.index, pd.DatetimeIndex):
-                raise ValueError(
-                    "df must index by datetime, set correct `read_csv`, "
-                    "for example index_col='date', parse_dates=True. "
-                    "For mixed-timezone like daylight saving time, "
-                    "set date_parser=lambda col: pd.to_datetime(col, utc=True)"
-                )
-
+            df = self._index_by_datetime(df)
             return df[~df.index.duplicated(keep="last")]
 
         dfs = {symbol: multi_read_csv(file_list) for symbol, file_list in assets.items()}
@@ -206,13 +211,7 @@ class CsvDirLoader(DataLoader):
             df = pd.read_csv(file, index_col=index_col, **self._read_csv)
             if len(df.index.dropna()) == 0:
                 return None
-            if not isinstance(df.index, pd.DatetimeIndex):
-                raise ValueError(
-                    "df must index by datetime, set correct `read_csv`, "
-                    "for example parse_dates=True. "
-                    "For mixed-timezone like daylight saving time, "
-                    "set date_parser=lambda col: pd.to_datetime(col, utc=True)"
-                )
+            df = self._index_by_datetime(df)
             if earliest_date is None:
                 return df
             # a mask, because the result of a slice depends on the order of the rows
@@ -227,6 +226,9 @@ class CsvDirLoader(DataLoader):
         else:
             dfs = self._walk_dir(self._path, self._prices_index, self._earliest_date)
         dfs = {k: v[~v.index.duplicated(keep="last")] for k, v in dfs.items() if v is not None}
+        if len({v.index.tz for v in dfs.values()}) > 1:
+            # concat can't keep several timezones in one index
+            dfs = {k: v.tz_convert("UTC") if v.index.tz else v for k, v in dfs.items()}
         df = pd.concat(dfs, sort=False)
         # the rows of a file, and the files of `prices_by_year`, can be in any order
         df = df.rename_axis(["asset", "date"]).sort_index()

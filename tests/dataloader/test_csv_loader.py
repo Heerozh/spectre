@@ -624,6 +624,30 @@ def test_ex_date_files_with_and_without_a_timezone(tmp_path):
     assert list(df["ex-dividend"].xs("B", level=1)) == [0, 1, 0, 0]
 
 
+def test_files_across_a_change_of_daylight_saving_time(tmp_path):
+    """pandas reads a column of two UTC offsets as strings, in prices and in ex-dates."""
+    closes = {f"{day} 09:30:00-05:00": 100.0 for day in DAYS[:2]}
+    closes |= {f"{day} 09:30:00-04:00": 100.0 for day in DAYS[2:4]}
+    splits = {f"{DAYS[1]} 00:00:00-05:00": 0.5, f"{DAYS[3]} 00:00:00-04:00": 0.5}
+    loader = events_loader(tmp_path, {"A": closes, "B": closes}, {}, splits)
+    df = loader.test_load()
+    expected = pd.to_datetime(list(closes), utc=True)
+    assert list(df.xs("A", level=1).index) == list(expected)
+    assert list(df.price_multi.xs("A", level=1)) == [0.25, 0.5, 0.5, 1]
+    assert list(df.price_multi.xs("B", level=1)) == [1, 1, 1, 1]
+
+
+def test_price_files_in_different_utc_offsets(tmp_path):
+    a = {f"{day} 09:30:00-05:00": 100.0 for day in DAYS[:3]}
+    b = {f"{day} 09:30:00-04:00": 100.0 for day in DAYS[:3]}
+    across = {f"{DAYS[0]} 09:30:00-05:00": 100.0, f"{DAYS[1]} 09:30:00-04:00": 100.0}
+    prices = {"A": a, "B": b, "C": across}
+    df = events_loader(tmp_path, prices, {}, {}).test_load()
+    for asset, closes in prices.items():
+        expected = pd.to_datetime(list(closes), utc=True)
+        assert list(df.xs(asset, level=1).index) == list(expected), asset
+
+
 def test_daily_ex_date_of_intraday_bars(tmp_path, device):
     closes = {f"{DAYS[0]} {time}": 100.0 for time in ("09:30:00", "09:35:00", "09:40:00")}
     closes |= {f"{DAYS[1]} {time}": 50.0 for time in ("09:30:00", "09:35:00", "09:40:00")}
