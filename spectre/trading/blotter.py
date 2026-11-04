@@ -204,9 +204,9 @@ class BaseBlotter:
 
     def batch_order_target(self, assets: Iterable[str], targets: Iterable[float]):
         skipped = []
-        if None in assets or np.nan in assets:
+        if None in assets or np.any([not (a == a) for a in assets]):
             raise ValueError('None/NaN in `assets: ' + str(assets))
-        if None in targets or np.nan in targets:
+        if None in targets or np.any([not (t == t) for t in targets]):
             raise ValueError('None/NaN in `targets: ' + str(targets))
         assets = list(assets)  # copy for preventing del items in loop
         for asset, target in zip(assets, targets):

@@ -100,6 +100,33 @@ def test_order_checks(blotter):
         blotter.order('AAPL', 10)
 
 
+@pytest.mark.parametrize(
+    'targets',
+    [
+        [nan, 10],
+        [float('nan'), 10],
+        [10, float('nan')],
+        np.array([10, nan]),
+        pd.Series([10, nan]),
+    ],
+    ids=['np.nan', 'float', 'last', 'ndarray', 'series'],
+)
+def test_batch_order_target_rejects_nan(blotter, targets):
+    blotter.set_datetime(ts('2019-01-02'))
+    blotter.market_open(None)
+    blotter.set_price('open')
+    with pytest.raises(ValueError, match='None/NaN in `targets'):
+        blotter.batch_order_target(['AAPL', 'MSFT'], targets)
+    # the check must fail before anything is ordered
+    assert blotter.portfolio.value == 200000
+    assert not blotter.portfolio.positions
+
+
+def test_batch_order_target_rejects_nan_asset(blotter):
+    with pytest.raises(ValueError, match='None/NaN in `assets'):
+        blotter.batch_order_target(['AAPL', float('nan')], [10, 10])
+
+
 def test_t0_and_double_purchase(blotter):
     date = ts('2019-01-02')
     blotter.set_datetime(date)
