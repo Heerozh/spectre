@@ -400,7 +400,7 @@ def open_at_first_bar(stamps, amount, capital_base):
 
 
 def test_short_interest_of_intraday_bars():
-    # hourly bars of the US session, no bar is a whole day after the one before it
+    # hourly bars of the US session, only the gap of the weekend is longer than a day
     days = pd.bdate_range("2020-01-06", "2020-01-16", tz="UTC")
     hours = pd.timedelta_range("14:30:00", periods=7, freq="h")
     stamps = pd.DatetimeIndex([day + hour for day in days for hour in hours])
@@ -476,9 +476,9 @@ def test_daily_curb_of_intraday_bars_with_missing_data():
     df = pd.DataFrame(rows, columns=["asset", "bar", "close"])
     df["date"] = stamps[df.bar]
     df = df.set_index(["date", "asset"]).sort_index().drop(columns="bar")
-    ohlcv = ("close",) * 4 + ("volume",)
-    df["volume"] = 1e6
-    blotter = trading.SimulationBlotter(spectre.data.MemoryLoader(df, ohlcv), daily_curb=0.1)
+    df = df.assign(open=df.close, high=df.close, low=df.close, volume=1e6)
+    loader = spectre.data.MemoryLoader(df, ohlcv=("open", "high", "low", "close", "volume"))
+    blotter = trading.SimulationBlotter(loader, daily_curb=0.1)
 
     blotter.set_datetime(stamps[4])
     blotter.market_open(None)
