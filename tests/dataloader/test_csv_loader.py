@@ -847,3 +847,71 @@ def test_earliest_date_in_any_row_order(tmp_path, order, cut, bars):
     other = load_in_order(tmp_path / "other", order, assets, earliest_date=earliest_date)
     pd.testing.assert_frame_equal(other, oldest_first)
     assert list(other.index.get_level_values(0)) == list(dates[-bars:].tz_localize("UTC"))
+
+
+# ------------------------------ earliest_date and event files ------------------------------
+
+
+def test_tz_aware_earliest_date_with_naive_ex_dates(tmp_path):
+    closes = {f"{day} 09:30:00-05:00": 100.0 for day in DAYS[:5]}
+    dividends = {DAYS[0]: 9.0}  # before `earliest_date`
+    splits = {DAYS[3]: 0.5}
+    earliest_date = pd.Timestamp(DAYS[1], tz="America/New_York")
+    df = events_loader(
+        tmp_path, {"A": closes}, dividends, splits, earliest_date=earliest_date
+    ).test_load()
+    assert len(df) == 4
+    assert (df["ex-dividend"] == 0).all()
+    assert list(df["split_ratio"]) == [1, 0.5, 1, 1]
+
+
+def test_naive_earliest_date_with_tz_aware_ex_dates(tmp_path):
+    closes = dict.fromkeys(DAYS[:5], 100.0)
+    splits = {f"{DAYS[3]} 00:00:00-05:00": 0.5}
+    df = events_loader(
+        tmp_path, {"A": closes}, NO_DIVIDEND, splits, earliest_date=pd.Timestamp(DAYS[1])
+    ).test_load()
+    assert list(df["split_ratio"]) == [1, 0.5, 1, 1]
+
+
+def test_tz_aware_earliest_date_with_year_files_and_naive_ex_dates():
+    """The prices of the test data have a timezone, and its ex-dates don't."""
+    loader = spectre.data.CsvDirLoader(
+        str(DATA_DIR / "5mins"),
+        prices_by_year=True,
+        prices_index="Date",
+        ohlcv=INTRADAY_OHLCV,
+        dividends_path=str(DATA_DIR / "dividends"),
+        splits_path=str(DATA_DIR / "splits"),
+        adjustments=("amount", "ratio"),
+        parse_dates=True,
+        earliest_date=pd.Timestamp("2019-01-01", tz="America/New_York"),
+    )
+    df = loader.test_load()
+    assert df.index.get_level_values(0)[0] == pd.Timestamp("2019-01-02 09:30", tz="US/Eastern")
+    msft = df.xs("MSFT", level=1)
+    assert (msft["split_ratio"] != 1).sum() == 1
+    assert (msft["ex-dividend"] != 0).sum() == 1
+
+
+def test_earliest_date_keeps_the_events_of_kept_rows(tmp_path):
+    """The year files are kept whole, so bars can be before `earliest_date`, and the event too."""
+    closes = pd.Series({DAYS[0]: 100.0, DAYS[1]: 100.0, DAYS[2]: 50.0, DAYS[3]: 50.0})
+    frame = pd.DataFrame({col: closes for col in MEMORY_OHLCV}).rename_axis("date")
+    (tmp_path / "prices").mkdir()
+    frame.to_csv(tmp_path / "prices" / "A_2020.csv")
+    write_events(tmp_path / "dividends", "A", "amount", {DAYS[2]: 1.0})
+    write_events(tmp_path / "splits", "A", "ratio", {DAYS[2]: 0.5})
+    df = spectre.data.CsvDirLoader(
+        str(tmp_path / "prices"),
+        prices_by_year=True,
+        ohlcv=MEMORY_OHLCV,
+        dividends_path=str(tmp_path / "dividends"),
+        splits_path=str(tmp_path / "splits"),
+        adjustments=("amount", "ratio"),
+        parse_dates=True,
+        earliest_date=pd.Timestamp(DAYS[3]),
+    ).test_load()
+    assert list(df.close) == [100, 100, 50, 50]
+    assert list(df["ex-dividend"]) == [0, 1, 0, 0]
+    assert list(df["split_ratio"]) == [1, 0.5, 1, 1]

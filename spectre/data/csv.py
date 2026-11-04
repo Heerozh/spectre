@@ -65,7 +65,7 @@ class CsvDirLoader(DataLoader):
             drop others.
         :param prices_by_year: If price file name like 'spy_2017.csv', set this to True
         :param earliest_date: Data before this date will not be saved to memory. Note: Use the
-            same time zone as in the csv files.
+            same time zone as in the prices csv files.
         :param dividends_path: dividends csv folder, structured as one csv per stock.
             For duplicate data, loader will first drop the exact same rows, and then for the same
             `dividends_index` but different 'dividend amount' rows, loader will sum them up.
@@ -138,7 +138,7 @@ class CsvDirLoader(DataLoader):
         return max([os.path.getmtime(fn) for fn in files])
 
     def _walk_split_by_year_dir(self, csv_path, index_col):
-        years = set(pd.date_range(self._earliest_date or 0, pd.Timestamp.now()).year)
+        years = range(pd.Timestamp(self._earliest_date or 0).year, pd.Timestamp.now().year + 1)
         pattern = os.path.join(csv_path, self._file_pattern)
         files = glob.glob(pattern)
         assets = {}
@@ -170,7 +170,9 @@ class CsvDirLoader(DataLoader):
         dfs = {symbol: multi_read_csv(file_list) for symbol, file_list in assets.items()}
         return dfs
 
-    def _walk_dir(self, csv_path, index_col):
+    def _walk_dir(self, csv_path, index_col, earliest_date=None):
+        # Only prices use `earliest_date`. Ex-dates don't need it, an event before the first bar
+        # adjusts nothing, and they can have another timezone, or none.
         pattern = os.path.join(csv_path, self._file_pattern)
         files = glob.glob(pattern)
         if len(files) == 0:
@@ -190,10 +192,10 @@ class CsvDirLoader(DataLoader):
                     "For mixed-timezone like daylight saving time, "
                     "set date_parser=lambda col: pd.to_datetime(col, utc=True)"
                 )
-            if self._earliest_date is None:
+            if earliest_date is None:
                 return df
             # a mask, because the result of a slice depends on the order of the rows
-            return df[df.index >= self._earliest_date]
+            return df[df.index >= earliest_date]
 
         dfs = {symbol(fn): read_csv(fn) for fn in files}
         return dfs
@@ -202,7 +204,7 @@ class CsvDirLoader(DataLoader):
         if self._prices_by_year:
             dfs = self._walk_split_by_year_dir(self._path, self._prices_index)
         else:
-            dfs = self._walk_dir(self._path, self._prices_index)
+            dfs = self._walk_dir(self._path, self._prices_index, self._earliest_date)
         dfs = {k: v[~v.index.duplicated(keep="last")] for k, v in dfs.items() if v is not None}
         df = pd.concat(dfs, sort=False)
         # the rows of a file, and the files of `prices_by_year`, can be in any order
