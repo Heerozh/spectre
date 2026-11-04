@@ -43,6 +43,20 @@ def test_rank_single_day(engine):
     assert_array_equal(result.values, [[2.0], [1.0]])
 
 
+@pytest.mark.parametrize("method", ["average", "dense", "ordinal"])
+def test_rank_single_asset(engine, method):
+    engine.set_filter(factors.StaticAssets({"AAPL"}))
+    engine.add(close.rank(method=method), "test")
+    assert_array_equal(engine.run(ref.START, ref.END).test.values, [1.0] * 9)
+
+
+def test_rank_all_tied(engine):
+    # all assets have the same weekday
+    expected_aapl = [1.5] * 10
+    expected_aapl[SOLO] = 1.0
+    assert_factor(engine, factors.WEEKDAY.rank(), expected_aapl, [1.5] * 9)
+
+
 def test_rank_with_mask(engine, device):
     if device == "cuda":
         engine.to_cuda()

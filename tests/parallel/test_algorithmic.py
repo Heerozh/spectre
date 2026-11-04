@@ -298,6 +298,36 @@ def test_rankdata_normalize():
     assert_almost_equal(parallel.rankdata(x, normalize=True), [[2 / 4, 3 / 4, nan, 1 / 4]])
 
 
+@pytest.mark.parametrize("ascending", [True, False])
+@pytest.mark.parametrize("method", ["average", "dense", "ordinal"])
+@pytest.mark.parametrize("width", [1, 2, 3, 5, 8, 40])
+def test_rankdata_same_as_scipy(device, width, method, ascending):
+    rng = np.random.default_rng(width)
+    x = rng.integers(0, 3, (300, width)).astype(np.float32)
+    x[:100] = x[:100, :1]  # all values of these rows are tied
+    x[200:][rng.random((100, width)) < 0.3] = nan
+    expected = scipy.stats.rankdata(x if ascending else -x, method, axis=1, nan_policy="omit")
+    result = parallel.rankdata(tensor(x, device), ascending=ascending, method=method)
+    assert_array_equal(to_np(result), expected)
+
+
+@pytest.mark.parametrize("method", ["average", "dense", "ordinal"])
+def test_rankdata_along_last_dim_same_as_scipy(device, method):
+    """The layout of `Rolling.agg`, [asset, chunk, win]"""
+    rng = np.random.default_rng(0)
+    x = rng.integers(0, 3, (4, 30, 6)).astype(np.float64)
+    x[:, :10] = x[:, :10, :1]  # flat windows
+    x[:, 20:][rng.random((4, 10, 6)) < 0.3] = nan
+    expected = scipy.stats.rankdata(x, method, axis=2, nan_policy="omit")
+    result = parallel.rankdata(tensor(x, device, torch.float64), dim=2, method=method)
+    assert_array_equal(to_np(result), expected)
+
+
+def test_rankdata_normalize_tied_row(device):
+    x = tensor([[2, 2, 2, 2]], device)
+    assert_array_equal(to_np(parallel.rankdata(x, normalize=True)), [[2.5 / 4] * 4])
+
+
 # ------------------------------------ statistics ------------------------------------
 
 X = [[1., 2, 3, 4, 5], [10, 12, 13, 14, 16], [2, 2, 2, 2, 2, ]]  # fmt: skip

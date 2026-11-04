@@ -167,6 +167,14 @@ def test_rolling_rank(engine):
     assert_factor(engine, factors.RollingRankFactor(5, inputs=[WEEKDAY]), *expected)
 
 
+def test_rolling_rank_flat_window(device):
+    prices = [1.0, 2, 2, 2, 2, 5, 5]
+    rolling = parallel.Rolling(torch.tensor([prices], device=device), win=3)
+    result = factors.RollingRankFactor(3).compute(rolling).cpu().numpy()
+    expected = pd.Series(prices).rolling(3, min_periods=1).apply(lambda x: x.rank().iloc[-1] / 3)
+    assert_almost_equal(result[0], expected, decimal=6)
+
+
 def test_rolling_zscore(engine):
     def rolling_zscore(df):
         r = df.close.rolling(5)

@@ -240,7 +240,8 @@ def rankdata(data: torch.Tensor, dim=1, ascending=True, method="average", normal
         filled = data.masked_fill(nans, -np.inf)
     else:
         filled = data
-    arr, sorter = torch.sort(filled, dim=dim, descending=not ascending)
+    # ordinal gives ties ranks in the order they appear, torch.sort only keeps it with stable=True
+    arr, sorter = torch.sort(filled, dim=dim, descending=not ascending, stable=method == "ordinal")
     rank, inv = torch.sort(sorter.to(torch.int32), dim=dim)
     del sorter
 
@@ -251,6 +252,7 @@ def rankdata(data: torch.Tensor, dim=1, ascending=True, method="average", normal
         inv += (flt * inv.shape[dim]).view(*inv.shape[:dim], 1)
 
         obs = arr != arr.roll(1, dims=dim)
+        obs.narrow(dim, 0, 1).fill_(True)  # the first value has no previous, roll wrapped it
         del arr
 
         if method == "average":
@@ -263,7 +265,7 @@ def rankdata(data: torch.Tensor, dim=1, ascending=True, method="average", normal
             avg = (upper + lower + 2) * 0.5
             ret = torch.take(avg, inv)
         elif method == "dense":
-            dense = obs.cumsum(dim=1).to(Global.float_type)
+            dense = obs.cumsum(dim=dim).to(Global.float_type)
             ret = torch.take(dense, inv)
 
     if normalize:
