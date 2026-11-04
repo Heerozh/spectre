@@ -163,7 +163,7 @@ class AverageDollarVolume(CustomFactor):
 
 class AnnualizedVolatility(CustomFactor):
     inputs = [Returns(win=2), 252]
-    window_length = 20
+    win = 20
     _min_win = 2
 
     def compute(self, returns, annualization_factor):

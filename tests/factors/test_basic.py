@@ -300,6 +300,18 @@ def test_annualized_volatility(engine):
     assert_factor(engine, factors.AnnualizedVolatility(3), *ref.expected(volatility))
 
 
+@pytest.mark.filterwarnings("ignore:Warning!! delay_factor is set to False")
+def test_annualized_volatility_default_arguments(dirty_engine, dirty_panel):
+    factor = factors.AnnualizedVolatility()
+    assert factor.win == 20
+    result = run_dirty(dirty_engine, factor)
+    for asset in ("FULL", "LISTED", "NANBAR"):
+        returns = ref.returns(dirty_panel.xs(asset, level="asset").close)
+        expected = returns.rolling(20, min_periods=1).std(ddof=0) * np.sqrt(252)
+        got = result.xs(asset, level="asset").values
+        assert_allclose(got, expected.values, rtol=0, atol=1e-6, err_msg=asset)
+
+
 def test_linear_weighted_average(engine):
     weights = np.arange(1, 6) / 15
 
