@@ -157,3 +157,11 @@ rows into padded 2D tensors, using NaN or `False` for padding:
   offset matters: negative fires before the open or close, otherwise after.
 - Blotter prices are raw. `SimulationBlotter.market_close` pushes dividends and splits to the
   portfolio, separately from the factor-side adjustments.
+- Yahoo's OHLCV and dividends are already split adjusted, so `YahooDownloader` rebuilds raw prices
+  in `_to_raw_prices`. Giving `DataLoader` the real split ratio with adjusted prices adjusts them
+  twice, and adjusted prices also break the blotter on old dates: a share count can exceed
+  `max_shares`, and per-share commissions are wrong. yfinance needs `auto_adjust=False`, and
+  `download` doesn't raise, a failed symbol just has no prices.
+- `sp500_constituents` returns the tickers of each date, which can't go to Yahoo unchecked. Yahoo
+  has no delisted stocks, and its history follows the company, not the ticker: `BBT` was BB&T, and
+  now returns another bank with prices back to 2000, without any error.
