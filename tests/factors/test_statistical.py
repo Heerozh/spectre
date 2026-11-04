@@ -405,6 +405,24 @@ def test_rank_weighted_ic_with_mask(ic_engine):
     assert expected == pytest.approx(0.518, abs=1e-3)
 
 
+def test_weighted_ic_leaves_out_samples_without_a_weight(device):
+    x, y = IC_DATA[0].copy(), IC_DATA[3].copy()
+    w = rank_weight(y, 5)
+    w[2] = nan
+    x[5] = nan
+    # a date without weights has no samples at all
+    tensors = [
+        torch.tensor(np.stack([v, v]), device=device, dtype=torch.float64) for v in (x, y, w)
+    ]
+    tensors[2][1] = nan
+    result = factors.InformationCoefficient(None, None).compute(*tensors).cpu().numpy()
+
+    valid = ~np.isnan(x * y * w)
+    expected = weighted_corr(x[valid], y[valid], w[valid])
+    assert_allclose(result[0], np.full(len(x), expected), rtol=1e-12)
+    assert np.isnan(result[1]).all()
+
+
 def test_ic_to_ir():
     ir = factors.InformationCoefficient(None, None).to_ir(3)
     ic = torch.tensor([1, 2, nan, 3, 1]).unsqueeze(-1).repeat(1, 5)

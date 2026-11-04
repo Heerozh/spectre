@@ -234,7 +234,7 @@ class InformationCoefficient(CrossSectionFactor):
             ic = pearsonr(x, y, dim=1, ddof=1)
         else:
             xy = x * y
-            mask = torch.isnan(x * y)
+            mask = torch.isnan(xy) | torch.isnan(weight)
             w = weight / unmasked_sum(weight, mask=mask, dim=1).unsqueeze(-1)
             x_bar = unmasked_sum(w * x, mask=mask, dim=1)
             y_bar = unmasked_sum(w * y, mask=mask, dim=1)
