@@ -302,6 +302,46 @@ def test_half_life_mean_reversion_mask_drops_the_samples_of_masked_bars(dirty_en
     assert_allclose(got.values, expected.loc[start:].values, rtol=1e-6)
 
 
+FLAT_DATES = pd.date_range("2020-01-01", periods=30, freq="B", tz="UTC")
+
+
+def flat_engine(device, dtype):
+    """FLAT has one price on all bars, a value that gets rounded, VARY is a random walk."""
+    rng = np.random.default_rng(0)
+    closes = {"FLAT": np.full(30, 33.3), "VARY": 100 + rng.normal(0, 1, 30).cumsum()}
+    frames = {
+        asset: pd.DataFrame({"close": close, "open": close + rng.normal(0, 1, 30)}, FLAT_DATES)
+        for asset, close in closes.items()
+    }
+    df = pd.concat(frames, names=["asset", "date"]).swaplevel().sort_index()
+    df["high"] = df[["open", "close"]].max(axis=1)
+    df["low"] = df[["open", "close"]].min(axis=1)
+    df["volume"] = 1.0
+    loader = spectre.data.MemoryLoader(df.astype(dtype), ("open", "high", "low", "close", "volume"))
+    engine = factors.FactorEngine(loader)
+    if device == "cuda":
+        engine.to_cuda()
+    return engine
+
+
+@pytest.mark.filterwarnings("ignore:Warning!! delay_factor is set to False")
+@pytest.mark.parametrize("dtype", [np.float32, np.float64])
+@pytest.mark.parametrize(
+    "mean",
+    [
+        lambda: 33.3,  # the regressor is constant
+        lambda: factors.MA(5),
+        lambda: factors.OHLCV.open,  # it varies, but the price never moves
+    ],
+)
+def test_half_life_mean_reversion_of_a_flat_series_is_nan(device, mean, dtype):
+    engine = flat_engine(device, dtype)
+    engine.add(factors.HalfLifeMeanReversion(10, close, mean()), "half_life")
+    result = engine.run(FLAT_DATES[15], FLAT_DATES[-1], delay_factor=False).half_life
+    assert result.xs("FLAT", level="asset").isna().all()
+    assert np.isfinite(result.xs("VARY", level="asset")).all()
+
+
 def test_cross_section_r2():
     y = torch.tensor([[1.0, 3, 2, 4, 6, 5, 7, 9], [1.0, nan, nan, nan, nan, nan, nan, nan]])
     y_hat = torch.tensor([1.0, 2, 3, 4, 5, 6, 7, 8]).repeat(2, 1)

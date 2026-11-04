@@ -189,7 +189,8 @@ class HalfLifeMeanReversion(CustomFactor):
     def compute(self, lag, diff, ln2):
         def calc_h(_x, _y):
             _lambda, _ = linear_regression_1d(_x, _y, dim=2)
-            return -ln2 / _lambda
+            # a slope of 0 is no reversion at all, there is nothing to take a half-life of
+            return (-ln2 / _lambda).masked_fill(_lambda == 0, np.nan)
 
         return lag.agg(calc_h, diff)
 
