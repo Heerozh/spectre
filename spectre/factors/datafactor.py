@@ -130,9 +130,10 @@ class AssetClassifierDataFactor(BaseFactor):
 
 class SeriesDataFactor(ColumnDataFactor):
     """
-    Add series to engine, slow. `fill_na` fills each row from the values of its asset in the whole
-    series, so also from dates before the loaded rows or without a bar: 'ffill' or 'pad' takes the
-    last value up to the row, 'bfill' or 'backfill' the next value from the row.
+    Add series to engine, slow. Its dates can be in any timezone, and without one they are UTC.
+    `fill_na` fills each row from the values of its asset in the whole series, so also from dates
+    before the loaded rows or without a bar: 'ffill' or 'pad' takes the last value up to the row,
+    'bfill' or 'backfill' the next value from the row.
     """
 
     _fill_directions = {
@@ -143,11 +144,14 @@ class SeriesDataFactor(ColumnDataFactor):
     }
 
     def __init__(self, series: pd.Series, fill_na=None, should_delay=True):
-        self.series = series
-        self.fill_method = fill_na
         assert series.index.names == ["date", "asset"], (
             "df.index.names should be ['date', 'asset'] "
         )
+        # dates without a timezone are UTC, as in DataLoader._format
+        if series.index.levels[0].tzinfo is None:
+            series = series.tz_localize("UTC", level=0)
+        self.series = series
+        self.fill_method = fill_na
         super().__init__(inputs=[str(series.name)], should_delay=should_delay)
         self._aligned = None
         self._aligned_hash = None
@@ -158,18 +162,19 @@ class SeriesDataFactor(ColumnDataFactor):
             raise ValueError(f"`fill_na` must be one of {list(self._fill_directions)}")
         if self.series.index.has_duplicates:
             raise ValueError("The series is non-unique, a row can't hold 2 values.")
-        if self.fill_method is None:
-            return self.series.reindex(engine.dataframe_.index).to_numpy()
-
         dates, assets = engine.dataframe_index
-        index = self.series.index
+        series = self.series.tz_convert(dates.tz, level=0)
+        if self.fill_method is None:
+            return series.reindex(engine.dataframe_.index).to_numpy()
+
+        index = series.index
         # by the labels of the level, a code of -1 is a NaN label, so it gets the -1 at the end
         asset_codes = np.append(assets.categories.get_indexer(index.levels[1]), -1)[index.codes[1]]
         values = pd.DataFrame(
             {
-                "date": index.get_level_values(0).tz_convert(dates.tz).as_unit(dates.unit),
+                "date": index.get_level_values(0).as_unit(dates.unit),
                 "asset": asset_codes,
-                "value": self.series.to_numpy(),
+                "value": series.to_numpy(),
             }
         )
         rows = pd.DataFrame({"date": dates, "asset": assets.codes.astype(np.int64)})

@@ -469,6 +469,87 @@ def test_series_fill_shared_by_two_engines(dirty_engine, device):
         assert_allclose(read(other, factor, dates), expected)
 
 
+# ------------------------------------ dates of a series --------------------------------------
+
+DATE_KINDS = ["naive", "utc", "new_york"]
+
+
+def with_dates(series, kind):
+    """The same instants, the dates in UTC are the wall clock of a naive series, as in a loader."""
+    dates = series.index.levels[0]
+    if kind == "naive":
+        dates = dates.tz_localize(None)
+    elif kind == "new_york":
+        dates = dates.tz_convert("America/New_York")
+    return series.set_axis(series.index.set_levels(dates, level=0))
+
+
+@pytest.mark.parametrize("kind", DATE_KINDS)
+@pytest.mark.parametrize("timezone", ["UTC", "America/New_York", "Asia/Tokyo"])
+def test_series_dates_read_the_frame(dirty_engine, dirty_panel, kind, timezone):
+    """The range crosses the start of the daylight saving of New York, 2020-03-08."""
+    dirty_engine.timezone = timezone
+    doubled = dirty_panel.close * 2
+    dates = DIRTY_DATES[40], DIRTY_DATES[-1]
+    result = read(dirty_engine, series_factor(with_dates(doubled, kind)), dates)
+    assert_allclose(result, rows(doubled, dates))
+
+
+@pytest.mark.parametrize("kind", DATE_KINDS)
+@pytest.mark.parametrize("timezone", ["UTC", "America/New_York", "Asia/Tokyo"])
+@pytest.mark.parametrize("fill_na", ["ffill", "bfill"])
+def test_series_dates_with_a_fill(dirty_engine, kind, timezone, fill_na):
+    series = values_of((DIRTY_DATES[3], "FULL", 1.0), (DIRTY_DATES[30], "FULL", 2.0))
+    dirty_engine.timezone = timezone
+    factor = series_factor(with_dates(series, kind), fill_na=fill_na)
+    result = read(dirty_engine, factor, (DIRTY_DATES[0], DIRTY_DATES[-1]))
+    assert_allclose(result, filled(series, DIRTY_DATES, fill_na).values)
+
+
+def test_series_naive_dates_are_utc_in_any_timezone(dirty_engine, dirty_panel):
+    """Not the wall clock of the engine, a loader reads them as UTC too."""
+    dirty_engine.timezone = "America/New_York"
+    doubled = dirty_panel.close * 2
+    naive = with_dates(doubled, "naive")
+    assert_allclose(read(dirty_engine, series_factor(naive)), rows(doubled))
+
+
+@pytest.mark.parametrize("kind", DATE_KINDS)
+def test_series_keeps_its_name_and_values_with_any_dates(dirty_panel, kind):
+    series = with_dates((dirty_panel.close * 2).rename("signal"), kind)
+    factor = factors.SeriesDataFactor(series)
+    assert factor.series.name == "signal"
+    assert factor.inputs == ["signal"]
+    assert factor.series.index.names == ["date", "asset"]
+    assert_array_equal(factor.series.values, series.values)
+
+
+@pytest.mark.parametrize("timezone", ["UTC", "America/New_York"])
+def test_series_in_new_york_on_intraday_rows(intraday_loader, device, timezone):
+    """The wall clock differs from UTC by hours, so the bars only meet by their instants."""
+    engine = factors.FactorEngine(intraday_loader)
+    if device == "cuda":
+        engine.to_cuda()
+    engine.timezone = timezone
+    stamps = intraday_loader.load().index.levels[0]
+    start, end = stamps[100], stamps[-1]
+
+    closes = intraday_loader.load()["Close"].rename("signal")
+    expected = closes.xs("MSFT", level="asset").loc[start:end].values
+    in_new_york = with_dates(closes, "new_york")
+    assert_allclose(read(engine, series_factor(in_new_york), (start, end), "MSFT"), expected)
+
+    # midnight in New York of the first date of January, 05:00 UTC, is before its first bar
+    new_year = pd.Timestamp("2019-01-02", tz="America/New_York")
+    series = values_of((new_year, "MSFT", 1.0))
+    factor = series_factor(series, fill_na="ffill")
+    result = read(engine, factor, (start, end), "MSFT")
+    assert_array_equal(
+        result.notna().values,
+        result.index.tz_convert("UTC") >= new_year.tz_convert("UTC"),
+    )
+
+
 def test_series_fill_of_the_same_frame_is_read_once(dirty_engine, monkeypatch):
     """Runs of one range share a frame, and the rows of the frame are all a fill depends on."""
     calls = []
