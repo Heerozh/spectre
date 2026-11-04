@@ -8,7 +8,7 @@ from numpy.testing import assert_allclose, assert_almost_equal, assert_array_equ
 
 import spectre
 from spectre import factors
-from tests.conftest import DELISTED_ON, DIRTY_DATES
+from tests.conftest import DELISTED_ON, DIRTY_ADJUSTMENTS, DIRTY_DATES, DIRTY_OHLCV
 from tests.factors import reference as ref
 
 close = factors.OHLCV.close
@@ -250,6 +250,428 @@ def test_filter_delays_a_run_on_its_own(dirty_engine, dirty_panel):
     kept = (full.close.rolling(10).mean() > level).shift(1, fill_value=False)
     expected = full.open[kept].loc[DIRTY_DATES[41] :]
     assert_almost_equal(result.xs("FULL", level=1).values, expected.values)
+
+
+# ------------------------------------ complete dates ------------------------------------
+# An asset with gaps gets older bars of its own, so only that asset has rows on those dates. What
+# reads across a date counts them as missing, or it would see a market of one asset.
+
+COMPLETE_STARTS = [22, 25, 28, 31, 33, 36, 40, 45]
+
+
+class DateSliceLoader(spectre.data.MemoryLoader):
+    """Overrides `load` like a live loader can, so an asset with gaps gets no older bars."""
+
+    def load(self, start=None, end=None, backwards=0):
+        df = self._load()
+        index = df.index.levels[0]
+        start_loc = index.get_indexer([start], method="bfill")[0]
+        return df.loc[index[max(start_loc - backwards, 0)] : end]
+
+
+def plain_panel(panel):
+    """No NaN bars and no splits, so pandas needs no rules for them."""
+    return panel[~panel.index.get_level_values("asset").isin(["NANBAR", "NANSPLIT", "SPLIT"])]
+
+
+def plain_engine(panel, device, loader_type=spectre.data.MemoryLoader):
+    engine = factors.FactorEngine(loader_type(panel, DIRTY_OHLCV, DIRTY_ADJUSTMENTS))
+    if device == "cuda":
+        engine.to_cuda()
+    return engine
+
+
+def from_date(values, first_complete):
+    """`values` of (date, asset), the older dates count as missing."""
+    return values.where(values.index.get_level_values("date") >= DIRTY_DATES[first_complete])
+
+
+def mean_of_bars(values, win):
+    """Mean of the last `win` bars of each asset, of the ones with a value."""
+    means = values.groupby(level="asset", group_keys=False).apply(
+        lambda bars: bars.rolling(win, min_periods=1).mean()
+    )
+    return means.loc[values.index]
+
+
+def delayed(values):
+    return values.groupby(level="asset").shift(1)
+
+
+def market_returns(panel):
+    returns = panel.close.groupby(level="asset").pct_change(fill_method=None)
+    return returns.groupby(level="date").transform("mean")
+
+
+def assert_rows(result, expected):
+    assert result.notna().any()
+    assert_allclose(result.values, expected.loc[result.index].values, rtol=1e-5, atol=1e-7)
+
+
+@pytest.mark.parametrize("start", COMPLETE_STARTS)
+def test_window_over_a_column_keeps_its_full_window(dirty_panel, device, start):
+    panel = plain_panel(dirty_panel)
+    engine = plain_engine(panel, device)
+    engine.add(factors.MA(10, inputs=[close]), "f")
+    result = engine.run(DIRTY_DATES[start], DIRTY_DATES[-1]).f
+    assert_rows(result, delayed(mean_of_bars(panel.close, 10)))
+
+
+@pytest.mark.parametrize("start", COMPLETE_STARTS)
+def test_window_over_a_cross_section_reads_complete_dates(dirty_panel, device, start):
+    panel = plain_panel(dirty_panel)
+    ranks = panel.close.groupby(level="date").rank()
+    engine = plain_engine(panel, device)
+    engine.add(factors.MA(10, inputs=[close.rank()]), "f")
+    result = engine.run(DIRTY_DATES[start], DIRTY_DATES[-1]).f
+    # 9 bars before the window, and the delay
+    assert_rows(result, delayed(mean_of_bars(from_date(ranks, start - 10), 10)))
+
+
+@pytest.mark.parametrize("start", COMPLETE_STARTS)
+def test_window_over_market_return(dirty_panel, device, start):
+    panel = plain_panel(dirty_panel)
+    engine = plain_engine(panel, device)
+    engine.add(factors.MA(10, inputs=[factors.MarketReturn()]), "f")
+    result = engine.run(DIRTY_DATES[start], DIRTY_DATES[-1]).f
+    # 11 bars are loaded. The assets without gaps have no return on the first of them, so it isn't
+    # a market yet, even with all its rows.
+    expected = delayed(mean_of_bars(from_date(market_returns(panel), start - 10), 10))
+    assert_rows(result, expected)
+
+
+@pytest.mark.parametrize("start", COMPLETE_STARTS)
+def test_window_over_a_cross_section_of_windows(dirty_panel, device, start):
+    panel = plain_panel(dirty_panel)
+    ranks = mean_of_bars(panel.close, 3).groupby(level="date").rank()
+    engine = plain_engine(panel, device)
+    engine.add(factors.MA(5, inputs=[factors.MA(3).rank()]), "f")
+    result = engine.run(DIRTY_DATES[start], DIRTY_DATES[-1]).f
+    # the 2 bars of MA(3), the 4 bars of MA(5), and the delay
+    assert_rows(result, delayed(mean_of_bars(from_date(ranks, start - 5), 5)))
+
+
+@pytest.mark.parametrize("start", COMPLETE_STARTS)
+def test_window_over_a_masked_cross_section(dirty_panel, device, start):
+    """The look-back of the mask counts too, it decides who is in the cross-section."""
+    panel = plain_panel(dirty_panel)
+    above = mean_of_bars(panel.close, 3) > 100
+    ranks = panel.close.where(above).groupby(level="date").rank()
+    engine = plain_engine(panel, device)
+    engine.add(factors.MA(5, inputs=[close.rank(mask=factors.MA(3) > 100)]), "f")
+    result = engine.run(DIRTY_DATES[start], DIRTY_DATES[-1]).f
+    assert_rows(result, delayed(mean_of_bars(from_date(ranks, start - 5), 5)))
+
+
+@pytest.mark.parametrize("start", COMPLETE_STARTS)
+def test_filter_input_of_a_cross_section_is_false_on_older_dates(dirty_panel, device, start):
+    class Selected(factors.CrossSectionFactor):
+        def compute(self, selected):
+            assert selected.dtype == torch.bool
+            return selected.float()
+
+    panel = plain_panel(dirty_panel)
+    selected = panel.close > 100
+    older = panel.index.get_level_values("date") < DIRTY_DATES[start - 10]
+    engine = plain_engine(panel, device)
+    engine.add(factors.MA(10, inputs=[Selected(inputs=[close > 100])]), "f")
+    result = engine.run(DIRTY_DATES[start], DIRTY_DATES[-1]).f
+    assert_rows(result, delayed(mean_of_bars(selected.mask(older, False).astype(float), 10)))
+
+
+@pytest.mark.parametrize(
+    "make_factor",
+    [
+        lambda: close.rank(),
+        lambda: close.zscore(),
+        lambda: close.demean(),
+        lambda: close.mean(),
+        lambda: close.median(),
+        lambda: close.std(),
+        lambda: close.max(),
+        lambda: close.quantile(2, mask=close > 0),
+        lambda: close.to_weight(),
+        lambda: close.winsorizing(0.2),
+        lambda: close.mad_clamp(2),
+        lambda: close.top(2).float(),
+        lambda: factors.MA(10, inputs=[close.rank()]),
+        lambda: factors.MA(10, inputs=[close.zscore()]),
+        lambda: factors.MA(5, inputs=[factors.OHLCV.open]).set_mask(close.top(2)),
+        lambda: factors.InformationCoefficient(factors.OHLCV.open, close).to_ir(3),
+    ],
+    ids=[
+        "rank",
+        "zscore",
+        "demean",
+        "mean",
+        "median",
+        "std",
+        "max",
+        "quantile",
+        "to_weight",
+        "winsorizing",
+        "mad_clamp",
+        "top",
+        "window_of_rank",
+        "window_of_zscore",
+        "masked_window",
+        "to_ir",
+    ],
+)
+@pytest.mark.parametrize("start", [25, 28, 33])
+def test_older_bars_of_an_asset_with_gaps_change_no_other_asset(
+    dirty_panel, device, make_factor, start
+):
+    def run(loader_type):
+        engine = plain_engine(dirty_panel, device, loader_type)
+        engine.add(make_factor(), "f")
+        result = engine.run(DIRTY_DATES[start], DIRTY_DATES[-1]).f
+        return result.drop("HALTED", level=1)
+
+    pd.testing.assert_series_equal(run(spectre.data.MemoryLoader), run(DateSliceLoader))
+
+
+def test_a_loader_without_older_bars_has_nothing_to_do(dirty_panel, device):
+    engine = plain_engine(dirty_panel, device, DateSliceLoader)
+    engine.add(factors.MA(10, inputs=[close.rank()]), "f")
+    engine.run(DIRTY_DATES[28], DIRTY_DATES[-1])
+    assert engine.incomplete_rows_("date", close) is None
+
+
+@pytest.mark.parametrize("start", COMPLETE_STARTS)
+def test_cross_section_in_the_range_does_not_change(dirty_panel, device, start):
+    panel = plain_panel(dirty_panel)
+    ranks = panel.open.groupby(level="date").rank()
+    engine = plain_engine(panel, device)
+    engine.add(factors.OHLCV.open.rank(), "f")
+    assert_rows(engine.run(DIRTY_DATES[start], DIRTY_DATES[-1]).f, ranks)
+
+
+@pytest.mark.parametrize("start", COMPLETE_STARTS)
+def test_delayed_cross_section_on_the_first_row_after_a_halt(dirty_panel, device, start):
+    """The delay reads the bar before it, which can be older than the complete dates."""
+    panel = plain_panel(dirty_panel)
+    ranks = panel.close.groupby(level="date").rank()
+    engine = plain_engine(panel, device)
+    engine.add(close.rank(), "f")
+    result = engine.run(DIRTY_DATES[start], DIRTY_DATES[-1]).f
+    assert_rows(result, delayed(from_date(ranks, start - 1)))
+
+
+@pytest.mark.parametrize("start", COMPLETE_STARTS)
+def test_window_over_a_date_and_sector_group(dirty_panel, device, start):
+    panel = plain_panel(dirty_panel)
+    dates = panel.index.get_level_values("date")
+    means = panel.close.groupby([dates, panel.sector]).transform("mean")
+    engine = plain_engine(panel, device)
+    engine.add(factors.MA(10, inputs=[close.mean(groupby="date,sector")]), "means")
+    engine.add(factors.MA(10, inputs=[close.demean(groupby="sector")]), "demeaned")
+    result = engine.run(DIRTY_DATES[start], DIRTY_DATES[-1])
+    assert_rows(result.means, delayed(mean_of_bars(from_date(means, start - 10), 10)))
+    demeaned = delayed(mean_of_bars(from_date(panel.close - means, start - 10), 10))
+    assert_rows(result.demeaned, demeaned)
+
+
+@pytest.mark.parametrize("groupby", ["asset", "sector"])
+def test_groups_without_a_date_read_all_their_rows(dirty_panel, device, groupby):
+    panel, start = plain_panel(dirty_panel), 25
+    engine = plain_engine(panel, device)
+    engine.add(factors.OHLCV.open.mean(groupby=groupby), "f")
+    engine.add(factors.MA(10), "loads_history")
+    result = engine.run(DIRTY_DATES[start], DIRTY_DATES[-1]).f
+    assert engine.incomplete_rows_(groupby, close) is None
+    # all the rows of the group, also the ones on older dates
+    loaded = engine.dataframe_
+    assert loaded.xs("HALTED", level=1).index[0] < DIRTY_DATES[start - 10]
+    keys = loaded.index.get_level_values(1) if groupby == "asset" else loaded[groupby]
+    expected = loaded.open.groupby(keys, observed=True).transform("mean")
+    assert_rows(result, expected)
+
+
+class TwoRanks(factors.CrossSectionFactor):
+    inputs = [close]
+
+    def compute(self, data):
+        ranks = spectre.parallel.rankdata(data, 1)
+        return torch.stack((ranks, -ranks), dim=2)
+
+
+@pytest.mark.parametrize("start", COMPLETE_STARTS)
+def test_multiple_outputs_of_a_cross_section(dirty_panel, device, start):
+    panel = plain_panel(dirty_panel)
+    ranks = panel.close.groupby(level="date").rank()
+    engine = plain_engine(panel, device)
+    engine.add(factors.MA(10, inputs=[TwoRanks()[1]]), "f")
+    result = engine.run(DIRTY_DATES[start], DIRTY_DATES[-1]).f
+    assert_rows(result, delayed(mean_of_bars(from_date(-ranks, start - 10), 10)))
+
+
+@pytest.mark.filterwarnings("ignore:engine.max_backwards")
+def test_complete_dates_with_a_clamped_history(dirty_panel, device):
+    panel, start, clamped = plain_panel(dirty_panel), 25, 5
+    ranks = panel.close.groupby(level="date").rank()
+    engine = plain_engine(panel, device)
+    engine.max_backwards = clamped
+    engine.add(factors.MA(10, inputs=[close.rank()]), "f")
+    result = engine.run(DIRTY_DATES[start], DIRTY_DATES[-1]).f
+    assert_rows(result, delayed(mean_of_bars(from_date(ranks, start - clamped), 10)))
+
+
+@pytest.mark.filterwarnings("ignore:engine.max_backwards")
+@pytest.mark.parametrize("max_backwards", [np.inf, 4], ids=["all_the_history", "clamped"])
+@pytest.mark.parametrize(
+    "make_factor",
+    [
+        lambda: factors.MA(5, inputs=[factors.MA(3).rank()]),
+        lambda: factors.MA(3, inputs=[factors.MA(5).demean()]),
+        lambda: factors.MA(10, inputs=[factors.MarketReturn()]),
+        lambda: factors.MA(5, inputs=[close.rank(mask=factors.MA(3) > 100)]),
+        lambda: factors.MA(5).zscore(),
+        lambda: factors.InformationCoefficient(factors.MA(3), close).to_ir(3),
+    ],
+    ids=["window_of_rank", "window_of_demean", "market", "mask", "zscore", "to_ir"],
+)
+def test_incomplete_rows_change_no_other_asset(
+    dirty_panel, device, monkeypatch, make_factor, max_backwards
+):
+    """
+    Those rows include the look-back of an input, and the assets without gaps read it all. If it's
+    clamped they are on partial windows all the same, that's no reason to clear them.
+    """
+
+    def run():
+        engine = plain_engine(dirty_panel, device)
+        engine.max_backwards = max_backwards
+        engine.add(make_factor(), "f")
+        return engine.run(DIRTY_DATES[28], DIRTY_DATES[-1]).f.drop("HALTED", level=1)
+
+    with monkeypatch.context() as patch:
+        patch.setattr(factors.FactorEngine, "incomplete_rows_", lambda *_: None)
+        without_clearing = run()
+    pd.testing.assert_series_equal(run(), without_clearing)
+
+
+@pytest.mark.parametrize("delay_factor", [True, False])
+def test_complete_dates_of_a_run_without_delay(dirty_panel, device, delay_factor):
+    panel, start = plain_panel(dirty_panel), 28
+    opens = panel.open.groupby(level="date").rank()
+    engine = plain_engine(panel, device)
+    # not delayed by itself, on a delay_factor='all' run it loads one bar more
+    engine.add(factors.MA(10, inputs=[factors.OHLCV.open.rank()]), "f")
+    result = engine.run(DIRTY_DATES[start], DIRTY_DATES[-1], "all" if delay_factor else True).f
+    expected = mean_of_bars(from_date(opens, start - (10 if delay_factor else 9)), 10)
+    assert_rows(result, delayed(expected) if delay_factor else expected)
+
+
+@pytest.mark.parametrize(
+    "assets, first_complete",
+    [
+        # a complete asset has a row on all the dates, so these are the same dates as without
+        ({"FULL", "HALTED", "DELISTED"}, 18),
+        # the older bars of the only asset are a complete cross-section of it
+        ({"HALTED"}, None),
+    ],
+    ids=["with_a_full_asset", "alone"],
+)
+def test_complete_dates_of_static_assets(dirty_panel, device, assets, first_complete):
+    panel, start = dirty_panel, 28
+    selected = panel[panel.index.get_level_values("asset").isin(list(assets))]
+    means = selected.close.groupby(level="date").transform("mean")
+    engine = plain_engine(panel, device)
+    engine.set_filter(factors.StaticAssets(assets))
+    engine.add(factors.MA(10, inputs=[close.mean()]), "f")
+    result = engine.run(DIRTY_DATES[start], DIRTY_DATES[-1]).f
+    known = means if first_complete is None else from_date(means, first_complete)
+    assert_rows(result, delayed(mean_of_bars(known, 10)))
+
+
+def test_complete_dates_of_static_assets_without_a_gone_asset(dirty_panel, device):
+    """
+    DELISTED ends before the dates of the history, so it isn't loaded, and on the older bars of
+    HALTED nothing shows that it had rows. Only the dates of the history are known to be complete.
+    """
+    panel, start = dirty_panel, 28
+    panel = panel.drop(index=[(date, "DELISTED") for date in DIRTY_DATES[16:41]])
+    assets = {"HALTED", "DELISTED"}
+    selected = panel[panel.index.get_level_values("asset").isin(list(assets))]
+    means = selected.close.groupby(level="date").transform("mean")
+    engine = plain_engine(panel, device)
+    engine.set_filter(factors.StaticAssets(assets))
+    engine.add(factors.MA(10, inputs=[close.mean()]), "f")
+    result = engine.run(DIRTY_DATES[start], DIRTY_DATES[-1]).f
+    assert_rows(result, delayed(mean_of_bars(from_date(means, start - 10), 10)))
+
+
+def test_complete_dates_of_static_assets_with_their_own_gaps(dirty_panel, device):
+    """
+    Each asset has 4 bars before bar 28: FULL on 7, 8, 9, 27 and HALTED on 16 to 19. Of all those
+    dates the last 4 have the rows of both, HALTED has a row on 7 to 9, and it's not loaded.
+    """
+    panel = dirty_panel.drop(index=[(date, "FULL") for date in DIRTY_DATES[10:27]])
+    start, assets = 28, {"FULL", "HALTED"}
+    selected = panel[panel.index.get_level_values("asset").isin(list(assets))]
+    ranks = selected.close.groupby(level="date").rank()
+    engine = plain_engine(panel, device)
+    engine.set_filter(factors.StaticAssets(assets))
+    engine.add(factors.MA(4, inputs=[close.rank()]), "f")
+    result = engine.run(DIRTY_DATES[start], DIRTY_DATES[-1]).f
+    assert_rows(result, delayed(mean_of_bars(from_date(ranks, 17), 4)))
+
+
+def test_complete_dates_of_a_cached_run(dirty_panel, device):
+    panel, start = plain_panel(dirty_panel), 28
+    ranks = panel.close.groupby(level="date").rank()
+    engine = plain_engine(panel, device)
+    engine.add(factors.MA(20), "history")
+    engine.run(DIRTY_DATES[start], DIRTY_DATES[-1])
+    loaded = engine.cache_hash
+
+    engine.remove_all_factors()
+    engine.add(factors.MA(10, inputs=[close.rank()]), "f")
+    result = engine.run(DIRTY_DATES[start], DIRTY_DATES[-1]).f
+    assert engine.cache_hash == loaded
+    # the dates of the longer load are complete
+    assert_rows(result, delayed(mean_of_bars(from_date(ranks, start - 20), 10)))
+
+
+def test_complete_dates_in_another_timezone(dirty_panel, device):
+    panel, start = plain_panel(dirty_panel), 28
+    ranks = panel.close.groupby(level="date").rank()
+    expected = delayed(mean_of_bars(from_date(ranks, start - 10), 10))
+    engine = plain_engine(panel, device)
+    engine.timezone = "America/New_York"
+    engine.add(factors.MA(10, inputs=[close.rank()]), "f")
+    result = engine.run(DIRTY_DATES[start], DIRTY_DATES[-1]).f
+    in_utc = result.tz_convert("UTC", level=0)
+    assert_rows(in_utc, expected)
+
+
+def test_align_by_time_has_no_incomplete_dates(dirty_panel, device):
+    engine = plain_engine(dirty_panel, device)
+    engine.align_by_time = True
+    engine.add(factors.MA(10, inputs=[close.rank()]), "f")
+    engine.run(DIRTY_DATES[28], DIRTY_DATES[-1])
+    assert engine.incomplete_rows_("date", close) is None
+
+
+def test_incomplete_rows(dirty_panel, device):
+    panel, start = plain_panel(dirty_panel), 28
+    engine = plain_engine(panel, device)
+    engine.add(factors.MA(10, inputs=[close.rank()]), "f")
+    engine.run(DIRTY_DATES[start], DIRTY_DATES[-1], delay_factor=False)
+
+    # 9 bars of history, the rows before them are older bars of HALTED
+    loaded_dates = engine.dataframe_.index.levels[0]
+    first_complete = list(loaded_dates).index(DIRTY_DATES[start - 9])
+    rows = engine.incomplete_rows_("date", close)
+    assert rows.shape == engine.get_group_padding_mask("date").shape
+    assert rows.any(dim=1).tolist() == [i < first_complete for i in range(len(loaded_dates))]
+    # an input with a look-back has a complete cross-section later
+    rows = engine.incomplete_rows_("date", factors.MA(3))
+    assert rows.any(dim=1).tolist() == [i < first_complete + 2 for i in range(len(loaded_dates))]
+    # the groups without a date and the group of a tensor have nothing to do
+    assert engine.incomplete_rows_("asset", close) is None
+    assert engine.incomplete_rows_(torch.zeros(1), close) is None
 
 
 # ------------------------------------ mask='universe' ------------------------------------

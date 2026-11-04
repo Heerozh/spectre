@@ -144,12 +144,42 @@ class FactorEngine:
             return g.padding_mask
         return self._groups[group].padding_mask
 
+    def incomplete_rows_(self, group: str, *factors: BaseFactor | None) -> torch.Tensor | None:
+        """
+        A date needs all its assets to be read across. An asset with gaps gets older bars of its
+        own from the loader, no other asset has rows on those dates. These `factors` also need
+        their look-back: on the first complete dates only that asset has a value.
+        :return: bool tensor in the shape of `group`, True on those rows. None if there are none.
+        """
+        if self._first_complete_date == 0 or not isinstance(group, str):
+            return None
+        columns = group.split(",")
+        if "date" not in columns and self._loader.time_category not in columns:
+            return None
+
+        look_back = 0
+        # cut by max_backwards, the look-back is short for all assets
+        if not self._history_cut:
+            with self._masks_know_the_filter():
+                look_back = max(f.get_total_backwards_() for f in factors if f is not None)
+        key = (group, look_back)
+        if key not in self._incomplete_rows:
+            dates = self._dataframe.index.codes[0]
+            rows = torch.zeros(len(dates), dtype=torch.bool, device=self._device)
+            rows[: dates.searchsorted(self._first_complete_date + look_back)] = True
+            self._incomplete_rows[key] = self._groups[group].split(rows)
+            if self._enable_stream and self._device.type == "cuda":
+                # the other streams will read it without waiting for this one
+                torch.cuda.current_stream().synchronize()
+        return self._incomplete_rows[key]
+
     # private:
 
     def _prepare_tensor(self, start, end, backwards, delayed=False):
         # Check cache, just in case, if use some ML techniques, engine may be called repeatedly
         # with same date range.
-        if backwards > self.max_backwards:
+        self._history_cut = backwards > self.max_backwards
+        if self._history_cut:
             warnings.warn(
                 f"engine.max_backwards is {self.max_backwards}, but {backwards} bars of historical "
                 "data are required, so the first bars of the results will use partial windows.",
@@ -179,6 +209,7 @@ class FactorEngine:
                     "was not found in DataLoader."
                 )
         # check history data is insufficient
+        dates_of_data = df.index.levels[0]
         df.index = df.index.remove_unused_levels()
         history_win = df.index.levels[0].get_indexer([start], method="bfill")[0]
         # a delayed run drops its first bar, which needs only `backwards - 1` of them
@@ -193,10 +224,21 @@ class FactorEngine:
                 RuntimeWarning,
             )
         # post processing data
+        # on the last `backwards` dates all assets have their rows, see `incomplete_rows_`
+        self._first_complete_date = max(history_win - backwards, 0)
+        static = isinstance(self._filter, StaticAssets)
+        if static and len(df.index.levels[1]) < len(self._filter.assets):
+            # an asset was gone before those dates, nothing shows it had rows on the older ones
+            start_loc = dates_of_data.get_indexer([start], method="bfill")[0]
+            first_date = dates_of_data[max(start_loc - backwards, 0)]
+            first_complete = df.index.levels[0].searchsorted(first_date)
+            self._first_complete_date = max(self._first_complete_date, first_complete)
+        self._incomplete_rows = {}
         if self._align_by_time:
             # every asset gets a row on every date, so a bar is a date, and the older bars the
             # loader gives to an asset with gaps would only add empty rows to all the others
-            df = df.loc[df.index.levels[0][max(history_win - backwards, 0)] :]
+            df = df.loc[df.index.levels[0][self._first_complete_date] :]
+            self._first_complete_date = 0
             # since pandas 0.23, MultiIndex reindex is slow, so using a alternative way here,
             # but still very slow.
             # df = df.reindex(pd.MultiIndex.from_product(df.index.levels))
@@ -260,6 +302,9 @@ class FactorEngine:
         self._align_by_time = False
         self._timezone = "UTC"
         self._cache_hash = uuid.uuid4()
+        self._first_complete_date = 0
+        self._incomplete_rows = {}
+        self._history_cut = False
         self.max_backwards = np.inf
 
     @property
@@ -346,6 +391,8 @@ class FactorEngine:
         self._dataframe = None
         self._dataframe_index = None
         self._cache_hash = uuid.uuid4()
+        self._first_complete_date = 0
+        self._incomplete_rows = {}
 
     def remove_all_factors(self) -> None:
         self._factors = {}

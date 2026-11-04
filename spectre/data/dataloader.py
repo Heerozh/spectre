@@ -234,7 +234,8 @@ class DataLoader:
         """
         Rows from `start` to `end`, and the `backwards` bars of each asset before `start`. A window
         counts the bars of its asset, so an asset with gaps reaches back further than the dates.
-        Only that asset has rows on those older dates, a cross-section of them is not complete.
+        Only that asset has rows on those older dates, so what reads across a date in the engine
+        counts them as missing, see `FactorEngine.incomplete_rows_`.
         An asset without a row in the last `backwards` dates or in the range is left out.
         """
         df = self._load()

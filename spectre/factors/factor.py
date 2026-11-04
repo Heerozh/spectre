@@ -454,7 +454,8 @@ class CustomFactor(BaseFactor):
     _rolling_fill = np.nan  # value of the rolling window before the first data
     # Set if `compute` reads across the slots of a group, like a mean of each date. Then the padding
     # slots of an input in the same group are cleared. Not by default, because `shift(-n)` needs
-    # them: they hold the returns up to the last close of a delisted asset.
+    # them: they hold the returns up to the last close of a delisted asset. It also clears the
+    # dates that don't have all their assets, see `FactorEngine.incomplete_rows_`.
     _reads_across_group = False
 
     # internal member variables
@@ -700,6 +701,12 @@ class CustomFactor(BaseFactor):
             self._ref_count += 1
             self._cache_hash = engine.cache_hash
 
+    @staticmethod
+    def _clear_slots(data: torch.Tensor, slots: torch.Tensor) -> torch.Tensor:
+        if data.ndim > slots.ndim:  # multiple outputs
+            slots = slots.unsqueeze(-1)
+        return data.masked_fill(slots, False if data.dtype == torch.bool else np.nan)
+
     def _format_input(self, upstream, upstream_out, mask_factor, mask_out):
         # If input.groupby not equal self.groupby, convert it
         ret = self._regroup_by_other(upstream, upstream_out)
@@ -711,12 +718,13 @@ class CustomFactor(BaseFactor):
             else:
                 ret = ret.masked_fill(~mask, np.nan)
 
-        # only an input in the same group, a regroup has cleared the padding of the others
-        if self._reads_across_group and upstream.groupby == self.groupby:
-            padding = self._engine.get_group_padding_mask(self.groupby)
-            if ret.ndim > padding.ndim:  # multiple outputs
-                padding = padding.unsqueeze(-1)
-            ret = ret.masked_fill(padding, False if ret.dtype == torch.bool else np.nan)
+        if self._reads_across_group:
+            # only an input in the same group, a regroup has cleared the padding of the others
+            if upstream.groupby == self.groupby:
+                ret = self._clear_slots(ret, self._engine.get_group_padding_mask(self.groupby))
+            incomplete = self._engine.incomplete_rows_(self.groupby, upstream, mask_factor)
+            if incomplete is not None:
+                ret = self._clear_slots(ret, incomplete)
 
         # if need rolling and adjustment
         if self.win > 1:
