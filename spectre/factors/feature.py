@@ -79,7 +79,14 @@ class AssetData(CustomFactor):
                 "disorder. Or set engine.align_by_time = True.",
                 RuntimeWarning,
             )
-        self.asset_ind = engine.dataframe_index[1].unique().categories.get_loc(self.asset)
+        # data has a row for each asset with rows, the categories also keep the ones without
+        assets = engine.dataframe_index[1].remove_unused_categories().categories
+        if self.asset not in assets:
+            raise KeyError(
+                f"{self.asset} has no rows from {start} to {end}, so AssetData can't read it. "
+                "It may not exist in that range, or StaticAssets screened it out."
+            )
+        self.asset_ind = assets.get_loc(self.asset)
 
     def compute(self, data):
         ret = data[self.asset_ind]

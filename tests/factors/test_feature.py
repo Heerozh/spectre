@@ -41,6 +41,19 @@ def broadcast(series, df):
     return pd.DataFrame({asset: series for asset in df})
 
 
+def engine_of(closes, device="cpu"):
+    """An engine on a table of closes, dates by assets, where NaN means the asset has no row."""
+    df = closes.stack().dropna().rename("close").rename_axis(["date", "asset"]).to_frame()
+    for col in ("open", "high", "low"):
+        df[col] = df.close
+    df["volume"] = 1.0
+    ohlcv = ("open", "high", "low", "close", "volume")
+    engine = factors.FactorEngine(spectre.data.MemoryLoader(df[list(ohlcv)], ohlcv=ohlcv))
+    if device == "cuda":
+        engine.to_cuda()
+    return engine
+
+
 # ------------------------------------ market features ------------------------------------
 
 
@@ -89,6 +102,93 @@ def test_asset_data(engine):
 def test_asset_data_warns_not_aligned(engine):
     with pytest.warns(RuntimeWarning, match="Make sure your data is aligned by time"):
         run_factor(engine, factors.AssetData("MSFT", factors.OHLCV.close), check_bias=False)
+
+
+ASSET_DATES = pd.date_range("2020-01-01", periods=30, freq="B", tz="UTC")
+ASSET_START, ASSET_END = ASSET_DATES[15], ASSET_DATES[19]
+ALIGNED = pytest.mark.parametrize("align", [False, True], ids=["not_aligned", "aligned"])
+
+
+@pytest.fixture
+def asset_closes():
+    """Each asset has its own hundreds. A is gone before the range, and E comes after it."""
+    bars = np.arange(len(ASSET_DATES), dtype=float)
+    closes = pd.DataFrame(
+        {asset: i * 100 + bars for i, asset in enumerate("ABCDE", start=1)}, index=ASSET_DATES
+    )
+    closes.loc[ASSET_DATES[10] :, "A"] = nan
+    closes.loc[: ASSET_DATES[24], "E"] = nan
+    return closes
+
+
+def run_asset_data(engine, target, align, start=ASSET_START):
+    engine.align_by_time = align
+    engine.add(factors.AssetData(target, factors.OHLCV.close), "test", replace=True)
+    return engine.run(start, ASSET_END, delay_factor=False).test.unstack("asset")
+
+
+@pytest.mark.filterwarnings("ignore:Make sure your data is aligned by time")
+@ALIGNED
+@pytest.mark.parametrize("target", ["B", "C", "D"])
+@pytest.mark.parametrize("timezone", ["UTC", "Asia/Tokyo"])
+def test_asset_data_next_to_an_asset_out_of_range(asset_closes, device, target, align, timezone):
+    """Categories keep the assets that are not in the range, the rows of a factor don't."""
+    engine = engine_of(asset_closes, device)
+    engine.timezone = timezone
+    result = run_asset_data(engine, target, align)
+    assert list(result.columns) == ["B", "C", "D"]
+    expected = asset_closes[target].loc[ASSET_START:ASSET_END].values
+    for asset in result:
+        assert_array_equal(result[asset].values, expected)
+
+
+@pytest.mark.filterwarnings("ignore:Make sure your data is aligned by time")
+@ALIGNED
+@pytest.mark.parametrize("target", ["B", "D"])
+def test_asset_data_of_static_assets(asset_closes, device, target, align):
+    """StaticAssets screens the assets out before the rows are made."""
+    engine = engine_of(asset_closes, device)
+    engine.set_filter(factors.StaticAssets({"B", "D"}))
+    result = run_asset_data(engine, target, align)
+    assert list(result.columns) == ["B", "D"]
+    expected = asset_closes[target].loc[ASSET_START:ASSET_END].values
+    for asset in result:
+        assert_array_equal(result[asset].values, expected)
+
+
+@pytest.mark.filterwarnings("ignore:Make sure your data is aligned by time")
+@ALIGNED
+@pytest.mark.parametrize(
+    "target", ["A", "E", "NOT_AN_ASSET"], ids=["delisted", "not_listed_yet", "unknown"]
+)
+def test_asset_data_of_asset_without_rows(asset_closes, device, target, align):
+    """It raises, as an unknown name always did, and doesn't read the asset next to it."""
+    engine = engine_of(asset_closes, device)
+    with pytest.raises(KeyError, match=f"{target} has no rows"):
+        run_asset_data(engine, target, align)
+
+    # and the engine is not broken by it
+    result = run_asset_data(engine, "C", align)
+    assert_array_equal(result.B.values, asset_closes.C.loc[ASSET_START:ASSET_END].values)
+
+
+@pytest.mark.filterwarnings("ignore:Make sure your data is aligned by time")
+@ALIGNED
+def test_asset_data_of_asset_screened_out(asset_closes, device, align):
+    engine = engine_of(asset_closes, device)
+    engine.set_filter(factors.StaticAssets({"B", "D"}))
+    with pytest.raises(KeyError, match="C has no rows"):
+        run_asset_data(engine, "C", align)
+
+
+@pytest.mark.filterwarnings("ignore:Make sure your data is aligned by time")
+@ALIGNED
+def test_asset_data_of_asset_only_in_the_history(asset_closes, device, align):
+    """A has rows in the history that MA loads. It reads them, and nothing in the range."""
+    engine = engine_of(asset_closes, device)
+    engine.add(factors.MA(5), "ma")
+    result = run_asset_data(engine, "A", align, start=ASSET_DATES[12])
+    assert np.isnan(result.values).all()
 
 
 # ------------------------------------ calendar features ------------------------------------
