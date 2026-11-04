@@ -1145,11 +1145,19 @@ class ZScoreFactor(CrossSectionFactor):
     def compute(self, data: torch.Tensor, weight=None) -> torch.Tensor:
         if weight is None:
             mean = nanmean(data).unsqueeze(-1)
+            std = nanstd(data).unsqueeze(-1)
         elif not isinstance(weight, torch.Tensor) and weight == 0:
             mean = 0
+            std = nanstd(data).unsqueeze(-1)
         else:
-            mean = _weighted_mean(data, weight).unsqueeze(-1)
-        return (data - mean) / nanstd(data).unsqueeze(-1)
+            # a row without a weight still gets a score, but it is not a sample of mean and std
+            samples = data.masked_fill(torch.isnan(data * weight), np.nan)
+            # from the lowest value, so rounding doesn't give equal values a spread
+            lowest = nanmin(samples).unsqueeze(-1)
+            mean = lowest + _weighted_mean(samples - lowest, weight).unsqueeze(-1)
+            std = nanstd(samples - lowest).unsqueeze(-1)
+            std = std.masked_fill(std == 0, np.nan)  # a value off the mean would be inf
+        return (data - mean) / std
 
 
 class RollingZScoreFactor(CustomFactor):

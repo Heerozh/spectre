@@ -216,6 +216,57 @@ def test_weighted_zscore_of_rows(device):
     assert_array_equal(result.cpu().numpy(), [[-1, nan, 1], [nan, nan, nan]])
 
 
+def test_weighted_zscore_with_nan_weight(dirty_engine, dirty_panel):
+    """A row with data but no weight gets a score, it's just not a sample of the mean and std."""
+    closes = dirty_panel.close
+    weight = dirty_panel.volume.where(dirty_panel.volume > 1500)
+    assert (closes.notna() & weight.isna()).any()
+    samples = closes.where(weight.notna())
+    std = samples.groupby(level="date").transform("std", ddof=0)
+    expected = (closes - xs_weighted_mean(closes, weight)) / std.where(std > 0)
+    result = run_dirty(dirty_engine, close.zscore(weight=volume.filter(volume > 1500)))
+    assert_allclose(result, expected, rtol=1e-4, atol=1e-4)
+
+
+def test_weighted_zscore_with_nan_weight_of_rows(device):
+    data = torch.tensor([[1, 2, 3, 6.0]], device=device)
+    weight = torch.tensor([[1, 1, nan, 2.0]], device=device)
+    result = factors.factor.ZScoreFactor(close).compute(data, weight)
+    # the samples are 1, 2 and 6, their weighted mean is (1 + 2 + 12) / 4
+    expected = (np.array([1, 2, 3, 6]) - 3.75) / np.std([1, 2, 6])
+    assert_allclose(result.cpu().numpy()[0], expected, rtol=1e-6)
+
+
+@pytest.mark.parametrize(
+    "data, weight",
+    [
+        ([[1, 2, 3]], [[1, nan, nan]]),  # one sample
+        ([[5, 5, 7]], [[1, 1, nan]]),  # equal samples, and a row out of them
+        ([[100.1, 100.1]], [[1, 1]]),  # the mean is float32, so it's not exactly the value
+    ],
+    ids=["one_sample", "equal_samples", "rounded_mean"],
+)
+def test_weighted_zscore_without_spread(device, data, weight):
+    """Without spread there is no score, not an inf for each value that is off the mean."""
+    data = torch.tensor(data, dtype=torch.float64, device=device)
+    weight = torch.tensor(weight, dtype=torch.float64, device=device)
+    result = factors.factor.ZScoreFactor(close).compute(data, weight)
+    assert torch.isnan(result).all()
+
+
+@pytest.mark.parametrize("dtype", [torch.float32, torch.float64])
+def test_weighted_zscore_of_constant_rows(device, dtype):
+    """The rounding of the mean must not give scores to equal values."""
+    rng = np.random.default_rng(0)
+    data = np.full((200, 40), nan)
+    for row, value in enumerate(rng.uniform(0.01, 500, 200)):
+        data[row, : 3 + row % 37] = value
+    data = torch.tensor(data, dtype=dtype, device=device)
+    weight = torch.tensor(rng.uniform(1, 1000, data.shape), dtype=dtype, device=device)
+    result = factors.factor.ZScoreFactor(close).compute(data, weight)
+    assert torch.isnan(result).all()
+
+
 def test_zscore_shift_with_filter(engine):
     """mask bug of zscore and shift"""
     engine.set_filter(factors.OHLCV.open.top(2))
