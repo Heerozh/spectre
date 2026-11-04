@@ -31,6 +31,10 @@ and factors.
   if the formatter splits it into one number per line.
 - Don't select all of `SIM`. `SIM300` autofixes `2 == f` into `f == 2`, but `test_ops.py` tests
   those reflected operators on purpose, and it still passes after the fix, so nothing flags it.
+- Python 3.14 evaluates annotations on demand, so a bad one only fails when something like
+  `inspect.signature()` asks for it. `tests/test_signatures.py` checks them. Keep a name quoted if
+  it only exists under `TYPE_CHECKING`, with `# noqa: UP037`, because ruff removes the quotes as a
+  safe fix. Inside `BaseFactor` write `builtins.float`, because `float` is a method there.
 - `pyproject.toml` holds the metadata, dependencies and tool config, and `uv.lock` is committed.
   Change dependencies with `uv add` and `uv remove`. `uv build` needs no package list, it takes all
   of `spectre/`. `.python-version` pins development to 3.14.

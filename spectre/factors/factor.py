@@ -5,6 +5,7 @@
 @email: heeroz@gmail.com
 """
 
+import builtins
 import warnings
 from abc import ABC
 from collections.abc import Sequence
@@ -206,7 +207,7 @@ class BaseFactor:
         groupby: str = "date",
         mask: Union["BaseFactor", str] = None,
         weight: "BaseFactor" = None,
-        weight_sum: float | None = None,
+        weight_sum: builtins.float | None = None,
     ):
         """
         Cross-section mean.
@@ -312,7 +313,9 @@ class BaseFactor:
         factor = OneHotEncoder(self)
         return factor
 
-    def fill_na(self, value: float | None = None, ffill: bool | None = None, inf=False, nan=True):
+    def fill_na(
+        self, value: builtins.float | None = None, ffill: bool | None = None, inf=False, nan=True
+    ):
         if value is not None:
             factor = FillNANFactor(inputs=(self, value))
         elif ffill:
@@ -325,7 +328,7 @@ class BaseFactor:
 
     fill_nan = fill_na
 
-    def masked_fill(self, mask: "BaseFactor", fill: Union["BaseFactor", float, bool]):
+    def masked_fill(self, mask: "BaseFactor", fill: Union["BaseFactor", builtins.float, bool]):
         return MaskedFillFactor(inputs=(self, mask, fill))
 
     def ts_any(self, win: int):
@@ -406,7 +409,8 @@ class BaseFactor:
         """Is this factor should be delayed?"""
         return False
 
-    def pre_compute_(self, engine: "FactorEngine", start, end) -> None:
+    # quoted, because engine.py imports this module and inspect.signature() evaluates annotations
+    def pre_compute_(self, engine: "FactorEngine", start, end) -> None:  # noqa: UP037
         self._engine = engine
         engine.column_to_parallel_groupby_(self.groupby)
 

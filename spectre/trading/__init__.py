@@ -112,8 +112,7 @@ evt_mgr.run()
 
 """
 
-from typing import TYPE_CHECKING
-
+from ..data import DataLoader
 from .algorithm import CustomAlgorithm, SimulationEventManager
 from .blotter import (
     BaseBlotter,
@@ -155,9 +154,6 @@ from .stopmodel import (
     TimeDecayTrailingStopModel,
     TrailingStopModel,
 )
-
-if TYPE_CHECKING:
-    from ..data import DataLoader
 
 
 def run_backtest(
