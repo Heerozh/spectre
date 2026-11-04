@@ -544,7 +544,7 @@ class CustomFactor(BaseFactor):
     def get_total_backwards_(self) -> int:
         # mask='universe' anywhere upstream makes the result depend on the filter of the run
         universe = self._universe_backwards
-        if self._total_backwards is not None and self._backwards_universe == universe:
+        if self._total_backwards is not None and self._memo_universe == universe:
             return self._total_backwards
 
         from .filter import FilterRawShiftFactor
@@ -566,7 +566,7 @@ class CustomFactor(BaseFactor):
         if isinstance(self, (RawShiftFactor, FilterRawShiftFactor)):
             backwards += max(self.periods, 0)
         self._total_backwards = backwards
-        self._backwards_universe = universe
+        self._memo_universe = universe
         return self._total_backwards
 
     def should_delay(self) -> bool:
