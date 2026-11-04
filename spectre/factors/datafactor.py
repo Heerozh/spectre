@@ -129,7 +129,18 @@ class AssetClassifierDataFactor(BaseFactor):
 
 
 class SeriesDataFactor(ColumnDataFactor):
-    """Add series to engine, slow"""
+    """
+    Add series to engine, slow. `fill_na` fills each row from the values of its asset in the whole
+    series, so also from dates before the loaded rows or without a bar: 'ffill' or 'pad' takes the
+    last value up to the row, 'bfill' or 'backfill' the next value from the row.
+    """
+
+    _fill_directions = {
+        "ffill": "backward",
+        "pad": "backward",
+        "bfill": "forward",
+        "backfill": "forward",
+    }
 
     def __init__(self, series: pd.Series, fill_na=None, should_delay=True):
         self.series = series
@@ -138,27 +149,48 @@ class SeriesDataFactor(ColumnDataFactor):
             "df.index.names should be ['date', 'asset'] "
         )
         super().__init__(inputs=[str(series.name)], should_delay=should_delay)
+        self._aligned = None
+        self._aligned_hash = None
+
+    def _align(self, engine) -> np.ndarray:
+        """The value of the series for each row of the frame."""
+        if self.fill_method is not None and self.fill_method not in self._fill_directions:
+            raise ValueError(f"`fill_na` must be one of {list(self._fill_directions)}")
+        if self.series.index.has_duplicates:
+            raise ValueError("The series is non-unique, a row can't hold 2 values.")
+        if self.fill_method is None:
+            return self.series.reindex(engine.dataframe_.index).to_numpy()
+
+        dates, assets = engine.dataframe_index
+        index = self.series.index
+        # by the labels of the level, a code of -1 is a NaN label, so it gets the -1 at the end
+        asset_codes = np.append(assets.categories.get_indexer(index.levels[1]), -1)[index.codes[1]]
+        values = pd.DataFrame(
+            {
+                "date": index.get_level_values(0).tz_convert(dates.tz).as_unit(dates.unit),
+                "asset": asset_codes,
+                "value": self.series.to_numpy(),
+            }
+        )
+        rows = pd.DataFrame({"date": dates, "asset": assets.codes.astype(np.int64)})
+        return pd.merge_asof(
+            rows,
+            values.dropna().sort_values("date", kind="stable"),
+            on="date",
+            by="asset",
+            direction=self._fill_directions[self.fill_method],
+        )["value"].to_numpy()
 
     def pre_compute_(self, engine, start, end) -> None:
         # Not a column of the frame. Its name says nothing about its data, pandas keeps the name on
         # derived series, and a private column would stay in the frame after the run, one for each
-        # series ever run on it.
+        # series ever run on it. What it read is kept here, for the next run on these rows.
         BaseFactor.pre_compute_(self, engine, start, end)
         if self._data is None:
-            series = self.series.reindex(engine.dataframe_.index)
-            if self.fill_method is not None:
-                # GroupBy.fillna(method=...) was removed in pandas 3.0
-                fill_methods = {
-                    "ffill": "ffill",
-                    "pad": "ffill",
-                    "bfill": "bfill",
-                    "backfill": "bfill",
-                }
-                if self.fill_method not in fill_methods:
-                    raise ValueError(f"`fill_na` must be one of {list(fill_methods)}")
-                grouped = series.groupby(level=1, observed=False)
-                series = getattr(grouped, fill_methods[self.fill_method])()
-            self._data = engine.group_by_(series, self.groupby)
+            if self._aligned_hash != engine.cache_hash:
+                self._aligned = self._align(engine)
+                self._aligned_hash = engine.cache_hash
+            self._data = engine.group_by_(self._aligned, self.groupby)
             self._clean_required = True
 
 

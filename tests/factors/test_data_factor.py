@@ -269,10 +269,223 @@ def test_series_does_not_grow_the_frame(dirty_engine, dirty_panel, new_instances
         assert len(dirty_engine._column_cache) == cached
 
 
-def test_series_with_duplicated_rows_raises(dirty_engine, dirty_panel):
+@pytest.mark.parametrize("fill_na", [None, "ffill"])
+def test_series_with_duplicated_rows_raises(dirty_engine, dirty_panel, fill_na):
     """One row can't hold two values, and more rows than the frame would shift all the others."""
     doubled = dirty_panel.close * 2
     duplicated = pd.concat([doubled, doubled.iloc[:1]])
-    dirty_engine.add(series_factor(duplicated), "test")
+    dirty_engine.add(series_factor(duplicated, fill_na=fill_na), "test")
     with pytest.raises(ValueError, match="non-unique"):
         dirty_engine.run(*SERIES_RANGE, delay_factor=False)
+
+
+# ------------------------------------ fill on the series ------------------------------------
+
+
+def values_of(*points, name="eps"):
+    """A series from (date, asset, value), with values on a few rows, like reports of companies."""
+    index = pd.MultiIndex.from_tuples([p[:2] for p in points], names=["date", "asset"])
+    return pd.Series([p[2] for p in points], index=index, name=name, dtype=float)
+
+
+def filled(series, dates, fill_na, asset="FULL"):
+    """The fill of pandas of one asset on `dates`, its values on all of the dates of the series."""
+    values = series.xs(asset, level="asset").dropna().sort_index()
+    return values.reindex(dates, method="ffill" if fill_na == "ffill" else "bfill")
+
+
+@pytest.mark.parametrize(
+    "start, other_factor",
+    [(0, False), (10, False), (10, True)],
+    ids=["from_bar_0", "from_bar_10", "from_bar_10_with_MA"],
+)
+def test_series_fill_does_not_depend_on_the_loaded_rows(dirty_engine, start, other_factor):
+    series = values_of((DIRTY_DATES[3], "FULL", 1.0), (DIRTY_DATES[30], "FULL", 2.0))
+    if other_factor:
+        dirty_engine.add(factors.MA(10), "ma")
+    dates = DIRTY_DATES[start], DIRTY_DATES[-1]
+    result = read(dirty_engine, series_factor(series, fill_na="ffill"), dates)
+    assert result.loc[DIRTY_DATES[15]] == 1.0
+    assert result.loc[DIRTY_DATES[31]] == 2.0
+    assert_allclose(result, filled(series, DIRTY_DATES[start:], "ffill").values)
+
+
+def test_series_fill_from_a_date_without_a_bar(dirty_engine):
+    """2020-01-04 is a Saturday, so it's on no row of the frame."""
+    saturday = pd.Timestamp("2020-01-04", tz="UTC")
+    assert saturday not in DIRTY_DATES
+    series = values_of((saturday, "FULL", 1.0))
+    result = read(
+        dirty_engine, series_factor(series, fill_na="ffill"), (DIRTY_DATES[0], DIRTY_DATES[9])
+    )
+    assert_array_equal(result.values, filled(series, DIRTY_DATES[:10], "ffill").values)
+    assert result.notna().sum() == 7
+
+    result = read(
+        dirty_engine, series_factor(series, fill_na="bfill"), (DIRTY_DATES[0], DIRTY_DATES[9])
+    )
+    assert_array_equal(result.values, filled(series, DIRTY_DATES[:10], "bfill").values)
+    assert result.notna().sum() == 3
+
+
+@pytest.mark.parametrize("fill_na", ["ffill", "bfill"])
+def test_series_fill_past_the_last_date_of_the_series(dirty_engine, fill_na):
+    """The last value goes on over the later rows, there is nothing to take for the other way."""
+    series = values_of((DIRTY_DATES[5], "FULL", 1.0), (DIRTY_DATES[20], "FULL", 2.0))
+    result = read(
+        dirty_engine, series_factor(series, fill_na=fill_na), (DIRTY_DATES[0], DIRTY_DATES[-1])
+    )
+    assert_array_equal(result.values, filled(series, DIRTY_DATES, fill_na).values)
+    assert result.iloc[-1] == 2.0 if fill_na == "ffill" else np.isnan(result.iloc[-1])
+
+
+def test_series_bfill_from_a_value_after_the_loaded_rows(dirty_engine):
+    series = values_of((DIRTY_DATES[30], "FULL", 2.0))
+    result = read(dirty_engine, series_factor(series, fill_na="bfill"))
+    assert (result == 2.0).all()
+
+
+def test_series_fill_skips_the_nans_of_the_series(dirty_engine):
+    """As a fill does, a NaN is no value."""
+    series = values_of(
+        (DIRTY_DATES[3], "FULL", 1.0),
+        (DIRTY_DATES[5], "FULL", np.nan),
+        (DIRTY_DATES[8], "FULL", 2.0),
+    )
+    dates = DIRTY_DATES[0], DIRTY_DATES[9]
+    result = read(dirty_engine, series_factor(series, fill_na="ffill"), dates)
+    assert result.loc[DIRTY_DATES[6]] == 1.0
+    result = read(dirty_engine, series_factor(series, fill_na="bfill"), dates)
+    assert result.loc[DIRTY_DATES[4]] == 2.0
+
+
+def test_series_fill_without_a_value(dirty_engine):
+    series = values_of((DIRTY_DATES[3], "FULL", np.nan))
+    assert read(dirty_engine, series_factor(series, fill_na="ffill")).isna().all()
+
+
+def test_series_fill_is_for_each_asset(dirty_engine):
+    series = values_of(
+        (DIRTY_DATES[3], "FULL", 1.0),
+        (DIRTY_DATES[5], "SPLIT", 2.0),
+        # not in the data at all
+        (DIRTY_DATES[1], "NOT_AN_ASSET", 3.0),
+    )
+    dirty_engine.add(series_factor(series, fill_na="ffill"), "test")
+    result = dirty_engine.run(DIRTY_DATES[0], DIRTY_DATES[9], delay_factor=False).test
+    assert_array_equal(result.xs("FULL", level="asset").notna(), DIRTY_DATES[:10] >= DIRTY_DATES[3])
+    assert_array_equal(
+        result.xs("SPLIT", level="asset").notna(), DIRTY_DATES[:10] >= DIRTY_DATES[5]
+    )
+    assert result.xs("HALTED", level="asset").isna().all()
+
+
+@pytest.mark.parametrize("fill_na", ["ffill", "bfill"])
+@pytest.mark.parametrize("start", [0, 22, 34], ids=lambda bar: f"bar_{bar}")
+def test_series_fill_of_all_assets(dirty_engine, dirty_panel, fill_na, start):
+    """Bar 22 and 34 have the halt of HALTED before them, and rows of a listing after them."""
+    rng = np.random.default_rng(0)
+    series = dirty_panel.close[rng.random(len(dirty_panel)) < 0.2].dropna()
+    dirty_engine.add(series_factor(series, fill_na=fill_na), "test")
+    result = dirty_engine.run(DIRTY_DATES[start], DIRTY_DATES[-1], delay_factor=False).test
+    for asset, rows_of_asset in result.groupby(level="asset", observed=True):
+        dates = rows_of_asset.index.get_level_values("date")
+        assert_allclose(rows_of_asset.values, filled(series, dates, fill_na, asset).values)
+
+
+def test_series_fill_of_a_series_from_a_loader(dirty_engine, dirty_loader):
+    """Its asset level is categorical, and with an asset the rows don't have."""
+    series = dirty_loader.load().close.dropna()
+    series = series.iloc[::7].rename("signal")
+    assert series.index.levels[1].dtype == "category"
+    dirty_engine.set_filter(factors.StaticAssets({"FULL", "SPLIT"}))
+    dates = DIRTY_DATES[10], DIRTY_DATES[-1]
+    result = read(dirty_engine, series_factor(series, fill_na="ffill"), dates, "SPLIT")
+    assert_allclose(result, filled(series, DIRTY_DATES[10:], "ffill", "SPLIT").values)
+
+
+def test_series_fill_ignores_a_row_without_an_asset(dirty_engine):
+    """It's later than the value of SPLIT, the last label of the level, so it would win there."""
+    series = values_of((DIRTY_DATES[4], "SPLIT", 2.0), (DIRTY_DATES[6], np.nan, 1.0))
+    assert (read(dirty_engine, series_factor(series, fill_na="ffill"), asset="SPLIT") == 2.0).all()
+
+
+def test_series_fill_on_rows_added_by_align_by_time(dirty_engine):
+    """The last value of DELISTED goes on after its last bar, on rows it never had."""
+    dirty_engine.align_by_time = True
+    series = values_of((DIRTY_DATES[30], "DELISTED", 1.0))
+    result = read(
+        dirty_engine,
+        series_factor(series, fill_na="ffill"),
+        (DIRTY_DATES[35], DIRTY_DATES[-1]),
+        "DELISTED",
+    )
+    assert len(result) == len(DIRTY_DATES[35:])
+    assert (result == 1.0).all()
+
+
+def test_series_fill_on_intraday_rows(intraday_loader, device):
+    """A value a day, stamped before the session, is on no bar. It reaches them by the fill."""
+    engine = factors.FactorEngine(intraday_loader)
+    if device == "cuda":
+        engine.to_cuda()
+    stamps = intraday_loader.load().index.levels[0]
+    days = stamps.normalize().unique()
+    series = values_of(*[(day, "AAPL", float(i)) for i, day in enumerate(days)])
+
+    start, end = stamps[stamps >= days[12]][0], stamps[-1]
+    assert read(engine, series_factor(series), (start, end), "AAPL").isna().all()
+
+    result = read(engine, series_factor(series, fill_na="ffill"), (start, end), "AAPL")
+    assert_array_equal(result.values, filled(series, result.index, "ffill", "AAPL").values)
+    # each day has its value, on all of its bars
+    assert result.nunique() == result.index.normalize().nunique()
+
+
+def test_series_fill_shared_by_two_engines(dirty_engine, device):
+    """They have other rows, so what was read for one is not what the other wants."""
+    series = values_of((DIRTY_DATES[3], "FULL", 1.0), (DIRTY_DATES[30], "FULL", 2.0))
+    factor = series_factor(series, fill_na="ffill")
+
+    closes = pd.DataFrame(
+        {"close": 100.0},
+        index=pd.MultiIndex.from_product(
+            [DIRTY_DATES[10:], ["FULL", "OTHER"]], names=["date", "asset"]
+        ),
+    )
+    for col in ("open", "high", "low"):
+        closes[col] = closes.close
+    closes["volume"] = 1.0
+    ohlcv = ("open", "high", "low", "close", "volume")
+    other = factors.FactorEngine(spectre.data.MemoryLoader(closes, ohlcv=ohlcv))
+    if device == "cuda":
+        other.to_cuda()
+
+    for _ in range(2):
+        dates = DIRTY_DATES[0], DIRTY_DATES[-1]
+        assert_allclose(read(dirty_engine, factor, dates), filled(series, DIRTY_DATES, "ffill"))
+        dates = DIRTY_DATES[10], DIRTY_DATES[-1]
+        expected = filled(series, DIRTY_DATES[10:], "ffill")
+        assert_allclose(read(other, factor, dates), expected)
+
+
+def test_series_fill_of_the_same_frame_is_read_once(dirty_engine, monkeypatch):
+    """Runs of one range share a frame, and the rows of the frame are all a fill depends on."""
+    calls = []
+    merge_asof = pd.merge_asof
+
+    def counted(*args, **kwargs):
+        calls.append(args)
+        return merge_asof(*args, **kwargs)
+
+    monkeypatch.setattr(pd, "merge_asof", counted)
+    series = values_of((DIRTY_DATES[3], "FULL", 1.0), (DIRTY_DATES[30], "FULL", 2.0))
+    factor = series_factor(series, fill_na="ffill")
+    for _ in range(3):
+        read(dirty_engine, factor)
+    assert len(calls) == 1
+
+    # a new frame has other rows
+    result = read(dirty_engine, factor, OTHER_RANGE)
+    assert len(calls) == 2
+    assert (result == 2.0).all()
