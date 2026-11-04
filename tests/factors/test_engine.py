@@ -991,6 +991,35 @@ def test_full_run_keeps_the_rows_with_a_full_return(
 
 
 @pytest.mark.filterwarnings("ignore:quantile.. mask parameter not set")
+def test_full_run_takes_its_columns_back_if_the_run_fails(device):
+    class Fails(factors.CustomFactor):
+        inputs = [close]
+
+        def compute(self, data):
+            raise ZeroDivisionError()
+
+    panel, _, _ = forward_data()
+    engine = forward_engine(panel, device)
+    engine.add(Fails(), "f")
+    for _ in range(2):
+        # the second time would find the columns of the first
+        with pytest.raises(ZeroDivisionError):
+            engine.full_run(FORWARD_START, FORWARD_END, periods=(1,), preview=False)
+        assert list(engine.factors) == ["f"]
+
+
+@pytest.mark.filterwarnings("ignore:quantile.. mask parameter not set")
+def test_full_run_takes_its_columns_back_if_a_name_is_taken(device):
+    panel, _, _ = forward_data()
+    engine = forward_engine(panel, device)
+    engine.add(after_close(), "f")
+    engine.add(after_close(), "f_w_")
+    with pytest.raises(KeyError, match="already exists"):
+        engine.full_run(FORWARD_START, FORWARD_END, periods=(1,), preview=False)
+    assert list(engine.factors) == ["f", "f_w_"]
+
+
+@pytest.mark.filterwarnings("ignore:quantile.. mask parameter not set")
 def test_full_run_without_a_row_with_a_full_return(device):
     """MA(10) loads history, so there are dates to count, but none of them is in the range."""
     panel, _, _ = forward_data()

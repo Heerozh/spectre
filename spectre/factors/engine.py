@@ -700,75 +700,80 @@ class FactorEngine:
         universe = self.get_filter()
 
         column_names = {}
-        # add quantile factor of all factors
-        for c, f in factors.items():
-            column_names[c] = (c, "factor")
-            quantile_fct = f.quantile(quantiles, mask=universe)
-            if not xs_quantile:
-                quantile_fct.groupby = "asset"
-            self.add(quantile_fct, c + "_q_")
-            column_names[c + "_q_"] = (c, "factor_quantile")
+        try:
+            # add quantile factor of all factors
+            for c, f in factors.items():
+                column_names[c] = (c, "factor")
+                quantile_fct = f.quantile(quantiles, mask=universe)
+                if not xs_quantile:
+                    quantile_fct.groupby = "asset"
+                self.add(quantile_fct, c + "_q_")
+                column_names[c + "_q_"] = (c, "factor_quantile")
 
-            if to_weight:
-                self.add(f.to_weight(mask=universe, demean=demean_weight), c + "_w_")
-            else:
-                self.add(f, c + "_w_")
-            column_names[c + "_w_"] = (c, "factor_weight")
-
-        # add the rolling returns of each period, use AdjustedColumnDataFactor for best performance
-        # `shift` puts on row t the return of entering on t + 1, or on t if that row is delayed.
-        # The delay of the return columns is set here, or a universe would decide it by its mask.
-        shift = -1
-        delay_factor = True
-        delay_returns = True
-        # entering a bar later needs a bar more at the end
-        extra_tail = 0
-        inputs = (AdjustedColumnDataFactor(OHLCV.close),)
-        if isinstance(trade_at, BaseFactor):
-            inputs = (trade_at,)
-            delay_factor = "all"
-        elif trade_at == "open":
-            inputs = (AdjustedColumnDataFactor(OHLCV.open),)
-            # On row t a delayed factor knows close[t - 1], so it can enter at open[t]. A factor
-            # that isn't delayed knows open[t], so it can only enter at open[t + 1].
-            with self._masks_know_the_filter():
-                delays = [f.should_delay() for f in self._factors.values()]
-            delay_returns = any(delays)
-            if not delay_returns:
-                extra_tail = 1
-            elif not all(delays):
-                delay_factor = "all"
-        elif trade_at == "current_close":
-            shift = 0
-            delay_factor = False
-            delay_returns = None
-
-        from .basic import Returns
-
-        for n in periods:
-            # Different: returns here diff by bar, which alphalens diff by time
-            ret = Returns(win=n + 1, inputs=inputs).shift(-n + shift)
-            mask = universe
-            returns = ret
-            if filter_zscore is not None:
-                # Different: The zscore here contains all backward data which alphalens not counted.
-                zscore_factor = ret.zscore(groupby="asset", mask=universe)
-                zscore_filter = zscore_factor.abs() <= filter_zscore
-                if mask is not None:
-                    mask = mask & zscore_filter
+                if to_weight:
+                    self.add(f.to_weight(mask=universe, demean=demean_weight), c + "_w_")
                 else:
-                    mask = zscore_filter
-                returns = ret.filter(mask)
-            returns.set_delay(delay_returns)
-            self.add(returns, str(n) + "_r_")
-            if demean:
-                demeaned = ret.demean(mask=mask)
-                demeaned.set_delay(delay_returns)
-                self.add(demeaned, str(n) + "_d_")
+                    self.add(f, c + "_w_")
+                column_names[c + "_w_"] = (c, "factor_weight")
 
-        # run and get df
-        factor_data = self.run(start, end, delay_factor)
-        self._factors = factors
+            # add the rolling returns of each period, use AdjustedColumnDataFactor for best
+            # performance
+            # `shift` puts on row t the return of entering on t + 1, or on t if that row is
+            # delayed. The delay of the return columns is set here, or a universe would decide it
+            # by its mask.
+            shift = -1
+            delay_factor = True
+            delay_returns = True
+            # entering a bar later needs a bar more at the end
+            extra_tail = 0
+            inputs = (AdjustedColumnDataFactor(OHLCV.close),)
+            if isinstance(trade_at, BaseFactor):
+                inputs = (trade_at,)
+                delay_factor = "all"
+            elif trade_at == "open":
+                inputs = (AdjustedColumnDataFactor(OHLCV.open),)
+                # On row t a delayed factor knows close[t - 1], so it can enter at open[t]. A factor
+                # that isn't delayed knows open[t], so it can only enter at open[t + 1].
+                with self._masks_know_the_filter():
+                    delays = [f.should_delay() for f in self._factors.values()]
+                delay_returns = any(delays)
+                if not delay_returns:
+                    extra_tail = 1
+                elif not all(delays):
+                    delay_factor = "all"
+            elif trade_at == "current_close":
+                shift = 0
+                delay_factor = False
+                delay_returns = None
+
+            from .basic import Returns
+
+            for n in periods:
+                # Different: returns here diff by bar, which alphalens diff by time
+                ret = Returns(win=n + 1, inputs=inputs).shift(-n + shift)
+                mask = universe
+                returns = ret
+                if filter_zscore is not None:
+                    # Different: The zscore here contains all backward data which alphalens not
+                    # counted.
+                    zscore_factor = ret.zscore(groupby="asset", mask=universe)
+                    zscore_filter = zscore_factor.abs() <= filter_zscore
+                    if mask is not None:
+                        mask = mask & zscore_filter
+                    else:
+                        mask = zscore_filter
+                    returns = ret.filter(mask)
+                returns.set_delay(delay_returns)
+                self.add(returns, str(n) + "_r_")
+                if demean:
+                    demeaned = ret.demean(mask=mask)
+                    demeaned.set_delay(delay_returns)
+                    self.add(demeaned, str(n) + "_d_")
+
+            # run and get df
+            factor_data = self.run(start, end, delay_factor)
+        finally:
+            self._factors = factors
         factor_data.index = factor_data.index.remove_unused_levels()
         # factor_data = factor_data.sort_index()  # 140 ms
         # Count on the loaded dates, a filter can leave out any of them. A value in the column
