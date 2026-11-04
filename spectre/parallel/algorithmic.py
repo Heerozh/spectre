@@ -417,6 +417,9 @@ class Rolling:
 
     @classmethod
     def unfold(cls, x, win, fill=np.nan):
+        if x.dtype == torch.bool:
+            # nan is True for bool tensor, means no data should be False
+            fill = False
         nan_stack = x.new_full((x.shape[0], win - 1), fill)
         new_x = torch.cat((nan_stack, x), dim=1)
         return new_x.unfold(1, win, 1)

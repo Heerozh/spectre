@@ -12,17 +12,24 @@ import warnings
 from .dataloader import DataLoader
 
 
-def _ffill_zeros(df: pd.DataFrame) -> pd.DataFrame:
+def _ffill_zeros(df: pd.DataFrame, groups) -> pd.DataFrame:
     """
-    Replace every 0 with the value of the previous row (column by column), NaNs are kept as is.
-    Same as `df.replace(to_replace=0, method='ffill')`, which was removed in pandas 3.0.
+    Replace every 0 with the previous value of the same group (column by column), NaNs are kept
+    as is, and leading zeros of each group stay 0. Rows of the same group must be contiguous.
+    Like `df.replace(to_replace=0, method='ffill')` (removed in pandas 3.0), but it doesn't fill
+    values across groups.
     """
     df = df.copy()
     row_ids = np.arange(len(df))
+    groups = np.asarray(groups)
+    group_start = np.r_[True, groups[1:] != groups[:-1]]
+    group_start = np.maximum.accumulate(np.where(group_start, row_ids, 0))
     for col in df.columns:
         values = df[col].to_numpy()
-        # index of the last non-zero row, leading zeros point to themselves (stay 0)
+        # index of the last non-zero row
         last_valid = np.maximum.accumulate(np.where(values != 0, row_ids, 0))
+        # no non-zero row in the current group yet, keep it
+        last_valid = np.where(last_valid < group_start, row_ids, last_valid)
         df[col] = values[last_valid]
     return df
 
@@ -167,8 +174,9 @@ class CsvDirLoader(DataLoader):
         df = df.rename_axis(['asset', 'date'])
 
         if self.ohlcv is not None:
-            # 这里把0当成nan进行ffill，如果未来取消了，要先把0变成nan，然后df.ffill
-            df[list(self.ohlcv)] = _ffill_zeros(df[list(self.ohlcv)])
+            # 这里把0当成nan进行ffill（按asset分别填充）
+            df[list(self.ohlcv)] = _ffill_zeros(df[list(self.ohlcv)],
+                                                df.index.get_level_values(0))
 
         if self._dividends_path is not None:
             dfs = self._walk_dir(self._dividends_path, self._dividends_index)

@@ -1127,9 +1127,10 @@ class MADClampFactor(CustomFactor):
         if fill is None:
             clamp_1d_(ret, lower, upper)
         elif fill == 'center':
+            # masked_scatter_ takes source values in order, select the centers of masked first
+            fill_mask = (ret <= lower) | (ret >= upper)
             ret.masked_scatter_(
-                (ret <= lower) | (ret >= upper),
-                center.expand(data.shape[0], data.shape[1]))
+                fill_mask, center.expand(data.shape[0], data.shape[1]).masked_select(fill_mask))
         else:
             ret.masked_fill_((ret <= lower) | (ret >= upper), fill)
         return ret
