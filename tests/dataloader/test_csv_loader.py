@@ -1,3 +1,5 @@
+import glob
+
 import numpy as np
 import pandas as pd
 import pytest
@@ -648,3 +650,81 @@ def test_event_in_the_prices_csv_after_an_aligned_gap(tmp_path):
     assert list(df["split_ratio"]) == [1, 0.5, 1, 1]
     assert_allclose(df.price_multi, [(1 - 1 / 100) * 0.5] * 2 + [1, 1], rtol=1e-6)
     assert list(df.vol_multi) == [2, 2, 1, 1]
+
+
+# ------------------------------- row order of the files -------------------------------
+
+ROW_ORDERS = {
+    "oldest_first": lambda rows: rows,
+    "newest_first": lambda rows: rows.iloc[::-1],
+    "shuffled": lambda rows: rows.sample(frac=1, random_state=0),
+}
+
+
+def random_bars(dates, seed=0):
+    rng = np.random.default_rng(seed)
+    closes = 100 * np.cumprod(1 + rng.normal(0, 0.02, len(dates)))
+    bars = pd.DataFrame({col: closes for col in MEMORY_OHLCV}, index=dates.rename("date"))
+    bars["open"] *= 1 + rng.normal(0, 0.01, len(dates))
+    bars["volume"] = rng.integers(1000, 2000, len(dates)).astype(float)
+    return bars
+
+
+def load_in_order(folder, order, assets, **kwargs):
+    """Write `assets`, {name: rows}, one csv each with the rows in `order`, and load them."""
+    folder.mkdir()
+    for name, rows in assets.items():
+        ROW_ORDERS[order](rows).to_csv(folder / f"{name}.csv")
+    return spectre.data.CsvDirLoader(
+        str(folder), ohlcv=MEMORY_OHLCV, parse_dates=True, **kwargs
+    ).load()
+
+
+@pytest.mark.parametrize("order", ["newest_first", "shuffled"])
+def test_zeros_are_filled_from_the_past_in_any_row_order(tmp_path, order):
+    dates = pd.bdate_range("2023-01-02", periods=60)
+    rows = random_bars(dates)
+    rows.iloc[20] = 0.0  # a day without data
+    rows.iloc[[30, 31]] = 0.0  # a halt of two days
+    rows.iloc[40, rows.columns.get_loc("volume")] = 0.0  # valid prices, no volume
+    assets = {"A": rows, "B": random_bars(dates, seed=1)}
+
+    oldest_first = load_in_order(tmp_path / "oldest", "oldest_first", assets)
+    other = load_in_order(tmp_path / "other", order, assets)
+    pd.testing.assert_frame_equal(other, oldest_first)
+
+    expected = rows.replace(0, nan).ffill()
+    assert_allclose(other.xs("A", level=1)[list(MEMORY_OHLCV)], expected)
+    assert_allclose(other.xs("B", level=1)[list(MEMORY_OHLCV)], assets["B"])
+
+
+def test_zeros_are_filled_from_the_past_in_any_order_of_year_files(tmp_path, monkeypatch):
+    dates = pd.bdate_range("2021-12-27", "2023-01-13")
+    rows = random_bars(dates)
+    rows.iloc[int(np.flatnonzero(dates.year == 2022)[0])] = 0.0
+    for year in (2021, 2022, 2023):
+        rows[dates.year == year].to_csv(tmp_path / f"A_{year}.csv")
+
+    real_glob = glob.glob
+    monkeypatch.setattr(glob, "glob", lambda pattern: sorted(real_glob(pattern), reverse=True))
+    df = spectre.data.CsvDirLoader(
+        str(tmp_path), prices_by_year=True, ohlcv=MEMORY_OHLCV, parse_dates=True
+    ).load()
+    assert_allclose(df[list(MEMORY_OHLCV)], rows.replace(0, nan).ffill())
+
+
+@pytest.mark.parametrize("order", ["newest_first", "shuffled"])
+@pytest.mark.parametrize(
+    "cut, bars", [("2023-02-01", 38), ("2023-02-04", 35)], ids=["on_a_bar", "between_bars"]
+)
+def test_earliest_date_in_any_row_order(tmp_path, order, cut, bars):
+    dates = pd.bdate_range("2023-01-02", periods=60)
+    assets = {"A": random_bars(dates)}
+    earliest_date = pd.Timestamp(cut)
+
+    oldest_first = load_in_order(
+        tmp_path / "oldest", "oldest_first", assets, earliest_date=earliest_date
+    )
+    other = load_in_order(tmp_path / "other", order, assets, earliest_date=earliest_date)
+    pd.testing.assert_frame_equal(other, oldest_first)
+    assert list(other.index.get_level_values(0)) == list(dates[-bars:].tz_localize("UTC"))

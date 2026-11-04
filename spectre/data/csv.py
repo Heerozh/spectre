@@ -18,7 +18,8 @@ from .dataloader import DataLoader
 def _ffill_zeros(df: pd.DataFrame, groups) -> pd.DataFrame:
     """
     Replace every 0 with the previous value of the same group (column by column), NaNs are kept
-    as is, and leading zeros of each group stay 0. Rows of the same group must be contiguous.
+    as is, and leading zeros of each group stay 0. Rows of the same group must be contiguous, and
+    oldest first, otherwise a value is filled from the future.
     Like `df.replace(to_replace=0, method='ffill')` (removed in pandas 3.0), but it doesn't fill
     values across groups.
     """
@@ -220,7 +221,10 @@ class CsvDirLoader(DataLoader):
                     "For mixed-timezone like daylight saving time, "
                     "set date_parser=lambda col: pd.to_datetime(col, utc=True)"
                 )
-            return df[self._earliest_date :]
+            if self._earliest_date is None:
+                return df
+            # a mask, because the result of a slice depends on the order of the rows
+            return df[df.index >= self._earliest_date]
 
         dfs = {symbol(fn): read_csv(fn) for fn in files}
         return dfs
@@ -232,7 +236,8 @@ class CsvDirLoader(DataLoader):
             dfs = self._walk_dir(self._path, self._prices_index)
         dfs = {k: v[~v.index.duplicated(keep="last")] for k, v in dfs.items() if v is not None}
         df = pd.concat(dfs, sort=False)
-        df = df.rename_axis(["asset", "date"])
+        # the rows of a file, and the files of `prices_by_year`, can be in any order
+        df = df.rename_axis(["asset", "date"]).sort_index()
 
         if self.ohlcv is not None:
             # 这里把0当成nan进行ffill（按asset分别填充）
