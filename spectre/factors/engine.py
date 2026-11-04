@@ -160,8 +160,8 @@ class FactorEngine:
             df = df[df.index.get_level_values(1).isin(list(self._filter.assets))]
             if df.shape[0] == 0:
                 raise ValueError(
-                    f'The assets {self._filter.assets} specified by StaticAssets filter, was not found in '
-                    'DataLoader.'
+                    f'The assets {self._filter.assets} specified by StaticAssets filter, '
+                    'was not found in DataLoader.'
                 )
         # check history data is insufficient
         df.index = df.index.remove_unused_levels()
@@ -169,7 +169,8 @@ class FactorEngine:
         if history_win < backwards:
             warnings.warn(
                 'Historical data seems insufficient. '
-                f'{backwards} rows of historical data are required, but only {history_win} rows are obtained. '
+                f'{backwards} rows of historical data are required, '
+                f'but only {history_win} rows are obtained. '
                 'It is also possible that `calender_asset` of the loader is not set, '
                 'some out of trading hours data will cause indexing problems.',
                 RuntimeWarning,
@@ -298,10 +299,10 @@ class FactorEngine:
             self._factors[name] = factor
 
     def set_filter(self, factor: FilterFactor | None) -> None:
-        if isinstance(self._filter, StaticAssets) or isinstance(factor, StaticAssets):
-            if self._dataframe is not None:
-                print('Cache clean due to the StaticAssets filter changed.')
-                self.empty_cache()
+        static_assets = isinstance(self._filter, StaticAssets) or isinstance(factor, StaticAssets)
+        if static_assets and self._dataframe is not None:
+            print('Cache clean due to the StaticAssets filter changed.')
+            self.empty_cache()
         self._filter = factor
 
     def get_filter(self):
@@ -396,9 +397,8 @@ class FactorEngine:
 
         # shift factors if necessary
         filter_ = self._filter
-        if filter_ and delay_factor:
-            if filter_.should_delay() or delay_factor == 'all':
-                filter_ = filter_.shift(1)
+        if filter_ and delay_factor and (filter_.should_delay() or delay_factor == 'all'):
+            filter_ = filter_.shift(1)
         factors = {col: col in delays and fct.shift(1) or fct for col, fct in self._factors.items()}
 
         # calculate how much historical data is needed
@@ -422,7 +422,7 @@ class FactorEngine:
             # some pre-work
             if filter_:
                 filter_.pre_compute_(self, start, end)
-            for _, f in factors.items():
+            for f in factors.values():
                 # print(_)
                 f.pre_compute_(self, start, end)
 
@@ -719,7 +719,7 @@ class FactorEngine:
 
         # mean return, return std err
         mean_returns = []
-        for fact_name, _ in factors.items():
+        for fact_name in factors:
             mean_return = pd.DataFrame(columns=pd.MultiIndex.from_arrays([[], []]))
             group = [(fact_name, 'factor_quantile'), 'date']
             if demean:
@@ -727,7 +727,7 @@ class FactorEngine:
             else:
                 returns_col = 'Returns'
             grouped_mean = factor_data[[returns_col, fact_name]].groupby(group).agg('mean')
-            for _, period_col in period_cols.items():
+            for period_col in period_cols.values():
                 demean_col = (returns_col, period_col)
                 mean_col = (fact_name, period_col)
                 mean_return[mean_col] = grouped_mean[demean_col]

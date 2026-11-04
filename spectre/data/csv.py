@@ -46,7 +46,7 @@ class CsvDirLoader(DataLoader):
         dividends_path=None,
         splits_path=None,
         file_pattern='*.csv',
-        calender_asset: str = None,
+        calender_asset: str | None = None,
         align_by_time=False,
         ohlcv=('open', 'high', 'low', 'close', 'volume'),
         adjustments=None,

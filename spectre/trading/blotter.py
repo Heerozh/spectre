@@ -12,9 +12,10 @@ from collections.abc import Iterable
 
 # import pandas as pd
 import numpy as np
+import pandas as pd
 
 from ..data import DataLoaderFastGetter
-from .event import *
+from .event import EventReceiver, EveryBarData, MarketClose, MarketOpen
 from .portfolio import Portfolio
 
 
@@ -162,11 +163,11 @@ class BaseBlotter:
     def _order(self, asset, amount, price=None):
         raise NotImplementedError('abstractmethod')
 
-    def order(self, asset: str, amount: int, price: str = None):
+    def order(self, asset: str, amount: int, price: str | None = None):
         if abs(amount) > self.max_shares:
             raise OverflowError(
-                f'Cannot order more than ±{self.max_shares} shares: {amount}, set `blotter.max_shares` value '
-                'to change this limit.'
+                f'Cannot order more than ±{self.max_shares} shares: {amount}, '
+                'set `blotter.max_shares` value to change this limit.'
             )
 
         if not isinstance(asset, str):
@@ -185,8 +186,8 @@ class BaseBlotter:
 
         if abs(amount) > self.max_shares:
             raise OverflowError(
-                f'Cannot order more than ±{self.max_shares} shares: {amount}, set `blotter.max_shares` value'
-                'to change this limit.'
+                f'Cannot order more than ±{self.max_shares} shares: {amount}, '
+                'set `blotter.max_shares` value to change this limit.'
             )
 
         return self._order(asset, amount)
@@ -247,7 +248,8 @@ class BaseBlotter:
                         f'{asset} price on {self._current_dt} is zero, you have a data error'
                     )
                 target = (pf_value * pct) / price
-                # todo 碎股情况，持有160股并不能再买40股，影响不大但最好弄掉, 不过现在交易股数方式就已经不一样了，所以也无所谓？
+                # todo 碎股情况，持有160股并不能再买40股，影响不大但最好弄掉,
+                # 不过现在交易股数方式就已经不一样了，所以也无所谓？
                 target = int(round(target / self.order_multiplier)) * self.order_multiplier
             except KeyError:
                 skipped.append([asset, self._portfolio.shares(asset)])
@@ -479,7 +481,7 @@ class SimulationBlotter(BaseBlotter, EventReceiver):
 
     def get_transactions(self):
         data = []
-        for asset, orders in self.orders.items():
+        for orders in self.orders.values():
             for o in orders:
                 data.append(
                     dict(
@@ -594,9 +596,12 @@ class ManualBlotter(BaseBlotter):
 
         for date, df in self.orders.groupby(pd.Grouper(key='date', freq='D')):
             # skip holiday
-            if prices_df is not None:
-                if date.normalize() not in prices_df.index.levels[0] and df.empty:
-                    continue
+            if (
+                prices_df is not None
+                and date.normalize() not in prices_df.index.levels[0]
+                and df.empty
+            ):
+                continue
 
             self._portfolio.set_datetime(date.normalize())
 
@@ -686,7 +691,8 @@ class ManualBlotter(BaseBlotter):
             )
             self.orders.date = pd.to_datetime(self.orders.date, utc=True)
             print(
-                f'Orders loaded: {self.orders.date.iloc[0]} - {self.orders.date.iloc[-1]}, total: {len(self.orders)} orders'
+                f'Orders loaded: {self.orders.date.iloc[0]} - {self.orders.date.iloc[-1]}, '
+                f'total: {len(self.orders)} orders'
             )
             self.orders['date'] = self.orders['date'].dt.tz_convert(self.time_zone)
             self._rebuild_from_orders()
@@ -738,7 +744,7 @@ class ManualBlotter(BaseBlotter):
     def _order(self, asset, amount, price=None):
         raise NotImplementedError('not support')
 
-    def order(self, asset: str, amount: int, price: str = None):
+    def order(self, asset: str, amount: int, price: str | None = None):
         raise NotImplementedError('not support')
 
     def order_target(self, asset: str, target: float):

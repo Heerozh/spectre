@@ -27,9 +27,7 @@ class Position:
         self.stop_model = stop_model
         self.stop_tracker = None
         if stop_model is not None:
-            self.stop_tracker = stop_model.new_tracker(
-                fill_price, True if self._shares < 0 else False
-            )
+            self.stop_tracker = stop_model.new_tracker(fill_price, self._shares < 0)
             self.stop_tracker.tracking_position = self
 
     @property

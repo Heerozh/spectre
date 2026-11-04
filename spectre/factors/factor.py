@@ -8,7 +8,7 @@
 import warnings
 from abc import ABC
 from collections.abc import Sequence
-from typing import Union
+from typing import TYPE_CHECKING, Union
 
 import numpy as np
 import torch
@@ -28,6 +28,9 @@ from ..parallel import (
     rankdata,
 )
 from ..plotting import plot_factor_diagram
+
+if TYPE_CHECKING:
+    from .engine import FactorEngine
 
 
 class BaseFactor:
@@ -173,7 +176,10 @@ class BaseFactor:
         return factor
 
     def demean(
-        self, groupby: str | dict = None, mask: 'BaseFactor' = None, beta: 'BaseFactor' = None
+        self,
+        groupby: str | dict | None = None,
+        mask: 'BaseFactor' = None,
+        beta: 'BaseFactor' = None,
     ):
         """
         Cross-section demean.
@@ -200,7 +206,7 @@ class BaseFactor:
         groupby: str = 'date',
         mask: Union['BaseFactor', str] = None,
         weight: 'BaseFactor' = None,
-        weight_sum: float = None,
+        weight_sum: float | None = None,
     ):
         """
         Cross-section mean.
@@ -306,7 +312,7 @@ class BaseFactor:
         factor = OneHotEncoder(self)
         return factor
 
-    def fill_na(self, value: float = None, ffill: bool = None, inf=False, nan=True):
+    def fill_na(self, value: float | None = None, ffill: bool | None = None, inf=False, nan=True):
         if value is not None:
             factor = FillNANFactor(inputs=(self, value))
         elif ffill:
@@ -462,12 +468,11 @@ class CustomFactor(BaseFactor):
             )
 
         if self.inputs:
-            self.inputs = list(ipt() if callable(ipt) else ipt for ipt in self.inputs)
+            self.inputs = [ipt() if callable(ipt) else ipt for ipt in self.inputs]
             for ipt in self.inputs:
-                if isinstance(ipt, BaseFactor):
-                    if ipt._clean_required is not None:
-                        self._clean_required = ipt._clean_required
-                        break
+                if isinstance(ipt, BaseFactor) and ipt._clean_required is not None:
+                    self._clean_required = ipt._clean_required
+                    break
 
     @classmethod
     def sequential(cls, *args):
@@ -550,14 +555,10 @@ class CustomFactor(BaseFactor):
 
         if self.inputs:
             for upstream in self.inputs:
-                if isinstance(upstream, CustomFactor):
-                    if upstream.is_keep_cache():
-                        return True
+                if isinstance(upstream, CustomFactor) and upstream.is_keep_cache():
+                    return True
 
-        if isinstance(self._mask, CustomFactor):
-            if self._mask.is_keep_cache():
-                return True
-        return False
+        return isinstance(self._mask, CustomFactor) and self._mask.is_keep_cache()
 
     def show_graph(self):
         plot_factor_diagram(self)
@@ -632,8 +633,8 @@ class CustomFactor(BaseFactor):
         #  be enabled. alert or rise.
         if engine.cache_hash != self._cache_hash and self._cache is not None:
             print(
-                f'The factor({self}) data cached for the original engine is invalidated due to engine '
-                'changes.'
+                f'The factor({self}) data cached for the original engine is invalidated '
+                'due to engine changes.'
             )
             self._cache = None
             self._cache_stream = None
@@ -745,7 +746,7 @@ class CustomFactor(BaseFactor):
                     )
                     out = out.to(self._engine.device)
                 else:
-                    raise e
+                    raise
 
         self._mask_out = None
         if self._ref_count > 0:
@@ -837,7 +838,8 @@ class MultiRetSelector(CustomFactor):
     def compute(self, data: torch.Tensor, key) -> torch.Tensor:
         if len(data.shape) < 3:
             raise KeyError(
-                f'This factor({type(self.inputs[0]).__name__}) has only one return value, cannot slice.'
+                f'This factor({type(self.inputs[0]).__name__}) has only one return value, '
+                'cannot slice.'
             )
         elif data.shape[2] <= key:
             raise KeyError(

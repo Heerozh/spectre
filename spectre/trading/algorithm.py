@@ -78,7 +78,7 @@ class CustomAlgorithm(EventReceiver, ABC):
         self._engines[name] = FactorEngine(loader)
         return self._engines[name]
 
-    def get_factor_engine(self, name: str = None):
+    def get_factor_engine(self, name: str | None = None):
         if name is None:
             name = next(iter(self._engines))
 
@@ -89,7 +89,7 @@ class CustomAlgorithm(EventReceiver, ABC):
             )
         return self._engines[name]
 
-    def get_price_matrix(self, length: pd.DateOffset, name: str = None, prices=OHLCV.close):
+    def get_price_matrix(self, length: pd.DateOffset, name: str | None = None, prices=OHLCV.close):
         if name is None:
             name = next(iter(self._engines))
 
@@ -275,18 +275,16 @@ class SimulationEventManager(EventManager):
             return func(data)
 
     def fire_before_event(self, event_type):
-        for _, events in self._subscribers.items():
+        for events in self._subscribers.values():
             for event in events:
-                if isinstance(event, event_type):
-                    if event.offset < 0:
-                        event.callback(self)
+                if isinstance(event, event_type) and event.offset < 0:
+                    event.callback(self)
 
     def fire_after_event(self, event_type):
-        for _, events in self._subscribers.items():
+        for events in self._subscribers.values():
             for event in events:
-                if isinstance(event, event_type):
-                    if event.offset >= 0:
-                        event.callback(self)
+                if isinstance(event, event_type) and event.offset >= 0:
+                    event.callback(self)
 
     def fire_market_open(self, alg):
         self.fire_before_event(MarketOpen)
@@ -358,9 +356,8 @@ class SimulationEventManager(EventManager):
             self.mock_data(data, dt)
 
             # if date changed
-            if dt.day != last_day:
-                if last_day is not None:
-                    self.fire_market_close(alg)
+            if dt.day != last_day and last_day is not None:
+                self.fire_market_close(alg)
             alg.set_datetime(dt)
 
             # fire daily data event
@@ -403,5 +400,5 @@ class SimulationEventManager(EventManager):
         except KeyboardInterrupt:
             print('Interrupted, terminating..')
 
-        for r in self._subscribers.keys():
+        for r in self._subscribers:
             r.on_end_of_run()

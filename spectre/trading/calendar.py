@@ -50,7 +50,7 @@ class Calendar:
         }
 
         if pop_passed:
-            for k, _ in self.events.items():
+            for k in self.events:
                 self.pop_passed(k)
 
     def add_event(self, event: str, datetime: pd.Timestamp):

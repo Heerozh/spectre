@@ -16,7 +16,7 @@ from .dataloader import DataLoader
 class ArrowLoader(DataLoader):
     """Read from persistent data."""
 
-    def __init__(self, path: str = None, keep_in_memory: bool = True) -> None:
+    def __init__(self, path: str | None = None, keep_in_memory: bool = True) -> None:
         if not os.path.exists(path + '.meta'):
             raise FileNotFoundError(os.path.abspath(path + '.meta'))
 

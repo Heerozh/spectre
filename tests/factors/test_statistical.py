@@ -61,7 +61,7 @@ def test_rolling_linear_regression_x(engine):
 def test_rolling_momentum(engine):
     f = factors.RollingMomentum(5)
     for coef, factor in enumerate([f.intercept, f.gain, f.accelerate]):
-        expected = ref.expected(lambda df: rolling_polyfit(df.close, 5, 2, coef))
+        expected = ref.expected(lambda df, coef=coef: rolling_polyfit(df.close, 5, 2, coef))
         assert_factor(engine, factor, *expected, decimal=5)
 
 
@@ -210,7 +210,7 @@ def test_information_coefficient(ic_engine):
 
 @pytest.mark.filterwarnings('ignore:Warning!! delay_factor is set to False')
 def test_rank_weighted_ic_with_mask(ic_engine):
-    a, b, c, r = ic_inputs()
+    a, _b, _c, r = ic_inputs()
     ic_engine.add(factors.RankWeightedInformationCoefficient(a, r, 3, mask=a > 0), 'ic')
     result = ic_engine.run(IC_DATE, IC_DATE, delay_factor=False)
 

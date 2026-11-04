@@ -86,10 +86,10 @@ class ExponentialWeightedMovingAverage(CustomFactor):
 
     def __init__(
         self,
-        span: int = None,
-        inputs: Sequence[BaseFactor] = None,
+        span: int | None = None,
+        inputs: Sequence[BaseFactor] | None = None,
         adjust=False,
-        half_life: float = None,
+        half_life: float | None = None,
     ):
         if span is not None:
             self.alpha = 2.0 / (1.0 + span)

@@ -18,7 +18,9 @@ from .csv import CsvDirLoader
 
 class YahooDownloader:
     @classmethod
-    def ingest(cls, start_date: str, save_to: str, symbols: list = None, skip_exists=True) -> None:
+    def ingest(
+        cls, start_date: str, save_to: str, symbols: list | None = None, skip_exists=True
+    ) -> None:
         """
         Download data from yahoo.
         :param start_date:

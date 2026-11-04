@@ -35,7 +35,7 @@ def plot_chart(df_prices, ohlcv, df_factor, trace_types=None, styles=None, inlin
 
     # get y_axes
     y_axes = set()
-    for k, v in styles.items():
+    for v in styles.values():
         if not isinstance(v, dict):
             continue
         if 'yaxis' in v:

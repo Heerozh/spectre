@@ -5,6 +5,7 @@
 @email: heeroz@gmail.com
 """
 
+import itertools
 from collections.abc import Callable
 
 import numpy as np
@@ -79,14 +80,16 @@ class ParallelGroupBy:
         if tuple(split_data.shape) != self._data_shape:
             if tuple(split_data.shape[:2]) == self._data_shape[:2]:
                 raise ValueError(
-                    f'The downstream needs shape{self._data_shape}, and the input factor "{dbg_str}" is '
-                    f'shape{tuple(split_data.shape)}. Look like this factor has multiple return values, '
+                    f'The downstream needs shape{self._data_shape}, '
+                    f'and the input factor "{dbg_str}" is shape{tuple(split_data.shape)}. '
+                    'Look like this factor has multiple return values, '
                     'using slice to select a value before using it, for example: '
                     '`factor[0]`.'
                 )
             else:
                 raise ValueError(
-                    f'The return data shape{tuple(split_data.shape)} of Factor `{dbg_str}` must same as input{self._data_shape}.'
+                    f'The return data shape{tuple(split_data.shape)} of Factor `{dbg_str}` '
+                    f'must same as input{self._data_shape}.'
                 )
         return torch.take(split_data, self._inverse_indices)
 
@@ -444,7 +447,7 @@ class Rolling:
         memory_usage *= Rolling._split_multi
         step = max(int(self.values.shape[1] / memory_usage), 1)
         boundary = list(range(0, self.values.shape[1], step)) + [self.values.shape[1]]
-        self.split = list(zip(boundary[:-1], boundary[1:]))
+        self.split = list(itertools.pairwise(boundary))
 
         if _adjustment is not None:
             rolling_adj = Rolling(_adjustment, win)

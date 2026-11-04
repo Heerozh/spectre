@@ -112,6 +112,8 @@ evt_mgr.run()
 
 """
 
+from typing import TYPE_CHECKING
+
 from .algorithm import CustomAlgorithm, SimulationEventManager
 from .blotter import (
     BaseBlotter,
@@ -154,10 +156,13 @@ from .stopmodel import (
     TrailingStopModel,
 )
 
+if TYPE_CHECKING:
+    from ..data import DataLoader
+
 
 def run_backtest(
     loader: 'DataLoader',
-    alg_type: 'Type[CustomAlgorithm]',
+    alg_type: type[CustomAlgorithm],
     start,
     end,
     delay_factor=True,
@@ -181,7 +186,7 @@ def run_backtest(
 
 
 def get_algorithm_data(
-    loader: 'DataLoader', alg_type: 'Type[CustomAlgorithm]', start, end, delay_factor=True
+    loader: 'DataLoader', alg_type: type[CustomAlgorithm], start, end, delay_factor=True
 ):
     import pandas as pd
 

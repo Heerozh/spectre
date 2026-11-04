@@ -128,7 +128,7 @@ class EventManager:
         event.on_schedule(self)
 
     def fire_event(self, source, evt_type: type[Event]):
-        for r, events in self._subscribers.items():
+        for events in self._subscribers.values():
             for evt in events:
                 if isinstance(evt, evt_type):
                     evt.callback(source)
@@ -146,11 +146,11 @@ class EventManager:
             r.on_run()
 
     def _end_run(self):
-        for r in self._subscribers.keys():
+        for r in self._subscribers:
             r.on_end_of_run()
 
     def _run_once(self):
-        for r, events in self._subscribers.items():
+        for events in self._subscribers.values():
             for event in events:
                 if event.should_trigger():
                     event.callback(self)
