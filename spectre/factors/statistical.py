@@ -266,7 +266,8 @@ class TTest1Samp(CustomFactor):
         def _ttest(_x):
             d = nanmean(_x, dim=2) - pop_mean
             v = nanvar(_x, dim=2, ddof=1)
-            denom = torch.sqrt(v / self._min_win)
+            n = (~torch.isnan(_x)).sum(dim=2)
+            denom = torch.sqrt(v / n)
             t = d / denom
             return t
 

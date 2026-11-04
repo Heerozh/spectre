@@ -1,6 +1,7 @@
 import numpy as np
 import pandas as pd
 import pytest
+import scipy.stats
 import torch
 from numpy.testing import assert_allclose, assert_almost_equal
 
@@ -255,3 +256,37 @@ def test_ic_to_ir():
     assert_almost_equal(
         result.numpy(), np.repeat(np.array(expected)[:, None], 5, axis=1), decimal=5
     )
+
+
+# ------------------------------------ t-test ------------------------------------
+
+
+def rolling_ttest(values, win, pop_mean):
+    """t-value of the valid values of each window, NaN if there are less than 2 of them."""
+    ret = []
+    for i in range(len(values)):
+        window = values[max(0, i - win + 1) : i + 1]
+        window = window[~np.isnan(window)]
+        ret.append(scipy.stats.ttest_1samp(window, pop_mean).statistic if len(window) > 1 else nan)
+    return np.array(ret)
+
+
+@pytest.mark.filterwarnings("ignore:Warning!! delay_factor is set to False")
+@pytest.mark.filterwarnings("ignore:Historical data seems insufficient")
+@pytest.mark.parametrize("win", [3, 20])
+@pytest.mark.parametrize(
+    "pop_mean, assets",
+    [
+        (100.0, ["FULL", "LISTED", "DELISTED", "HALTED", "NANBAR"]),
+        # t of a window does not depend on its scale only if the mean is 0
+        (0.0, ["FULL", "LISTED", "DELISTED", "HALTED", "NANBAR", "SPLIT"]),
+    ],
+)
+def test_ttest_1samp_same_as_scipy(dirty_engine, dirty_panel, win, pop_mean, assets):
+    dirty_engine.add(factors.TTest1Samp(win, inputs=[close, pop_mean]), "t")
+    result = dirty_engine.run(DIRTY_DATES[0], DIRTY_DATES[-1], delay_factor=False)
+    for asset in assets:
+        got = result.xs(asset, level="asset").t.values
+        closes = dirty_panel.xs(asset, level="asset").clean_close.values
+        # the adjustment multipliers are float32, and t magnifies them by mean / std
+        assert_allclose(got, rolling_ttest(closes, win, pop_mean), rtol=1e-5, err_msg=asset)
