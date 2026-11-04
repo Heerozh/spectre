@@ -221,6 +221,50 @@ class JPCalendar(Calendar):
         *pd.date_range("2024-10-14", "2024-10-14", freq="D"),
         *pd.date_range("2024-11-03", "2024-11-04", freq="D"),
         *pd.date_range("2024-11-23", "2024-11-23", freq="D"),
+        *pd.date_range("2025-01-01", "2025-01-03", freq="D"),
+        *pd.date_range("2025-01-13", "2025-01-13", freq="D"),
+        *pd.date_range("2025-02-11", "2025-02-11", freq="D"),
+        *pd.date_range("2025-02-23", "2025-02-24", freq="D"),
+        *pd.date_range("2025-03-20", "2025-03-20", freq="D"),
+        *pd.date_range("2025-04-29", "2025-04-29", freq="D"),
+        *pd.date_range("2025-05-03", "2025-05-06", freq="D"),
+        *pd.date_range("2025-07-21", "2025-07-21", freq="D"),
+        *pd.date_range("2025-08-11", "2025-08-11", freq="D"),
+        *pd.date_range("2025-09-15", "2025-09-15", freq="D"),
+        *pd.date_range("2025-09-23", "2025-09-23", freq="D"),
+        *pd.date_range("2025-10-13", "2025-10-13", freq="D"),
+        *pd.date_range("2025-11-03", "2025-11-03", freq="D"),
+        *pd.date_range("2025-11-23", "2025-11-24", freq="D"),
+        *pd.date_range("2025-12-31", "2025-12-31", freq="D"),
+        *pd.date_range("2026-01-01", "2026-01-03", freq="D"),
+        *pd.date_range("2026-01-12", "2026-01-12", freq="D"),
+        *pd.date_range("2026-02-11", "2026-02-11", freq="D"),
+        *pd.date_range("2026-02-23", "2026-02-23", freq="D"),
+        *pd.date_range("2026-03-20", "2026-03-20", freq="D"),
+        *pd.date_range("2026-04-29", "2026-04-29", freq="D"),
+        *pd.date_range("2026-05-03", "2026-05-06", freq="D"),
+        *pd.date_range("2026-07-20", "2026-07-20", freq="D"),
+        *pd.date_range("2026-08-11", "2026-08-11", freq="D"),
+        *pd.date_range("2026-09-21", "2026-09-23", freq="D"),
+        *pd.date_range("2026-10-12", "2026-10-12", freq="D"),
+        *pd.date_range("2026-11-03", "2026-11-03", freq="D"),
+        *pd.date_range("2026-11-23", "2026-11-23", freq="D"),
+        *pd.date_range("2026-12-31", "2026-12-31", freq="D"),
+        *pd.date_range("2027-01-01", "2027-01-03", freq="D"),
+        *pd.date_range("2027-01-11", "2027-01-11", freq="D"),
+        *pd.date_range("2027-02-11", "2027-02-11", freq="D"),
+        *pd.date_range("2027-02-23", "2027-02-23", freq="D"),
+        *pd.date_range("2027-03-21", "2027-03-22", freq="D"),
+        *pd.date_range("2027-04-29", "2027-04-29", freq="D"),
+        *pd.date_range("2027-05-03", "2027-05-05", freq="D"),
+        *pd.date_range("2027-07-19", "2027-07-19", freq="D"),
+        *pd.date_range("2027-08-11", "2027-08-11", freq="D"),
+        *pd.date_range("2027-09-20", "2027-09-20", freq="D"),
+        *pd.date_range("2027-09-23", "2027-09-23", freq="D"),
+        *pd.date_range("2027-10-11", "2027-10-11", freq="D"),
+        *pd.date_range("2027-11-03", "2027-11-03", freq="D"),
+        *pd.date_range("2027-11-23", "2027-11-23", freq="D"),
+        *pd.date_range("2027-12-31", "2027-12-31", freq="D"),
     ]
 
     daily_events = {
@@ -238,7 +282,9 @@ class JPCalendar(Calendar):
         timezone = "Asia/Tokyo"
         if start is None:
             start = pd.Timestamp.now(self.timezone).normalize()
-        assert start.year <= self.closed[-1].year
+        assert start.year <= self.closed[-1].year, (
+            f"JPCalendar.closed ends in {self.closed[-1].year}, it needs its yearly update"
+        )
         self.build(
             start=str(start),
             end=str(self.closed[-1].year + 1),

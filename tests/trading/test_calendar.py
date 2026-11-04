@@ -98,3 +98,51 @@ def test_cn_calendar_skips_2026_holidays():
     assert open_on("2026-10-01") not in opens
     assert open_on("2026-10-07") not in opens
     assert open_on("2026-10-08") in opens
+
+
+# fmt: off
+# As listed by JPX: https://www.jpx.co.jp/english/corporate/about-jpx/calendar/index.html
+# It shows the current and the next year, so 2025 is from a copy of that page archived in 2025.
+JPX_CLOSED = {
+    2025: [
+        "01-01", "01-02", "01-03", "01-13", "02-11", "02-23", "02-24", "03-20", "04-29", "05-03",
+        "05-04", "05-05", "05-06", "07-21", "08-11", "09-15", "09-23", "10-13", "11-03", "11-23",
+        "11-24", "12-31",
+    ],
+    2026: [
+        "01-01", "01-02", "01-03", "01-12", "02-11", "02-23", "03-20", "04-29", "05-03", "05-04",
+        "05-05", "05-06", "07-20", "08-11", "09-21", "09-22", "09-23", "10-12", "11-03", "11-23",
+        "12-31",
+    ],
+    2027: [
+        "01-01", "01-02", "01-03", "01-11", "02-11", "02-23", "03-21", "03-22", "04-29", "05-03",
+        "05-04", "05-05", "07-19", "08-11", "09-20", "09-23", "10-11", "11-03", "11-23", "12-31",
+    ],
+}
+# fmt: on
+
+
+@pytest.fixture(scope="module")
+def jp_calendar():
+    """Takes seconds to build. A fixed start, it doesn't depend on the year the tests run."""
+    return trading.JPCalendar(start=pd.Timestamp("2025-01-01"), pop_passed=False)
+
+
+@pytest.mark.parametrize("year", JPX_CLOSED)
+def test_jp_calendar_is_open_on_every_weekday_jpx_does_not_close(jp_calendar, year):
+    opens = pd.DatetimeIndex(jp_calendar.events["Open"]).tz_localize(None)
+
+    closed = pd.to_datetime([f"{year}-{day}" for day in JPX_CLOSED[year]])
+    expected = pd.bdate_range(f"{year}-01-01", f"{year}-12-31").difference(closed)
+    assert list(opens[opens.year == year].normalize()) == list(expected)
+
+
+def test_jp_calendar_removes_all_daily_events_of_a_closed_day(jp_calendar):
+    for event, time in (("Open", "09:00"), ("Lunch", "11:30"), ("Close", "15:00")):
+        assert pd.Timestamp(f"2026-11-05 {time}", tz="Asia/Tokyo") in jp_calendar.events[event]
+        assert pd.Timestamp(f"2026-11-23 {time}", tz="Asia/Tokyo") not in jp_calendar.events[event]
+
+
+def test_jp_calendar_says_when_its_table_needs_an_update():
+    with pytest.raises(AssertionError, match="needs its yearly update"):
+        trading.JPCalendar(start=pd.Timestamp("2099-01-01"))
