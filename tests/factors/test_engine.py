@@ -462,6 +462,14 @@ def test_lookahead_bias_of_any_column_type(dirty_panel, device, dtypes):
     pd.testing.assert_frame_equal(engine.run(start, end), expected)
 
 
+def test_lookahead_bias_of_a_loader_without_ohlcv(dirty_panel):
+    loader = spectre.data.MemoryLoader(dirty_panel, None, None)
+    engine = factors.FactorEngine(loader)
+    engine.add(factors.ColumnDataFactor(inputs=["close"]), "test")
+    with pytest.raises(ValueError, match="loader has no ohlcv"):
+        engine.test_lookahead_bias(DIRTY_DATES[5], DIRTY_DATES[-1])
+
+
 def test_lookahead_bias_restores_the_data_after_an_error(dirty_engine):
     start, end = DIRTY_DATES[5], DIRTY_DATES[-1]
 

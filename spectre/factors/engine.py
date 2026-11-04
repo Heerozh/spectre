@@ -370,6 +370,10 @@ class FactorEngine:
 
     def test_lookahead_bias(self, start, end):
         """Check all factors, if there are look-ahead bias"""
+        if self._loader.ohlcv is None:
+            raise ValueError(
+                "test_lookahead_bias randomizes the OHLCV columns, but the loader has no ohlcv."
+            )
         start, end = self._to_utc(start), self._to_utc(end)
         # get results
         df_expected = self.run(start, end)
