@@ -377,13 +377,14 @@ class SimulationEventManager(EventManager):
             for dt in tqdm(ticks):
                 if self._stop:
                     break
-                # prepare data
-                self.mock_data(data, dt)
 
                 # if date changed
                 day = dt.normalize()
                 if day != last_day and last_day is not None:
                     self.fire_market_close(alg)
+
+                # prepare data
+                self.mock_data(data, dt)
                 alg.set_datetime(dt)
                 alg._bar_closed = False
 

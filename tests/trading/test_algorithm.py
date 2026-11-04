@@ -920,3 +920,44 @@ def test_rerun_on_intraday_bars_does_not_see_the_end_of_the_last_run():
     assert all(last_row < now for now, last_row in zip(alg.seen, alg.last_rows))
     assert alg.last_rows == fresh.last_rows
     assert_same_run(alg, fresh)
+
+
+def rows_run_engine_shows_at_the_close(loader, start, end, **kwargs):
+    last_rows = {}
+
+    class Alg(trading.CustomAlgorithm):
+        def initialize(self):
+            self.get_factor_engine().add(factors.OHLCV.open, "open")
+            self.schedule_rebalance(trading.event.MarketClose(self.rebalance, **kwargs))
+
+        def rebalance(self, data, history):
+            frame, last = self.run_engine(None, None)
+            last_rows[self.current] = frame.index.get_level_values(0)[-1]
+            pd.testing.assert_frame_equal(last, frame.loc[frame.index[-1][0]])
+
+    trading.run_backtest(loader, Alg, start, end)
+    return last_rows
+
+
+@pytest.mark.parametrize("kwargs", [BEFORE_CLOSE, {}], ids=["before_close", "after_close"])
+def test_run_engine_inside_market_close_ends_at_the_closing_bar(kwargs):
+    dates = pd.bdate_range("2020-01-01", periods=12, tz="UTC")
+    loader = make_loader(make_panel(dates))
+
+    last_rows = rows_run_engine_shows_at_the_close(loader, dates[3], dates[-1], **kwargs)
+
+    assert last_rows == {date: date for date in dates[3:]}
+
+
+@pytest.mark.parametrize("kwargs", [BEFORE_CLOSE, {}], ids=["before_close", "after_close"])
+def test_run_engine_inside_market_close_ends_at_the_closing_bar_of_the_day(kwargs):
+    days = pd.bdate_range("2020-01-06", periods=4, tz="UTC")
+    dates = pd.DatetimeIndex(
+        [day + pd.Timedelta(minutes=870 + 5 * i) for day in days for i in range(3)]
+    )
+    loader = make_loader(make_panel(dates))
+
+    last_rows = rows_run_engine_shows_at_the_close(loader, days[1], dates[-1], **kwargs)
+
+    closes = days[1:] + pd.Timedelta(minutes=880)
+    assert last_rows == {date: date for date in closes}
