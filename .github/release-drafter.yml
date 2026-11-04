@@ -1,0 +1,39 @@
+# The notes and the next version come from the titles of the merged PRs, read as Conventional
+# Commits. A title in any other form goes to "Other changes".
+name-template: "spectre v$RESOLVED_VERSION"
+tag-template: "v$RESOLVED_VERSION"
+change-template: "- $TITLE (#$NUMBER) $AUTHORS"
+change-title-escapes: '\<*_&'
+categories:
+  - title: "Breaking changes"
+    semver-increment: major
+    exclusive: true
+    when:
+      conventional:
+        breaking: true
+  - title: "Features"
+    semver-increment: minor
+    when:
+      conventional:
+        type: feat
+  - title: "Bug fixes"
+    when:
+      conventional:
+        type: fix
+  - title: "Performance"
+    when:
+      conventional:
+        type: perf
+  - title: "Documentation"
+    when:
+      conventional:
+        type: docs
+  - title: "Maintenance"
+    when:
+      conventional:
+        types: [build, chore, ci, refactor, revert, style, test]
+  - title: "Other changes"
+template: |
+  $CHANGES
+
+  **Full Changelog**: https://github.com/$OWNER/$REPOSITORY/compare/$PREVIOUS_TAG...$RESOLVED_TAG

@@ -1,0 +1,24 @@
+name: Release Drafter
+
+on:
+  push:
+    branches: [master]
+  # Only a dry run, so a broken config fails in its PR instead of after the merge.
+  pull_request:
+    paths:
+      - .github/release-drafter.yml
+      - .github/workflows/release-drafter.yml
+
+permissions:
+  contents: read
+
+jobs:
+  update-draft:
+    runs-on: ubuntu-slim
+    permissions:
+      contents: write
+      pull-requests: read
+    steps:
+      - uses: release-drafter/release-drafter@978bb0b30c5ee8cdd332ced253758157150d43f0 # v7.10.0
+        with:
+          dry-run: ${{ github.event_name == 'pull_request' }}

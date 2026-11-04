@@ -9,8 +9,8 @@ and factors.
 - Run `uv run pytest -n 6`, see `tests/README.md`. `uv run` creates and syncs `.venv` on its own.
 - Run one test with `uv run pytest tests/factors/test_engine.py::test_run_raw`, or select by name
   with `uv run pytest tests/factors -k "zscore or rank"`.
-- The default environment has the CUDA build of torch, from the `cuda` dependency group. There is
-  no CI yet, but CI machines have no GPU, so they should use the CPU build:
+- The default environment has the CUDA build of torch, from the `cuda` dependency group. CI has no
+  GPU, so it uses the CPU build:
 
   ```bash
   uv run --locked --no-group cuda --group cpu pytest -n auto
@@ -47,6 +47,22 @@ and factors.
   `pyproject.toml`.
 - Under pandas 3 Copy-on-Write, chained assignment silently does nothing, and `.to_numpy()` can
   return a read-only array that torch rejects.
+
+## CI and releases
+
+- `.github/workflows/ci.yml` runs ruff and the tests on every PR and on `master`, on Linux with the
+  CPU build only, so GPU code paths still need a local `uv run pytest -n 6`.
+- The workflows pin every action to a commit, with the version in a comment. `setup-uv` has no
+  moving major tag, and `release-drafter` runs with write access to the repo.
+- `.github/workflows/release-drafter.yml` rewrites the draft release on every push to `master`.
+  The notes and the next version come from the titles of the PRs merged since the last published
+  release, not from commit messages, so PR titles have to follow Conventional Commits. `type!:`
+  bumps the major version, `feat:` the minor version, and anything else the patch version. Only the
+  `!` marks a breaking change, a `BREAKING CHANGE:` footer is not read. Any other title is listed
+  under "Other changes", and `.github/release-drafter.yml` has the rest of the mapping.
+- A PR that changes the drafter config gets a dry run, and its log shows the notes it would write.
+- Nothing updates `version` in `pyproject.toml`. Before publishing a draft, merge a PR with
+  `uv version X.Y.Z`, using the version of the draft.
 
 ## Architecture
 
