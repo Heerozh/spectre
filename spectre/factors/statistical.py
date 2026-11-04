@@ -26,6 +26,7 @@ from ..parallel import (
     unmasked_mean,
     unmasked_sum,
 )
+from .basic import MA
 from .engine import OHLCV
 from .factor import CrossSectionFactor, CustomFactor
 
@@ -277,7 +278,7 @@ class RollingInformationCoefficient(RollingCorrelation):
     def to_ir(self, win):
         std = StandardDeviation(win=win, inputs=(self,))
         std.ddof = 1
-        mean = self.sum(win) / win
+        mean = MA(win=win, inputs=(self,))
 
         return mean / std
 

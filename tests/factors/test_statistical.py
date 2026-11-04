@@ -440,6 +440,22 @@ def test_ic_to_ir():
     )
 
 
+@pytest.mark.filterwarnings("ignore:Warning!! delay_factor is set to False")
+@pytest.mark.parametrize("asset", ["FULL", "NANBAR", "LISTED"])
+def test_rolling_ic_to_ir(dirty_engine, dirty_panel, asset):
+    win, ir_win, start = 5, 3, DIRTY_DATES[LISTED_ON]
+    rolling_ic = factors.RollingInformationCoefficient(win, inputs=[factors.OHLCV.open, close])
+    dirty_engine.add(rolling_ic.to_ir(ir_win), "ir")
+    result = dirty_engine.run(start, DIRTY_DATES[-1], delay_factor=False)
+
+    panel = dirty_panel.xs(asset, level="asset")
+    ic = panel.open.rolling(win, min_periods=2).corr(panel.close)
+    # a missing IC is left out of the window, it does not count as 0
+    mean = ic.rolling(ir_win, min_periods=1).mean()
+    expected = (mean / ic.rolling(ir_win, min_periods=2).std(ddof=1)).loc[start:]
+    assert_allclose(result.xs(asset, level="asset").ir, expected, rtol=1e-6)
+
+
 IR_DATES = pd.date_range("2020-01-01", periods=45, freq="D", tz="UTC")
 
 
