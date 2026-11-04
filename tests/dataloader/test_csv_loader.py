@@ -1,4 +1,5 @@
 import glob
+from zipfile import ZipFile
 
 import numpy as np
 import pandas as pd
@@ -650,6 +651,124 @@ def test_event_in_the_prices_csv_after_an_aligned_gap(tmp_path):
     assert list(df["split_ratio"]) == [1, 0.5, 1, 1]
     assert_allclose(df.price_multi, [(1 - 1 / 100) * 0.5] * 2 + [1, 1], rtol=1e-6)
     assert list(df.vol_multi) == [2, 2, 1, 1]
+
+
+# --------------------------- events on rows the calendar drops ---------------------------
+
+
+def write_inline(folder, asset, closes, dividends=None, splits=None):
+    """`closes`, `dividends` and `splits` are {date: value}, the events go in the prices csv."""
+    folder.mkdir(exist_ok=True)
+    rows = pd.DataFrame({col: closes.values() for col in MEMORY_OHLCV}, index=list(closes))
+    rows["ex-dividend"] = pd.Series(dividends or {}, index=rows.index, dtype=float).fillna(0)
+    rows["split_ratio"] = pd.Series(splits or {}, index=rows.index, dtype=float).fillna(1)
+    rows.rename_axis("date").to_csv(folder / f"{asset}.csv")
+
+
+def calendar_loader(folder, calendar, **kwargs):
+    """Loader of the inline events in `folder`, with an extra asset for the `calendar` dates."""
+    write_inline(folder, "CALENDAR", dict.fromkeys(calendar, 1.0))
+    return spectre.data.CsvDirLoader(
+        str(folder),
+        ohlcv=MEMORY_OHLCV,
+        adjustments=("ex-dividend", "split_ratio"),
+        calender_asset="CALENDAR",
+        parse_dates=True,
+        **kwargs,
+    )
+
+
+def test_inline_event_on_a_dropped_row(tmp_path):
+    closes = {DAYS[0]: 100.0, DAYS[1]: 100.0, DAYS[2]: 50.0, DAYS[3]: 50.0}
+    write_inline(tmp_path / "prices", "A", closes, {DAYS[1]: 1.0}, {DAYS[1]: 0.5})
+    loader = calendar_loader(tmp_path / "prices", [DAYS[0], DAYS[2], DAYS[3]])
+    df = loader.test_load().xs("A", level=1)
+    assert list(df.close) == [100, 50, 50]
+    # on the next kept bar, and moved up one row by `_format`, like every event
+    assert list(df["ex-dividend"]) == [1, 0, 0]
+    assert list(df["split_ratio"]) == [0.5, 1, 1]
+    assert_allclose(df.price_multi, [(1 - 1 / 100) * 0.5, 1, 1], rtol=1e-6)
+    assert list(df.vol_multi) == [2, 1, 1]
+
+
+def test_inline_events_merge_on_the_next_kept_bar(tmp_path):
+    closes = {DAYS[0]: 100.0, DAYS[1]: 100.0, DAYS[2]: 100.0, DAYS[3]: 16.0, DAYS[4]: 16.0}
+    dividends = {DAYS[1]: 1.0, DAYS[2]: 2.0, DAYS[3]: 3.0}
+    splits = {DAYS[1]: 0.5, DAYS[3]: 1 / 3}
+    write_inline(tmp_path / "prices", "A", closes, dividends, splits)
+    loader = calendar_loader(tmp_path / "prices", [DAYS[0], DAYS[3], DAYS[4]])
+    df = loader.test_load().xs("A", level=1)
+    assert_allclose(df["ex-dividend"], [6, 0, 0])
+    assert_allclose(df["split_ratio"], [1 / 6, 1, 1])
+    assert_allclose(df.price_multi, [(1 - 6 / 100) / 6, 1, 1], rtol=1e-6)
+
+
+def test_inline_event_is_not_moved_before_the_dropped_row(tmp_path):
+    closes = dict.fromkeys(DAYS[:5], 100.0)
+    write_inline(tmp_path / "prices", "A", closes, splits={DAYS[2]: 0.5})
+    loader = calendar_loader(tmp_path / "prices", [DAYS[0], DAYS[1], DAYS[3], DAYS[4]])
+    df = loader.test_load().xs("A", level=1)
+    # on DAYS[3], then moved up one row, onto the last bar before the event
+    assert list(df["split_ratio"]) == [1, 0.5, 1, 1]
+    assert list(df.price_multi) == [0.5, 0.5, 1, 1]
+
+
+def test_inline_event_after_the_last_kept_bar(tmp_path):
+    write_inline(tmp_path / "prices", "A", dict.fromkeys(DAYS[:3], 100.0), splits={DAYS[2]: 0.5})
+    write_inline(tmp_path / "prices", "B", dict.fromkeys(DAYS[:4], 100.0))
+    loader = calendar_loader(tmp_path / "prices", [DAYS[0], DAYS[1], DAYS[3]])
+    df = loader.test_load()
+    # no bar is after it, and it doesn't go to the bars of another asset
+    assert (df["split_ratio"] == 1).all()
+    assert (df[["price_multi", "vol_multi"]] == 1).all(axis=None)
+
+
+def test_inline_event_on_a_dropped_row_with_align_by_time(tmp_path):
+    closes = {DAYS[0]: 100.0, DAYS[1]: 100.0, DAYS[3]: 50.0}
+    write_inline(tmp_path / "prices", "A", closes, splits={DAYS[1]: 0.5})
+    loader = calendar_loader(tmp_path / "prices", [DAYS[0], DAYS[2], DAYS[3]], align_by_time=True)
+    df = loader.test_load().xs("A", level=1)
+    assert_array_equal(df.close, [100, nan, 50])
+    assert list(df["split_ratio"]) == [1, 0.5, 1]
+    assert list(df.price_multi) == [0.5, 0.5, 1]
+
+
+def test_junk_row_without_values(tmp_path):
+    """A row of NaNs on a dropped row holds no event, like MSFT on 2019-01-05."""
+    closes = {DAYS[0]: 100.0, DAYS[1]: nan, DAYS[2]: 100.0}
+    write_inline(tmp_path / "prices", "A", closes)
+    csv = tmp_path / "prices" / "A.csv"
+    rows = pd.read_csv(csv, index_col="date")
+    rows.loc[DAYS[1], ["ex-dividend", "split_ratio"]] = nan
+    rows.to_csv(csv)
+    df = calendar_loader(tmp_path / "prices", [DAYS[0], DAYS[2]]).test_load().xs("A", level=1)
+    assert list(df["ex-dividend"]) == [0, 0]
+    assert list(df["split_ratio"]) == [1, 1]
+
+
+def test_quandl_event_on_a_dropped_row(tmp_path):
+    """Rows of the quandl file are sorted by ticker, not by date, and its ratio is to/from."""
+    aapl = ["2001-09-10", "2001-09-12", "2001-09-13"]
+    rows = [(date, "AAPL", 10.0, 0.0, 1.0) for date in aapl]
+    rows += [("2001-09-12", "GMT", 10.0, 0.0, nan)]  # `QuandlLoader` has a fix for this row
+    rows += [
+        ("2001-09-10", "ZZZ", 100.0, 0.0, 1.0),
+        ("2001-09-11", "ZZZ", 100.0, 1.0, 2.0),
+        ("2001-09-12", "ZZZ", 50.0, 0.0, 1.0),
+        ("2001-09-13", "ZZZ", 50.0, 0.0, 1.0),
+    ]
+    columns = ["date", "ticker", "close", "ex-dividend", "split_ratio"]
+    frame = pd.DataFrame(rows, columns=columns)
+    frame = frame.assign(open=frame.close, high=frame.close, low=frame.close, volume=1000.0)
+    with ZipFile(tmp_path / "prices.zip", "w") as package:
+        package.writestr("prices.csv", frame.to_csv(index=False))
+
+    df = spectre.data.QuandlLoader(str(tmp_path / "prices.zip")).test_load().xs("ZZZ", level=1)
+    assert list(df.close) == [100, 50, 50]
+    assert list(df["ex-dividend"]) == [1, 0, 0]
+    assert list(df["split_ratio"]) == [0.5, 1, 1]
+    assert_allclose(df.price_multi, [(1 - 1 / 100) * 0.5, 1, 1], rtol=1e-6)
+    assert list(df.vol_multi) == [2, 1, 1]
 
 
 # ------------------------------- row order of the files -------------------------------

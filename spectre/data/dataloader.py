@@ -47,12 +47,60 @@ class DataLoader:
         date_idx = self.load().index.levels[0]
         return min(date_idx[1:] - date_idx[:-1])
 
-    @classmethod
-    def _align_to(cls, df, calender_asset, align_by_time=False):
-        """helper method for align index"""
+    @staticmethod
+    def _attach_events(events: pd.Series, bars: pd.MultiIndex, how: str) -> pd.Series:
+        """
+        Reindex `events`, indexed by (asset, ex-date), to `bars`, indexed by (date, asset). An
+        ex-date has no bar on a halt, or when the bars are intraday and the ex-dates are days, so
+        an event goes to the first bar of its asset on or after the ex-date, moving it to an earlier
+        bar would be look-ahead. Events sharing a bar are merged by `how`, a name of a groupby
+        aggregation. An event after the last bar of its asset is dropped, no bars are after it.
+        """
+        dates = bars.get_level_values(0)
+        ex_dates = events.index.get_level_values(1)
+        if dates.tz is None or ex_dates.tz is None:
+            # an ex-date is a local date, so without a timezone use the time as written on both
+            # sides
+            ex_dates = ex_dates.tz_localize(None).tz_localize(dates.tz)
+        else:
+            ex_dates = ex_dates.tz_convert(dates.tz)
+        ex_dates = ex_dates.as_unit(dates.unit)
+        left = pd.DataFrame(
+            {
+                "asset": events.index.get_level_values(0),
+                "ex_date": ex_dates,
+                "value": events.to_numpy(),
+            }
+        )
+        left = left.dropna(subset="ex_date").sort_values("ex_date")
+        right = pd.DataFrame({"asset": bars.get_level_values(1), "date": dates})
+        attached = pd.merge_asof(
+            left,
+            right.sort_values("date"),
+            left_on="ex_date",
+            right_on="date",
+            by="asset",
+            direction="forward",
+        )
+        return attached.groupby(["date", "asset"])["value"].agg(how).reindex(bars)
+
+    def _align_to(self, df, calender_asset, align_by_time=False):
+        """
+        helper method for align index. A dividend or a split on a row dropped by the calendar still
+        happened, so it goes to the next kept bar of its asset.
+        """
         index = df.loc[(slice(None), calender_asset), :].index.get_level_values(0)
-        df = df[df.index.get_level_values(0).isin(index)]
+        kept = df.index.get_level_values(0).isin(index)
+        dropped, df = df[~kept], df[kept]
         df.index = df.index.remove_unused_levels()
+        if self.adjustments is not None:
+            div_col, spr_col = self.adjustments
+            if div_col in df:
+                moved = self._attach_events(dropped[div_col].swaplevel(), df.index, "sum")
+                df[div_col] = df[div_col].add(moved, fill_value=0)
+            if spr_col in df:
+                moved = self._attach_events(dropped[spr_col].swaplevel(), df.index, "prod")
+                df[spr_col] = df[spr_col].mul(moved, fill_value=1)
         if align_by_time:
             df = df.reindex(pd.MultiIndex.from_product(df.index.levels))
             # df = df.unstack(level=1).stack(dropna=False) 这个速度快，但新版本取消掉了

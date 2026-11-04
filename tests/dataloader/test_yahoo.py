@@ -148,6 +148,32 @@ def test_ingest_uses_yahoo_symbols(fake_yahoo, tmp_path):
     assert (tmp_path / "daily" / "BRK-B.csv").exists()
 
 
+@pytest.mark.filterwarnings("ignore:`symbols=None` downloads")
+def test_split_on_a_day_without_a_bar_of_the_calendar(tmp_path, monkeypatch):
+    calendar = yahoo_bars([10, 11, 12, 13, 14, 15]).drop(DATES[3])
+    bars = {
+        "AAA": yahoo_bars([50, 51, 50, 52, 53, 54], splits=[0, 0, 0, 2, 0, 0]),
+        "SPY": calendar,
+        "QQQ": calendar,
+    }
+
+    def download(tickers, **kwargs):
+        frames = {ticker: bars[ticker] for ticker in tickers}
+        return pd.concat(frames, axis=1, names=["Ticker", "Price"])
+
+    members = pd.Series({pd.Timestamp("2020-01-02"): frozenset({"AAA"})})
+    monkeypatch.setattr("yfinance.download", download)
+    monkeypatch.setattr(yahoo, "sp500_constituents", lambda: members)
+    YahooDownloader.ingest("2020", str(tmp_path))
+
+    aaa = ArrowLoader(str(tmp_path / "yahoo.feather")).load().xs("AAA", level="asset")
+    # the bar of the ex-date is dropped by the calendar, the split moved to the next bar
+    assert_allclose(aaa["Close"], [100, 102, 100, 53, 54])
+    assert_allclose(aaa["split_ratio"], [1, 1, 0.5, 1, 1])
+    assert_allclose(aaa["price_multi"], [0.5, 0.5, 0.5, 1, 1])
+    assert_allclose(aaa["vol_multi"], [2, 2, 2, 1, 1])
+
+
 def test_default_symbols_are_the_latest_members(fake_yahoo, tmp_path, monkeypatch):
     members = pd.Series(
         {
