@@ -59,8 +59,8 @@ class NormalizedBollingerBands(CustomFactor):
 class _MACDLine(CustomFactor):
     """EMA(fast) - EMA(slow). It is a price, so a rolling window over it needs adjusting."""
 
-    def __init__(self, fast, slow, inputs):
-        super().__init__(inputs=(EMA(span=fast, inputs=inputs), EMA(span=slow, inputs=inputs)))
+    def __init__(self, fast, slow, inputs, adjust):
+        super().__init__(inputs=[EMA(span, inputs, adjust) for span in (fast, slow)])
         self.price = inputs[0]
 
     @property
@@ -89,7 +89,7 @@ class MovingAverageConvergenceDivergenceSignal(EMA):
         self, fast=12, slow=26, sign=9, inputs: Sequence[BaseFactor] | None = None, adjust=False
     ):
         super().__init__(sign, inputs, adjust)
-        self.inputs = (_MACDLine(fast, slow, self.inputs),)
+        self.inputs = (_MACDLine(fast, slow, self.inputs, adjust),)
 
     def normalized(self):
         # In order not to double the calculation, reuse `inputs` factor here

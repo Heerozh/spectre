@@ -91,14 +91,14 @@ def sma(x: pd.Series, win):
     return x.rolling(win).mean()
 
 
-def ema(x: pd.Series, span):
-    return x.ewm(span=span, adjust=False).mean()
+def ema(x: pd.Series, span, adjust=False):
+    return x.ewm(span=span, adjust=adjust).mean()
 
 
-def macd(close, fast=12, slow=26, sign=9):
+def macd(close, fast=12, slow=26, sign=9, adjust=False):
     """Returns (macd, signal, histogram)"""
-    line = ema(close, fast) - ema(close, slow)
-    signal = ema(line, sign)
+    line = ema(close, fast, adjust) - ema(close, slow, adjust)
+    signal = ema(line, sign, adjust)
     return line, signal, line - signal
 
 

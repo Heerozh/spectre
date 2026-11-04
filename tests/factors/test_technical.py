@@ -35,15 +35,32 @@ def test_macd_of_dirty_assets(dirty_engine, dirty_panel, params):
 
 @pytest.mark.filterwarnings("ignore:Warning!! delay_factor is set to False")
 @pytest.mark.parametrize("params", [(12, 26, 9), (5, 10, 3)])
-def test_macd_across_split(dirty_engine, dirty_panel, params):
+def test_macd_adjust(dirty_engine, dirty_panel, params):
+    """`adjust` is for the fast and slow EMAs as well, all three match ewm(adjust=True)."""
+    signal = run_dirty(dirty_engine, factors.MACD(*params, adjust=True))
+    histogram = run_dirty(dirty_engine, factors.MACD(*params, adjust=True).normalized())
+    for asset in ("FULL", "LISTED", "DELISTED", "HALTED", "NANBAR"):
+        close = dirty_panel.xs(asset, level="asset").close
+        _, expected_signal, expected_histogram = ref.macd(close, *params, adjust=True)
+        got = signal.xs(asset, level="asset").values
+        assert_allclose(got, expected_signal.values, rtol=0, atol=2e-3, err_msg=asset)
+        got = histogram.xs(asset, level="asset").values
+        assert_allclose(got, expected_histogram.values, rtol=0, atol=2e-3, err_msg=asset)
+
+
+@pytest.mark.filterwarnings("ignore:Warning!! delay_factor is set to False")
+@pytest.mark.parametrize("adjust", [False, True])
+@pytest.mark.parametrize("params", [(12, 26, 9), (5, 10, 3)])
+def test_macd_across_split(dirty_engine, dirty_panel, params, adjust):
     """MACD is linear in the price, so it is the MACD of clean_close in the scale of each bar."""
     split = dirty_panel.xs("SPLIT", level="asset")
     scale = split.close / split.clean_close
-    _, signal, histogram = ref.macd(split.clean_close, *params)
+    _, signal, histogram = ref.macd(split.clean_close, *params, adjust=adjust)
 
-    result = run_dirty(dirty_engine, factors.MACD(*params)).xs("SPLIT", level="asset")
+    factor = factors.MACD(*params, adjust=adjust)
+    result = run_dirty(dirty_engine, factor).xs("SPLIT", level="asset")
     assert_allclose(result.values, (signal * scale).values, rtol=0, atol=2e-3)
-    result = run_dirty(dirty_engine, factors.MACD(*params).normalized())
+    result = run_dirty(dirty_engine, factors.MACD(*params, adjust=adjust).normalized())
     result = result.xs("SPLIT", level="asset")
     assert_allclose(result.values, (histogram * scale).values, rtol=0, atol=2e-3)
 
