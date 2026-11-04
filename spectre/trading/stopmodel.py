@@ -40,6 +40,10 @@ class StopTracker(PriceTracker):
     def stop_price(self):
         return self._stop_price
 
+    def process_split(self, inverse_ratio: float):
+        super().process_split(inverse_ratio)
+        self._stop_price /= inverse_ratio
+
     def fire(self, *args):
         if callable(self.callback):
             return self.callback(*args)
