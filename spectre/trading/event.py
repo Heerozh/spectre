@@ -60,11 +60,16 @@ class CalendarEvent(Event):
         )
 
     def should_trigger(self) -> bool:
-        if self.calendar.hr_now() >= self.trigger_time:
-            self.calendar.pop_passed(self.event_name)
-            self.calculate_range()
-            return True
-        return False
+        now = self.calendar.hr_now()
+        if self.trigger_time is None or now < self.trigger_time:
+            return False
+        # A negative offset fires before its event has passed, so popping alone would leave it
+        # on the same event. A positive one still needs events that `pop_passed` removes.
+        offset = pd.Timedelta(self.offset, unit="ns")
+        times = (dt + offset for dt in self.calendar.events[self.event_name])
+        self.trigger_time = next((t for t in times if t > now), None)
+        self.calendar.pop_passed(self.event_name)
+        return True
 
 
 class MarketOpen(CalendarEvent):
