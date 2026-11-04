@@ -9,7 +9,7 @@ import spectre
 from spectre import factors, parallel
 from tests.conftest import DIRTY_DATES, HALTED_BARS, NANSPLIT_ON, SPLIT_ON
 from tests.factors import reference as ref
-from tests.factors.helpers import assert_factor, run_dirty, run_factor
+from tests.factors.helpers import assert_factor, run_dirty, run_factor, run_late_listed
 
 nan = np.nan
 
@@ -347,6 +347,59 @@ def test_rolling_argmin(engine):
     assert_almost_equal(
         expected[1], [4 / 5, 3 / 5, 2 / 5, 5 / 5, 4 / 5, 3 / 5, 2 / 5, 1 / 5, 4 / 5]
     )
+
+
+def rolling_position(close, win, func):
+    """Position of the extreme of each window, `win` is the last bar. No valid bar gives NaN."""
+    windows = sliding_window_view(np.concatenate((np.full(win - 1, nan), close)), win)
+    empty = np.isnan(windows).all(axis=1)
+    windows = np.where(empty[:, None], 0, windows)
+    return np.where(empty, nan, (func(windows, axis=1) + 1) / win)
+
+
+@pytest.mark.filterwarnings("ignore:Warning!! delay_factor is set to False")
+@pytest.mark.parametrize("align_by_time", [False, True])
+@pytest.mark.parametrize(
+    "factor, func", [(factors.RollingArgMax, np.nanargmax), (factors.RollingArgMin, np.nanargmin)]
+)
+def test_rolling_arg_of_dirty_assets(dirty_engine, dirty_panel, factor, func, align_by_time):
+    win = 5
+    dirty_engine.align_by_time = align_by_time
+    result = run_dirty(dirty_engine, factor(win, inputs=[factors.OHLCV.close]))
+    closes = dirty_panel.close.unstack("asset")
+    for asset in ("FULL", "LISTED", "DELISTED", "HALTED", "NANBAR", "SPLIT"):
+        close = dirty_panel.xs(asset, level="asset").close
+        if asset == "SPLIT":
+            close = dirty_panel.xs(asset, level="asset").clean_close
+        elif align_by_time:
+            close = closes[asset]
+        got = result.xs(asset, level="asset").values
+        assert_allclose(got, rolling_position(close.values, win, func), rtol=1e-6, err_msg=asset)
+
+
+@pytest.mark.filterwarnings("ignore:Warning!! delay_factor is set to False")
+@pytest.mark.parametrize(
+    "factor, positions",
+    [
+        # closes: [10, 20, 11, 30, 12, 13, 14]
+        (factors.RollingArgMax, [3, 3, 2, 3, 2, 1, 3]),
+        (factors.RollingArgMin, [3, 2, 1, 2, 1, 2, 1]),
+    ],
+)
+def test_rolling_arg_of_new_listed_asset(late_listing_engine, factor, positions):
+    result = run_late_listed(late_listing_engine, factor(3, inputs=[factors.OHLCV.close]))
+    assert_almost_equal(result, np.array(positions) / 3, decimal=6)
+
+
+def test_rolling_arg_of_infinite_values_and_ties(device):
+    inf = np.inf
+    data = torch.tensor([[nan, -inf, nan, nan, nan, 2, 5, 5, 1]], device=device)
+    result = factors.RollingArgMax(3).compute(parallel.Rolling(data, win=3))
+    expected = np.array([nan, 3, 2, 1, nan, 3, 3, 2, 1]) / 3
+    assert_almost_equal(result[0].cpu().numpy(), expected, decimal=6)
+
+    result = factors.RollingArgMin(3).compute(parallel.Rolling(-data, win=3))
+    assert_almost_equal(result[0].cpu().numpy(), expected, decimal=6)
 
 
 def test_constants_factor(engine):

@@ -12,7 +12,7 @@ import numpy as np
 import torch
 
 from ..config import Global
-from ..parallel import nanmean, nansum, unmasked_sum
+from ..parallel import nanmax, nanmean, nanmin, nansum, unmasked_sum
 from .engine import OHLCV
 from .factor import BaseFactor, CustomFactor
 
@@ -210,26 +210,24 @@ class ElementWiseMin(CustomFactor):
         return ret
 
 
+def _first_position(data, value):
+    """Position in the window of the first bar equal to `value`, from 1 / win to 1, or NaN."""
+    ret = ((data == value.unsqueeze(-1)).char().argmax(dim=2) + 1.0) / data.shape[2]
+    return ret.to(Global.float_type).masked_fill_(torch.isnan(value), np.nan)
+
+
 class RollingArgMax(CustomFactor):
     _min_win = 2
 
     def compute(self, data):
-        def _argmax(_data):
-            ret = (_data.argmax(dim=2) + 1.0) / self.win
-            return ret.to(Global.float_type)
-
-        return data.agg(_argmax)
+        return data.agg(lambda x: _first_position(x, nanmax(x, dim=2)))
 
 
 class RollingArgMin(CustomFactor):
     _min_win = 2
 
     def compute(self, data):
-        def _argmin(_data):
-            ret = (_data.argmin(dim=2) + 1.0) / self.win
-            return ret.to(Global.float_type)
-
-        return data.agg(_argmin)
+        return data.agg(lambda x: _first_position(x, nanmin(x, dim=2)))
 
 
 class ConstantsFactor(CustomFactor):
