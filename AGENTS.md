@@ -52,6 +52,17 @@ and factors.
 
 - `.github/workflows/ci.yml` runs ruff and the tests on every PR and on `master`, on Linux with the
   CPU build only, so GPU code paths still need a local `uv run pytest -n 6`.
+- The workflows pin every action to a commit, with the version in a comment. `setup-uv` has no
+  moving major tag, and `release-drafter` runs with write access to the repo.
+- `.github/workflows/release-drafter.yml` rewrites the draft release on every push to `master`.
+  The notes and the next version come from the titles of the PRs merged since the last published
+  release, not from commit messages, so PR titles have to follow Conventional Commits. `type!:`
+  bumps the major version, `feat:` the minor version, and anything else the patch version. Only the
+  `!` marks a breaking change, a `BREAKING CHANGE:` footer is not read. Any other title is listed
+  under "Other changes", and `.github/release-drafter.yml` has the rest of the mapping.
+- A PR that changes the drafter config gets a dry run, and its log shows the notes it would write.
+- Nothing updates `version` in `pyproject.toml`. Before publishing a draft, merge a PR with
+  `uv version X.Y.Z`, using the version of the draft.
 
 ## Architecture
 
