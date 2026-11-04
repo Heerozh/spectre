@@ -235,6 +235,20 @@ def test_series_in_another_timezone(dirty_engine, dirty_panel):
     assert_allclose(read(dirty_engine, series_factor(doubled)), rows(doubled))
 
 
+def test_series_has_the_fill_na_method_of_all_factors(dirty_engine, dirty_panel):
+    """The argument of the constructor picks the fill on the rows of the series, it's no method."""
+    series = with_a_gap(dirty_panel)
+    full = series.xs("FULL", level="asset").reindex(DIRTY_DATES[10:15])
+
+    result = read(dirty_engine, series_factor(series).fill_na(-1.0))
+    assert_allclose(result, full.fillna(-1.0).values)
+    result = read(dirty_engine, series_factor(series).fill_na(ffill=True))
+    assert_allclose(result, full.ffill().values)
+    # both, the method has nothing left to fill
+    result = read(dirty_engine, series_factor(series, fill_na="ffill").fill_na(-1.0))
+    assert_allclose(result, full.ffill().values)
+
+
 @pytest.mark.parametrize("new_instances", [False, True], ids=["one_instance", "new_instances"])
 def test_series_does_not_grow_the_frame(dirty_engine, dirty_panel, new_instances):
     """

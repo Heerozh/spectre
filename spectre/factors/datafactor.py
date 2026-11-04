@@ -133,7 +133,7 @@ class SeriesDataFactor(ColumnDataFactor):
 
     def __init__(self, series: pd.Series, fill_na=None, should_delay=True):
         self.series = series
-        self.fill_na = fill_na
+        self.fill_method = fill_na
         assert series.index.names == ["date", "asset"], (
             "df.index.names should be ['date', 'asset'] "
         )
@@ -146,7 +146,7 @@ class SeriesDataFactor(ColumnDataFactor):
         BaseFactor.pre_compute_(self, engine, start, end)
         if self._data is None:
             series = self.series.reindex(engine.dataframe_.index)
-            if self.fill_na is not None:
+            if self.fill_method is not None:
                 # GroupBy.fillna(method=...) was removed in pandas 3.0
                 fill_methods = {
                     "ffill": "ffill",
@@ -154,10 +154,10 @@ class SeriesDataFactor(ColumnDataFactor):
                     "bfill": "bfill",
                     "backfill": "bfill",
                 }
-                if self.fill_na not in fill_methods:
+                if self.fill_method not in fill_methods:
                     raise ValueError(f"`fill_na` must be one of {list(fill_methods)}")
                 grouped = series.groupby(level=1, observed=False)
-                series = getattr(grouped, fill_methods[self.fill_na])()
+                series = getattr(grouped, fill_methods[self.fill_method])()
             self._data = engine.group_by_(series, self.groupby)
             self._clean_required = True
 
