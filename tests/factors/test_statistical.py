@@ -290,3 +290,92 @@ def test_ttest_1samp_same_as_scipy(dirty_engine, dirty_panel, win, pop_mean, ass
         closes = dirty_panel.xs(asset, level="asset").clean_close.values
         # the adjustment multipliers are float32, and t magnifies them by mean / std
         assert_allclose(got, rolling_ttest(closes, win, pop_mean), rtol=1e-5, err_msg=asset)
+
+
+CDF_DOFS = [0.5, 1, 1.5, 2, 3, 5, 10, 30, 100, 341, 342, 343, 500, 1000]
+CDF_PRECISIONS = [(factors.StudentCDF.DefaultPrecision, 1e-6), (1e-7, 1e-10)]
+CDF_T = np.logspace(-6, 2, 200)
+CDF_T = np.concatenate([-CDF_T[::-1], [0], CDF_T])
+CDF_HUGE_T = np.logspace(2, 7, 200)
+CDF_HUGE_T = np.concatenate([-CDF_HUGE_T[::-1], CDF_HUGE_T])
+
+
+def student_cdf(t, dof, precision=factors.StudentCDF.DefaultPrecision, device="cpu"):
+    """StudentCDF of each value in `t`, with one date for each value."""
+    t = torch.tensor(t, device=device, dtype=torch.float64).unsqueeze(-1)
+    return factors.StudentCDF().compute(t, dof, precision)[:, 0].cpu().numpy()
+
+
+@pytest.mark.parametrize("dof", CDF_DOFS)
+@pytest.mark.parametrize("precision, rtol", CDF_PRECISIONS)
+def test_student_cdf_same_as_scipy(device, dof, precision, rtol):
+    result = student_cdf(CDF_T, dof, precision, device)
+    # the left tail is compared by relative error too, down to where scipy underflows
+    assert_allclose(result, scipy.stats.t.cdf(CDF_T, dof), rtol=rtol, atol=1e-290)
+
+
+@pytest.mark.parametrize("dof", CDF_DOFS)
+@pytest.mark.parametrize("precision, rtol", CDF_PRECISIONS)
+def test_student_cdf_huge_t_same_as_scipy(device, dof, precision, rtol):
+    result = student_cdf(CDF_HUGE_T, dof, precision, device)
+    assert_allclose(result, scipy.stats.t.cdf(CDF_HUGE_T, dof), rtol=rtol, atol=1e-290)
+
+
+def test_student_cdf_closed_forms(device):
+    """A tighter check than scipy allows, which is only exact to 3e-11 around t=0 when dof=1."""
+    t = np.concatenate([CDF_T, CDF_HUGE_T])
+    # both are written so that they don't cancel digits away in the left tail
+    assert_allclose(student_cdf(t, 1, 1e-7, device), np.arctan2(1, -t) / np.pi, rtol=1e-14)
+    root = np.sqrt(2 + t**2)
+    tail = 1 / (root * (root + np.abs(t)))
+    assert_allclose(student_cdf(t, 2, 1e-7, device), np.where(t < 0, tail, 1 - tail), rtol=1e-14)
+
+
+def test_student_cdf_limits(device):
+    result = student_cdf([-np.inf, np.inf, nan, 0.0], 5, device=device)
+    assert_allclose(result, [0, 1, nan, 0.5])
+    assert result[0] == 0
+
+
+def test_student_cdf_uses_the_cross_section_mean(device):
+    t = torch.tensor([[1.0, 3, nan], [-5.0, nan, -1], [nan, nan, nan]], device=device)
+    result = factors.StudentCDF().compute(t, 5, factors.StudentCDF.DefaultPrecision).cpu()
+    assert result.dtype == t.dtype
+    expected = scipy.stats.t.cdf([[2.0], [-3], [nan]], 5).repeat(3, axis=1)
+    assert_allclose(result.numpy(), expected, rtol=1e-5)
+
+
+def test_student_cdf_precision_sets_the_error(device):
+    t = CDF_T[np.abs(CDF_T) <= 10]
+    expected = scipy.stats.t.cdf(t, 1000)
+    errors = []
+    for precision in (0.1, 0.01, 0.001):
+        errors.append(np.abs(student_cdf(t, 1000, precision, device) / expected - 1).max())
+        assert errors[-1] < precision**2
+    assert errors[0] > errors[1] > errors[2]
+
+
+@pytest.mark.cuda
+@pytest.mark.parametrize("t", [1.0, 1e5, 1e7])
+def test_student_cdf_memory_does_not_depend_on_t(t):
+    values = torch.full((100, 5), t, device="cuda", dtype=torch.float64)
+    torch.cuda.reset_peak_memory_stats()
+    used = torch.cuda.memory_allocated()
+    factors.StudentCDF().compute(values, 5, factors.StudentCDF.DefaultPrecision)
+    assert torch.cuda.max_memory_allocated() - used < 2**20
+
+
+@pytest.mark.filterwarnings("ignore:Warning!! delay_factor is set to False")
+@pytest.mark.filterwarnings("ignore:Historical data seems insufficient")
+def test_student_cdf_of_ttest(dirty_engine):
+    win = 5
+    # `* 1` leaves the prices raw, `close` itself would be adjusted
+    t = factors.TTest1Samp(win, inputs=[close * 1, 100.0])
+    dirty_engine.add(t, "t")
+    p = factors.StudentCDF(inputs=[t, win - 1, factors.StudentCDF.DefaultPrecision])
+    dirty_engine.add(p, "p")
+    result = dirty_engine.run(DIRTY_DATES[0], DIRTY_DATES[-1], delay_factor=False)
+
+    dates = result.index.get_level_values("date")
+    reduced_t = result.t.groupby(level="date").mean().reindex(dates)
+    assert_allclose(result.p.values, scipy.stats.t.cdf(reduced_t.values, win - 1), rtol=1e-6)

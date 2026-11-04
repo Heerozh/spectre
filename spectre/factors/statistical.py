@@ -274,32 +274,57 @@ class TTest1Samp(CustomFactor):
         return a.agg(_ttest)
 
 
+def _beta_fraction(a, b, x, tol):
+    """
+    Continued fraction of the regularized incomplete beta function, by the modified Lentz method.
+    It needs `x` below (a + 1) / (a + b + 2). The denominators stay positive for the `a` and `b`
+    of a t distribution, so the guards against 0 of that method are left out.
+    """
+    c = torch.ones_like(x)
+    d = 1 / (1 - (a + b) * x / (a + 1))
+    fraction = d
+    for m in range(1, 10000):
+        even = m * (b - m) * x / ((a + 2 * m - 1) * (a + 2 * m))
+        odd = -(a + m) * (a + b + m) * x / ((a + 2 * m) * (a + 2 * m + 1))
+        for term in (even, odd):
+            d = 1 / (1 + term * d)
+            c = 1 + term / c
+            step = c * d
+            fraction = fraction * step
+        if not ((step - 1).abs() > tol).any():
+            break
+    return fraction
+
+
 class StudentCDF(CrossSectionFactor):
     """
     Note!! For performance, This factor uses Cross-section mean of t-value.
+
+    `precision` works like the step of an integration grid, the error falls with its square:
+    0.001 gives a relative error of about 1e-6, and 1e-7 reaches the limit of float64.
     """
 
     DefaultPrecision = 0.001
 
     def compute(self, t, dof, precision):
-        reduced_t = nanmean(t, dim=1)
-        p = torch.zeros_like(reduced_t)
+        reduced_t = nanmean(t, dim=1).to(torch.float64)
         dof = torch.tensor(dof, dtype=torch.float64, device=t.device)
-        for i, v in enumerate(reduced_t.cpu()):
-            if np.isnan(v):
-                p[i] = torch.nan
-            elif np.isinf(v):
-                p[i] = 1
-            elif v < -9:
-                p[i] = 0
-            else:
-                x = torch.arange(-9, v, precision, device=t.device)
-                p[i] = (
-                    torch.e ** torch.lgamma((dof + 1) / 2)
-                    / (torch.sqrt(dof * torch.pi) * torch.e ** torch.lgamma(dof / 2))
-                    * (torch.trapezoid((1 + x**2 / dof) ** (-dof / 2 - 1 / 2), x))
-                )
-        return p.unsqueeze(-1).expand(t.shape)
+        half = dof.new_tensor(0.5)
+        # The lower tail is betainc(dof / 2, 1 / 2, x) / 2 with x = dof / (dof + t ** 2). Near t=0
+        # x is too high for the fraction, there use betainc(a, b, x) = 1 - betainc(b, a, 1 - x).
+        ratio = reduced_t**2 / dof
+        flip = ratio * (dof + 2) < 3
+        a = torch.where(flip, half, dof / 2)
+        b = torch.where(flip, dof / 2, half)
+        odds = torch.where(flip, ratio, 1 / ratio)
+        log_front = -a * torch.log1p(1 / odds) - b * torch.log1p(odds)
+        log_front = log_front + torch.lgamma(a + b) - torch.lgamma(a) - torch.lgamma(b)
+        # rounding keeps the steps of the fraction from getting closer to 1 than this
+        tol = max(precision**2, 1e-14)
+        beta = torch.exp(log_front) / a * _beta_fraction(a, b, odds / (1 + odds), tol)
+        tail = torch.where(flip, 1 - beta, beta) / 2
+        p = torch.where(reduced_t < 0, tail, 1 - tail)
+        return p.to(t.dtype).unsqueeze(-1).expand(t.shape)
 
 
 class CrossSectionR2(CrossSectionFactor):
