@@ -374,15 +374,22 @@ class FactorEngine:
         mid_left = dt_index[mid - 1]
         mid_right = dt_index[mid]
         length = self._dataframe.loc[mid_right:].shape[0]
-        for col in self._loader.ohlcv:
-            self._dataframe.loc[mid_right:, col] = np.random.randn(length)
-        self._column_cache = {}
-        # hack to disable reload _dataframe
-        self._last_loaded = [start, end, np.inf]
-        # check if results are consistent
-        df = self.run(start, end)
-        # clean
-        self.empty_cache()
+        try:
+            for col in self._loader.ohlcv:
+                dtype = self._dataframe[col].dtype
+                random = np.random.randn(length)
+                if pd.api.types.is_integer_dtype(dtype):
+                    # or it casts to 0 and 1
+                    random = np.abs(random) * 1000
+                self._dataframe.loc[mid_right:, col] = random.astype(dtype)
+            self._column_cache = {}
+            # hack to disable reload _dataframe
+            self._last_loaded = [start, end, np.inf]
+            # check if results are consistent
+            df = self.run(start, end)
+        finally:
+            # the data in memory is random now, whatever happened
+            self.empty_cache()
 
         try:
             pd.testing.assert_frame_equal(df_expected[:mid_left], df[:mid_left])

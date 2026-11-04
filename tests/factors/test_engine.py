@@ -416,6 +416,59 @@ def test_lookahead_bias(engine):
         engine.test_lookahead_bias(ref.START, ref.END)
 
 
+def typed_engine(panel, device, dtypes):
+    """An engine on `panel` with these column types, csv loaders recommend float32."""
+    ohlcv = ("open", "high", "low", "close", "volume")
+    loader = spectre.data.MemoryLoader(
+        panel.astype(dtypes), ohlcv=ohlcv, adjustments=("ex-dividend", "split_ratio")
+    )
+    engine = factors.FactorEngine(loader)
+    if device == "cuda":
+        engine.to_cuda()
+    return engine
+
+
+PRICES_FLOAT32 = {col: np.float32 for col in ("open", "high", "low", "close", "volume")}
+
+
+@pytest.mark.parametrize(
+    "dtypes", [PRICES_FLOAT32, {"volume": np.int64}], ids=["float32", "int64_volume"]
+)
+def test_lookahead_bias_of_any_column_type(dirty_panel, device, dtypes):
+    start, end = DIRTY_DATES[5], DIRTY_DATES[-1]
+    engine = typed_engine(dirty_panel, device, dtypes)
+    engine.add(factors.SMA(5), "test")
+    expected = engine.run(start, end)
+
+    assert engine.test_lookahead_bias(start, end) == "No assertion raised."
+    engine.add(close.shift(-2), "biased")
+    with pytest.raises(RuntimeError, match="look-ahead bias"):
+        engine.test_lookahead_bias(start, end)
+
+    # the data of the test is gone
+    engine.remove_all_factors()
+    engine.add(factors.SMA(5), "test")
+    pd.testing.assert_frame_equal(engine.run(start, end), expected)
+
+
+def test_lookahead_bias_restores_the_data_after_an_error(dirty_engine):
+    start, end = DIRTY_DATES[5], DIRTY_DATES[-1]
+
+    class FailsOnRandomData(factors.CustomFactor):
+        inputs = [close]
+
+        def compute(self, data):
+            if data[~data.isnan()].min() < 0:
+                raise ZeroDivisionError()
+            return data
+
+    dirty_engine.add(FailsOnRandomData(), "test")
+    expected = dirty_engine.run(start, end)
+    with pytest.raises(ZeroDivisionError):
+        dirty_engine.test_lookahead_bias(start, end)
+    pd.testing.assert_frame_equal(dirty_engine.run(start, end), expected)
+
+
 @pytest.mark.parametrize("loader_aligned", [False, True])
 def test_align_by_time(loader_aligned):
     if loader_aligned:
