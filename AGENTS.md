@@ -19,9 +19,6 @@ and factors.
   A CPU run skips every `cuda` test, so passing says nothing about GPU code paths. The next plain
   `uv run` swaps the CUDA build back into `.venv`. `--group cpu` alone is an error, because it
   conflicts with the default group.
-- The library supports pandas 2.2 and 3. To test the old version, use
-  `uv run --with pandas==2.2.3 --with "numpy<2.3" pytest -n 6`. Without the numpy pin, pandas 2.2
-  emits deprecation warnings from newer numpy that have nothing to do with spectre.
 - With the CUDA build on Windows, keep the worker count around `-n 6`. Each process commits a lot
   of memory for the CUDA DLLs. `-n auto` on a many-core machine aborts with `WinError 1455` (page
   file too small). A lower count can hang instead, because the `Pool` in
@@ -36,11 +33,13 @@ and factors.
   those reflected operators on purpose, and it still passes after the fix, so nothing flags it.
 - `pyproject.toml` holds the metadata, dependencies and tool config, and `uv.lock` is committed.
   Change dependencies with `uv add` and `uv remove`. `uv build` needs no package list, it takes all
-  of `spectre/`. `.python-version` pins development to 3.13.
+  of `spectre/`. `.python-version` pins development to 3.14.
+- Only the latest versions are supported. The minimum versions in `pyproject.toml` are the versions
+  that were tested at the last upgrade, so there is no code for older pandas, torch or Python.
 - `tool.uv.sources` chooses the torch build with the `cuda` and `cpu` groups. uv is the only tool
   that reads it, and the groups are not in the built package, so a plain install gets torch from
   PyPI, which is CPU-only on Windows. After changing it, run `rm uv.lock && uv lock`: an existing
-  lock can hide a config that fails from scratch. To move to a new CUDA version, change `cu132` in
+  lock can hide a config that fails from scratch. To move to a new CUDA version, change `cu134` in
   `pyproject.toml`.
 - Pandas version shims belong in `spectre/_compat.py`. Under pandas 3 Copy-on-Write, chained
   assignment silently does nothing, and `.to_numpy()` can return a read-only array that torch

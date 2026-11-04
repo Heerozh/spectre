@@ -3,7 +3,7 @@ name = "spectre"
 version = "0.5"
 description = "GPU-accelerated Parallel quantitative trading library"
 readme = "README.md"
-requires-python = ">=3.11"
+requires-python = ">=3.14"
 license = "GPL-3.0-only"
 license-files = ["LICENSE"]
 authors = [{ name = "Zhang Jianhao", email = "heeroz@gmail.com" }]
@@ -13,15 +13,15 @@ classifiers = [
     "Operating System :: OS Independent",
 ]
 dependencies = [
-    "bs4",
-    "lxml",
-    "numpy",
-    "pandas>=2.2",
-    "plotly",
-    "pyarrow",
-    "requests",
-    "torch>=2.0",
-    "tqdm",
+    "bs4>=0.0.2",
+    "lxml>=6.1",
+    "numpy>=2.5",
+    "pandas>=3.1",
+    "plotly>=7.1",
+    "pyarrow>=26.0",
+    "requests>=2.34",
+    "torch>=2.15",
+    "tqdm>=4.70",
 ]
 
 [project.urls]
@@ -29,10 +29,10 @@ Homepage = "https://github.com/Heerozh/spectre"
 
 [dependency-groups]
 dev = [
-    "pytest",
-    "pytest-xdist",
+    "pytest>=9.2",
+    "pytest-xdist>=3.8",
     "ruff>=0.17.3",
-    "scipy",
+    "scipy>=1.18",
 ]
 # These two only pick the torch build, see `tool.uv.sources`. `cuda` is on by default, select the
 # CPU build with `--no-group cuda --group cpu`. Groups are not part of the built package.
@@ -40,7 +40,7 @@ cuda = ["torch"]
 cpu = ["torch"]
 
 [build-system]
-requires = ["uv_build>=0.13.6,<0.14.0"]
+requires = ["uv_build>=0.13.7,<0.14.0"]
 build-backend = "uv_build"
 
 [tool.uv]
@@ -52,16 +52,16 @@ module-root = ""
 
 [tool.uv.sources]
 torch = [
-    { index = "pytorch-cu132", group = "cuda", marker = "sys_platform != 'darwin'" },
+    { index = "pytorch-cu134", group = "cuda", marker = "sys_platform != 'darwin'" },
     { index = "pytorch-cpu", group = "cpu", marker = "sys_platform != 'darwin'" },
     # macOS has no CUDA builds. This has to bind `project.dependencies` rather than the groups,
-    # or uv does not fork on the platform: it picks cu132 there, or fails a lock from scratch.
+    # or uv does not fork on the platform: it picks cu134 there, or fails a lock from scratch.
     { index = "pypi", marker = "sys_platform == 'darwin'" },
 ]
 
 [[tool.uv.index]]
-name = "pytorch-cu132"
-url = "https://download.pytorch.org/whl/cu132"
+name = "pytorch-cu134"
+url = "https://download.pytorch.org/whl/cu134"
 explicit = true
 
 [[tool.uv.index]]

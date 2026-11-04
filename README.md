@@ -8,7 +8,7 @@ spectre is a **GPU-accelerated Parallel** quantitative trading library, focused 
   * Pure python code, based on PyTorch, so it can integrate DL model very smoothly.
   * Compatible with `alphalens` and `pyfolio`
 
-Requires Python 3.11+, PyTorch 2.0+, Pandas 2.2+
+Requires Python 3.14+, PyTorch 2.15+, Pandas 3.1+
 
 
 # Installation
@@ -24,7 +24,7 @@ uv pip install --torch-backend=auto git+https://github.com/Heerozh/spectre.git
 With pip, on Windows install a CUDA build of PyTorch first, because the one on PyPI is CPU-only:
 
 ```bash
-pip install torch --index-url https://download.pytorch.org/whl/cu132
+pip install torch --index-url https://download.pytorch.org/whl/cu134
 pip install git+https://github.com/Heerozh/spectre.git
 ```
 
