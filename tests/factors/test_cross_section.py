@@ -8,10 +8,11 @@ from numpy.testing import assert_allclose, assert_almost_equal, assert_array_equ
 from spectre import factors, parallel
 from tests.conftest import DATA_DIR, DIRTY_DATES, LISTED_ON
 from tests.factors import reference as ref
-from tests.factors.helpers import assert_factor, delete, run_factor
+from tests.factors.helpers import assert_factor, delete, run_dirty, run_factor
 
 nan = np.nan
 close = factors.OHLCV.close
+volume = factors.OHLCV.volume
 
 # On 2019-01-10 only AAPL has data, so the values of AAPL on 2019-01-11 (delayed) are calculated
 # without MSFT (index 6 of delayed AAPL results).
@@ -101,6 +102,35 @@ def test_weighted_mean(engine):
     assert_factor(engine, close.mean(weight=factors.OHLCV.volume), *expected, decimal=4)
 
 
+def xs_weighted_mean(data, weight):
+    """Weighted mean of each date, over the rows valid in both `data` and `weight`."""
+    total = (data * weight).groupby(level="date").transform("sum", min_count=1)
+    return total / weight.where(data.notna()).groupby(level="date").transform("sum")
+
+
+def test_weighted_mean_drops_the_weight_of_missing_data(dirty_engine, dirty_panel):
+    expected = xs_weighted_mean(dirty_panel.close, dirty_panel.volume)
+    assert_allclose(run_dirty(dirty_engine, close.mean(weight=volume)), expected, rtol=1e-5)
+
+
+def test_weighted_mean_by_filter(dirty_engine, dirty_panel):
+    expected = xs_weighted_mean(dirty_panel.close, (dirty_panel.close > 100).astype(float))
+    assert_allclose(run_dirty(dirty_engine, close.mean(weight=close > 100)), expected, rtol=1e-5)
+
+
+def test_weighted_mean_of_rows(device):
+    data = torch.tensor([[1, nan, 3], [4, nan, 8], [nan, nan, nan], [1, 2, nan]], device=device)
+    weight = torch.tensor([[1, 1, 1], [1, 8, 1], [1, 1, 1], [nan, 1, 1]], device=device)
+    result = factors.factor.MeanFactor().compute(data, weight)
+    assert_array_equal(result.cpu().numpy(), [[2] * 3, [6] * 3, [nan] * 3, [2] * 3])
+
+
+def test_weighted_mean_of_rows_with_weight_sum(device):
+    data = torch.tensor([[1, nan, 3], [nan, nan, nan]], device=device)
+    result = factors.factor.MeanFactor().compute(data, torch.ones_like(data), 8)
+    assert_array_equal(result.cpu().numpy(), [[0.5] * 3, [nan] * 3])
+
+
 def test_std(engine):
     expected = ref.expected_xs(lambda df: pd.DataFrame({a: df.std(axis=1, ddof=0) for a in df}))
     assert_factor(engine, close.std(), *expected)
@@ -161,6 +191,21 @@ def test_zscore_zero_weight(engine):
     expected = ref.expected_xs(lambda df: df.div(df.std(axis=1, ddof=0), axis=0))
     assert_factor(engine, close.zscore(weight=0), *expected)
     assert expected[0][SOLO] == np.inf
+
+
+def test_weighted_zscore(dirty_engine, dirty_panel):
+    closes = dirty_panel.close
+    std = closes.groupby(level="date").transform("std", ddof=0)
+    expected = (closes - xs_weighted_mean(closes, dirty_panel.volume)) / std
+    result = run_dirty(dirty_engine, close.zscore(weight=volume))
+    assert_allclose(result, expected, rtol=1e-4, atol=1e-4)
+
+
+def test_weighted_zscore_of_rows(device):
+    data = torch.tensor([[4, nan, 8], [nan, nan, nan]], device=device)
+    weight = torch.tensor([[1.0, 8, 1], [1, 1, 1]], device=device)
+    result = factors.factor.ZScoreFactor(close).compute(data, weight)
+    assert_array_equal(result.cpu().numpy(), [[-1, nan, 1], [nan, nan, nan]])
 
 
 def test_zscore_shift_with_filter(engine):

@@ -27,6 +27,7 @@ from ..parallel import (
     pad_2d,
     quantile,
     rankdata,
+    unmasked_sum,
 )
 from ..plotting import plot_factor_diagram
 
@@ -1066,15 +1067,22 @@ class DemedianFactor(CrossSectionFactor):
         return data - median[0].expand(data.shape[0], data.shape[1])
 
 
+def _weighted_mean(data, weight, weight_sum=None) -> torch.Tensor:
+    """Mean of each row, over the values valid in both. `weight_sum` replaces their weight sum."""
+    weighted = data * weight
+    mask = torch.isnan(weighted)
+    if weight_sum is None:
+        weight_sum = unmasked_sum(weight, mask)
+    mean = unmasked_sum(weighted, mask, inplace=True) / weight_sum
+    return mean.masked_fill_(mask.all(dim=1), np.nan).to(Global.float_type)
+
+
 class MeanFactor(CrossSectionFactor):
     def compute(self, data: torch.Tensor, weight=None, weight_sum=None) -> torch.Tensor:
         if weight is None:
             return nanmean(data).unsqueeze(-1).expand(data.shape[0], data.shape[1])
         else:
-            if weight_sum is None:
-                weight_sum = nansum(weight)
-            mean = nansum(data * weight) / weight_sum
-            mean = mean.to(Global.float_type).unsqueeze(-1)
+            mean = _weighted_mean(data, weight, weight_sum).unsqueeze(-1)
             return mean.expand(data.shape[0], data.shape[1])
 
 
@@ -1103,11 +1111,10 @@ class ZScoreFactor(CrossSectionFactor):
     def compute(self, data: torch.Tensor, weight=None) -> torch.Tensor:
         if weight is None:
             mean = nanmean(data).unsqueeze(-1)
-        elif weight == 0:
+        elif not isinstance(weight, torch.Tensor) and weight == 0:
             mean = 0
         else:
-            mean = nansum(data * weight) / nansum(weight)
-            mean = mean.to(Global.float_type).unsqueeze(-1)
+            mean = _weighted_mean(data, weight).unsqueeze(-1)
         return (data - mean) / nanstd(data).unsqueeze(-1)
 
 

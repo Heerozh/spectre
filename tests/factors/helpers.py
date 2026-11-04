@@ -1,3 +1,5 @@
+import warnings
+
 import numpy as np
 import pandas as pd
 from numpy.testing import assert_almost_equal
@@ -48,7 +50,9 @@ def run_late_listed(engine, factor):
 
 
 def run_dirty(engine, factor, start=0):
-    """Values of `factor` from bar `start` of the dirty panel, not delayed."""
+    """Values of `factor` from bar `start` of the dirty panel, not delayed, in the panel's order."""
     engine.remove_all_factors()
     engine.add(factor, "test")
-    return engine.run(DIRTY_DATES[start], DIRTY_DATES[-1], delay_factor=False).test
+    with warnings.catch_warnings():
+        warnings.filterwarnings("ignore", "Warning!! delay_factor is set to False")
+        return engine.run(DIRTY_DATES[start], DIRTY_DATES[-1], delay_factor=False).test
