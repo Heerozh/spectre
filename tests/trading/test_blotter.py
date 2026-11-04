@@ -434,6 +434,30 @@ def test_interest_of_daily_bars():
     assert blotter.portfolio.cash == pytest.approx(100000 + 100 * 100 - 3 * 10)
 
 
+def test_interest_of_skipped_days():
+    days = pd.bdate_range("2020-01-06", "2020-01-20", tz="UTC")
+    blotter = open_at_first_bar(days, -100, capital_base=100000)
+
+    # jump over the bars in between, the blotter makes up their events
+    blotter.set_datetime(days[-1])
+    # 01-06 to 01-20 is 14 days, at 10 a day
+    assert blotter.portfolio.cash == pytest.approx(100000 + 100 * 100 - 14 * 10)
+
+
+@pytest.mark.parametrize("last_visited", [2, 0], ids=["no_skipped_days", "skipped_days"])
+def test_interest_of_each_day_uses_the_value_of_that_day(last_visited):
+    # Tuesday to Friday, short 100 at 100
+    days = pd.bdate_range("2020-01-07", periods=4, tz="UTC")
+    loader = asset_a_loader(days, [100, 110, 120, 130])
+    blotter = trading.SimulationBlotter(loader, capital_base=100000)
+    blotter.borrow_stock_interest_rate = 0.365
+    trade_until_after_bar(blotter, days, last_visited, -100)
+
+    blotter.set_datetime(days[3])
+    # 0.1% a day of the 10000, 11000 and 12000 the short is worth at the start of each day
+    assert blotter.portfolio.cash == pytest.approx(100000 + 100 * 100 - (10 + 11 + 12))
+
+
 @pytest.mark.parametrize(
     "day_2, dividends, split_ratios",
     [

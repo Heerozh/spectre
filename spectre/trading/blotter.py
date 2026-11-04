@@ -347,6 +347,18 @@ class SimulationBlotter(BaseBlotter, EventReceiver):
         self._portfolio.clear()
         self._portfolio.update_cash(self.capital_base, is_funds=True)
 
+    def _advance_to(self, dt: pd.Timestamp) -> None:
+        """Move the datetime forward, and charge the interest of the time that passed."""
+        # get last datetime before portfolio datetime change
+        last_dt = self._portfolio.current_dt
+        if last_dt:
+            self._portfolio.process_borrow_interest(
+                (dt - last_dt) / pd.Timedelta(days=1),
+                self.borrow_money_interest_rate,
+                self.borrow_stock_interest_rate,
+            )
+        super().set_datetime(dt)
+
     def set_datetime(self, dt: pd.Timestamp) -> None:
         self._current_prices_col = None
         self._current_prices = None
@@ -366,24 +378,16 @@ class SimulationBlotter(BaseBlotter, EventReceiver):
                         continue
 
                     open_time = bar_times[0]
-                    super().set_datetime(open_time)
+                    self._advance_to(open_time)
                     self.set_price("open")
                     self.market_open(self)
 
                     close_time = bar_times[-1]
-                    super().set_datetime(close_time)
+                    self._advance_to(close_time)
                     self.set_price("close")
                     self.update_portfolio_value()
                     self.market_close(self)
-        # get last datetime before portfolio datetime change
-        last_dt = self._portfolio.current_dt
-        if last_dt:
-            self._portfolio.process_borrow_interest(
-                (dt - last_dt) / pd.Timedelta(days=1),
-                self.borrow_money_interest_rate,
-                self.borrow_stock_interest_rate,
-            )
-        super().set_datetime(dt)
+        self._advance_to(dt)
 
     def set_price(self, name: str):
         if name == "open":
