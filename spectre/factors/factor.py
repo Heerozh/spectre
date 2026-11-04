@@ -186,12 +186,16 @@ class BaseFactor:
     ):
         """
         Cross-section demean.
-        Set `groupby` to the name of a column, like 'sector'.
+        Set `groupby` to the name of a column, like 'sector', to demean each sector on each date.
+        'date' is added to it, unless it's there already, or `groupby` is 'asset', which demeans
+        each asset over all loaded dates, including the future ones.
         `groupby` also can be a dictionary like groupby={'name': group_id}, `group_id` must > 0.
         Group by dict is implemented by pandas, not in GPU.
         """
         factor = DemeanFactor(inputs=(self, beta), mask=mask)
         if isinstance(groupby, str):
+            if groupby != "asset" and "date" not in groupby.split(","):
+                groupby = "date," + groupby
             factor.groupby = groupby
         elif isinstance(groupby, dict):
             factor.group_dict = groupby

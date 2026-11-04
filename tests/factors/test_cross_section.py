@@ -5,6 +5,7 @@ import scipy.stats
 import torch
 from numpy.testing import assert_allclose, assert_almost_equal, assert_array_equal
 
+import spectre
 from spectre import factors, parallel
 from tests.conftest import DATA_DIR, DIRTY_DATES, LISTED_ON
 from tests.factors import reference as ref
@@ -12,6 +13,7 @@ from tests.factors.helpers import assert_factor, delete, run_dirty, run_factor
 
 nan = np.nan
 close = factors.OHLCV.close
+open_price = factors.OHLCV.open
 volume = factors.OHLCV.volume
 
 # On 2019-01-10 only AAPL has data, so the values of AAPL on 2019-01-11 (delayed) are calculated
@@ -330,6 +332,127 @@ def test_demean_group_dict(engine):
 
 def test_demean(engine):
     assert_factor(engine, close.demean(), *ref.expected_xs(demeaned))
+
+
+def delayed_sector_demean(prices, sector):
+    """Demean by sector on each date, then delay by a bar of each asset, by pandas."""
+    dates = prices.index.get_level_values("date")
+    result = prices - prices.groupby([dates, sector]).transform("mean")
+    return result.groupby(level="asset").shift(1)
+
+
+def test_demean_by_sector_is_cross_sectional(dirty_engine, dirty_panel):
+    """The mean of a sector over all dates would read the prices of the future."""
+    start, end = DIRTY_DATES[5], DIRTY_DATES[-1]
+    dirty_engine.add(close.demean(groupby="sector"), "test")
+    result = dirty_engine.run(start, end).test
+    expected = delayed_sector_demean(dirty_panel.close, dirty_panel.sector)
+    assert_allclose(result.values, expected.loc[result.index].values, rtol=1e-6)
+    assert dirty_engine.test_lookahead_bias(start, end) == "No assertion raised."
+
+
+def test_demean_by_sector_with_a_mask(dirty_engine, dirty_panel):
+    start, end = DIRTY_DATES[5], DIRTY_DATES[-1]
+    dirty_engine.add(close.demean(groupby="sector", mask=close > 100), "test")
+    result = dirty_engine.run(start, end).test
+    masked = dirty_panel.close.where(dirty_panel.close > 100)
+    expected = delayed_sector_demean(masked, dirty_panel.sector)
+    assert_allclose(result.values, expected.loc[result.index].values, rtol=1e-6)
+
+
+def test_demean_by_sector_of_one_asset(dirty_engine):
+    dirty_engine.set_filter(factors.StaticAssets({"FULL"}))
+    dirty_engine.add(close.demean(groupby="sector"), "test")
+    result = dirty_engine.run(DIRTY_DATES[5], DIRTY_DATES[-1]).test
+    assert_almost_equal(result.values, np.zeros(len(result)))
+
+
+@pytest.mark.parametrize(
+    "groupby, expected",
+    [
+        ("sector", "date,sector"),
+        ("sector,gics", "date,sector,gics"),
+        ("candidate", "date,candidate"),
+        ("asset", "asset"),
+        ("date", "date"),
+        ("date,sector", "date,sector"),
+        ("sector,date", "sector,date"),
+    ],
+)
+def test_demean_groupby(groupby, expected):
+    assert close.demean(groupby=groupby).groupby == expected
+
+
+# more than 21 dates, a key of 8 digits doesn't fit in int32 after that
+GROUP_DATES = pd.date_range("2020-01-01", periods=60, freq="B", tz="UTC")
+GROUP_COLUMNS = ["gics", "decimal", "text", "category"]
+
+
+def group_panel():
+    """6 assets in 3 groups, the same groups in a column of each kind."""
+    rng = np.random.default_rng(1)
+    assets = list("ABCDEF")
+    df = pd.DataFrame(
+        rng.normal(100, 10, (len(GROUP_DATES), len(assets))), index=GROUP_DATES, columns=assets
+    )
+    df = df.stack().rename("close").rename_axis(["date", "asset"]).to_frame()
+    df["open"] = df.close + 1
+    df["high"], df["low"], df["volume"] = df.close, df.close, 1.0
+    names = df.index.get_level_values("asset")
+    group = names.map(dict(zip(assets, [0, 0, 1, 1, 2, 2])))
+    df["gics"] = np.array([45102010, 45102020, 20106020])[group]
+    df["decimal"] = np.array([1.25, 1.5, 1.75])[group]
+    df["text"] = np.array(["tech", "bank", "food"])[group]
+    df["category"] = pd.Categorical(df["text"], categories=["unused", "tech", "bank", "food"])
+    # a different value on each asset, no space is left for the other columns of a key
+    df["huge"] = 10**15 * (names.map(assets.index) + 1)
+    return df
+
+
+def group_engine(device):
+    panel = group_panel()
+    ohlcv = ("open", "high", "low", "close", "volume")
+    engine = factors.FactorEngine(spectre.data.MemoryLoader(panel, ohlcv=ohlcv))
+    if device == "cuda":
+        engine.to_cuda()
+    return panel, engine
+
+
+@pytest.mark.parametrize("column", GROUP_COLUMNS)
+def test_group_by_a_column_of_any_type(device, column):
+    panel, engine = group_engine(device)
+    engine.add(open_price.mean(groupby=column), "test")
+    result = engine.run(GROUP_DATES[0], GROUP_DATES[-1]).test
+    expected = panel.open.groupby(panel[column], observed=True).transform("mean")
+    assert_allclose(result.values, expected.loc[result.index].values, rtol=1e-6)
+
+
+@pytest.mark.parametrize("column", GROUP_COLUMNS)
+@pytest.mark.parametrize("order", ["date,{}", "{},date"])
+def test_group_by_date_and_a_column_of_any_type(device, column, order):
+    panel, engine = group_engine(device)
+    engine.add(open_price.mean(groupby=order.format(column)), "test")
+    result = engine.run(GROUP_DATES[0], GROUP_DATES[-1]).test
+    dates = panel.index.get_level_values("date")
+    expected = panel.open.groupby([dates, panel[column]], observed=True).transform("mean")
+    assert_allclose(result.values, expected.loc[result.index].values, rtol=1e-6)
+
+
+def test_group_keys_do_not_overflow(device):
+    panel, engine = group_engine(device)
+    engine.add(open_price.mean(groupby="date,huge,gics,text"), "test")
+    result = engine.run(GROUP_DATES[0], GROUP_DATES[-1]).test
+    # every asset is a group of its own on each date
+    assert_allclose(result.values, panel.open.loc[result.index].values, rtol=1e-6)
+
+
+def test_demean_by_a_text_column(device):
+    panel, engine = group_engine(device)
+    engine.add(open_price.demean(groupby="text"), "test")
+    result = engine.run(GROUP_DATES[0], GROUP_DATES[-1]).test
+    dates = panel.index.get_level_values("date")
+    expected = panel.open - panel.open.groupby([dates, panel.text]).transform("mean")
+    assert_allclose(result.values, expected.loc[result.index].values, rtol=1e-6, atol=1e-9)
 
 
 def demean_by_asset(factor):

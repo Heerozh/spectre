@@ -65,6 +65,18 @@ class FactorEngine:
         self._column_cache[data_column] = data
         return data
 
+    def _column_to_group_codes(self, column: str) -> np.ndarray:
+        """Integer codes of a column of any type, in the order of its values."""
+        series = self._dataframe[column]
+        assert not series.isna().any(), column
+        if column == self._loader.time_category:
+            # already ids, and every run comes here
+            codes = series.to_numpy().astype(np.int64)
+            return codes - codes.min()
+        if series.dtype.name == "category":
+            return series.cat.codes.to_numpy().astype(np.int64)
+        return pd.factorize(series, sort=True)[0]
+
     def column_to_parallel_groupby_(self, group_column: str, as_group_name=None):
         # todo refactor: group_column change to ClassifierFactor type
         if isinstance(group_column, torch.Tensor):
@@ -89,18 +101,15 @@ class FactorEngine:
             if col:
                 if col == "date":
                     col = self._loader.time_category
-                series = self._dataframe[col]
-                assert not series.isna().any(), col
-                if series.dtype.name == "category":
-                    cat = series.cat.codes
+                codes = self._column_to_group_codes(col)
+                if keys is None:
+                    keys = codes
                 else:
-                    cat = series.values
-                cat = cat - min(cat)  # shrink value space
-                if keys is not None:
-                    keys *= 10 ** len(str(max(abs(cat))))
-                    keys += torch.tensor(cat, device=self._device, dtype=torch.int32)
-                else:
-                    keys = torch.tensor(cat, device=self._device, dtype=torch.int32)
+                    keys = keys * (codes.max() + 1) + codes
+                    # there can't be more groups than rows, so this keeps the keys in int32
+                    if keys.max() >= len(keys):
+                        keys = pd.factorize(keys, sort=True)[0]
+        keys = torch.tensor(keys, device=self._device, dtype=torch.int32)
         self._groups[as_group_name] = ParallelGroupBy(keys)
 
     def revert_(self, data: torch.Tensor, group: str, factor_name: str) -> torch.Tensor:
