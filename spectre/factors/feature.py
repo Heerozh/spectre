@@ -7,11 +7,15 @@
 
 import warnings
 
+import pandas as pd
+import torch
+
 from ..config import Global
 from ..parallel import nanmean, nanstd, nansum
 from .basic import Returns
 from .datafactor import DatetimeDataFactor
 from .factor import CrossSectionFactor, CustomFactor
+from .filter import FilterFactor
 
 # ----------- Common Market Features -----------
 
@@ -96,6 +100,32 @@ class AssetData(CustomFactor):
 # ----------- Common Calendar Features -----------
 
 
+class PeriodEdge(FilterFactor):
+    """
+    Is this date the first or last trading date of its period? The same for all assets and all
+    bars of the date, so the last bar of an asset says nothing. The calendar is the dates of the
+    loaded data, in `engine.timezone`. A date at the end of it has no neighbour, so it is decided
+    by business days, a calendar is known in advance, but a holiday there is not seen.
+    """
+
+    def __init__(self, freq: str, last: bool):
+        # only the first date of a period needs the date before `start`
+        super().__init__(win=1 if last else 2)
+        self.freq = freq
+        self.last = last
+
+    def compute(self) -> torch.Tensor:
+        # naive, because some timezones have no midnight on the date daylight saving starts
+        dates = self._engine.dataframe_index[0].tz_localize(None).normalize()
+        rows, calendar = pd.factorize(dates, sort=True)
+        if self.last:
+            neighbours = calendar[1:].append(calendar[-1:] + pd.offsets.BDay())
+        else:
+            neighbours = (calendar[:1] - pd.offsets.BDay()).append(calendar[:-1])
+        edges = neighbours.to_period(self.freq) != calendar.to_period(self.freq)
+        return self._regroup(edges[rows])
+
+
 MONTH = DatetimeDataFactor("month")
 WEEKDAY = DatetimeDataFactor("weekday")
 QUARTER = DatetimeDataFactor("quarter")
@@ -103,9 +133,7 @@ TIME = DatetimeDataFactor("hour") + DatetimeDataFactor("minute") / 60.0
 
 IS_JANUARY = MONTH == 1
 IS_DECEMBER = MONTH == 12
-# Note: shift(-1) may fail the engine.test_lookahead_bias(),
-# but this method is the fastest, so be it.
-IS_MONTH_END = MONTH.shift(-1) != MONTH
-IS_MONTH_START = MONTH.shift(1) != MONTH
-IS_QUARTER_END = QUARTER.shift(-1) != QUARTER
-IS_QUARTER_START = QUARTER.shift(1) != QUARTER
+IS_MONTH_END = PeriodEdge("M", last=True)
+IS_MONTH_START = PeriodEdge("M", last=False)
+IS_QUARTER_END = PeriodEdge("Q", last=True)
+IS_QUARTER_START = PeriodEdge("Q", last=False)

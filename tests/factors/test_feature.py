@@ -12,6 +12,7 @@ from tests.conftest import (
     DIRTY_ADJUSTMENTS,
     DIRTY_DATES,
     DIRTY_OHLCV,
+    DIRTY_SECTORS,
     DIVIDEND_ON,
     LISTED_ON,
     NAN_BAR,
@@ -237,6 +238,302 @@ def test_timezone(engine):
     engine.timezone = "UTC"
     expected = np.array([2, 3.0, 4.0, 0.0, 1.0, 2.0, 3.0, 4.0, 0.0, 1.0])
     assert_factor(engine, factors.WEEKDAY, expected, delete(expected, SOLO))
+
+
+# ------------------------------------ month and quarter flags ----------------------------------
+
+# factor, period, last date of the period or first
+PERIOD_FLAGS = {
+    "month_end": (factors.IS_MONTH_END, "M", True),
+    "month_start": (factors.IS_MONTH_START, "M", False),
+    "quarter_end": (factors.IS_QUARTER_END, "Q", True),
+    "quarter_start": (factors.IS_QUARTER_START, "Q", False),
+}
+each_flag = pytest.mark.parametrize("flag", PERIOD_FLAGS)
+
+
+def local_dates(stamps, timezone="UTC"):
+    return stamps.tz_convert(timezone).tz_localize(None).normalize()
+
+
+def is_business_edge(date, freq, last):
+    """No business day of the period of `date` comes after it, or before it."""
+    period = date.to_period(freq)
+    business_days = pd.bdate_range(period.start_time, period.end_time)
+    return date >= business_days[-1] if last else date <= business_days[0]
+
+
+def expected_flag(flag, rows, calendar, timezone="UTC"):
+    """
+    The flag of each of `rows`, a date index with duplicates or not. In `calendar`, the dates of
+    the frame, it's the last date of a period, or the first. The date at the end of the calendar
+    has no neighbour, it goes by the business days.
+    """
+    _, freq, last = PERIOD_FLAGS[flag]
+    dates = local_dates(calendar, timezone).unique().sort_values()
+    by_period = dates.to_series().groupby(dates.to_period(freq))
+    edges = by_period.max() if last else by_period.min()
+    end = dates[-1] if last else dates[0]
+    if not is_business_edge(end, freq, last):
+        edges = edges[edges != end]
+    return local_dates(rows, timezone).isin(edges)
+
+
+def flag_of_rows(result, flag, calendar, timezone="UTC"):
+    return expected_flag(flag, result.index.get_level_values("date"), calendar, timezone)
+
+
+@each_flag
+@pytest.mark.parametrize("start", [0, 23, 24, 33, 40], ids=lambda bar: f"bar_{bar}")
+def test_period_flag_is_of_the_date_not_of_the_bars_of_an_asset(dirty_engine, flag, start):
+    """2020-02-03 (bar 23) is the first trading date of February, in the history of bar 24."""
+    result = run_dirty(dirty_engine, PERIOD_FLAGS[flag][0], start)
+    assert result.dtype == bool
+    assert_array_equal(result.values, flag_of_rows(result, flag, DIRTY_DATES))
+
+
+def dates_of(result, asset):
+    return list(result[result].xs(asset, level="asset").index.strftime("%m-%d"))
+
+
+def test_month_flags_of_the_dirty_panel(dirty_engine):
+    """Written out, for the bars an asset starts and stops on."""
+    ends = run_dirty(dirty_engine, factors.IS_MONTH_END)
+    starts = run_dirty(dirty_engine, factors.IS_MONTH_START)
+    # the first and the last bar of a run are not special
+    assert dates_of(ends, "FULL") == ["01-31", "02-28"]
+    assert dates_of(starts, "FULL") == ["01-01", "02-03", "03-02"]
+    # delisted on 02-26, in the middle of a month
+    assert dates_of(ends, "DELISTED") == ["01-31"]
+    # halted from 01-29 to 02-13, over the end of January
+    assert dates_of(ends, "HALTED") == ["02-28"]
+    assert dates_of(starts, "HALTED") == ["01-01", "03-02"]
+    # listed on 02-12
+    assert dates_of(starts, "LISTED") == ["03-02"]
+
+
+@pytest.mark.parametrize(
+    "last_date, month_end, quarter_end",
+    [
+        ("2020-03-30", False, False),
+        ("2020-03-31", True, True),
+        ("2020-04-30", True, False),
+        # the 29th is a Saturday
+        ("2020-02-28", True, False),
+        ("2020-02-27", False, False),
+        # the 30th and the 31st are the weekend
+        ("2020-05-29", True, False),
+        ("2020-05-28", False, False),
+    ],
+)
+def test_period_end_on_the_last_date_of_the_data(device, last_date, month_end, quarter_end):
+    """Nothing comes after it to compare with, a calendar is known in advance."""
+    dates = pd.bdate_range(end=last_date, periods=10, tz="UTC")
+    engine = engine_of(pd.DataFrame({"A": 100.0}, index=dates), device)
+    for factor, expected in (
+        (factors.IS_MONTH_END, month_end),
+        (factors.IS_QUARTER_END, quarter_end),
+    ):
+        engine.add(factor, "test", replace=True)
+        result = engine.run(dates[0], dates[-1], delay_factor=False).test
+        assert result.iloc[-1] == expected
+
+
+@pytest.mark.parametrize(
+    "first_date, month_start, quarter_start",
+    [
+        ("2020-02-03", True, False),
+        ("2020-02-04", False, False),
+        ("2020-04-01", True, True),
+        ("2020-04-02", False, False),
+        # the 1st is a Sunday
+        ("2020-03-02", True, False),
+        ("2020-03-03", False, False),
+        # a holiday, but only a calendar of a market would know
+        ("2020-01-02", False, False),
+    ],
+)
+def test_period_start_on_the_first_date_of_the_data(device, first_date, month_start, quarter_start):
+    dates = pd.bdate_range(first_date, periods=10, tz="UTC")
+    engine = engine_of(pd.DataFrame({"A": 100.0}, index=dates), device)
+    flags = (factors.IS_MONTH_START, month_start), (factors.IS_QUARTER_START, quarter_start)
+    for factor, expected in flags:
+        engine.add(factor, "test", replace=True)
+        result = engine.run(dates[0], dates[-1], delay_factor=False).test
+        assert result.iloc[0] == expected
+
+
+def test_period_flags_on_a_holiday_next_to_the_end_of_a_month(device):
+    """The dates of the data are the calendar, so the last weekday can be closed."""
+    dates = pd.bdate_range("2020-03-23", "2020-04-10", tz="UTC")
+    closed = pd.to_datetime(["2020-03-31", "2020-04-01"], utc=True)
+    dates = dates.drop(closed)
+    engine = engine_of(pd.DataFrame({"A": 100.0}, index=dates), device)
+
+    engine.add(factors.IS_MONTH_END, "end")
+    engine.add(factors.IS_MONTH_START, "start")
+    engine.add(factors.IS_QUARTER_END, "quarter_end")
+    engine.add(factors.IS_QUARTER_START, "quarter_start")
+    result = engine.run(dates[0], dates[-1], delay_factor=False).xs("A", level="asset")
+    assert list(result.index[result.end].strftime("%m-%d")) == ["03-30"]
+    assert list(result.index[result.start].strftime("%m-%d")) == ["04-02"]
+    assert list(result.index[result.quarter_end].strftime("%m-%d")) == ["03-30"]
+    assert list(result.index[result.quarter_start].strftime("%m-%d")) == ["04-02"]
+
+    # a run from that date reads the date before it, by business days it would be no month start
+    april_2 = pd.Timestamp("2020-04-02", tz="UTC")
+    assert engine.run(april_2, dates[-1], delay_factor=False).start.iloc[0]
+
+
+def test_period_flags_tell_years_apart(device):
+    """No dates between 2 Januaries, it's the same month number."""
+    dates = pd.to_datetime(["2019-01-14", "2019-01-15", "2020-01-14", "2020-01-15"], utc=True)
+    engine = engine_of(pd.DataFrame({"A": 100.0}, index=dates), device)
+    engine.add(factors.IS_MONTH_END, "end")
+    engine.add(factors.IS_MONTH_START, "start")
+    result = engine.run(dates[0], dates[-1], delay_factor=False).xs("A", level="asset")
+    assert_array_equal(result.end, [False, True, False, False])
+    assert_array_equal(result.start, [False, False, True, False])
+
+
+@each_flag
+@pytest.mark.parametrize(
+    "timezone, hour",
+    [
+        # 00:00 is the evening before, and Monday is a Sunday
+        ("America/New_York", 0),
+        ("America/New_York", 15),
+        # 16:00 is the morning after
+        ("Asia/Tokyo", 16),
+        # the midnight of 2020-09-06 doesn't exist there, and bars of that date do
+        ("America/Santiago", 0),
+    ],
+)
+def test_period_flag_in_a_timezone(device, flag, timezone, hour):
+    dates = pd.bdate_range("2020-03-02", "2020-09-30", tz="UTC") + pd.Timedelta(hours=hour)
+    closes = pd.DataFrame({"A": 100.0, "B": 200.0, "C": 300.0}, index=dates)
+    closes.loc[dates[50:70], "B"] = nan
+    closes.loc[dates[100] :, "C"] = nan
+
+    engine = engine_of(closes, device)
+    engine.timezone = timezone
+    engine.add(PERIOD_FLAGS[flag][0], "test")
+    result = engine.run(dates[0], dates[-1], delay_factor=False).test
+    assert_array_equal(result.values, flag_of_rows(result, flag, dates, timezone))
+
+
+def test_period_flags_differ_by_the_timezone(device):
+    """April starts on a Wednesday in UTC, which is the evening of March 31 in New York."""
+    dates = pd.bdate_range("2020-03-02", "2020-05-29", tz="UTC")
+    engine = engine_of(pd.DataFrame({"A": 100.0}, index=dates), device)
+    engine.add(factors.IS_MONTH_END, "test")
+    utc = engine.run(dates[0], dates[-1], delay_factor=False).test.xs("A", level="asset")
+    assert utc[utc].index.strftime("%m-%d").tolist() == ["03-31", "04-30", "05-29"]
+
+    engine.timezone = "America/New_York"
+    utc_rows = engine.run(dates[0], dates[-1], delay_factor=False).test.xs("A", level="asset")
+    utc_rows.index = utc_rows.index.tz_convert("UTC")
+    # stamped 04-01 and 05-01, the dates in New York are 03-31 and 04-30
+    assert utc_rows[utc_rows].index.strftime("%m-%d").tolist() == ["04-01", "05-01"]
+
+
+@each_flag
+@pytest.mark.parametrize("timezone", ["UTC", "America/New_York", "Asia/Tokyo"])
+def test_period_flag_on_all_bars_of_a_date(intraday_loader, device, flag, timezone):
+    """5 minutes bars. In Tokyo a date changes in the middle of a session."""
+    engine = factors.FactorEngine(intraday_loader)
+    if device == "cuda":
+        engine.to_cuda()
+    engine.timezone = timezone
+    engine.add(PERIOD_FLAGS[flag][0], "test")
+    stamps = intraday_loader.load().index.levels[0]
+    result = engine.run(stamps[0], stamps[-1], delay_factor=False).test
+    assert_array_equal(result.values, flag_of_rows(result, flag, stamps, timezone))
+
+
+def test_period_flag_of_a_day_of_bars(intraday_loader):
+    engine = factors.FactorEngine(intraday_loader)
+    engine.add(factors.IS_MONTH_END, "test")
+    stamps = intraday_loader.load().index.levels[0]
+    result = engine.run(stamps[0], stamps[-1], delay_factor=False).test
+    flagged = result[result].groupby(level="asset", observed=True).size()
+    # 78 bars of 5 minutes, of each of AAPL and MSFT on 2018-12-31, the last date of the month
+    assert flagged.to_dict() == {"AAPL": 78, "MSFT": 78}
+
+
+def test_period_flags_with_static_assets(dirty_engine):
+    """Screened out rows are not in the frame, FULL brings the dates of the market."""
+    dirty_engine.set_filter(factors.StaticAssets({"DELISTED", "FULL"}))
+    result = run_dirty(dirty_engine, factors.IS_MONTH_END)
+    assert dates_of(result, "FULL") == ["01-31", "02-28"]
+    assert dates_of(result, "DELISTED") == ["01-31"]
+
+
+def test_period_flags_of_a_delisted_asset_alone(dirty_engine):
+    """The last date of the frame is its last bar, in the middle of the month."""
+    dirty_engine.set_filter(factors.StaticAssets({"DELISTED"}))
+    assert dates_of(run_dirty(dirty_engine, factors.IS_MONTH_END), "DELISTED") == ["01-31"]
+
+
+@each_flag
+def test_period_flag_on_rows_added_by_align_by_time(dirty_engine, flag):
+    dirty_engine.align_by_time = True
+    result = run_dirty(dirty_engine, PERIOD_FLAGS[flag][0])
+    expected = flag_of_rows(result, flag, DIRTY_DATES)
+    assert len(result) == len(DIRTY_DATES) * len(DIRTY_SECTORS)
+    assert_array_equal(result.values, expected)
+
+
+@each_flag
+def test_period_flag_is_a_filter(dirty_engine, flag):
+    factor = PERIOD_FLAGS[flag][0]
+    assert isinstance(factor, factors.FilterFactor)
+    assert not factor.should_delay()
+
+    flags = run_dirty(dirty_engine, factor)
+    assert_array_equal(run_dirty(dirty_engine, ~factor).values, ~flags.values)
+    assert_array_equal(run_dirty(dirty_engine, factor.float()).values, flags.values.astype(float))
+    mondays = factors.WEEKDAY == 0
+    expected = flags.values & (flags.index.get_level_values("date").day_of_week == 0)
+    assert_array_equal(run_dirty(dirty_engine, factor & mondays).values, expected)
+    shifted = flags.groupby(level="asset", observed=True).shift(1, fill_value=False)
+    assert_array_equal(run_dirty(dirty_engine, factor.shift(1)).values, shifted.values)
+
+    # as a mask of a cross-section
+    opens = run_dirty(dirty_engine, factors.OHLCV.open)
+    ranked = run_dirty(dirty_engine, factors.OHLCV.open.rank(mask=factor))
+    assert_array_equal(ranked.notna().values, flags.values & opens.notna().values)
+    # as the filter of the engine
+    dirty_engine.set_filter(factor)
+    result = run_dirty(dirty_engine, factors.OHLCV.open)
+    assert result.index.equals(flags[flags].index)
+
+
+def test_period_flags_are_shared_by_two_engines(dirty_engine, device):
+    """They are objects of the module, and these engines have different calendars."""
+    dates = pd.bdate_range("2021-06-01", "2021-08-31", tz="UTC")
+    other = engine_of(pd.DataFrame({"A": 100.0}, index=dates), device)
+    for _ in range(2):
+        ours = run_dirty(dirty_engine, factors.IS_MONTH_END).xs("FULL", level="asset")
+        assert ours[ours].index.strftime("%m-%d").tolist() == ["01-31", "02-28"]
+
+        other.add(factors.IS_MONTH_END, "test", replace=True)
+        theirs = other.run(dates[0], dates[-1], delay_factor=False).test.xs("A", level="asset")
+        assert theirs[theirs].index.strftime("%m-%d").tolist() == ["06-30", "07-30", "08-31"]
+
+
+@each_flag
+def test_period_flag_has_no_lookahead(dirty_engine, flag):
+    dirty_engine.add(PERIOD_FLAGS[flag][0], "test")
+    dirty_engine.test_lookahead_bias(DIRTY_DATES[5], DIRTY_DATES[-1])
+
+
+def test_period_flag_history():
+    """Only the first date of a period needs the date before `start`."""
+    assert factors.IS_MONTH_END.get_total_backwards_() == 0
+    assert factors.IS_QUARTER_END.get_total_backwards_() == 0
+    assert factors.IS_MONTH_START.get_total_backwards_() == 1
+    assert factors.IS_QUARTER_START.get_total_backwards_() == 1
 
 
 # ------------------------------------ classifier ------------------------------------
