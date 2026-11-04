@@ -100,14 +100,9 @@ def plot_quantile_and_cumulative_returns(factor_data, mean_ret):
 
             open_period = period
             if period.endswith("D"):
-                open_period = "b" + open_period
-            try:
-                cum_ret = factor_return[period].resample(open_period).mean().dropna()
-            except ValueError:
-                print(
-                    "pandas re-sampling failed, try set `engine.timezone = 'your local timezone'`"
-                )
-                cum_ret = factor_return[period].resample(period).mean().dropna()
+                open_period = period[:-1] + "B"
+            # on the wall clock, because a bin can't start on a midnight skipped by daylight saving
+            cum_ret = factor_return[period].tz_localize(None).resample(open_period).mean().dropna()
             cum_ret = (cum_ret + 1).cumprod() * 100 - 100
             fig.add_trace(
                 go.Scatter(
