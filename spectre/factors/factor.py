@@ -283,18 +283,18 @@ class BaseFactor:
         return SignFactor(inputs=(self,))
 
     def ts_sum(self, win: int, mask: BaseFactor = None):
-        ret = SumFactor(win, inputs=(self,))
+        ret = SumFactor(win, inputs=(self._numeric(),))
         ret.set_mask(mask)
         return ret
 
     def xs_sum(self, mask: BaseFactor = None, groupby="date"):
         # todo future name will change to sum
-        ret = XSSumFactor(inputs=(self,), mask=mask)
+        ret = XSSumFactor(inputs=(self._numeric(),), mask=mask)
         ret.groupby = groupby
         return ret
 
     def ts_prod(self, win: int):
-        return ProdFactor(win, inputs=(self,))
+        return ProdFactor(win, inputs=(self._numeric(),))
 
     def round(self, decimal):
         return RoundFactor(inputs=(self, decimal))
@@ -389,6 +389,10 @@ class BaseFactor:
     def adjustments(self):
         """Returning adjustments multipliers"""
         return None
+
+    def _numeric(self):
+        """This factor as the input of a helper that calculates with numbers."""
+        return self
 
     def _regroup_by_other(self, factor, factor_out):
         if factor.groupby != self.groupby:

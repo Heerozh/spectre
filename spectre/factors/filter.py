@@ -18,6 +18,10 @@ class FilterFactor(CustomFactor, ABC):
     def __getitem__(self, key):
         return FilterMultiRetSelector(inputs=(self, key))
 
+    def _numeric(self):
+        # a regroup pads a filter with False, as a float the missing rows stay NaN
+        return self.float()
+
     def shift(self, periods=1):
         if periods == 0:
             return self

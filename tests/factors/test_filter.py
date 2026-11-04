@@ -5,7 +5,7 @@ from numpy.testing import assert_almost_equal, assert_array_equal
 
 from spectre import factors
 from tests.factors import reference as ref
-from tests.factors.helpers import run_late_listed
+from tests.factors.helpers import run_dirty, run_late_listed
 
 volume = factors.OHLCV.volume
 close = factors.OHLCV.close
@@ -150,6 +150,40 @@ def test_one_hot_many_classes_warns(engine):
         # volume has more than 1000 unique values
         engine.run("2014-11-01", ref.END)
     assert np.issubdtype(engine.run(ref.START, ref.END).test.dtype, np.bool_)
+
+
+# ------------------------------------ count of a filter ------------------------------------
+
+
+def test_ts_sum_of_always_false_filter(dirty_engine):
+    result = run_dirty(dirty_engine, (close < 0).ts_sum(3))
+    assert_array_equal(result, 0)
+    assert result.dtype == "float32"
+
+
+def test_ts_sum_of_filter(dirty_engine, dirty_panel):
+    selected = (dirty_panel.close > 100).astype(float)
+    expected = selected.groupby(level="asset").transform(
+        lambda x: x.rolling(3, min_periods=1).sum()
+    )
+    assert_array_equal(run_dirty(dirty_engine, (close > 100).ts_sum(3)), expected)
+
+
+def test_ts_prod_of_filter(dirty_engine, dirty_panel):
+    selected = (dirty_panel.close > 100).astype(float)
+    expected = selected.groupby(level="asset").transform(
+        lambda x: x.rolling(3, min_periods=1).apply(np.prod)
+    )
+    result = run_dirty(dirty_engine, (close > 100).ts_prod(3))
+    assert_array_equal(result, expected)
+    assert result.dtype == "float32"
+
+
+def test_xs_sum_of_filter(dirty_engine, dirty_panel):
+    selected = (dirty_panel.close > 100).astype(float)
+    result = run_dirty(dirty_engine, (close > 100).xs_sum())
+    assert_array_equal(result, selected.groupby(level="date").transform("sum"))
+    assert result.dtype == "float32"
 
 
 # ------------------------------------ newly listed asset ------------------------------------
