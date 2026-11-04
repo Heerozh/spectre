@@ -69,6 +69,17 @@ def test_realized_of_each_fill(side):
     assert pos.realized == pytest.approx(side * -50)
 
 
+@pytest.mark.parametrize("side", [1, -1], ids=["long", "short"])
+def test_realized_of_repeated_partial_closes(side):
+    pos = trading.Position(side * 100, 10, 0, None)
+    # each close is 2 above the entry of 10, so 25 shares are always side * 2 * 25. The profit of
+    # the first close lowers the average price, and it must not be counted again by the second
+    for shares, expected in ((25, 50), (25, 50), (50, 100)):
+        _, realized = pos.update(-side * shares, 12, 0, None)
+        assert realized == pytest.approx(side * expected)
+    assert pos.realized == pytest.approx(side * 200)
+
+
 def test_short_realized_with_commission():
     # short 100 at 10 paying 10, receives 990, so 9.9 per share
     pos = trading.Position(-100, 10, 10, None)

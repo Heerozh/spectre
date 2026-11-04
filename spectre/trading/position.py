@@ -87,7 +87,6 @@ class Position:
         return (True, realized) when position is empty.
         """
         before_shares = self._shares
-        before_avg_px = self._average_price
         after_shares = before_shares + amount
 
         # If the position is reversed, it will be filled in 2 steps
@@ -112,7 +111,7 @@ class Position:
             else:
                 self._average_price = cum_cost / after_shares
                 if abs(after_shares) < abs(before_shares):
-                    realized = (before_avg_px - self._average_price) * after_shares
+                    realized = (self._cost_basis - fill_price) * amount - commission
                 else:
                     realized = 0
                     cost = self._cost_basis * before_shares + amount * fill_price + commission
