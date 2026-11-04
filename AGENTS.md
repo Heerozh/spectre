@@ -30,7 +30,8 @@ and factors.
 ## Lint and packaging
 
 - Run `uv run ruff check` and `uv run ruff format` before committing. Lines are limited to 100
-  columns, and wide characters such as Chinese count as two.
+  columns, and wide characters such as Chinese count as two. Mark a table of numbers `# fmt: skip`
+  if the formatter splits it into one number per line.
 - Don't select all of `SIM`. `SIM300` autofixes `2 == f` into `f == 2`, but `test_ops.py` tests
   those reflected operators on purpose, and it still passes after the fix, so nothing flags it.
 - `pyproject.toml` holds the metadata, dependencies and tool config, and `uv.lock` is committed.
