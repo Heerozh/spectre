@@ -197,7 +197,7 @@ class BaseFactor:
         `groupby` also can be a dictionary like groupby={'name': group_id}, `group_id` must > 0.
         Group by dict is implemented by pandas, not in GPU.
         """
-        factor = DemeanFactor(inputs=(self, beta), mask=mask)
+        factor = DemeanFactor(inputs=(self._numeric(), beta), mask=mask)
         if isinstance(groupby, str):
             if groupby != "asset" and "date" not in groupby.split(","):
                 groupby = "date," + groupby
@@ -1086,12 +1086,6 @@ class RollingRankFactor(CustomFactor):
 
 class DemeanFactor(CrossSectionFactor):
     group_dict = None
-
-    def _format_input(self, upstream, upstream_out, mask_factor, mask_out):
-        # a regroup pads a filter with False, as a float the missing rows stay NaN
-        if upstream_out.dtype == torch.bool:
-            upstream_out = upstream_out.to(Global.float_type)
-        return super()._format_input(upstream, upstream_out, mask_factor, mask_out)
 
     def compute(self, data: torch.Tensor, beta) -> torch.Tensor:
         if self.group_dict is not None:

@@ -535,6 +535,13 @@ def test_demean_with_beta(dirty_engine, dirty_panel):
     assert_allclose(result, mean - closes * mean)
 
 
+def test_demean_with_a_filter_as_beta(dirty_engine, dirty_panel):
+    closes = dirty_panel.close
+    mean = closes.groupby(level="date").transform("mean")
+    result = run_dirty(dirty_engine, close.demean(beta=close > 100))
+    assert_allclose(result, closes - (closes > 100) * mean, rtol=1e-6)
+
+
 def test_filter_demean(dirty_engine, dirty_panel):
     selected = (dirty_panel.close > 100).astype(float)
     expected = selected - selected.groupby(level="date").transform("mean")
