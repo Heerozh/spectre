@@ -5,6 +5,7 @@ import pytest
 
 import spectre
 from spectre import factors
+from spectre.plotting import plot_quantile_and_cumulative_returns
 
 OHLCV = ("open", "high", "low", "close", "volume")
 
@@ -35,16 +36,26 @@ def make_panel(dates, assets=6, seed=0):
     return panel.rename_axis(["date", "asset"])
 
 
-def chart(panel, shown, periods, timezone="UTC", universe=None):
-    """Runs full_run with the preview on. Returns its data, and the lines of the real figure."""
+def alpha_engine(panel, timezone="UTC", universe=None):
     engine = factors.FactorEngine(spectre.data.MemoryLoader(panel, ohlcv=OHLCV))
     engine.timezone = timezone
     engine.add(factors.ColumnDataFactor(inputs=("signal",), should_delay=False), "alpha")
     if universe is not None:
         engine.set_filter(universe)
+    return engine
+
+
+def lines_of(figure):
+    return {trace.name: trace for trace in figure.data if trace.type == "scatter"}
+
+
+def chart(panel, shown, periods, timezone="UTC", universe=None, start=None):
+    """Runs full_run with the preview on. Returns its data, and the lines of the real figure."""
     dates = panel.index.levels[0]
-    factor_data, _ = engine.full_run(dates[0], dates[-1], periods=periods, quantiles=2)
-    return factor_data, {t.name: t for t in shown[-1].data if t.type == "scatter"}
+    engine = alpha_engine(panel, timezone, universe)
+    start = dates[0] if start is None else start
+    factor_data, _ = engine.full_run(start, dates[-1], periods=periods, quantiles=2)
+    return factor_data, lines_of(shown[-1])
 
 
 def filtered_to(panel, bars):
@@ -67,10 +78,16 @@ def cumulative_percent(returns):
     return ((1 + returns).cumprod().to_numpy() - 1) * 100
 
 
-def expected_line(panel, factor_data, bars, rows=None):
-    """One return per `rows` rows, the mean of the portfolios of `bars` bars started there."""
+def expected_bins(panel, rows, bars):
+    """Rows by the `bars` bars of the panel they fall in, counted from the first row."""
+    position = panel.index.levels[0].get_indexer(rows)
+    return (position - position[0]) // bars
+
+
+def expected_line(panel, factor_data, bars):
+    """One return per `bars` bars of the panel, the mean of the portfolios started on them."""
     portfolio = held_for(panel, factor_data, bars)
-    return cumulative_percent(portfolio.groupby(np.arange(len(portfolio)) // (rows or bars)).mean())
+    return cumulative_percent(portfolio.groupby(expected_bins(panel, portfolio.index, bars)).mean())
 
 
 def test_full_run_chart_compounds_the_returns(shown):
@@ -183,42 +200,83 @@ def test_full_run_chart_around_a_midnight_skipped_by_daylight_saving(shown, firs
         assert np.asarray(lines[name].y) == pytest.approx(expected, rel=1e-3)
 
 
-def test_full_run_chart_with_rows_further_apart_than_a_period(shown):
-    """Nothing overlaps, so each row is a return of its own on every line."""
+def test_full_run_chart_counts_bins_from_its_first_row(shown):
+    """The loaded dates start earlier, for the windows, and that must not cut a bin short."""
+    dates = pd.bdate_range("2018-01-01", periods=300, tz="UTC")
+    panel = make_panel(dates)
+
+    factor_data, lines = chart(panel, shown, (1, 4, 9), start=dates[30])
+
+    bars = factor_data.index.get_level_values(0).unique()
+    assert pd.DatetimeIndex(lines["4D"].x).equals(bars[::4])
+    assert pd.DatetimeIndex(lines["9D"].x).equals(bars[::9])
+    for name, count in (("1D", 1), ("4D", 4), ("9D", 9)):
+        expected = expected_line(panel, factor_data, count)
+        assert np.asarray(lines[name].y) == pytest.approx(expected, rel=1e-3)
+
+
+def every_2nd_bar(dates):
+    return np.arange(0, len(dates), 2)
+
+
+def every_5th_bar(dates):
+    return np.arange(0, len(dates), 5)
+
+
+def mondays(dates):
+    return np.flatnonzero(dates.day_of_week == 0)
+
+
+def first_bar_of_the_month(dates):
+    bars = pd.Series(np.arange(len(dates)), index=dates)
+    return bars.groupby([dates.year, dates.month]).first().to_numpy()
+
+
+def random_20_percent(dates):
+    return np.sort(np.random.default_rng(0).choice(len(dates), len(dates) // 5, replace=False))
+
+
+def random_half(dates):
+    return np.sort(np.random.default_rng(0).choice(len(dates), len(dates) // 2, replace=False))
+
+
+def bursts(dates):
+    return np.concatenate([np.arange(start, start + 3) for start in range(0, len(dates) - 3, 13)])
+
+
+FILTERS = [
+    every_2nd_bar,
+    every_5th_bar,
+    mondays,
+    first_bar_of_the_month,
+    random_20_percent,
+    random_half,
+    bursts,
+]
+
+
+@pytest.mark.parametrize("kept", FILTERS)
+def test_full_run_chart_counts_the_bars_a_filter_removed(shown, kept):
     dates = pd.bdate_range("2018-01-01", periods=400, tz="UTC")
-    panel, universe = filtered_to(make_panel(dates), np.arange(0, 400, 21))
+    panel, universe = filtered_to(make_panel(dates), kept(dates))
 
     factor_data, lines = chart(panel, shown, (1, 4, 9), universe=universe)
 
     for name, count in (("1D", 1), ("4D", 4), ("9D", 9)):
-        expected = expected_line(panel, factor_data, count, rows=1)
+        expected = expected_line(panel, factor_data, count)
         assert np.asarray(lines[name].y) == pytest.approx(expected, rel=1e-3)
 
 
-def test_full_run_chart_with_rows_closer_than_a_period(shown):
-    """Rows two bars apart take 2 rows for 4 bars, and 5 rows for 9 bars, rounded up."""
+def test_full_run_chart_points_with_a_filter_are_the_first_rows_of_the_bins(shown):
     dates = pd.bdate_range("2018-01-01", periods=400, tz="UTC")
-    panel, universe = filtered_to(make_panel(dates), np.arange(0, 400, 2))
+    panel, universe = filtered_to(make_panel(dates), random_20_percent(dates))
 
     factor_data, lines = chart(panel, shown, (1, 4, 9), universe=universe)
 
-    for name, count, rows in (("1D", 1, 1), ("4D", 4, 2), ("9D", 9, 5)):
-        expected = expected_line(panel, factor_data, count, rows=rows)
-        assert np.asarray(lines[name].y) == pytest.approx(expected, rel=1e-3)
-
-
-def test_full_run_chart_with_irregular_rows_goes_by_their_typical_gap(shown):
-    """One pair of rows next to each other doesn't make the rest a bar apart."""
-    dates = pd.bdate_range("2018-01-01", periods=400, tz="UTC")
-    bars = np.concatenate(([0], np.arange(1, 400, 5)))
-    panel, universe = filtered_to(make_panel(dates), bars)
-
-    factor_data, lines = chart(panel, shown, (1, 4, 9), universe=universe)
-
-    # the gaps are 7 days but for the first one
-    for name, count, rows in (("1D", 1, 1), ("4D", 4, 1), ("9D", 9, 2)):
-        expected = expected_line(panel, factor_data, count, rows=rows)
-        assert np.asarray(lines[name].y) == pytest.approx(expected, rel=1e-3)
+    rows = factor_data.index.get_level_values(0).unique()
+    for name, count in (("1D", 1), ("4D", 4), ("9D", 9)):
+        first_rows = ~pd.Index(expected_bins(panel, rows, count)).duplicated()
+        assert pd.DatetimeIndex(lines[name].x).equals(rows[first_rows])
 
 
 def test_full_run_chart_of_a_single_row(shown):
@@ -228,6 +286,59 @@ def test_full_run_chart_of_a_single_row(shown):
     factor_data, lines = chart(panel, shown, (1, 4), universe=universe)
 
     assert factor_data.index.get_level_values(0).nunique() == 1
+    assert len(lines["1D"].y) == len(lines["4D"].y) == 1
+
+
+def preview_data(panel, universe=None):
+    dates = panel.index.levels[0]
+    return alpha_engine(panel, universe=universe).full_run(
+        dates[0], dates[-1], periods=(1, 4), quantiles=2, preview=False
+    )
+
+
+def test_chart_without_dates_goes_by_the_rows():
+    panel = make_panel(pd.bdate_range("2018-01-01", periods=120, tz="UTC"))
+    factor_data, mean_returns = preview_data(panel)
+
+    lines = lines_of(plot_quantile_and_cumulative_returns(factor_data, mean_returns))
+
+    for name, count in (("1D", 1), ("4D", 4)):
+        expected = expected_line(panel, factor_data, count)
+        assert np.asarray(lines[name].y) == pytest.approx(expected, rel=1e-3)
+
+
+def test_chart_given_the_dates_counts_the_bars_a_filter_removed():
+    dates = pd.bdate_range("2018-01-01", periods=200, tz="UTC")
+    panel, universe = filtered_to(make_panel(dates), random_20_percent(dates))
+    factor_data, mean_returns = preview_data(panel, universe)
+
+    figure = plot_quantile_and_cumulative_returns(factor_data, mean_returns, dates)
+
+    lines = lines_of(figure)
+    for name, count in (("1D", 1), ("4D", 4)):
+        expected = expected_line(panel, factor_data, count)
+        assert np.asarray(lines[name].y) == pytest.approx(expected, rel=1e-3)
+
+
+def test_chart_without_dates_of_rows_further_apart_than_a_period():
+    """The rows are all it has, a period shorter than their gap must not make an empty bin."""
+    dates = pd.bdate_range("2018-01-01", periods=200, tz="UTC")
+    panel, universe = filtered_to(make_panel(dates), every_5th_bar(dates))
+    factor_data, mean_returns = preview_data(panel, universe)
+
+    lines = lines_of(plot_quantile_and_cumulative_returns(factor_data, mean_returns))
+
+    rows = factor_data.index.get_level_values(0).nunique()
+    assert len(lines["1D"].y) == len(lines["4D"].y) == rows
+
+
+def test_chart_without_dates_of_a_single_row():
+    dates = pd.bdate_range("2018-01-01", periods=30, tz="UTC")
+    panel, universe = filtered_to(make_panel(dates), [10])
+    factor_data, mean_returns = preview_data(panel, universe)
+
+    lines = lines_of(plot_quantile_and_cumulative_returns(factor_data, mean_returns))
+
     assert len(lines["1D"].y) == len(lines["4D"].y) == 1
 
 
@@ -258,7 +369,7 @@ def test_full_run_chart_of_the_5_minute_test_data(shown, intraday_loader):
 
     factor_data, _ = engine.full_run("2019-01-03", "2019-01-11", periods=(1, 4, 12), quantiles=2)
 
-    lines = {t.name: t for t in shown[-1].data if t.type == "scatter"}
+    lines = lines_of(shown[-1])
     assert list(lines) == ["5min", "20min", "60min"]
     # one point for each bar of the 5 minutes line, the nights have no bars
     assert len(lines["5min"].y) == factor_data.index.get_level_values(0).nunique()

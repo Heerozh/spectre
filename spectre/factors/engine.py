@@ -876,7 +876,7 @@ class FactorEngine:
 
         # plot
         if preview:
-            fig = plot_quantile_and_cumulative_returns(factor_data, mean_returns)
+            fig = plot_quantile_and_cumulative_returns(factor_data, mean_returns, dates)
             fig.show()
 
         return factor_data, mean_returns

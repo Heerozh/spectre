@@ -21,25 +21,27 @@ DEFAULT_COLORS = [
 ]
 
 
-def _rows_per_period(dates, period):
+def _period_bins(rows, dates, period):
     """
-    How many rows of `dates`, the dates of a full_run, one return of `period` spans. full_run labels
-    a period as its number of bars of the data times the bar size, and rows that follow each other
-    are one bar apart on any calendar. A filter can leave rows further apart, and the bars it
-    removed are not in `dates`, so the usual gap between the rows stands in for the bar size.
+    The bin of each of `rows` on the line of `period`, a line compounds one return per bin.
+    full_run labels a period as its number of bars of the data times the bar size, which is the
+    smallest gap in `dates`. Bins start at the first row, `dates` can start earlier.
     """
-    if len(dates) < 2:
-        return 1
-    gaps = (dates[1:] - dates[:-1]).sort_values()
-    # closures and sessions make some gaps long, with two bars a day that is half of them
-    bar, usual = gaps[0], gaps[2 * len(gaps) // 5]
-    return math.ceil(pd.Timedelta(period) / (bar if usual < 1.5 * bar else usual))
+    bars = 1
+    if len(dates) > 1:
+        # up, the rows alone can be further apart than a period
+        bars = math.ceil(pd.Timedelta(period) / (dates[1:] - dates[:-1]).min())
+    position = dates.get_indexer(rows)
+    return pd.Index((position - position[0]) // bars)
 
 
-def plot_quantile_and_cumulative_returns(factor_data, mean_ret):
+def plot_quantile_and_cumulative_returns(factor_data, mean_ret, dates=None):
     """
     Plotly Installation:
     https://github.com/plotly/plotly.py#jupyterlab-support-python-35
+
+    :param dates: All bars of the data, a filter leaves some of them out of `factor_data`.
+                  If None, the dates of `factor_data`, which are all bars without a filter.
     """
     quantiles = mean_ret.index
 
@@ -99,6 +101,7 @@ def plot_quantile_and_cumulative_returns(factor_data, mean_ret):
         weight_col = (factor, "factor_weight")
         weighted = factor_data["Returns"].multiply(factor_data[weight_col], axis=0)
         factor_return = weighted.groupby(level="date").sum()
+        bars = factor_return.index if dates is None else dates
         for j, period in enumerate(periods):
             y = mean_ret.loc[:, (factor, period, "mean")]
             err_y = mean_ret.loc[:, (factor, period, "sem")]
@@ -116,12 +119,12 @@ def plot_quantile_and_cumulative_returns(factor_data, mean_ret):
             quantile_styles[period]["showlegend"] = False
 
             returns = factor_return[period]
-            step = _rows_per_period(returns.index, period)
-            cum_ret = returns.groupby(pd.RangeIndex(len(returns)) // step).mean()
+            bins = _period_bins(returns.index, bars, period)
+            cum_ret = returns.groupby(bins).mean()
             cum_ret = (cum_ret + 1).cumprod() * 100 - 100
             fig.add_trace(
                 go.Scatter(
-                    x=returns.index[::step],
+                    x=returns.index[~bins.duplicated()],
                     y=cum_ret.values,
                     yaxis="y2",
                     **cumulative_styles[period],
