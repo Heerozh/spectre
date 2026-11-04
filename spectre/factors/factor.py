@@ -45,48 +45,53 @@ class BaseFactor:
 
     # --------------- overload ops ---------------
 
+    @staticmethod
+    def _numeric_inputs(*inputs):
+        """In arithmetic a filter is 0 or 1, on a bool tensor True + True would be True."""
+        return tuple(i._numeric() if isinstance(i, BaseFactor) else i for i in inputs)
+
     # op: +
     def __add__(self, other):
-        return AddFactor(inputs=(self, other))
+        return AddFactor(inputs=self._numeric_inputs(self, other))
 
     def __radd__(self, other):
-        return AddFactor(inputs=(other, self))
+        return AddFactor(inputs=self._numeric_inputs(other, self))
 
     # op: -
     def __sub__(self, other):
-        return SubFactor(inputs=(self, other))
+        return SubFactor(inputs=self._numeric_inputs(self, other))
 
     def __rsub__(self, other):
-        return SubFactor(inputs=(other, self))
+        return SubFactor(inputs=self._numeric_inputs(other, self))
 
     # op: *
     def __mul__(self, other):
-        return MulFactor(inputs=(self, other))
+        return MulFactor(inputs=self._numeric_inputs(self, other))
 
     def __rmul__(self, other):
-        return MulFactor(inputs=(other, self))
+        return MulFactor(inputs=self._numeric_inputs(other, self))
 
     # op: /
     def __truediv__(self, other):
-        return DivFactor(inputs=(self, other))
+        return DivFactor(inputs=self._numeric_inputs(self, other))
 
     def __rtruediv__(self, other):
-        return DivFactor(inputs=(other, self))
+        return DivFactor(inputs=self._numeric_inputs(other, self))
 
     # op: %
     def __mod__(self, other):
-        return ModFactor(inputs=(self, other))
+        return ModFactor(inputs=self._numeric_inputs(self, other))
 
     # op: **
     def __pow__(self, other):
-        return PowFactor(inputs=(self, other))
+        return PowFactor(inputs=self._numeric_inputs(self, other))
 
     def __rpow__(self, other):
-        return PowFactor(inputs=(other, self))
+        return PowFactor(inputs=self._numeric_inputs(other, self))
 
     # op: negative
     def __neg__(self):
-        return NegFactor(inputs=(self,))
+        return NegFactor(inputs=self._numeric_inputs(self))
 
     # op: and
     def __and__(self, other):
