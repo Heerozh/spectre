@@ -353,51 +353,53 @@ class SimulationEventManager(EventManager):
         data = self.wrap_data(data, DataLoaderFastGetter)
         # mock CustomAlgorithm
         alg.run_engine = lambda *args, **kwargs: (self._mocked_data, self._mocked_last)
-        if "empty_cache_after_run" in alg.__dict__:
-            for eng in alg._engines.values():
-                eng.empty_cache()
-            gc.collect()
-            torch.cuda.empty_cache()
+        try:
+            if "empty_cache_after_run" in alg.__dict__:
+                for eng in alg._engines.values():
+                    eng.empty_cache()
+                gc.collect()
+                torch.cuda.empty_cache()
 
-        # infer freq
-        delta = min(ticks[1:] - ticks[:-1])
-        data_freq = delta.resolution_string
+            # infer freq
+            delta = min(ticks[1:] - ticks[:-1])
+            data_freq = delta.resolution_string
 
-        # for portfolio recoding cash history
-        alg.blotter.portfolio.set_datetime(ticks[0] - pd.DateOffset(days=1))
+            # for portfolio recoding cash history
+            alg.blotter.portfolio.set_datetime(ticks[0] - pd.DateOffset(days=1))
 
-        # loop factor data
-        last_day = None
-        for dt in tqdm(ticks):
-            if self._stop:
-                break
-            # prepare data
-            self.mock_data(data, dt)
+            # loop factor data
+            last_day = None
+            for dt in tqdm(ticks):
+                if self._stop:
+                    break
+                # prepare data
+                self.mock_data(data, dt)
 
-            # if date changed
-            day = dt.normalize()
-            if day != last_day and last_day is not None:
-                self.fire_market_close(alg)
-            alg.set_datetime(dt)
-            alg._bar_closed = False
+                # if date changed
+                day = dt.normalize()
+                if day != last_day and last_day is not None:
+                    self.fire_market_close(alg)
+                alg.set_datetime(dt)
+                alg._bar_closed = False
 
-            # fire daily data event
-            if data_freq == "D":
-                self.fire_event(self, EveryBarData)
+                # fire daily data event
+                if data_freq == "D":
+                    self.fire_event(self, EveryBarData)
 
-            # fire open event
-            if day != last_day:
-                self.fire_market_open(alg)
-                last_day = day
+                # fire open event
+                if day != last_day:
+                    self.fire_market_open(alg)
+                    last_day = day
 
-            # fire intraday data event
-            if data_freq != "D":
-                alg.blotter.set_price("close")
-                alg._bar_closed = True
-                self.fire_event(self, EveryBarData)
+                # fire intraday data event
+                if data_freq != "D":
+                    alg.blotter.set_price("close")
+                    alg._bar_closed = True
+                    self.fire_event(self, EveryBarData)
 
-        self.fire_market_close(alg)
-        alg.run_engine = run_engine
+            self.fire_market_close(alg)
+        finally:
+            alg.run_engine = run_engine
 
     def run(self, start, end, delay_factor=True):
         start, end = pd.to_datetime(start, utc=True), pd.to_datetime(end, utc=True)

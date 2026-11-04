@@ -728,3 +728,88 @@ def test_ticks_a_month_apart_are_different_days(bars):
     assert last[("shares", "B")] == 200
     assert last[("value", "cash")] == pytest.approx(100000 - 20000 + 100)
     assert last[("value", "B")] == pytest.approx(10000)
+
+
+# --------------------------------- running the same objects again ---------------------------------
+
+
+class RerunAlg(trading.CustomAlgorithm):
+    """Trades on a factor and logs each rebalance. Calls `trip` once, on its 5th rebalance."""
+
+    trip = None
+    records = None
+
+    def initialize(self):
+        self.seen = []
+        self.get_factor_engine().add(factors.MA(5), "ma")
+        self.blotter.set_commission(0, 0, 0)
+        self.blotter.set_slippage(0, 0)
+        self.schedule_rebalance(trading.event.MarketClose(self.rebalance, **BEFORE_CLOSE))
+
+    def rebalance(self, data, history):
+        self.seen.append(self.current)
+        self.record(ma=float(data.ma.mean()))
+        if self.trip is not None and len(self.seen) == 5:
+            trip, self.trip = self.trip, None
+            trip(self)
+        self.blotter.batch_order_target_percent(data.index, data.ma / data.ma.sum())
+
+    def terminate(self, records):
+        self.records = records
+
+
+def new_rerun_alg(loader):
+    blotter = trading.SimulationBlotter(loader)
+    alg = RerunAlg(blotter, main=loader)
+    evt_mgr = trading.SimulationEventManager()
+    evt_mgr.subscribe(blotter)
+    evt_mgr.subscribe(alg)
+    return alg, evt_mgr
+
+
+@pytest.fixture
+def rerun():
+    """A loader, the range of its run, and a reference run of that range on new objects."""
+    dates = pd.bdate_range("2020-01-01", periods=40, tz="UTC")
+    loader = make_loader(make_panel(dates))
+    start, end = dates[10], dates[-1]
+    reference, evt_mgr = new_rerun_alg(loader)
+    evt_mgr.run(start, end)
+    return loader, start, end, reference
+
+
+def assert_same_run(alg, reference):
+    assert alg.seen == reference.seen
+    pd.testing.assert_series_equal(alg.results.returns, reference.results.returns)
+    pd.testing.assert_frame_equal(alg.results.positions, reference.results.positions)
+    pd.testing.assert_frame_equal(alg.results.transactions, reference.results.transactions)
+
+
+def raise_keyboard_interrupt(_):
+    raise KeyboardInterrupt
+
+
+def raise_value_error(_):
+    raise ValueError("a bug in rebalance")
+
+
+@pytest.mark.parametrize(
+    "trip, raises",
+    [(raise_keyboard_interrupt, None), (raise_value_error, ValueError)],
+    ids=["interrupted", "exception"],
+)
+def test_run_after_a_broken_run_is_complete(rerun, trip, raises):
+    loader, start, end, reference = rerun
+    assert len(reference.seen) == 29
+
+    alg, evt_mgr = new_rerun_alg(loader)
+    alg.trip = trip
+    if raises is None:
+        evt_mgr.run(start, end)
+    else:
+        with pytest.raises(raises):
+            evt_mgr.run(start, end)
+    assert len(alg.seen) == 5
+
+    evt_mgr.run(start, end)
+    assert_same_run(alg, reference)
