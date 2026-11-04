@@ -614,6 +614,47 @@ def test_get_price_matrix(engine):
     assert_array_equal(prices.MSFT.dropna().values, msft.values)
 
 
+def test_get_price_matrix_without_a_filter(engine):
+    engine.add(factors.SMA(5), "ma5")
+    expected = engine.run(ref.START, ref.END)
+
+    prices = engine.get_price_matrix(ref.START, ref.END)
+    assert list(prices.columns) == ["AAPL", "MSFT"]
+    aapl = ref.daily_prices("AAPL").close.loc["2019-01-02" : ref.END]
+    msft = ref.daily_prices("MSFT").close.loc["2019-01-02" : ref.END]
+    assert_array_equal(prices.AAPL.values, aapl.values)
+    assert_array_equal(prices.MSFT.dropna().values, msft.values)
+
+    # the engine goes on as before
+    assert list(engine.factors) == ["ma5"]
+    assert engine.get_filter() is None
+    pd.testing.assert_frame_equal(engine.run(ref.START, ref.END), expected)
+
+
+def test_get_price_matrix_keeps_the_factors_and_the_filter(engine):
+    universe = factors.OHLCV.volume.top(1)
+    engine.add(factors.SMA(5), "ma5")
+    engine.set_filter(universe)
+    expected = engine.run(ref.START, ref.END)
+
+    prices = engine.get_price_matrix(ref.START, ref.END)
+    assert list(prices.columns) == ["AAPL", "MSFT"]
+
+    assert list(engine.factors) == ["ma5"]
+    assert engine.get_filter() is universe
+    pd.testing.assert_frame_equal(engine.run(ref.START, ref.END), expected)
+
+
+def test_get_price_matrix_restores_the_engine_after_an_error(engine):
+    universe = factors.StaticAssets({"no such asset"})
+    engine.add(factors.SMA(5), "ma5")
+    engine.set_filter(universe)
+    with pytest.raises(ValueError, match="was not found in DataLoader"):
+        engine.get_price_matrix(ref.START, ref.END)
+    assert list(engine.factors) == ["ma5"]
+    assert engine.get_filter() is universe
+
+
 def test_full_run(engine):
     engine.add(factors.MA(5) - factors.MA(10), "ma_cross")
     with pytest.warns(RuntimeWarning, match="mask parameter not set"):

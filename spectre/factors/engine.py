@@ -581,24 +581,20 @@ class FactorEngine:
         :param prices: prices data factor. If you traded at the opening, you should set it
                        to OHLCV.open.
         """
-        factors_backup = self._factors
+        factors_backup, filter_backup = self._factors, self._filter
         self._factors = {"price": AdjustedColumnDataFactor(prices)}
-
-        # get tickers first
-        assets = None
-        if self._filter is not None:
+        try:
             with warnings.catch_warnings():
                 warnings.simplefilter("ignore")
-                assets_ret = self.run(start, end, delay_factor=False)
-            assets = assets_ret.index.get_level_values(1).unique()
-
-        filter_backup = self._filter
-        self._filter = StaticAssets(assets)
-        with warnings.catch_warnings():
-            warnings.simplefilter("ignore")
-            ret = self.run(start, end, delay_factor=False)
-        self._factors = factors_backup
-        self._filter = filter_backup
+                # get tickers first
+                if self._filter is not None:
+                    assets_ret = self.run(start, end, delay_factor=False)
+                    assets = assets_ret.index.get_level_values(1).unique()
+                    self._filter = StaticAssets(assets)
+                ret = self.run(start, end, delay_factor=False)
+        finally:
+            self._factors = factors_backup
+            self._filter = filter_backup
 
         ret = ret["price"].unstack(level=[1])
         return ret
