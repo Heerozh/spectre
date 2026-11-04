@@ -524,7 +524,9 @@ class SimulationBlotter(BaseBlotter, EventReceiver):
                     div = row[div_col] - self.div_tax.calculate(asset, row[div_col], 1)
                     tax = row[div_col] - div
                     self._portfolio.process_dividend(asset, div, tax=tax)
-                    self._portfolio.process_split(asset, 1 / row[sp_col], row[close_col])
+                    # the close is still cum-dividend, the split applies to the ex-dividend price
+                    ex_price = row[close_col] - row[div_col]
+                    self._portfolio.process_split(asset, 1 / row[sp_col], ex_price)
             except KeyError:
                 pass
 

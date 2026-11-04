@@ -3,6 +3,7 @@ import pandas as pd
 import pytest
 from numpy import nan
 
+import spectre
 from spectre import trading
 
 # AAPL and MSFT daily prices (uOpen, uClose, uVolume) used in the tests
@@ -24,6 +25,34 @@ def per_share_commission(shares):
     rounded by numpy, 1.925 is rounded to 1.92 (python's round gives 1.93).
     """
     return float(np.round(max(np.float64(abs(shares)) * 0.005, 1), 2))
+
+
+def asset_a_loader(stamps, close, dividends=None, split_ratios=None):
+    """
+    Bars of a single asset `A`, with open = high = low = close. `dividends` and `split_ratios` are
+    {bar: value}, keyed by the bar of the ex-date. If both are None the loader has no adjustments.
+    """
+    ohlcv = ("open", "high", "low", "close", "volume")
+    index = pd.MultiIndex.from_product([stamps, ["A"]], names=["date", "asset"])
+    df = pd.DataFrame({col: np.array(close, dtype=float) for col in ohlcv}, index=index)
+    if dividends is None and split_ratios is None:
+        return spectre.data.MemoryLoader(df, ohlcv=ohlcv)
+    bars = pd.RangeIndex(len(df))
+    df["ex-dividend"] = pd.Series(dividends, index=bars, dtype=float).fillna(0).values
+    df["split_ratio"] = pd.Series(split_ratios, index=bars, dtype=float).fillna(1).values
+    return spectre.data.MemoryLoader(df, ohlcv=ohlcv, adjustments=("ex-dividend", "split_ratio"))
+
+
+def trade_until_after_bar(blotter, stamps, last_bar, amount):
+    """Order `amount` at the close of the first bar, and run the daily closes up to `last_bar`."""
+    for bar, stamp in enumerate(stamps[: last_bar + 1]):
+        blotter.set_datetime(stamp)
+        blotter.market_open(None)
+        blotter.set_price("close")
+        blotter.update_portfolio_value()
+        if bar == 0:
+            blotter.order("A", amount)
+        blotter.market_close(None)
 
 
 # ------------------------------------ models ------------------------------------
@@ -298,6 +327,63 @@ def test_dividend_curb_and_split(blotter):
     pd.testing.assert_series_equal(
         expected, blotter.get_historical_positions().iloc[-1], check_dtype=False
     )
+
+
+@pytest.mark.parametrize(
+    "amount, tax, cash, value",
+    [
+        # 100 shares bought at 100, the dividend of 2 is paid on all of them
+        (100, 0, 100000 - 10000 + 200, 200 * 49),
+        # the short received 10000, and pays the dividend
+        (-100, 0, 100000 + 10000 - 200, -200 * 49),
+        # 10% tax on the dividend, 0.2 per share is gone
+        (100, 0.1, 100000 - 10000 + 180, 200 * 49),
+    ],
+    ids=["long", "short", "long_taxed"],
+)
+def test_dividend_and_split_on_the_same_ex_date(amount, tax, cash, value):
+    # the market prices the ex-date bar at (100 - 2) * 0.5 = 49, a holder has lost nothing
+    days = pd.bdate_range("2020-01-06", periods=4, tz="UTC")
+    loader = asset_a_loader(days, [100, 100, 49, 49], dividends={2: 2}, split_ratios={2: 0.5})
+    blotter = trading.SimulationBlotter(loader, capital_base=100000)
+    blotter.borrow_stock_interest_rate = 0
+    blotter.div_tax = trading.CommissionModel(tax, 0, 0)
+
+    # both events are pushed at the close of the bar before the ex-date
+    trade_until_after_bar(blotter, days, 1, amount)
+    pos = blotter.positions["A"]
+    assert pos.shares == 2 * amount
+    assert pos.last_price == pytest.approx(49)
+    assert blotter.portfolio.cash == pytest.approx(cash)
+    assert blotter.portfolio.value == pytest.approx(cash + value)
+
+    # the value of that day doesn't change when the next bar arrives at the same price
+    blotter.set_datetime(days[2])
+    blotter.set_price("close")
+    blotter.update_portfolio_value()
+    assert blotter.portfolio.value == pytest.approx(cash + value)
+    history = blotter.get_historical_positions()
+    assert history.value.sum(axis=1).loc[days[1]] == pytest.approx(cash + value)
+
+
+def test_dividend_and_reverse_split_on_the_same_ex_date():
+    # 1-for-15 reverse split and a dividend of 1, ex-date bar is at (10 - 1) * 15 = 135
+    days = pd.bdate_range("2020-01-06", periods=4, tz="UTC")
+    loader = asset_a_loader(days, [10, 10, 135, 135], dividends={2: 1}, split_ratios={2: 15})
+    blotter = trading.SimulationBlotter(loader, capital_base=100000)
+
+    # 970 = 64 * 15 + 10. All 970 get the dividend, then the 10 left over are sold ex-dividend
+    trade_until_after_bar(blotter, days, 1, 970)
+    assert blotter.positions["A"].shares == 64
+    assert blotter.portfolio.cash == pytest.approx(100000 - 970 * 10 + 970 * 1 + 10 * 9)
+    assert blotter.portfolio.cash == pytest.approx(91360)
+    assert blotter.portfolio.value == pytest.approx(91360 + 64 * 135)
+    assert blotter.portfolio.value == pytest.approx(100000)
+
+    blotter.set_datetime(days[2])
+    blotter.set_price("close")
+    blotter.update_portfolio_value()
+    assert blotter.portfolio.value == pytest.approx(100000)
 
 
 def test_intraday(intraday_loader):
