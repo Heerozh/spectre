@@ -239,3 +239,53 @@ def test_calendar_event_at_the_end_of_the_calendar(monkeypatch, offset):
     # the last one fires too, and the loop goes on
     assert fired[offset] == [event + delta(offset) for event in events]
     assert len(warned) == 1
+
+
+@pytest.mark.filterwarnings("ignore:The calendar has no Close events left")
+@pytest.mark.parametrize("hours", [25, 49, 100])
+@pytest.mark.parametrize("sibling_first", [True, False], ids=["sibling_first", "sibling_last"])
+def test_positive_offset_longer_than_the_gap_with_a_sibling(monkeypatch, hours, sibling_first):
+    """The sibling pops events this one still has to fire for."""
+    offset = hours * 60 * MINUTE
+    events = [ts(f"2020-01-{day:02} 15:00") for day in (6, 7, 8, 9, 10, 13, 14)]
+    offsets = [0, offset] if sibling_first else [offset, 0]
+
+    fired = run_live(monkeypatch, trading.event.MarketClose, offsets, polls_around(events, offsets))
+
+    # the polls go on past `events`, so it fires for the next ones too
+    assert fired[0][: len(events)] == events
+    assert fired[offset] == [event + delta(offset) for event in events]
+
+
+def test_positive_offset_fires_after_a_sibling_ran_out_of_events(monkeypatch):
+    offset = 25 * 60 * MINUTE
+    events = [ts(f"2020-01-{day:02} 15:00") for day in (6, 7, 8, 9, 10, 13, 14, 15, 16, 17)]
+    polls = polls_around(events, [0, offset]) + [ts("2020-01-21 15:00")]
+
+    with pytest.warns(RuntimeWarning, match="no Close events left") as warned:
+        fired = run_live(monkeypatch, trading.event.MarketClose, [0, offset], polls)
+
+    assert fired[0] == events
+    assert fired[offset] == [event + delta(offset) for event in events]
+    assert len(warned) == 2
+
+
+def test_passed_events_stay_out_of_the_calendar_while_a_long_offset_uses_them(monkeypatch):
+    """`events` keeps meaning what is still to come, `today_next` reads it."""
+    offset = 25 * 60 * MINUTE
+    clock = SimpleNamespace(now=ts("2020-01-06 00:00"))
+    calendar = trading.Calendar()
+    calendar.hr_now = lambda: clock.now
+    calendar.build("2020-01-06", "2020-01-10", {"Close": "15:00:00"}, tz="UTC")
+    event = trading.event.MarketClose(lambda _: None, offset_ns=offset)
+    event.on_schedule(SimpleNamespace(calendar=calendar))
+    sibling = trading.event.MarketClose(lambda _: None)
+    sibling.on_schedule(SimpleNamespace(calendar=calendar))
+
+    clock.now = ts("2020-01-07 15:00")
+    assert sibling.should_trigger()
+    assert calendar.events["Close"][0] == ts("2020-01-08 15:00")
+    clock.now = ts("2020-01-07 16:00")
+    assert event.should_trigger()
+    assert event.trigger_time == ts("2020-01-08 16:00")
+    assert calendar.events["Close"][0] == ts("2020-01-08 15:00")

@@ -21,6 +21,7 @@ class Calendar:
 
     def __init__(self) -> None:
         self.events = defaultdict(list)
+        self._passed = defaultdict(list)
         self.timezone = None
 
     def build(
@@ -48,6 +49,7 @@ class Calendar:
         self.events = {
             name: [day + pd.Timedelta(time) for day in days] for name, time in daily_events.items()
         }
+        self._passed = defaultdict(list)
 
         if pop_passed:
             for k in self.events:
@@ -77,8 +79,12 @@ class Calendar:
         # every event is daily, so will not be overkilled
         dts = self.events[event_name]
         while dts and dts[0] <= now:
-            del dts[0]
+            self._passed[event_name].append(dts.pop(0))
         return self
+
+    def _with_passed(self, event_name):
+        """All events of `event_name`, for those that fire later than the event they follow."""
+        return self._passed[event_name] + self.events[event_name]
 
     def today_next(self):
         """Return today next events"""
