@@ -10,6 +10,7 @@ import spectre
 from tests.conftest import (
     DAILY_OHLCV,
     DATA_DIR,
+    DIRTY_DATES,
     DIRTY_SECTORS,
     INTRADAY_OHLCV,
     NANSPLIT_ON,
@@ -101,6 +102,53 @@ def test_load_backwards():
     assert first_last(df, "MSFT", "close") == (106.57, 105.36)
 
 
+def history_of(df, start):
+    return df[df.index.get_level_values("date") < start]
+
+
+def test_load_backwards_counts_the_bars_of_each_asset(dirty_loader, dirty_panel):
+    start, end = DIRTY_DATES[35], DIRTY_DATES[-1]
+    df = dirty_loader.load(start, end, 10)
+
+    expected = history_of(dirty_panel, start).groupby(level="asset").tail(10)
+    assert sorted(history_of(df, start).index) == sorted(expected.index)
+    # the 3 bars after the halt, and the 7 bars before it
+    halted = history_of(df, start).xs("HALTED", level="asset")
+    assert list(halted.index) == [*DIRTY_DATES[13:20], *DIRTY_DATES[32:35]]
+    # listed 5 bars before start, it has no more bars
+    assert len(history_of(df, start).xs("LISTED", level="asset")) == 5
+    # and all rows of the range, in the order of the data
+    assert df.index.is_monotonic_increasing
+    assert sorted(df.loc[start:end].index) == sorted(dirty_panel.loc[start:end].index)
+
+
+def test_load_backwards_skips_the_assets_that_are_gone(dirty_loader, dirty_panel):
+    """An asset without a row in the range of a date slice can't affect anything in the range."""
+    start, end = DIRTY_DATES[50], DIRTY_DATES[-1]
+    df = dirty_loader.load(start, end, 3)
+    assert "DELISTED" not in df.index.get_level_values("asset")
+    # the rows are the 3 dates before start, and there's nobody with a gap in them
+    assert sorted(df.index) == sorted(dirty_panel.loc[DIRTY_DATES[47] : end].index)
+
+
+def test_load_backwards_of_no_gaps_is_a_date_slice(dirty_loader):
+    start, end = DIRTY_DATES[15], DIRTY_DATES[-1]
+    df = dirty_loader.load(start, end, 5)
+    pd.testing.assert_frame_equal(df, dirty_loader.load().loc[DIRTY_DATES[10] : end])
+
+
+def test_load_without_backwards_is_the_range(dirty_loader):
+    start, end = DIRTY_DATES[35], DIRTY_DATES[-1]
+    df = dirty_loader.load(start, end, 0)
+    pd.testing.assert_frame_equal(df, dirty_loader.load().loc[start:end])
+
+
+def test_load_backwards_past_the_first_date(dirty_loader):
+    start, end = DIRTY_DATES[2], DIRTY_DATES[-1]
+    df = dirty_loader.load(start, end, 10)
+    pd.testing.assert_frame_equal(df, dirty_loader.load().loc[DIRTY_DATES[0] : end])
+
+
 def test_load_out_of_range(daily_loader):
     with pytest.raises(ValueError, match="cannot be less than earliest time"):
         daily_loader.load(pd.Timestamp("2000-01-01", tz="UTC"), END)
@@ -163,9 +211,9 @@ def test_dividends_and_splits(adjusted_daily_loader):
     assert df.loc[("2019-01-14", "MSFT"), "split_ratio"] == 1
 
 
-def expected_msft_adjusted():
+def expected_msft_adjusted(start="2019-01-02"):
     """MSFT adjusted to the price of 2019-01-15."""
-    msft = read_raw("MSFT").loc["2019-01-02":"2019-01-15"].dropna()
+    msft = read_raw("MSFT").loc[start:"2019-01-15"].dropna()
     split = pd.Series(1.0, index=msft.index)
     split[:"2019-01-11"] = 15
     dividend = pd.Series(1.0, index=msft.index)
@@ -216,13 +264,13 @@ def test_rolling_window_is_adjusted(adjusted_daily_loader):
     engine.add(LastWindow("open", inputs=[spectre.factors.OHLCV.open]), "open")
     engine.run(END, END, delay_factor=False)
 
-    expected_open, expected_vol = expected_msft_adjusted()
     aapl = read_raw("AAPL").loc["2019-01-02":"2019-01-15"]
     assert_almost_equal(windows["vol"][0], aapl.uVolume.values, decimal=4)
     assert_almost_equal(windows["open"][0], aapl.uOpen.values, decimal=4)
-    # MSFT has 9 rows, the last value of the window is a padding
-    assert_almost_equal(windows["vol"][1], list(expected_vol) + [np.nan], decimal=0)
-    assert_almost_equal(windows["open"][1], list(expected_open) + [np.nan], decimal=4)
+    # MSFT has no row on 2019-01-10, so its 10 bars start a bar earlier than those of AAPL
+    expected_open, expected_vol = expected_msft_adjusted("2018-12-31")
+    assert_almost_equal(windows["vol"][1], expected_vol.values, decimal=0)
+    assert_almost_equal(windows["open"][1], expected_open.values, decimal=4)
 
 
 @pytest.mark.filterwarnings("ignore:Warning!! delay_factor is set to False")

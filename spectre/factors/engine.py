@@ -188,6 +188,9 @@ class FactorEngine:
             )
         # post processing data
         if self._align_by_time:
+            # every asset gets a row on every date, so a bar is a date, and the older bars the
+            # loader gives to an asset with gaps would only add empty rows to all the others
+            df = df.loc[df.index.levels[0][max(history_win - backwards, 0)] :]
             # since pandas 0.23, MultiIndex reindex is slow, so using a alternative way here,
             # but still very slow.
             # df = df.reindex(pd.MultiIndex.from_product(df.index.levels))

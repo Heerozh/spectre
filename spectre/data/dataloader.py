@@ -231,6 +231,12 @@ class DataLoader:
     def load(
         self, start: pd.Timestamp | None = None, end: pd.Timestamp | None = None, backwards: int = 0
     ) -> pd.DataFrame:
+        """
+        Rows from `start` to `end`, and the `backwards` bars of each asset before `start`. A window
+        counts the bars of its asset, so an asset with gaps reaches back further than the dates.
+        Only that asset has rows on those older dates, a cross-section of them is not complete.
+        An asset without a row in the last `backwards` dates or in the range is left out.
+        """
         df = self._load()
 
         index = df.index.levels[0]
@@ -256,7 +262,24 @@ class DataLoader:
         assert end_loc >= start_loc, "There is no data between `start` and `end`."
 
         backward_start = index[backward_loc]
-        return df.loc[backward_start:end]
+        rows = df.loc[backward_start:end]
+        if backwards == 0 or backward_loc == 0:
+            return rows
+
+        dates, assets = df.index.codes
+        first_row, start_row = dates.searchsorted(backward_loc), dates.searchsorted(start_loc)
+        end_row = first_row + len(rows)
+        asset_count = len(df.index.levels[1])
+        in_rows = np.bincount(assets[first_row:end_row], minlength=asset_count) > 0
+        bars = np.bincount(assets[first_row:start_row], minlength=asset_count)
+        missing = np.where(in_rows, backwards - bars, 0)
+        older = np.flatnonzero(missing[assets[:first_row]] > 0)
+        if len(older) == 0:
+            return rows
+        older_assets = assets[older]
+        from_last = pd.Series(older_assets).groupby(older_assets).cumcount(ascending=False)
+        older = older[from_last.to_numpy() < missing[older_assets]]
+        return df.iloc[np.concatenate((older, np.arange(first_row, end_row)))]
 
 
 class DataLoaderFastGetter:

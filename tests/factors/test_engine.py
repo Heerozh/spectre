@@ -96,7 +96,6 @@ def assert_same_rows(result, expected):
     """Same values on the rows of both, the first bar is dropped if only one run is delayed."""
     common = result.index.intersection(expected.index)
     assert len(common.get_level_values(0).unique()) >= len(DIRTY_DATES) - 41
-    common = common.drop("HALTED", level=1)
     pd.testing.assert_series_equal(result.loc[common], expected.loc[common], check_exact=False)
 
 
@@ -140,6 +139,67 @@ def test_month_start_on_a_start_in_the_middle_of_a_month(dirty_engine):
     result = dirty_engine.run(start, DIRTY_DATES[-1]).month_start.xs("FULL", level=1)
     dates = result.index[result]
     assert list(dates) == [pd.Timestamp("2020-03-02", tz="UTC")]
+
+
+@pytest.mark.parametrize("start", [22, 31, 32, 33, 34, 40], ids=lambda bar: f"bar_{bar}")
+def test_window_of_a_halted_asset_counts_its_own_bars(dirty_engine, dirty_panel, start):
+    """The halt is on bars 20 to 31, so on a start next to it, the window goes back over it."""
+    closes = dirty_panel.xs("HALTED", level="asset").close
+    dirty_engine.add(factors.MA(5), "f")
+    result = dirty_engine.run(DIRTY_DATES[start], DIRTY_DATES[-1]).f.xs("HALTED", level=1)
+    expected = closes.rolling(5).mean().shift(1).loc[result.index]
+    assert_almost_equal(result.values, expected.values)
+
+
+def test_shift_of_a_halted_asset_counts_its_own_bars(dirty_engine, dirty_panel):
+    opens = dirty_panel.xs("HALTED", level="asset").open
+    dirty_engine.add(factors.OHLCV.open.shift(3), "f")
+    result = dirty_engine.run(DIRTY_DATES[30], DIRTY_DATES[-1]).f.xs("HALTED", level=1)
+    assert_almost_equal(result.values, opens.shift(3).loc[result.index].values)
+
+
+def test_history_warning_counts_the_bars_of_the_assets(dirty_engine):
+    dirty_engine.set_filter(factors.StaticAssets({"HALTED"}))
+    dirty_engine.add(factors.MA(10), "f")
+    with warnings.catch_warnings():
+        warnings.simplefilter("error")
+        dirty_engine.run(DIRTY_DATES[35], DIRTY_DATES[-1])
+
+
+def test_cached_run_keeps_the_bars_of_a_halted_asset(dirty_engine, dirty_panel):
+    closes = dirty_panel.xs("HALTED", level="asset").close
+    start, end = DIRTY_DATES[35], DIRTY_DATES[-1]
+    dirty_engine.add(factors.MA(10), "f")
+    dirty_engine.run(start, end)
+    loaded = dirty_engine.cache_hash
+
+    # needs less history, so it reads what is loaded
+    dirty_engine.add(factors.MA(5), "f", replace=True)
+    result = dirty_engine.run(start, end).f.xs("HALTED", level=1)
+    assert dirty_engine.cache_hash == loaded
+    expected = closes.rolling(5).mean().shift(1).loc[result.index]
+    assert_almost_equal(result.values, expected.values)
+
+
+def test_align_by_time_loads_no_more_dates_for_a_halt(dirty_engine):
+    """Every asset has a row on every date then, so the older bars of an asset are of no use."""
+    start, window = 40, 15
+    dirty_engine.align_by_time = True
+    dirty_engine.add(factors.MA(window), "f")
+    dirty_engine.run(DIRTY_DATES[start], DIRTY_DATES[-1])
+    index = dirty_engine.dataframe_.index
+    # one more for the delay
+    first_bar = start - window
+    assert index.get_level_values(0).min() == DIRTY_DATES[first_bar]
+    assert len(index) == (len(DIRTY_DATES) - first_bar) * len(index.levels[1])
+
+
+def test_align_by_time_does_not_depend_on_start(dirty_engine):
+    dirty_engine.align_by_time = True
+    dirty_engine.add(factors.MA(5), "f")
+    result = dirty_engine.run(DIRTY_DATES[40], DIRTY_DATES[-1]).f
+    from_the_beginning = dirty_engine.run(DIRTY_DATES[0], DIRTY_DATES[-1]).f
+    assert_same_rows(result, from_the_beginning)
 
 
 def test_filter_delays_a_run_on_its_own(dirty_engine, dirty_panel):
