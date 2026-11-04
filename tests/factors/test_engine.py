@@ -1,6 +1,7 @@
 import numpy as np
 import pandas as pd
 import pytest
+import torch
 from numpy.testing import assert_allclose, assert_almost_equal, assert_array_equal
 
 import spectre
@@ -273,6 +274,91 @@ def test_full_run_keeps_forward_returns_of_delisted_asset(dirty_engine, dirty_pa
     forward = [closes[min(bar + 3, last)] / closes[bar] - 1 for bar in range(last)] + [np.nan]
     assert_allclose(returns, forward[-len(returns) :], rtol=1e-5, atol=1e-6)
     assert returns.iloc[-2] == pytest.approx(closes[last] / closes[last - 1] - 1, rel=1e-5)
+
+
+def out_of_memory_once(monkeypatch, cls):
+    """The next `cls.compute` raises a CUDA OOM, as a tensor too big for the GPU would."""
+    real_compute = cls.compute
+    calls = []
+
+    def compute(self, *inputs):
+        calls.append([t.device.type for t in inputs if hasattr(t, "device")])
+        if len(calls) == 1:
+            raise torch.cuda.OutOfMemoryError("CUDA out of memory. Tried to allocate 1 GiB")
+        return real_compute(self, *inputs)
+
+    monkeypatch.setattr(cls, "compute", compute)
+    return calls
+
+
+@pytest.mark.filterwarnings("ignore:Warning!! delay_factor is set to False")
+@pytest.mark.parametrize(
+    "cls, build",
+    [
+        (factors.factor.MedianFactor, lambda: close.median()),
+        (factors.factor.MedianFactor, lambda: close.median(mask=close > 100)),
+        (factors.factor.DemedianFactor, lambda: close.demedian()),
+        (factors.MADClampFactor, lambda: close.mad_clamp(3)),
+        (factors.WinsorizingFactor, lambda: close.winsorizing(0.1)),
+        (factors.IQRNormalityFactor, lambda: factors.IQRNormalityFactor(inputs=[close])),
+        (factors.factor.DemeanFactor, lambda: close.demean(groupby={"FULL": 1, "SPLIT": 2})),
+        (factors.StaticAssets, lambda: ~factors.StaticAssets({"FULL"})),
+        (factors.factor.RankFactor, lambda: close.rank()),
+        (factors.MA, lambda: factors.MA(5)),
+    ],
+    ids=[
+        "median",
+        "median_mask",
+        "demedian",
+        "mad_clamp",
+        "winsorizing",
+        "iqr_normality",
+        "demean_group_dict",
+        "static_assets",
+        "rank",
+        "rolling",
+    ],
+)
+def test_out_of_memory_falls_back_to_cpu(dirty_engine, monkeypatch, cls, build):
+    dirty_engine.add(build(), "test")
+    start, end = DIRTY_DATES[0], DIRTY_DATES[-1]
+    expected = dirty_engine.run(start, end, delay_factor=False)
+
+    calls = out_of_memory_once(monkeypatch, cls)
+    result = dirty_engine.run(start, end, delay_factor=False)
+
+    assert calls[-1] == ["cpu"] * len(calls[-1])
+    assert len(calls) == 2
+    assert_allclose(result.test, expected.test)
+
+
+@pytest.mark.filterwarnings("ignore:Warning!! delay_factor is set to False")
+def test_out_of_memory_fallback_does_not_stick(dirty_engine, monkeypatch):
+    start, end = DIRTY_DATES[0], DIRTY_DATES[-1]
+    # the mask is in another group, so it is reverted on the device of the engine first
+    dirty_engine.add(close.median(mask=close.rank() > 2), "test")
+    expected = dirty_engine.run(start, end, delay_factor=False).test
+
+    calls = out_of_memory_once(monkeypatch, factors.factor.MedianFactor)
+    assert_allclose(dirty_engine.run(start, end, delay_factor=False).test, expected)
+    assert_allclose(dirty_engine.run(start, end, delay_factor=False).test, expected)
+    assert calls[-1] == [dirty_engine.device.type]
+
+
+def test_failed_out_of_memory_fallback_does_not_stick(dirty_engine, monkeypatch):
+    factor = close.median()
+    dirty_engine.add(factor, "test")
+    start, end = DIRTY_DATES[0], DIRTY_DATES[-1]
+
+    def compute(self, data):
+        raise torch.cuda.OutOfMemoryError("CUDA out of memory. Tried to allocate 1 GiB")
+
+    with monkeypatch.context() as patch:
+        patch.setattr(factors.factor.MedianFactor, "compute", compute)
+        with pytest.raises(RuntimeError, match="CUDA out of memory"):
+            dirty_engine.run(start, end)
+    assert factor._computing_on_cpu is False
+    assert not dirty_engine.run(start, end).test.isna().all()
 
 
 def test_factors_reset_after_error(engine):

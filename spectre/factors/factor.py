@@ -406,6 +406,7 @@ class BaseFactor:
         return self._engine.group_by_(data, self.groupby)
 
     def _revert_to_series(self, data):
+        data = data.to(self._engine.device)  # it's on cpu after running out of CUDA memory
         return self._engine.revert_to_series_(data, self.groupby, type(self).__name__)
 
     def get_total_backwards_(self) -> int:
@@ -457,6 +458,7 @@ class CustomFactor(BaseFactor):
     _keep_cache = False
     _total_backwards = None
     _cache_hash = None
+    _computing_on_cpu = False
 
     def __init__(self, win: int | None = None, inputs: Sequence[BaseFactor] | None = None):
         """
@@ -520,9 +522,10 @@ class CustomFactor(BaseFactor):
     def _get_computed_mask(self):
         """Allow subclass get the current mask result in compute()"""
         if self._mask_out is None:
-            return ~self._engine.get_group_padding_mask(self.groupby)
+            mask = ~self._engine.get_group_padding_mask(self.groupby)
         else:
-            return self._regroup_by_other(self._get_mask_factor(), self._mask_out)
+            mask = self._regroup_by_other(self._get_mask_factor(), self._mask_out)
+        return mask.cpu() if self._computing_on_cpu else mask
 
     def get_total_backwards_(self) -> int:
         if self._total_backwards is not None:
@@ -762,10 +765,7 @@ class CustomFactor(BaseFactor):
                 out = self.compute(*inputs)
             except RuntimeError as e:
                 if "CUDA out of memory" in repr(e):
-                    out = self.compute(
-                        *[t.cpu() if isinstance(t, (torch.Tensor, Rolling)) else t for t in inputs]
-                    )
-                    out = out.to(self._engine.device)
+                    out = self._compute_on_cpu(inputs)
                 else:
                     raise
 
@@ -773,6 +773,16 @@ class CustomFactor(BaseFactor):
         if self._ref_count > 0:
             self._cache = out
         return out
+
+    def _compute_on_cpu(self, inputs) -> torch.Tensor:
+        self._computing_on_cpu = True
+        try:
+            out = self.compute(
+                *[t.cpu() if isinstance(t, (torch.Tensor, Rolling)) else t for t in inputs]
+            )
+        finally:
+            self._computing_on_cpu = False
+        return out.to(self._engine.device)
 
     def compute(self, *inputs: Sequence[torch.Tensor]) -> torch.Tensor:
         """
