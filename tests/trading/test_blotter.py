@@ -386,6 +386,54 @@ def test_dividend_and_reverse_split_on_the_same_ex_date():
     assert blotter.portfolio.value == pytest.approx(100000)
 
 
+def open_at_first_bar(stamps, amount, capital_base):
+    """Blotter with a position in `A`, flat price of 100, interest rates of 0.1% a day."""
+    loader = asset_a_loader(stamps, [100] * len(stamps))
+    blotter = trading.SimulationBlotter(loader, capital_base=capital_base)
+    blotter.borrow_stock_interest_rate = 0.365
+    blotter.borrow_money_interest_rate = 0.365
+    blotter.set_datetime(stamps[0])
+    blotter.market_open(None)
+    blotter.set_price("close")
+    blotter.order("A", amount)
+    return blotter
+
+
+def test_short_interest_of_intraday_bars():
+    # hourly bars of the US session, no bar is a whole day after the one before it
+    days = pd.bdate_range("2020-01-06", "2020-01-16", tz="UTC")
+    hours = pd.timedelta_range("14:30:00", periods=7, freq="h")
+    stamps = pd.DatetimeIndex([day + hour for day in days for hour in hours])
+    blotter = open_at_first_bar(stamps, -100, capital_base=100000)
+    cash = 100000 + 100 * 100
+    assert blotter.portfolio.cash == cash
+
+    for stamp in stamps[1:]:
+        blotter.set_datetime(stamp)
+    # 01-06 14:30 to 01-16 20:30 is 10.25 days, and 0.1% of a position of 10000 is 10 a day
+    assert stamps[-1] - stamps[0] == pd.Timedelta(days=10.25)
+    assert blotter.portfolio.cash == pytest.approx(cash - 10.25 * 10)
+
+
+def test_borrowed_money_interest_of_intraday_bars():
+    stamps = pd.DatetimeIndex(["2020-01-06 14:30", "2020-01-06 20:30"], tz="UTC")
+    # buy 20000 of shares with 10000, 0.1% of the -10000 cash is 10 a day
+    blotter = open_at_first_bar(stamps, 200, capital_base=10000)
+    assert blotter.portfolio.cash == -10000
+
+    blotter.set_datetime(stamps[1])
+    assert blotter.portfolio.cash == pytest.approx(-10000 - 6 / 24 * 10)
+
+
+def test_interest_of_daily_bars():
+    # Friday to Monday is 3 days, daily bars have always been charged whole days
+    stamps = pd.DatetimeIndex(["2020-01-10", "2020-01-13"], tz="UTC")
+    blotter = open_at_first_bar(stamps, -100, capital_base=100000)
+
+    blotter.set_datetime(stamps[1])
+    assert blotter.portfolio.cash == pytest.approx(100000 + 100 * 100 - 3 * 10)
+
+
 def test_intraday(intraday_loader):
     blotter = trading.SimulationBlotter(intraday_loader, capital_base=200000)
     blotter.set_commission(0, 0.005, 1)

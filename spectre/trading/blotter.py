@@ -370,7 +370,7 @@ class SimulationBlotter(BaseBlotter, EventReceiver):
         last_dt = self._portfolio.current_dt
         if last_dt:
             self._portfolio.process_borrow_interest(
-                (dt - last_dt).days,
+                (dt - last_dt) / pd.Timedelta(days=1),
                 self.borrow_money_interest_rate,
                 self.borrow_stock_interest_rate,
             )
