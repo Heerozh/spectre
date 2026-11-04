@@ -1,9 +1,12 @@
+from types import SimpleNamespace
+
 import numpy as np
 import pandas as pd
 import pytest
+import torch
 from numpy.testing import assert_allclose, assert_almost_equal, assert_array_equal
 
-from spectre import factors
+from spectre import factors, parallel
 from tests.conftest import DIRTY_DATES, DIVIDEND_ON, NAN_BAR, SPLIT_ON
 from tests.factors import reference as ref
 from tests.factors.helpers import (
@@ -234,6 +237,21 @@ def test_forward_signal_data_on_bar_without_price(dirty_engine, dirty_panel):
     expected = forward_signal_values(dirty_panel.xs("NANBAR", level="asset").close)
     assert not np.isnan(expected.iloc[NAN_BAR])
     assert_allclose(result.values, expected.values, rtol=1e-6)
+
+
+@pytest.mark.cuda
+def test_forward_signal_data_on_cpu_with_multipliers_on_cuda():
+    """When CUDA runs out of memory `compute` runs again on cpu, the column stays on cuda."""
+    close = factors.OHLCV.close
+    factor = factors.ForwardSignalData(2, close, close > 0)
+    factor.data = SimpleNamespace(adjustments=torch.tensor([[0.5, 0.5, 1, 1]], device="cuda"))
+    # raw closes [100, 110, 60, 70] with a 2:1 split on the third bar, and the signal on it
+    shifted_data = torch.tensor([[110, 60, 70, nan]])
+    shifted_signal = torch.tensor([[False, True, False, False]])
+    rolling = parallel.Rolling(shifted_data, 2), parallel.Rolling(shifted_signal, 2)
+    result = factor.compute(*rolling)
+    assert result.device.type == "cpu"
+    assert_almost_equal(result[0].numpy(), [nan, 120, 60, nan])
 
 
 @pytest.mark.filterwarnings("ignore:Warning!! delay_factor is set to False")

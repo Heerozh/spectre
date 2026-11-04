@@ -322,6 +322,37 @@ def test_linear_weighted_average_of_window_without_valid_bars(dirty_engine, dirt
     assert np.isnan(result[HALTED_BARS.start + win - 1 : HALTED_BARS.stop]).all()
 
 
+CPU_SERIES = pd.Series([1.0, 3, nan, 4, 8, 2])
+
+
+@pytest.mark.cuda
+@pytest.mark.filterwarnings("ignore:Warning!! delay_factor is set to False")
+@pytest.mark.parametrize(
+    "make_factor, expected",
+    [
+        (
+            lambda: factors.LinearWeightedAverage(5, inputs=[factors.OHLCV.close]),
+            linear_weighted_average(CPU_SERIES.values, 5),
+        ),
+        (lambda: factors.EMA(5), CPU_SERIES.ewm(span=5, adjust=False).mean().values),
+        (lambda: factors.EMA(5, adjust=True), CPU_SERIES.ewm(span=5, adjust=True).mean().values),
+        (lambda: factors.MACD(sign=5), CPU_SERIES.ewm(span=5, adjust=False).mean().values),
+    ],
+    ids=["LinearWeightedAverage", "EMA", "EMA adjust", "MACD"],
+)
+def test_compute_on_cpu_after_a_run_on_cuda(dirty_loader, make_factor, expected):
+    """When CUDA runs out of memory `compute` runs again on cpu, with the weights of the factor."""
+    engine = factors.FactorEngine(dirty_loader)
+    engine.to_cuda()
+    factor = make_factor()
+    run_dirty(engine, factor)
+
+    data = torch.tensor(CPU_SERIES.values[None])
+    result = factor.compute(parallel.Rolling(data, factor.win))
+    assert result.device.type == "cpu"
+    assert_allclose(result[0].numpy(), expected, rtol=1e-6)
+
+
 # ------------------------------------ element wise ------------------------------------
 
 

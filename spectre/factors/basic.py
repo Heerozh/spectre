@@ -74,6 +74,7 @@ class LinearWeightedAverage(CustomFactor):
         self.weight = self.weight.to(device=engine.device, copy=False)
 
     def compute(self, base):
+        self.weight = self.weight.to(device=base.device)
         return base.agg(lambda x: _weighted_mean(x, self.weight))
 
 
