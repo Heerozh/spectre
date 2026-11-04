@@ -927,7 +927,7 @@ class LogFactor(CustomFactor):
 
 class SignFactor(CustomFactor):
     def compute(self, data: torch.Tensor) -> torch.Tensor:
-        return data.sign()
+        return data.sign().masked_fill(torch.isnan(data), np.nan)
 
 
 class RoundFactor(CustomFactor):

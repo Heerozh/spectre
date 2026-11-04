@@ -8,7 +8,7 @@ from numpy.testing import assert_almost_equal, assert_array_equal
 
 from spectre import factors, parallel
 from tests.factors import reference as ref
-from tests.factors.helpers import assert_factor, delete, run_factor
+from tests.factors.helpers import assert_factor, delete, run_dirty, run_factor
 
 nan = np.nan
 close = factors.OHLCV.close
@@ -198,6 +198,12 @@ def test_log(engine):
 def test_math(engine, method, func):
     expected = ref.expected(lambda df: func(ref.returns(df.close)))
     assert_factor(engine, getattr(factors.Returns(), method)(), *expected, decimal=6)
+
+
+def test_sign_keeps_nan(dirty_engine, dirty_panel):
+    returns = dirty_panel.clean_close.groupby(level="asset").pct_change(fill_method=None)
+    result = run_dirty(dirty_engine, factors.Returns().sign())
+    assert_array_equal(result, np.sign(returns))
 
 
 def test_round(engine):
