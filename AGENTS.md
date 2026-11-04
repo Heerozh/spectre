@@ -92,7 +92,6 @@ and factors.
 2. `_prepare_tensor` loads that range and builds the `asset` and `date` `ParallelGroupBy` objects.
    It skips the reload if the same range is already loaded with enough history. `load` counts
    `backwards` in each asset's own bars, so an asset with gaps reaches back further than the dates.
-   Only that asset has rows on those older dates, so a cross-section there is not complete.
 3. `pre_compute_` walks the graph, binding the engine, counting references and moving data columns
    to tensors.
 4. `CustomFactor.compute_` evaluates the graph recursively, keeping each result until its last
@@ -128,6 +127,12 @@ rows into padded 2D tensors, using NaN or `False` for padding:
 - **Bars are not days.** `bar` is a position in each asset's own series, and `win` and `shift` count
   those positions. Columns of `[asset, bar]` line up across assets only with `align_by_time`, so do
   cross-sectional work through `groupby = 'date'`.
+- **The older bars of an asset with gaps are not a cross-section.** Only that asset has rows on
+  those dates. `FactorEngine.incomplete_rows_` gives the rows of a date group that aren't complete:
+  the dates before the last `backwards`, plus the look-back of the input or mask. `_format_input`
+  clears them when `_reads_across_group` is set, so a cross-section is NaN there. A window over a
+  column keeps its older bars. A custom factor with `groupby = 'date'` must set `_reads_across_group`
+  to get this.
 - **Auto delay.** Factors depending on high, low, close or volume are delayed one bar, because that
   data is only known after the close. `OHLCV.open` is not. A mask counts as a dependency, also
   `mask='universe'`. `run` then drops the first bar. Control this with `delay_factor` (`True`,
@@ -151,8 +156,18 @@ rows into padded 2D tensors, using NaN or `False` for padding:
   Paired calculations use the samples valid in both inputs, `nanaverage` for a weighted mean.
 - **A statistic of equal values must be measured from their lowest value.** The mean of equal values
   rounds away from them, which leaves a tiny std and scores of ±1. See `pearsonr` and `ZScoreFactor`.
-- **Some results still depend on `start`.** `fill_na(ffill=True)` has an unbounded look-back, and a
-  group of `'asset'` pools the loaded rows, so it moves with the history other factors need.
+- **Some results still depend on `start`.** `fill_na(ffill=True)` has an unbounded look-back, a
+  group of `'asset'` pools the loaded rows, so it moves with the history other factors need, and a
+  window over a cross-section on an asset with gaps averages as many bars as have complete dates.
+- **The calendar flags are a property of the date.** `IS_MONTH_END` and the others read the dates of
+  the frame in `engine.timezone`, not the bars of an asset, and all bars of a date get the flag. The
+  first and last date of the frame go by business days, so a holiday there isn't seen.
+- **`MarketVolatility` is one number per date.** `win` counts the dates of the market, and its
+  `shift` moves by them through `MarketShift`, so the engine's delay does too. A factor built on it
+  gets the normal delay by the bars of each asset.
+- **`SeriesDataFactor` is not a column of the frame**, so it can't be a `groupby`. It keeps what it
+  read for the rows of the frame, keyed by `engine.cache_hash`. `fill_na` reads the whole series,
+  so it doesn't depend on `start`.
 - **`Rolling.agg` splits time into chunks** to limit memory. Its callback gets
   `[asset, chunk, win]`, must return `[asset, chunk]`, and cannot assume it sees every bar.
 - **Filters are not masks.** `engine.set_filter` only drops output rows after everything is
