@@ -28,8 +28,8 @@ class Calendar:
         start: str,
         end: str,
         daily_events: dict[str, str],
-        tz="UTC",
-        freq="B",
+        tz='UTC',
+        freq='B',
         pop_passed=True,
     ):
         """build("2020", {'Open': '9:00:00', 'Close': '15:00:00'})"""
@@ -42,12 +42,11 @@ class Calendar:
         )
         if len(days) == 0:
             raise ValueError(
-                f"Empty date range between now({pd.Timestamp.now(tz=tz).normalize()}) to end({end})"
+                f'Empty date range between now({pd.Timestamp.now(tz=tz).normalize()}) to end({end})'
             )
 
         self.events = {
-            name: [day + pd.Timedelta(time) for day in days]
-            for name, time in daily_events.items()
+            name: [day + pd.Timedelta(time) for day in days] for name, time in daily_events.items()
         }
 
         if pop_passed:
@@ -101,63 +100,63 @@ class CNCalendar(Calendar):
 
     # yearly manually update
     closed = [
-        *pd.date_range("2020-06-25", "2020-06-28", freq="D"),
-        *pd.date_range("2020-10-01", "2020-10-08", freq="D"),
-        *pd.date_range("2021-01-01", "2021-01-03", freq="D"),
-        *pd.date_range("2021-02-11", "2021-02-17", freq="D"),
-        *pd.date_range("2021-04-03", "2021-04-05", freq="D"),
-        *pd.date_range("2021-05-01", "2021-05-05", freq="D"),
-        *pd.date_range("2021-06-12", "2021-06-14", freq="D"),
-        *pd.date_range("2021-09-19", "2021-09-21", freq="D"),
-        *pd.date_range("2021-10-01", "2021-10-07", freq="D"),
-        *pd.date_range("2022-01-01", "2022-01-03", freq="D"),
-        *pd.date_range("2022-01-31", "2022-02-06", freq="D"),
-        *pd.date_range("2022-04-03", "2022-04-05", freq="D"),
-        *pd.date_range("2022-04-30", "2022-05-04", freq="D"),
-        *pd.date_range("2022-06-03", "2022-06-05", freq="D"),
-        *pd.date_range("2022-09-10", "2022-09-12", freq="D"),
-        *pd.date_range("2022-10-01", "2022-10-07", freq="D"),
-        *pd.date_range("2023-01-01", "2023-01-02", freq="D"),
-        *pd.date_range("2023-01-21", "2023-01-27", freq="D"),
-        *pd.date_range("2023-04-05", "2023-04-05", freq="D"),
-        *pd.date_range("2023-04-29", "2023-05-03", freq="D"),
-        *pd.date_range("2023-06-22", "2023-06-24", freq="D"),
-        *pd.date_range("2023-09-29", "2023-10-06", freq="D"),
-        *pd.date_range("2024-01-01", "2024-01-01", freq="D"),
-        *pd.date_range("2024-02-09", "2024-02-17", freq="D"),
-        *pd.date_range("2024-04-04", "2024-04-06", freq="D"),
-        *pd.date_range("2024-05-01", "2024-05-05", freq="D"),
-        *pd.date_range("2024-06-10", "2024-06-10", freq="D"),
-        *pd.date_range("2024-09-15", "2024-09-17", freq="D"),
-        *pd.date_range("2024-10-01", "2024-10-07", freq="D"),
-        *pd.date_range("2025-01-01", "2025-01-01", freq="D"),
-        *pd.date_range("2025-01-28", "2025-02-04", freq="D"),
-        *pd.date_range("2025-04-04", "2025-04-06", freq="D"),
-        *pd.date_range("2025-05-01", "2025-05-05", freq="D"),
-        *pd.date_range("2025-05-31", "2025-06-02", freq="D"),
-        *pd.date_range("2025-10-01", "2025-10-08", freq="D"),
-        *pd.date_range("2026-01-01", "2025-01-03", freq="D"),
-        *pd.date_range("2026-02-15", "2025-02-23", freq="D"),
-        *pd.date_range("2026-04-04", "2025-04-06", freq="D"),
-        *pd.date_range("2026-05-01", "2025-05-05", freq="D"),
-        *pd.date_range("2026-06-19", "2025-06-21", freq="D"),
-        *pd.date_range("2026-09-25", "2025-09-27", freq="D"),
-        *pd.date_range("2026-10-01", "2025-10-07", freq="D"),
+        *pd.date_range('2020-06-25', '2020-06-28', freq='D'),
+        *pd.date_range('2020-10-01', '2020-10-08', freq='D'),
+        *pd.date_range('2021-01-01', '2021-01-03', freq='D'),
+        *pd.date_range('2021-02-11', '2021-02-17', freq='D'),
+        *pd.date_range('2021-04-03', '2021-04-05', freq='D'),
+        *pd.date_range('2021-05-01', '2021-05-05', freq='D'),
+        *pd.date_range('2021-06-12', '2021-06-14', freq='D'),
+        *pd.date_range('2021-09-19', '2021-09-21', freq='D'),
+        *pd.date_range('2021-10-01', '2021-10-07', freq='D'),
+        *pd.date_range('2022-01-01', '2022-01-03', freq='D'),
+        *pd.date_range('2022-01-31', '2022-02-06', freq='D'),
+        *pd.date_range('2022-04-03', '2022-04-05', freq='D'),
+        *pd.date_range('2022-04-30', '2022-05-04', freq='D'),
+        *pd.date_range('2022-06-03', '2022-06-05', freq='D'),
+        *pd.date_range('2022-09-10', '2022-09-12', freq='D'),
+        *pd.date_range('2022-10-01', '2022-10-07', freq='D'),
+        *pd.date_range('2023-01-01', '2023-01-02', freq='D'),
+        *pd.date_range('2023-01-21', '2023-01-27', freq='D'),
+        *pd.date_range('2023-04-05', '2023-04-05', freq='D'),
+        *pd.date_range('2023-04-29', '2023-05-03', freq='D'),
+        *pd.date_range('2023-06-22', '2023-06-24', freq='D'),
+        *pd.date_range('2023-09-29', '2023-10-06', freq='D'),
+        *pd.date_range('2024-01-01', '2024-01-01', freq='D'),
+        *pd.date_range('2024-02-09', '2024-02-17', freq='D'),
+        *pd.date_range('2024-04-04', '2024-04-06', freq='D'),
+        *pd.date_range('2024-05-01', '2024-05-05', freq='D'),
+        *pd.date_range('2024-06-10', '2024-06-10', freq='D'),
+        *pd.date_range('2024-09-15', '2024-09-17', freq='D'),
+        *pd.date_range('2024-10-01', '2024-10-07', freq='D'),
+        *pd.date_range('2025-01-01', '2025-01-01', freq='D'),
+        *pd.date_range('2025-01-28', '2025-02-04', freq='D'),
+        *pd.date_range('2025-04-04', '2025-04-06', freq='D'),
+        *pd.date_range('2025-05-01', '2025-05-05', freq='D'),
+        *pd.date_range('2025-05-31', '2025-06-02', freq='D'),
+        *pd.date_range('2025-10-01', '2025-10-08', freq='D'),
+        *pd.date_range('2026-01-01', '2025-01-03', freq='D'),
+        *pd.date_range('2026-02-15', '2025-02-23', freq='D'),
+        *pd.date_range('2026-04-04', '2025-04-06', freq='D'),
+        *pd.date_range('2026-05-01', '2025-05-05', freq='D'),
+        *pd.date_range('2026-06-19', '2025-06-21', freq='D'),
+        *pd.date_range('2026-09-25', '2025-09-27', freq='D'),
+        *pd.date_range('2026-10-01', '2025-10-07', freq='D'),
     ]
 
     daily_events = {
-        "DayStart": "00:00:00",
-        "PreOpen": "9:15:00",
-        "Open": "9:30:00",
-        "Lunch": "11:30:00",
-        "LunchEnd": "13:00:00",
-        "Close": "15:00:00",
-        "DayEnd": "23:59:59",
+        'DayStart': '00:00:00',
+        'PreOpen': '9:15:00',
+        'Open': '9:30:00',
+        'Lunch': '11:30:00',
+        'LunchEnd': '13:00:00',
+        'Close': '15:00:00',
+        'DayEnd': '23:59:59',
     }
 
     def __init__(self, start=None, pop_passed=True):
         super().__init__()
-        timezone = "Asia/Shanghai"
+        timezone = 'Asia/Shanghai'
         if start is None:
             start = pd.Timestamp.now(self.timezone).normalize()
         assert start.year <= CNCalendar.closed[-1].year
@@ -179,67 +178,67 @@ class JPCalendar(Calendar):
 
     closed = [
         *pd.date_range(
-            f"{pd.Timestamp.now().year}-01-01",
-            f"{pd.Timestamp.now().year}-01-03",
-            freq="D",
+            f'{pd.Timestamp.now().year}-01-01',
+            f'{pd.Timestamp.now().year}-01-03',
+            freq='D',
         ),
         *pd.date_range(
-            f"{pd.Timestamp.now().year + 1}-01-01",
-            f"{pd.Timestamp.now().year + 1}-01-03",
-            freq="D",
+            f'{pd.Timestamp.now().year + 1}-01-01',
+            f'{pd.Timestamp.now().year + 1}-01-03',
+            freq='D',
         ),
         *pd.date_range(
-            f"{pd.Timestamp.now().year}-12-31",
-            f"{pd.Timestamp.now().year}-12-31",
-            freq="D",
+            f'{pd.Timestamp.now().year}-12-31',
+            f'{pd.Timestamp.now().year}-12-31',
+            freq='D',
         ),
         *pd.date_range(
-            f"{pd.Timestamp.now().year + 1}-12-31",
-            f"{pd.Timestamp.now().year + 1}-12-31",
-            freq="D",
+            f'{pd.Timestamp.now().year + 1}-12-31',
+            f'{pd.Timestamp.now().year + 1}-12-31',
+            freq='D',
         ),
         # yearly manually updated
-        *pd.date_range("2023-01-09", "2023-01-09", freq="D"),
-        *pd.date_range("2023-02-11", "2023-02-11", freq="D"),
-        *pd.date_range("2023-02-23", "2023-02-23", freq="D"),
-        *pd.date_range("2023-03-21", "2023-03-21", freq="D"),
-        *pd.date_range("2023-04-29", "2023-04-29", freq="D"),
-        *pd.date_range("2023-05-03", "2023-05-05", freq="D"),
-        *pd.date_range("2023-07-17", "2023-07-17", freq="D"),
-        *pd.date_range("2023-08-11", "2023-08-11", freq="D"),
-        *pd.date_range("2023-09-18", "2023-09-18", freq="D"),
-        *pd.date_range("2023-09-23", "2023-09-23", freq="D"),
-        *pd.date_range("2023-10-09", "2023-10-09", freq="D"),
-        *pd.date_range("2023-11-03", "2023-11-03", freq="D"),
-        *pd.date_range("2023-11-23", "2023-11-23", freq="D"),
-        *pd.date_range("2024-01-08", "2024-01-08", freq="D"),
-        *pd.date_range("2024-02-11", "2024-02-12", freq="D"),
-        *pd.date_range("2024-02-23", "2024-02-23", freq="D"),
-        *pd.date_range("2024-03-20", "2024-03-20", freq="D"),
-        *pd.date_range("2024-04-29", "2024-04-29", freq="D"),
-        *pd.date_range("2024-05-03", "2024-05-06", freq="D"),
-        *pd.date_range("2024-07-15", "2024-07-15", freq="D"),
-        *pd.date_range("2024-08-11", "2024-08-12", freq="D"),
-        *pd.date_range("2024-09-16", "2024-09-16", freq="D"),
-        *pd.date_range("2024-09-22", "2024-09-23", freq="D"),
-        *pd.date_range("2024-10-14", "2024-10-14", freq="D"),
-        *pd.date_range("2024-11-03", "2024-11-04", freq="D"),
-        *pd.date_range("2024-11-23", "2024-11-23", freq="D"),
+        *pd.date_range('2023-01-09', '2023-01-09', freq='D'),
+        *pd.date_range('2023-02-11', '2023-02-11', freq='D'),
+        *pd.date_range('2023-02-23', '2023-02-23', freq='D'),
+        *pd.date_range('2023-03-21', '2023-03-21', freq='D'),
+        *pd.date_range('2023-04-29', '2023-04-29', freq='D'),
+        *pd.date_range('2023-05-03', '2023-05-05', freq='D'),
+        *pd.date_range('2023-07-17', '2023-07-17', freq='D'),
+        *pd.date_range('2023-08-11', '2023-08-11', freq='D'),
+        *pd.date_range('2023-09-18', '2023-09-18', freq='D'),
+        *pd.date_range('2023-09-23', '2023-09-23', freq='D'),
+        *pd.date_range('2023-10-09', '2023-10-09', freq='D'),
+        *pd.date_range('2023-11-03', '2023-11-03', freq='D'),
+        *pd.date_range('2023-11-23', '2023-11-23', freq='D'),
+        *pd.date_range('2024-01-08', '2024-01-08', freq='D'),
+        *pd.date_range('2024-02-11', '2024-02-12', freq='D'),
+        *pd.date_range('2024-02-23', '2024-02-23', freq='D'),
+        *pd.date_range('2024-03-20', '2024-03-20', freq='D'),
+        *pd.date_range('2024-04-29', '2024-04-29', freq='D'),
+        *pd.date_range('2024-05-03', '2024-05-06', freq='D'),
+        *pd.date_range('2024-07-15', '2024-07-15', freq='D'),
+        *pd.date_range('2024-08-11', '2024-08-12', freq='D'),
+        *pd.date_range('2024-09-16', '2024-09-16', freq='D'),
+        *pd.date_range('2024-09-22', '2024-09-23', freq='D'),
+        *pd.date_range('2024-10-14', '2024-10-14', freq='D'),
+        *pd.date_range('2024-11-03', '2024-11-04', freq='D'),
+        *pd.date_range('2024-11-23', '2024-11-23', freq='D'),
     ]
 
     daily_events = {
-        "DayStart": "00:00:00",
-        "PreOpen": "8:00:00",
-        "Open": "9:00:00",
-        "Lunch": "11:30:00",
-        "LunchEnd": "12:30:00",
-        "Close": "15:00:00",
-        "DayEnd": "23:59:59",
+        'DayStart': '00:00:00',
+        'PreOpen': '8:00:00',
+        'Open': '9:00:00',
+        'Lunch': '11:30:00',
+        'LunchEnd': '12:30:00',
+        'Close': '15:00:00',
+        'DayEnd': '23:59:59',
     }
 
     def __init__(self, start=None, pop_passed=True):
         super().__init__()
-        timezone = "Asia/Tokyo"
+        timezone = 'Asia/Tokyo'
         if start is None:
             start = pd.Timestamp.now(self.timezone).normalize()
         assert start.year <= self.closed[-1].year

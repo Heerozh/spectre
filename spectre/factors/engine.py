@@ -4,6 +4,7 @@
 @license: GPL-3.0-only
 @email: heeroz@gmail.com
 """
+
 import uuid
 import warnings
 from collections.abc import Iterable
@@ -76,7 +77,8 @@ class FactorEngine:
         cols = group_column.split(',')
 
         if len(self._dataframe.index.levels[1]) == 1 and (
-                cols[0] == 'date' or cols[0] == self._loader.time_category):
+            cols[0] == 'date' or cols[0] == self._loader.time_category
+        ):
             col = self._loader.time_category
             series = self._dataframe[col]
             self._groups[as_group_name] = DummyParallelGroupBy(series.shape, self._device)
@@ -143,9 +145,11 @@ class FactorEngine:
             if backwards <= self._last_loaded[2]:
                 return False
             else:
-                print('Due to Factor Rolling window increase, extend the length of historical data '
-                      'in GPU memory, '
-                      f'{self._last_loaded[2]} -> {backwards}')
+                print(
+                    'Due to Factor Rolling window increase, extend the length of historical data '
+                    'in GPU memory, '
+                    f'{self._last_loaded[2]} -> {backwards}'
+                )
         self._groups = dict()
 
         # Get data
@@ -155,29 +159,34 @@ class FactorEngine:
             # not `.loc[]`, it raises KeyError if any asset is not found since pandas 2.0
             df = df[df.index.get_level_values(1).isin(list(self._filter.assets))]
             if df.shape[0] == 0:
-                raise ValueError(f"The assets {self._filter.assets} specified by StaticAssets filter, was not found in "
-                                 "DataLoader.")
+                raise ValueError(
+                    f'The assets {self._filter.assets} specified by StaticAssets filter, was not found in '
+                    'DataLoader.'
+                )
         # check history data is insufficient
         df.index = df.index.remove_unused_levels()
         history_win = df.index.levels[0].get_indexer([start], method='bfill')[0]
         if history_win < backwards:
-            warnings.warn("Historical data seems insufficient. "
-                          f"{backwards} rows of historical data are required, but only {history_win} rows are obtained. "
-                          "It is also possible that `calender_asset` of the loader is not set, "
-                          "some out of trading hours data will cause indexing problems."
-                          ,
-                          RuntimeWarning)
+            warnings.warn(
+                'Historical data seems insufficient. '
+                f'{backwards} rows of historical data are required, but only {history_win} rows are obtained. '
+                'It is also possible that `calender_asset` of the loader is not set, '
+                'some out of trading hours data will cause indexing problems.',
+                RuntimeWarning,
+            )
         # post processing data
         if self._align_by_time:
             # since pandas 0.23, MultiIndex reindex is slow, so using a alternative way here,
             # but still very slow.
             # df = df.reindex(pd.MultiIndex.from_product(df.index.levels))
             df = stack_keep_nan(df.unstack(level=1))
-            df[self._loader.time_category] = df[self._loader.time_category].groupby(
-                level=0).transform(lambda x: x.fillna(x.value_counts().index[0]))
+            df[self._loader.time_category] = (
+                df[self._loader.time_category]
+                .groupby(level=0)
+                .transform(lambda x: x.fillna(x.value_counts().index[0]))
+            )
         if self.timezone != 'UTC':
-            df = df.reset_index('asset').tz_convert(self.timezone)\
-                .set_index(['asset'], append=True)
+            df = df.reset_index('asset').tz_convert(self.timezone).set_index(['asset'], append=True)
 
         self._dataframe = df
         self._dataframe_index = [df.index.get_level_values(i) for i in range(len(df.index.levels))]
@@ -264,16 +273,15 @@ class FactorEngine:
 
     @timezone.setter
     def timezone(self, tz: str):
-        """ Timezone of the datetime index, affects DatetimeDataFactor like WEEKDAY """
+        """Timezone of the datetime index, affects DatetimeDataFactor like WEEKDAY"""
         if tz != self._timezone:
             # cached data was prepared with the old timezone
             self.empty_cache()
         self._timezone = tz
 
-    def add(self,
-            factor: Iterable[BaseFactor] | BaseFactor,
-            name: Iterable[str] | str,
-            replace=False) -> None:
+    def add(
+        self, factor: Iterable[BaseFactor] | BaseFactor, name: Iterable[str] | str, replace=False
+    ) -> None:
         """
         Add factor or filter to engine, as a column.
         """
@@ -283,9 +291,10 @@ class FactorEngine:
                 self.add(fct, name[i], replace)
         else:
             if name in self._factors and not replace:
-                raise KeyError(f'A factor with the name {name} already exists.'
-                               'please specify a new name by engine.add(factor, new_name)'
-                               )
+                raise KeyError(
+                    f'A factor with the name {name} already exists.'
+                    'please specify a new name by engine.add(factor, new_name)'
+                )
             self._factors[name] = factor
 
     def set_filter(self, factor: FilterFactor | None) -> None:
@@ -325,7 +334,7 @@ class FactorEngine:
         Set enable_stream to True allows pipeline branches to calculation simultaneously.
         However, this will lead to more VRAM usage and may affect performance.
         """
-        self._device = torch.device(f'cuda:{ gpu_id }')
+        self._device = torch.device(f'cuda:{gpu_id}')
         self._enable_stream = enable_stream
         self.empty_cache()
 
@@ -341,7 +350,7 @@ class FactorEngine:
         # modify future data
         dt_index = self._dataframe[start:].index.get_level_values(0).unique()
         mid = int(len(dt_index) / 2)
-        mid_left = dt_index[mid-1]
+        mid_left = dt_index[mid - 1]
         mid_right = dt_index[mid]
         length = self._dataframe.loc[mid_right:].shape[0]
         for col in self._loader.ohlcv:
@@ -369,10 +378,12 @@ class FactorEngine:
         else:
             delays = {col for col, fct in self._factors.items() if fct.should_delay()}
         if delay_factor is False and len(delays) > 0:
-            warnings.warn("Warning!! delay_factor is set to False, "
-                          f"but {delays!s} factors uses data that is only available "
-                          "after the market is closed.",
-                          RuntimeWarning)
+            warnings.warn(
+                'Warning!! delay_factor is set to False, '
+                f'but {delays!s} factors uses data that is only available '
+                'after the market is closed.',
+                RuntimeWarning,
+            )
             delays = {}
 
         # make columns to data factors.
@@ -388,8 +399,7 @@ class FactorEngine:
         if filter_ and delay_factor:
             if filter_.should_delay() or delay_factor == 'all':
                 filter_ = filter_.shift(1)
-        factors = {col: col in delays and fct.shift(1) or fct
-                   for col, fct in self._factors.items()}
+        factors = {col: col in delays and fct.shift(1) or fct for col, fct in self._factors.items()}
 
         # calculate how much historical data is needed
         max_backwards = max([f.get_total_backwards_() for f in factors.values()])
@@ -438,8 +448,9 @@ class FactorEngine:
 
         return results, shifted_mask, len(delays) > 0
 
-    def run(self, start: str | pd.Timestamp, end: str | pd.Timestamp,
-            delay_factor=True) -> pd.DataFrame:
+    def run(
+        self, start: str | pd.Timestamp, end: str | pd.Timestamp, delay_factor=True
+    ) -> pd.DataFrame:
         """
         Compute factors and filters, return a df contains all.
         """
@@ -465,8 +476,13 @@ class FactorEngine:
         ret = ret.sort_index()
         return ret.loc[start:]
 
-    def run_raw(self, start: str | pd.Timestamp, end: str | pd.Timestamp,
-                delay_factor=True, return_index=False) -> dict[str, torch.Tensor] | tuple:
+    def run_raw(
+        self,
+        start: str | pd.Timestamp,
+        end: str | pd.Timestamp,
+        delay_factor=True,
+        return_index=False,
+    ) -> dict[str, torch.Tensor] | tuple:
         """
         Compute factors and filters, return a dict contains factor_name = torch.Tensor
         """
@@ -506,11 +522,12 @@ class FactorEngine:
             stream = torch.cuda.current_stream()
         return {c: f.compute_(stream) for c, f in self._factors.items()}
 
-    def get_price_matrix(self,
-                         start: str | pd.Timestamp,
-                         end: str | pd.Timestamp,
-                         prices: ColumnDataFactor = OHLCV.close,
-                         ) -> pd.DataFrame:
+    def get_price_matrix(
+        self,
+        start: str | pd.Timestamp,
+        end: str | pd.Timestamp,
+        prices: ColumnDataFactor = OHLCV.close,
+    ) -> pd.DataFrame:
         """
         Get the price data for Factor Return Analysis.
         :param start: same as run
@@ -525,14 +542,14 @@ class FactorEngine:
         assets = None
         if self._filter is not None:
             with warnings.catch_warnings():
-                warnings.simplefilter("ignore")
+                warnings.simplefilter('ignore')
                 assets_ret = self.run(start, end, delay_factor=False)
             assets = assets_ret.index.get_level_values(1).unique()
 
         filter_backup = self._filter
         self._filter = StaticAssets(assets)
         with warnings.catch_warnings():
-            warnings.simplefilter("ignore")
+            warnings.simplefilter('ignore')
             ret = self.run(start, end, delay_factor=False)
         self._factors = factors_backup
         self._filter = filter_backup
@@ -540,8 +557,9 @@ class FactorEngine:
         ret = ret['price'].unstack(level=[1])
         return ret
 
-    def plot_chart(self, start, end, trace_types=None, styles=None, delay_factor=True,
-                   inline=True, ohlcv=None):
+    def plot_chart(
+        self, start, end, trace_types=None, styles=None, delay_factor=True, inline=True, ohlcv=None
+    ):
         """
         Plotting common stock price chart for researching.
         :param start: same as engine.run()
@@ -571,17 +589,34 @@ class FactorEngine:
             })
 
         """
-        assert ohlcv is not None or self.loader_.ohlcv is not None, \
-            "parameter ohlcv cannot be None."
+        assert ohlcv is not None or self.loader_.ohlcv is not None, (
+            'parameter ohlcv cannot be None.'
+        )
         df = self.run(start, end, delay_factor)
-        figs = plot_chart(self._dataframe, ohlcv or self.loader_.ohlcv, df, trace_types=trace_types,
-                          styles=styles, inline=inline)
+        figs = plot_chart(
+            self._dataframe,
+            ohlcv or self.loader_.ohlcv,
+            df,
+            trace_types=trace_types,
+            styles=styles,
+            inline=inline,
+        )
         return figs, df
 
-    def full_run(self, start, end, trade_at='close', periods=(1, 4, 9),
-                 quantiles=5, filter_zscore=20, demean=True, preview=True, to_weight=True,
-                 xs_quantile=True, demean_weight=True
-                 ) -> tuple[pd.DataFrame, pd.DataFrame]:
+    def full_run(
+        self,
+        start,
+        end,
+        trade_at='close',
+        periods=(1, 4, 9),
+        quantiles=5,
+        filter_zscore=20,
+        demean=True,
+        preview=True,
+        to_weight=True,
+        xs_quantile=True,
+        demean_weight=True,
+    ) -> tuple[pd.DataFrame, pd.DataFrame]:
         """
         Return this:
         |    	                    |    	|  Returns  |      factor_name          	|
@@ -638,6 +673,7 @@ class FactorEngine:
             shift = 0
 
         from .basic import Returns
+
         for n in periods:
             # Different: returns here diff by bar, which alphalens diff by time
             ret = Returns(win=n + 1, inputs=inputs).shift(-n + shift)
@@ -661,8 +697,9 @@ class FactorEngine:
         self._factors = factors
         factor_data.index = factor_data.index.remove_unused_levels()
         # factor_data = factor_data.sort_index()  # 140 ms
-        assert len(factor_data.index.levels[0]) > max(periods) - shift, \
+        assert len(factor_data.index.levels[0]) > max(periods) - shift, (
             'No enough data for forward returns, please expand the end date'
+        )
         last_date = factor_data.index.levels[0][-max(periods) + shift - 1]
         factor_data = factor_data.loc[:last_date].copy()
 

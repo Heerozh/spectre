@@ -34,8 +34,7 @@ def test_market_return(engine):
 
 
 def test_market_volatility(engine):
-    market_return = pd.DataFrame({a: returns(ref.daily_prices(a)) for a in ref.ASSETS}).mean(
-        axis=1)
+    market_return = pd.DataFrame({a: returns(ref.daily_prices(a)) for a in ref.ASSETS}).mean(axis=1)
 
     def volatility(df):
         # rolling on the market returns of each asset's own trading days
@@ -60,7 +59,7 @@ def test_asset_data(engine):
     """AssetData broadcasts the data of an asset to all assets, data must be aligned by time."""
     engine.align_by_time = True
     msft = ref.daily_prices('MSFT').close.reindex(ref.daily_prices('AAPL').index)
-    expected = msft.shift(1).loc['2019-01-03':ref.END].values
+    expected = msft.shift(1).loc['2019-01-03' : ref.END].values
     assert np.isnan(expected[SOLO])
     assert_factor(engine, factors.AssetData('MSFT', factors.OHLCV.close), expected, expected)
 
@@ -73,21 +72,25 @@ def test_asset_data_warns_not_aligned(engine):
 # ------------------------------------ calendar features ------------------------------------
 
 
-@pytest.mark.parametrize('factor, attr', [
-    (factors.WEEKDAY, 'day_of_week'),
-    (factors.MONTH, 'month'),
-    (factors.QUARTER, 'quarter'),
-    (factors.DatetimeDataFactor('day'), 'day'),
-])
+@pytest.mark.parametrize(
+    'factor, attr',
+    [
+        (factors.WEEKDAY, 'day_of_week'),
+        (factors.MONTH, 'month'),
+        (factors.QUARTER, 'quarter'),
+        (factors.DatetimeDataFactor('day'), 'day'),
+    ],
+)
 def test_datetime_factor(engine, factor, attr):
     # date features are available before market open, not delayed
-    expected = ref.expected(lambda df: pd.Series(getattr(df.index, attr), index=df.index),
-                            delayed=False)
+    expected = ref.expected(
+        lambda df: pd.Series(getattr(df.index, attr), index=df.index), delayed=False
+    )
     assert_factor(engine, factor, *expected)
 
 
 def test_weekday_values(engine):
-    expected = np.array([2, 3., 4., 0., 1., 2., 3., 4., 0., 1.])
+    expected = np.array([2, 3.0, 4.0, 0.0, 1.0, 2.0, 3.0, 4.0, 0.0, 1.0])
     assert_factor(engine, factors.WEEKDAY, expected, delete(expected, SOLO))
 
 
@@ -105,12 +108,12 @@ def test_timezone(engine):
 
     # 2019-01-02 00:00 UTC is 2019-01-01 19:00 in New York
     expected = ref.expected(weekday_in_ny, delayed=False)
-    assert_array_equal(expected[0], [1., 2, 3, 6, 0, 1, 2, 3, 6, 0])
+    assert_array_equal(expected[0], [1.0, 2, 3, 6, 0, 1, 2, 3, 6, 0])
     assert_factor(engine, factors.WEEKDAY, *expected)
 
     # change back, cached data should be invalidated
     engine.timezone = 'UTC'
-    expected = np.array([2, 3., 4., 0., 1., 2., 3., 4., 0., 1.])
+    expected = np.array([2, 3.0, 4.0, 0.0, 1.0, 2.0, 3.0, 4.0, 0.0, 1.0])
     assert_factor(engine, factors.WEEKDAY, expected, delete(expected, SOLO))
 
 
@@ -143,14 +146,15 @@ def test_forward_signal_data(engine):
     signal_return = signal_price / factors.OHLCV.close - 1
 
     def forward_signal_return(df):
-        close = df.close.loc[:ref.END]  # no future data after `end`
+        close = df.close.loc[: ref.END]  # no future data after `end`
         window = pd.concat([close.shift(-i) for i in range(4)], axis=1)
         first = window.where(window > 150).bfill(axis=1).iloc[:, 0]
         return first / close - 1
 
     expected = ref.expected(forward_signal_return)
-    assert_almost_equal(expected[0], [0, 151.55 / 145.23 - 1, 151.55 / 149 - 1,
-                                      151.55 / 149 - 1, 0, 0, 0, 0, 0])
+    assert_almost_equal(
+        expected[0], [0, 151.55 / 145.23 - 1, 151.55 / 149 - 1, 151.55 / 149 - 1, 0, 0, 0, 0, 0]
+    )
     # MSFT never > 150
     assert np.isnan(expected[1]).all()
     assert_factor(engine, signal_return, *expected, check_bias=False)
@@ -163,7 +167,6 @@ def test_forward_signal_data_of_new_listed_asset(late_listing_engine):
     asset are unknown (nan), the shifted out data is not in the window.
     """
     close = factors.OHLCV.close
-    result = run_late_listed(late_listing_engine,
-                             factors.ForwardSignalData(3, close, close > 15))
+    result = run_late_listed(late_listing_engine, factors.ForwardSignalData(3, close, close > 15))
     # closes: [10, 20, 11, 30, 12, 13, 14]
     assert_almost_equal(result, [nan, nan, 30, 30, nan, nan, nan])

@@ -51,17 +51,20 @@ class AppleDualEma(trading.CustomAlgorithm):
             self.invested = False
             sell = True
 
-        self.record(AAPL=asset_data.price,
-                    short_ema=asset_data.fast_ema,
-                    long_ema=asset_data.slow_ema,
-                    buy=buy,
-                    sell=sell)
+        self.record(
+            AAPL=asset_data.price,
+            short_ema=asset_data.fast_ema,
+            long_ema=asset_data.slow_ema,
+            buy=buy,
+            sell=sell,
+        )
 
     def terminate(self, records: 'pd.DataFrame'):
         # plotting results
         self.plot(benchmark='SPY')
 
         import matplotlib.pyplot as plt
+
         fig = plt.figure()
         ax1 = fig.add_subplot(211)
         ax1.set_ylabel('Price (USD)')
@@ -90,17 +93,17 @@ class AppleDualEma(trading.CustomAlgorithm):
 
 if __name__ == '__main__':
     import plotly.io as pio
-    pio.renderers.default = "browser"
+
+    pio.renderers.default = 'browser'
 
     import argparse
+
     parser = argparse.ArgumentParser()
-    parser.add_argument("--download", help="download yahoo data")
+    parser.add_argument('--download', help='download yahoo data')
     args = parser.parse_args()
 
     if args.download:
-        YahooDownloader.ingest(
-            start_date="2001", save_to="./yahoo",
-            symbols=None, skip_exists=True)
+        YahooDownloader.ingest(start_date='2001', save_to='./yahoo', symbols=None, skip_exists=True)
 
     loader = ArrowLoader('./yahoo/yahoo.feather')
     results = trading.run_backtest(loader, AppleDualEma, '2013-01-01', '2018-01-01')

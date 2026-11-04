@@ -2,6 +2,7 @@
 Reference implementations of factors, using pandas on the raw csv data.
 They are used to check the results of spectre, independently of the engine.
 """
+
 import numpy as np
 import pandas as pd
 
@@ -13,9 +14,9 @@ START, END = '2019-01-01', '2019-01-15'
 
 def daily_prices(asset):
     """Raw daily prices with columns open/high/low/close/volume, aligned to AAPL's calendar."""
+
     def read(name):
-        return pd.read_csv(DATA_DIR / 'daily' / f'{name}.csv', index_col='date',
-                           parse_dates=True)
+        return pd.read_csv(DATA_DIR / 'daily' / f'{name}.csv', index_col='date', parse_dates=True)
 
     calendar = read('AAPL').index
     df = read(asset)
@@ -61,8 +62,9 @@ def _select(series, delayed, start, end):
     calendar = series['AAPL'].loc[start:end].index
     if delayed:
         calendar = calendar[1:]
-    return tuple(series[asset][series[asset].index.isin(calendar)].to_numpy(copy=True)
-                 for asset in ASSETS)
+    return tuple(
+        series[asset][series[asset].index.isin(calendar)].to_numpy(copy=True) for asset in ASSETS
+    )
 
 
 def loaded_closes(asset, start='2019-01-02', end=END):
@@ -109,8 +111,9 @@ def bbands(close, win=20, k=2):
 
 def true_range(df):
     prev_close = df.close.shift(1)
-    return pd.concat([df.high - df.low, (df.high - prev_close).abs(),
-                      (df.low - prev_close).abs()], axis=1).max(axis=1, skipna=False)
+    return pd.concat(
+        [df.high - df.low, (df.high - prev_close).abs(), (df.low - prev_close).abs()], axis=1
+    ).max(axis=1, skipna=False)
 
 
 def rsi(close, win=14):

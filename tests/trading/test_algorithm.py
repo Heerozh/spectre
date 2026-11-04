@@ -48,25 +48,26 @@ def test_simulation_event_manager(daily_loader_no_calendar):
         def event(self, name):
             def callback(_):
                 self.sequence.append(name)
+
             return callback
 
         def every_bar(self, _):
             self.sequence.append('bar')
             today = self.data.index.get_level_values(0)[-1]
             self.bar_dates.append(today)
-            if today > ts("2019-01-10"):
+            if today > ts('2019-01-10'):
                 self.stop_event_manager()
 
     alg = MockAlgorithm()
     evt_mgr = trading.SimulationEventManager()
     evt_mgr.subscribe(alg)
-    evt_mgr.run("2019-01-01", "2019-01-15")
+    evt_mgr.run('2019-01-01', '2019-01-15')
 
     # delayed data starts from the second day
-    assert alg.bar_dates[0] == ts("2019-01-03")
-    assert alg.bar_dates[1] == ts("2019-01-04")
+    assert alg.bar_dates[0] == ts('2019-01-03')
+    assert alg.bar_dates[1] == ts('2019-01-04')
     # stopped
-    assert alg.bar_dates[-1] == ts("2019-01-11")
+    assert alg.bar_dates[-1] == ts('2019-01-11')
     days = len(alg.bar_dates)
     assert alg.sequence == ['bar', 'before_open', 'open', 'before_close', 'close'] * days
 
@@ -97,7 +98,7 @@ def one_engine_results(adjusted_daily_loader):
             weights = data.ma5 / data.ma5.sum()
             self.blotter.batch_order_target_percent(data.index, weights)
 
-    results = trading.run_backtest(adjusted_daily_loader, OneEngineAlg, "2019-01-11", "2019-01-15")
+    results = trading.run_backtest(adjusted_daily_loader, OneEngineAlg, '2019-01-11', '2019-01-15')
     return results, OneEngineAlg.msft_ma5
 
 
@@ -122,16 +123,25 @@ def test_one_engine_algorithm(one_engine_results):
     msft_shares2 = int(round(msft_weight2 * value_bod2 / 103.19))
     msft_value2 = msft_shares2 * 108.85
     cash2 = 1e5 - aapl_cost1 + (aapl_shares1 - aapl_shares2) * 150.81 - msft_shares2 * 103.19
-    expected = pd.DataFrame([[nan, nan, nan, nan, nan, nan, 100000.00],
-                             [155.19, nan, aapl_shares1, nan, aapl_value_eod1, nan, cash1],
-                             [aapl_basis, 103.19, aapl_shares2, msft_shares2, aapl_value2,
-                              msft_value2, cash2]],
-                            columns=pd.MultiIndex.from_tuples(
-                                [('avg_px', 'AAPL'), ('avg_px', 'MSFT'),
-                                 ('shares', 'AAPL'), ('shares', 'MSFT'),
-                                 ('value', 'AAPL'), ('value', 'MSFT'),
-                                 ('value', 'cash')]),
-                            index=[ts("2019-01-13"), ts("2019-01-14"), ts("2019-01-15")])
+    expected = pd.DataFrame(
+        [
+            [nan, nan, nan, nan, nan, nan, 100000.00],
+            [155.19, nan, aapl_shares1, nan, aapl_value_eod1, nan, cash1],
+            [aapl_basis, 103.19, aapl_shares2, msft_shares2, aapl_value2, msft_value2, cash2],
+        ],
+        columns=pd.MultiIndex.from_tuples(
+            [
+                ('avg_px', 'AAPL'),
+                ('avg_px', 'MSFT'),
+                ('shares', 'AAPL'),
+                ('shares', 'MSFT'),
+                ('value', 'AAPL'),
+                ('value', 'MSFT'),
+                ('value', 'cash'),
+            ]
+        ),
+        index=[ts('2019-01-13'), ts('2019-01-14'), ts('2019-01-15')],
+    )
     expected.index.name = 'index'
     pd.testing.assert_frame_equal(expected, results.positions)
 
@@ -166,26 +176,28 @@ def test_two_engine_algorithm(adjusted_daily_loader):
     evt_mgr.subscribe(alg)
     evt_mgr.subscribe(blotter)
 
-    evt_mgr.run("2019-01-10", "2019-01-15")
+    evt_mgr.run('2019-01-10', '2019-01-15')
     first_run = str(blotter)
-    evt_mgr.run("2019-01-10", "2019-01-15")
+    evt_mgr.run('2019-01-10', '2019-01-15')
     # run twice should get the same result
     assert str(blotter) == first_run
-    assert_array_equal(blotter.get_transactions().symbol.values,
-                       ['AAPL', 'MSFT', 'AAPL', 'MSFT', 'AAPL'])
+    assert_array_equal(
+        blotter.get_transactions().symbol.values, ['AAPL', 'MSFT', 'AAPL', 'MSFT', 'AAPL']
+    )
 
 
 def test_record():
     recorder = trading.CustomAlgorithm(None, main=None)._recorder
-    recorder.record("2019-01-10", dict(a=1, b=2))
-    recorder.record("2019-01-11", dict(a=2, b=3, c=4))
-    expected = pd.DataFrame([[1, 2, nan], [2, 3, 4]], columns=['a', 'b', 'c'],
-                            index=["2019-01-10", "2019-01-11"])
+    recorder.record('2019-01-10', dict(a=1, b=2))
+    recorder.record('2019-01-11', dict(a=2, b=3, c=4))
+    expected = pd.DataFrame(
+        [[1, 2, nan], [2, 3, 4]], columns=['a', 'b', 'c'], index=['2019-01-10', '2019-01-11']
+    )
     expected.index.name = 'date'
     pd.testing.assert_frame_equal(expected, recorder.to_df())
 
     with pytest.raises(ValueError, match='reserved key'):
-        recorder.record("2019-01-12", dict(date=1))
+        recorder.record('2019-01-12', dict(date=1))
 
 
 def test_algorithm_needs_data_source():
@@ -193,12 +205,15 @@ def test_algorithm_needs_data_source():
         trading.CustomAlgorithm(None)
 
 
-@pytest.mark.parametrize('event, expected_prices', [
-    # rebalance 10000 ns before market close (the close of the last bar of the day)
-    ('close', [157.92, 142.09, 148.26]),
-    # rebalance at market open (the close of the first bar of the day)
-    ('open', [143.95, 144.58]),
-])
+@pytest.mark.parametrize(
+    'event, expected_prices',
+    [
+        # rebalance 10000 ns before market close (the close of the last bar of the day)
+        ('close', [157.92, 142.09, 148.26]),
+        # rebalance at market open (the close of the first bar of the day)
+        ('open', [143.95, 144.58]),
+    ],
+)
 def test_intraday_algorithm(intraday_loader, event, expected_prices):
     class IntradayAlg(trading.CustomAlgorithm):
         order_shares = 0.3
@@ -206,8 +221,7 @@ def test_intraday_algorithm(intraday_loader, event, expected_prices):
         def initialize(self):
             self.get_factor_engine().add(factors.MA(5), 'ma5')
             if event == 'close':
-                self.schedule_rebalance(trading.event.MarketClose(
-                    self.rebalance, offset_ns=-10000))
+                self.schedule_rebalance(trading.event.MarketClose(self.rebalance, offset_ns=-10000))
             else:
                 self.schedule_rebalance(trading.event.MarketOpen(self.rebalance))
             self.blotter.set_commission(0, 0.005, 1)
@@ -217,8 +231,11 @@ def test_intraday_algorithm(intraday_loader, event, expected_prices):
             self.blotter.order_target_percent('AAPL', self.order_shares)
             self.order_shares = -self.order_shares
 
-    results = trading.run_backtest(intraday_loader, IntradayAlg, "2019-01-01", "2019-01-05")
+    results = trading.run_backtest(intraday_loader, IntradayAlg, '2019-01-01', '2019-01-05')
     assert_almost_equal(results.transactions.price.values, expected_prices)
     if event == 'close':
         assert list(results.transactions.index) == [
-            ts('2019-01-02 20:55:00'), ts('2019-01-03 20:55:00'), ts('2019-01-04 20:55:00')]
+            ts('2019-01-02 20:55:00'),
+            ts('2019-01-03 20:55:00'),
+            ts('2019-01-04 20:55:00'),
+        ]

@@ -4,6 +4,7 @@
 @license: GPL-3.0-only
 @email: heeroz@gmail.com
 """
+
 from itertools import cycle, islice
 
 
@@ -13,22 +14,54 @@ def plot_factor_diagram(factor):
     from ..factors import BaseFactor, ColumnDataFactor, CustomFactor, DatetimeDataFactor
 
     color = [
-        "rgba(31, 119, 180, 0.8)", "rgba(255, 127, 14, 0.8)", "rgba(44, 160, 44, 0.8)",
-        "rgba(214, 39, 40, 0.8)", "rgba(148, 103, 189, 0.8)", "rgba(140, 86, 75, 0.8)",
-        "rgba(227, 119, 194, 0.8)", "rgba(127, 127, 127, 0.8)", "rgba(188, 189, 34, 0.8)",
-        "rgba(23, 190, 207, 0.8)", "rgba(31, 119, 180, 0.8)", "rgba(255, 127, 14, 0.8)",
-        "rgba(44, 160, 44, 0.8)", "rgba(214, 39, 40, 0.8)", "rgba(148, 103, 189, 0.8)",
-        "rgba(140, 86, 75, 0.8)", "rgba(227, 119, 194, 0.8)", "rgba(127, 127, 127, 0.8)",
-        "rgba(188, 189, 34, 0.8)", "rgba(23, 190, 207, 0.8)", "rgba(31, 119, 180, 0.8)",
-        "rgba(255, 127, 14, 0.8)", "rgba(44, 160, 44, 0.8)", "rgba(214, 39, 40, 0.8)",
-        "rgba(148, 103, 189, 0.8)", "rgba(140, 86, 75, 0.8)", "rgba(227, 119, 194, 0.8)",
-        "rgba(127, 127, 127, 0.8)", "rgba(188, 189, 34, 0.8)", "rgba(23, 190, 207, 0.8)",
-        "rgba(31, 119, 180, 0.8)", "rgba(255, 127, 14, 0.8)", "rgba(44, 160, 44, 0.8)",
-        "rgba(214, 39, 40, 0.8)", "rgba(148, 103, 189, 0.8)", "magenta",
-        "rgba(227, 119, 194, 0.8)", "rgba(127, 127, 127, 0.8)", "rgba(188, 189, 34, 0.8)",
-        "rgba(23, 190, 207, 0.8)", "rgba(31, 119, 180, 0.8)", "rgba(255, 127, 14, 0.8)",
-        "rgba(44, 160, 44, 0.8)", "rgba(214, 39, 40, 0.8)", "rgba(148, 103, 189, 0.8)",
-        "rgba(140, 86, 75, 0.8)", "rgba(227, 119, 194, 0.8)", "rgba(127, 127, 127, 0.8)"
+        'rgba(31, 119, 180, 0.8)',
+        'rgba(255, 127, 14, 0.8)',
+        'rgba(44, 160, 44, 0.8)',
+        'rgba(214, 39, 40, 0.8)',
+        'rgba(148, 103, 189, 0.8)',
+        'rgba(140, 86, 75, 0.8)',
+        'rgba(227, 119, 194, 0.8)',
+        'rgba(127, 127, 127, 0.8)',
+        'rgba(188, 189, 34, 0.8)',
+        'rgba(23, 190, 207, 0.8)',
+        'rgba(31, 119, 180, 0.8)',
+        'rgba(255, 127, 14, 0.8)',
+        'rgba(44, 160, 44, 0.8)',
+        'rgba(214, 39, 40, 0.8)',
+        'rgba(148, 103, 189, 0.8)',
+        'rgba(140, 86, 75, 0.8)',
+        'rgba(227, 119, 194, 0.8)',
+        'rgba(127, 127, 127, 0.8)',
+        'rgba(188, 189, 34, 0.8)',
+        'rgba(23, 190, 207, 0.8)',
+        'rgba(31, 119, 180, 0.8)',
+        'rgba(255, 127, 14, 0.8)',
+        'rgba(44, 160, 44, 0.8)',
+        'rgba(214, 39, 40, 0.8)',
+        'rgba(148, 103, 189, 0.8)',
+        'rgba(140, 86, 75, 0.8)',
+        'rgba(227, 119, 194, 0.8)',
+        'rgba(127, 127, 127, 0.8)',
+        'rgba(188, 189, 34, 0.8)',
+        'rgba(23, 190, 207, 0.8)',
+        'rgba(31, 119, 180, 0.8)',
+        'rgba(255, 127, 14, 0.8)',
+        'rgba(44, 160, 44, 0.8)',
+        'rgba(214, 39, 40, 0.8)',
+        'rgba(148, 103, 189, 0.8)',
+        'magenta',
+        'rgba(227, 119, 194, 0.8)',
+        'rgba(127, 127, 127, 0.8)',
+        'rgba(188, 189, 34, 0.8)',
+        'rgba(23, 190, 207, 0.8)',
+        'rgba(31, 119, 180, 0.8)',
+        'rgba(255, 127, 14, 0.8)',
+        'rgba(44, 160, 44, 0.8)',
+        'rgba(214, 39, 40, 0.8)',
+        'rgba(148, 103, 189, 0.8)',
+        'rgba(140, 86, 75, 0.8)',
+        'rgba(227, 119, 194, 0.8)',
+        'rgba(127, 127, 127, 0.8)',
     ]
 
     factor_id = dict()
@@ -78,23 +111,23 @@ def plot_factor_diagram(factor):
 
     add_node(factor, None, None, None)
 
-    fig = go.Figure(data=[go.Sankey(
-        valueformat=".0f",
-        valuesuffix="win",
-        node=dict(
-            pad=15,
-            thickness=15,
-            line=dict(color="black", width=0.5),
-            label=label,
-            color=list(islice(cycle(color), len(label)))
-        ),
-        # Add links
-        link=dict(
-            source=source,
-            target=target,
-            value=value,
-            label=line_label
-        ))])
+    fig = go.Figure(
+        data=[
+            go.Sankey(
+                valueformat='.0f',
+                valuesuffix='win',
+                node=dict(
+                    pad=15,
+                    thickness=15,
+                    line=dict(color='black', width=0.5),
+                    label=label,
+                    color=list(islice(cycle(color), len(label))),
+                ),
+                # Add links
+                link=dict(source=source, target=target, value=value, label=line_label),
+            )
+        ]
+    )
 
-    fig.update_layout(title_text="Factor Diagram")
+    fig.update_layout(title_text='Factor Diagram')
     fig.show()

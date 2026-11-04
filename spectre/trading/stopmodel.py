@@ -4,6 +4,7 @@
 @license: GPL-3.0-only
 @email: heeroz@gmail.com
 """
+
 import math
 
 
@@ -94,6 +95,7 @@ class TrailingStopModel(StopModel):
     so -0.1 means stop price is 90% of the highest price from now to the future; 0.1 means stop
     price is 110% of the lowest price from now to the future.
     """
+
     def new_tracker(self, current_price, inverse):
         ratio = -self.ratio if inverse else self.ratio
         return TrailingStopTracker(current_price, ratio, self.callback)
@@ -112,7 +114,7 @@ class DecayTrailingStopTracker(TrailingStopTracker):
 
     @property
     def current(self):
-        raise NotImplementedError("abstractmethod")
+        raise NotImplementedError('abstractmethod')
 
     @property
     def stop_price(self):
@@ -139,8 +141,9 @@ class PnLDecayTrailingStopModel(StopModel):
     any small opposite changes will trigger stop.
     """
 
-    def __init__(self, ratio: float, pnl_target: float, callback=None,
-                 decay_rate=0.05, max_decay=0):
+    def __init__(
+        self, ratio: float, pnl_target: float, callback=None, decay_rate=0.05, max_decay=0
+    ):
         super().__init__(ratio, callback)
         self.decay_rate = decay_rate
         self.pnl_target = pnl_target
@@ -149,7 +152,8 @@ class PnLDecayTrailingStopModel(StopModel):
     def new_tracker(self, current_price, inverse):
         ratio = -self.ratio if inverse else self.ratio
         return PnLDecayTrailingStopTracker(
-            current_price, ratio, self.pnl_target, self.decay_rate, self.max_decay, self.callback)
+            current_price, ratio, self.pnl_target, self.decay_rate, self.max_decay, self.callback
+        )
 
 
 class TimeDecayTrailingStopTracker(DecayTrailingStopTracker):
@@ -160,8 +164,14 @@ class TimeDecayTrailingStopTracker(DecayTrailingStopTracker):
 
 
 class TimeDecayTrailingStopModel(StopModel):
-    def __init__(self, ratio: float, period_target: 'pd.Timedelta', callback=None,
-                 decay_rate=0.05, max_decay=0):
+    def __init__(
+        self,
+        ratio: float,
+        period_target: 'pd.Timedelta',
+        callback=None,
+        decay_rate=0.05,
+        max_decay=0,
+    ):
         super().__init__(ratio, callback)
         self.decay_rate = decay_rate
         self.period_target = period_target
@@ -170,5 +180,5 @@ class TimeDecayTrailingStopModel(StopModel):
     def new_tracker(self, current_price, inverse):
         ratio = -self.ratio if inverse else self.ratio
         return TimeDecayTrailingStopTracker(
-            current_price, ratio, self.period_target, self.decay_rate, self.max_decay,
-            self.callback)
+            current_price, ratio, self.period_target, self.decay_rate, self.max_decay, self.callback
+        )

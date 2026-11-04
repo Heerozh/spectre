@@ -1,6 +1,7 @@
 """
 Small helpers to keep spectre working across pandas versions.
 """
+
 import pandas as pd
 
 PANDAS_GE_3 = int(pd.__version__.split('.')[0]) >= 3

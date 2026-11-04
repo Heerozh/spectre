@@ -1,4 +1,3 @@
-
 from .chart import (
     plot_chart,
 )

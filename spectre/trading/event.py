@@ -4,6 +4,7 @@
 @license: GPL-3.0-only
 @email: heeroz@gmail.com
 """
+
 import time
 
 import pandas as pd
@@ -19,23 +20,26 @@ class Event:
         pass
 
     def should_trigger(self) -> bool:
-        raise NotImplementedError("abstractmethod")
+        raise NotImplementedError('abstractmethod')
 
 
 class EveryBarData(Event):
     """This event is triggered passively"""
+
     def should_trigger(self) -> bool:
         return False
 
 
 class Always(Event):
     """Always event is useful for live date IO function like asio.read_until_complete()"""
+
     def should_trigger(self) -> bool:
         return True
 
 
 class CalendarEvent(Event):
-    """ The following code is for live trading, will not work on back-testing """
+    """The following code is for live trading, will not work on back-testing"""
+
     def __init__(self, calendar_event_name, callback, offset_ns=0) -> None:
         super().__init__(callback)
         self.offset = offset_ns
@@ -51,8 +55,9 @@ class CalendarEvent(Event):
             pass
 
     def calculate_range(self):
-        self.trigger_time = self.calendar.events[self.event_name][0] + \
-                            pd.Timedelta(self.offset, unit='ns')
+        self.trigger_time = self.calendar.events[self.event_name][0] + pd.Timedelta(
+            self.offset, unit='ns'
+        )
 
     def should_trigger(self) -> bool:
         if self.calendar.hr_now() >= self.trigger_time:
@@ -63,13 +68,15 @@ class CalendarEvent(Event):
 
 
 class MarketOpen(CalendarEvent):
-    """ Works on both live and backtest """
+    """Works on both live and backtest"""
+
     def __init__(self, callback, offset_ns=0) -> None:
         super().__init__('Open', callback, offset_ns)
 
 
 class MarketClose(CalendarEvent):
-    """ Works on both live and backtest """
+    """Works on both live and backtest"""
+
     def __init__(self, callback, offset_ns=0) -> None:
         super().__init__('Close', callback, offset_ns)
 
@@ -131,7 +138,7 @@ class EventManager:
 
     def _beg_run(self):
         if not self._subscribers:
-            raise ValueError("At least one subscriber.")
+            raise ValueError('At least one subscriber.')
 
         for r, events in self._subscribers.items():
             # clear scheduled events
@@ -165,4 +172,3 @@ class MarketEventManager(EventManager):
     def __init__(self, calendar: Calendar) -> None:
         self.calendar = calendar
         super().__init__()
-

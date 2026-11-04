@@ -10,8 +10,12 @@ import pandas as pd
 
 
 class DataLoader:
-    def __init__(self, path: str, ohlcv=('open', 'high', 'low', 'close', 'volume'),
-                 adjustments=('ex-dividend', 'split_ratio')) -> None:
+    def __init__(
+        self,
+        path: str,
+        ohlcv=('open', 'high', 'low', 'close', 'volume'),
+        adjustments=('ex-dividend', 'split_ratio'),
+    ) -> None:
         self._path = path
         self._ohlcv = ohlcv
         self._adjustments = adjustments
@@ -34,18 +38,18 @@ class DataLoader:
 
     @property
     def last_modified(self) -> float:
-        """ data source last modification time """
-        raise NotImplementedError("abstractmethod")
+        """data source last modification time"""
+        raise NotImplementedError('abstractmethod')
 
     @property
     def min_timedelta(self) -> pd.Timedelta:
-        """ Minimum time delta of date index """
+        """Minimum time delta of date index"""
         date_idx = self.load().index.levels[0]
         return min(date_idx[1:] - date_idx[:-1])
 
     @classmethod
     def _align_to(cls, df, calender_asset, align_by_time=False):
-        """ helper method for align index """
+        """helper method for align index"""
         index = df.loc[(slice(None), calender_asset), :].index.get_level_values(0)
         df = df[df.index.get_level_values(0).isin(index)]
         df.index = df.index.remove_unused_levels()
@@ -134,7 +138,7 @@ class DataLoader:
         You need to call `self.test_load()` in your test case to check if the format
         you returned is correct.
         """
-        raise NotImplementedError("abstractmethod")
+        raise NotImplementedError('abstractmethod')
 
     def test_load(self):
         """
@@ -143,34 +147,40 @@ class DataLoader:
         """
         df = self._load()
 
-        assert df.index.names == ['date', 'asset'], \
-            "df.index.names should be ['date', 'asset'] "
-        assert not any(df.index.duplicated()), \
-            "There are duplicate indexes in df, you need handle them up."
-        assert df.index.is_monotonic_increasing, \
-            "df.index must be sorted, try using df = df.sort_index(level=0)"
-        assert str(df.index.levels[0].tzinfo) == 'UTC', \
-            "df.index.date must be UTC timezone."
-        assert df.index.levels[-1].ordered, \
-            "df.index.asset must ordered categorical."
-        assert self.time_category in df, \
-            "You must create a time_category column, convert time to category id"
+        assert df.index.names == ['date', 'asset'], "df.index.names should be ['date', 'asset'] "
+        assert not any(df.index.duplicated()), (
+            'There are duplicate indexes in df, you need handle them up.'
+        )
+        assert df.index.is_monotonic_increasing, (
+            'df.index must be sorted, try using df = df.sort_index(level=0)'
+        )
+        assert str(df.index.levels[0].tzinfo) == 'UTC', 'df.index.date must be UTC timezone.'
+        assert df.index.levels[-1].ordered, 'df.index.asset must ordered categorical.'
+        assert self.time_category in df, (
+            'You must create a time_category column, convert time to category id'
+        )
 
         if self.adjustments:
-            assert all(x in df for x in self.adjustments), \
-                f"Adjustments columns `{self.adjustments}` not found."
-            assert all(x in df for x in self.adjustment_multipliers), \
-                f"Adjustment multipliers columns `{self.adjustment_multipliers}` not found."
-            assert not any(df[self.adjustments[0]].isna()), \
-                "There is nan value in ex-dividend column, should be filled with 0."
-            assert not any(df[self.adjustments[1]].isna()), \
-                "There is nan value in split_ratio column, should be filled with 1."
-            assert not any(df[self.time_category].isna()), \
-                "There is nan value in time_category column, should be filled with time id."
+            assert all(x in df for x in self.adjustments), (
+                f'Adjustments columns `{self.adjustments}` not found.'
+            )
+            assert all(x in df for x in self.adjustment_multipliers), (
+                f'Adjustment multipliers columns `{self.adjustment_multipliers}` not found.'
+            )
+            assert not any(df[self.adjustments[0]].isna()), (
+                'There is nan value in ex-dividend column, should be filled with 0.'
+            )
+            assert not any(df[self.adjustments[1]].isna()), (
+                'There is nan value in split_ratio column, should be filled with 1.'
+            )
+            assert not any(df[self.time_category].isna()), (
+                'There is nan value in time_category column, should be filled with time id.'
+            )
         return df
 
-    def load(self, start: pd.Timestamp | None = None, end: pd.Timestamp | None = None,
-             backwards: int = 0) -> pd.DataFrame:
+    def load(
+        self, start: pd.Timestamp | None = None, end: pd.Timestamp | None = None, backwards: int = 0
+    ) -> pd.DataFrame:
         df = self._load()
 
         index = df.index.levels[0]
@@ -182,14 +192,12 @@ class DataLoader:
 
         if index[0] > start:
             raise ValueError(
-                f"`start` time ({start}) cannot be less " \
-                f"than earliest time of data: {index[0]}."
+                f'`start` time ({start}) cannot be less than earliest time of data: {index[0]}.'
             )
 
         if index[-1] < end:
             raise ValueError(
-                f"`end` time ({end}) cannot be greater " \
-                f"than latest time of data: {index[-1]}."
+                f'`end` time ({end}) cannot be greater than latest time of data: {index[-1]}.'
             )
 
         start_loc = index.get_indexer([start], method='bfill')[0]
@@ -203,6 +211,7 @@ class DataLoader:
 
 class DataLoaderFastGetter:
     """Fast get method for dataloader's DataFrame"""
+
     class DictLikeCursor:
         def __init__(self, parent, row_slice, column_id):
             self.parent = parent

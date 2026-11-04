@@ -69,7 +69,8 @@ spectre also has built-in Yahoo downloader, `symbols=None` will download all SP5
 
 ```python
 from spectre.data import YahooDownloader
-YahooDownloader.ingest(start_date="2001", save_to="./prices/yahoo", symbols=None, skip_exists=True)
+
+YahooDownloader.ingest(start_date='2001', save_to='./prices/yahoo', symbols=None, skip_exists=True)
 ```
 
 You can use `spectre.data.ArrowLoader('./prices/yahoo/yahoo.feather')` load those data now.
@@ -79,6 +80,7 @@ You can use `spectre.data.ArrowLoader('./prices/yahoo/yahoo.feather')` load thos
 ```python
 from spectre import factors
 from spectre.data import ArrowLoader
+
 loader = ArrowLoader('./prices/yahoo/yahoo.feather')
 engine = factors.FactorEngine(loader)
 engine.to_cuda()
@@ -161,8 +163,9 @@ simultaneously, but the VRAM usage will increase proportionally.
 The return value of `full_run` is compatible with `alphalens`:
 ```python
 import alphalens as al
+
 ...
-factor_data, _ = engine.full_run("2013-01-02", "2018-01-19")
+factor_data, _ = engine.full_run('2013-01-02', '2018-01-19')
 clean_data = factor_data[['{factor_name}', 'Returns']].droplevel(0, axis=1)
 al.tears.create_full_tear_sheet(clean_data)
 ```
@@ -243,8 +246,13 @@ It awful but you get the idea.
 The return value of `run_backtest` is compatible with `pyfolio`:
 ```python
 import pyfolio as pf
-pf.create_full_tear_sheet(results.returns, positions=results.positions.value, transactions=results.transactions,
-                          live_start_date='2017-01-03')
+
+pf.create_full_tear_sheet(
+    results.returns,
+    positions=results.positions.value,
+    transactions=results.transactions,
+    live_start_date='2017-01-03',
+)
 ```
 
 # API
@@ -386,14 +394,27 @@ Example for load IEX CSV files:
 ```python
 usecols = {'date', 'uOpen', 'uHigh', 'uLow', 'uClose', 'uVolume', 'exDate', 'amount', 'ratio'}
 csv_loader = spectre.data.CsvDirLoader(
-    './iex/daily/', calender_asset='SPY',
+    './iex/daily/',
+    calender_asset='SPY',
     dividends_path='./iex/dividends/',
     splits_path='./iex/splits/',
-    ohlcv=('uOpen', 'uHigh', 'uLow', 'uClose', 'uVolume'), adjustments=('amount', 'ratio'),
-    prices_index='date', dividends_index='exDate', splits_index='exDate',
-    parse_dates=True, usecols=lambda x: x in usecols,
-    dtype={'uOpen': np.float32, 'uHigh': np.float32, 'uLow': np.float32, 'uClose': np.float32,
-           'uVolume': np.float64, 'amount': np.float64, 'ratio': np.float64})
+    ohlcv=('uOpen', 'uHigh', 'uLow', 'uClose', 'uVolume'),
+    adjustments=('amount', 'ratio'),
+    prices_index='date',
+    dividends_index='exDate',
+    splits_index='exDate',
+    parse_dates=True,
+    usecols=lambda x: x in usecols,
+    dtype={
+        'uOpen': np.float32,
+        'uHigh': np.float32,
+        'uLow': np.float32,
+        'uClose': np.float32,
+        'uVolume': np.float64,
+        'amount': np.float64,
+        'ratio': np.float64,
+    },
+)
 ```
 
 ### ArrowLoader
@@ -417,8 +438,8 @@ Download 'WIKI_PRICES.zip' (You need an account):
 
 ```python
 from spectre.data import ArrowLoader, QuandlLoader
-ArrowLoader.ingest(source=QuandlLoader('WIKI_PRICES.zip'),
-                   save_to='wiki_prices.feather')
+
+ArrowLoader.ingest(source=QuandlLoader('WIKI_PRICES.zip'), save_to='wiki_prices.feather')
 ```
 
 ### How to write your own DataLoader
@@ -436,20 +457,38 @@ class YourLoader(spectre.data.DataLoader):
         return os.path.getmtime(self._path)
 
     def __init__(self, file: str, calender_asset='SPY') -> None:
-        super().__init__(file,
-                         ohlcv=('open', 'high', 'low', 'close', 'volume'),
-                         adjustments=('ex-dividend', 'split_ratio'))
+        super().__init__(
+            file,
+            ohlcv=('open', 'high', 'low', 'close', 'volume'),
+            adjustments=('ex-dividend', 'split_ratio'),
+        )
         self._calender = calender_asset
 
     def _load(self) -> pd.DataFrame:
-        df = pd.read_csv(self._path, parse_dates=['date'],
-                         usecols=['asset', 'date', 'open', 'high', 'low', 'close',
-                                  'volume', 'ex-dividend', 'split_ratio', ],
-                         dtype={
-                             'open': np.float32, 'high': np.float32, 'low': np.float32,
-                             'close': np.float32, 'volume': np.float64,
-                             'ex-dividend': np.float64, 'split_ratio': np.float64
-                         })
+        df = pd.read_csv(
+            self._path,
+            parse_dates=['date'],
+            usecols=[
+                'asset',
+                'date',
+                'open',
+                'high',
+                'low',
+                'close',
+                'volume',
+                'ex-dividend',
+                'split_ratio',
+            ],
+            dtype={
+                'open': np.float32,
+                'high': np.float32,
+                'low': np.float32,
+                'close': np.float32,
+                'volume': np.float64,
+                'ex-dividend': np.float64,
+                'split_ratio': np.float64,
+            },
+        )
 
         df.set_index(['date', 'asset'], inplace=True)
         if self._calender:
@@ -553,19 +592,21 @@ engine.add(factors.MA(20), 'MA20')
 engine.add(rsi, 'RSI')
 engine.add(factors.OHLCV.close.filter(buy_signal), 'Buy')
 engine.to_cuda()
-_ = engine.plot_chart('2017', '2018', styles={
-    'MA20': {
-              'line': {'dash': 'dash'}
-            },
-    'RSI': {
-              'yaxis': 'y3',  # y1: price axis, y2: volume axis, yN: add new y-axis
-              'line': {'width': 1}
-           },
-    'Buy': {
-              'mode': 'markers',
-              'marker': { 'symbol': 'triangle-up', 'size': 10, 'color': 'rgba(0, 0, 255, 0.5)' }
-           }
-})
+_ = engine.plot_chart(
+    '2017',
+    '2018',
+    styles={
+        'MA20': {'line': {'dash': 'dash'}},
+        'RSI': {
+            'yaxis': 'y3',  # y1: price axis, y2: volume axis, yN: add new y-axis
+            'line': {'width': 1},
+        },
+        'Buy': {
+            'mode': 'markers',
+            'marker': {'symbol': 'triangle-up', 'size': 10, 'color': 'rgba(0, 0, 255, 0.5)'},
+        },
+    },
+)
 ```
 
 <img src="https://github.com/Heerozh/spectre/raw/media/chart.png" width="730" height="1000">
@@ -631,6 +672,8 @@ Example of LogReturns:
 ```python
 from spectre import factors
 import torch
+
+
 class LogReturns(factors.CustomFactor):
     inputs = [factors.Returns(2, inputs=[factors.OHLCV.close])]
     win = 1
@@ -648,6 +691,8 @@ better performance and saving VRAM, the rolling class automatically splits the d
 small chunks. You need to use the `agg` method to operating `tensor`.
 ```python
 from spectre import factors, parallel
+
+
 class OvernightReturn(factors.CustomFactor):
     inputs = [factors.OHLCV.open, factors.OHLCV.close]
     win = 2
@@ -687,8 +732,9 @@ If you need index, or not familiar with PyTorch, here is a another way:
 
 ```python
 from spectre import factors
-class YourFactor(factors.CustomFactor):
 
+
+class YourFactor(factors.CustomFactor):
     def compute(self, data: torch.Tensor) -> torch.Tensor:
         # convert to pd.Series data
         pd_series = self._revert_to_series(data)

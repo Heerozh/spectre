@@ -28,6 +28,7 @@ def bbands_normalized(win, k):
     def _normalized(df):
         upper, middle, _ = ref.bbands(df.close, win, k)
         return (df.close - middle) / (upper - middle)
+
     return _normalized
 
 
@@ -52,9 +53,9 @@ def test_rsi(engine):
     # Cutler's RSI calculated by excel
     assert_almost_equal(expected[0], [40.1814301, 33.36385487, 37.37511353, 36.31220413,
                                       41.84100418, 39.19197118, 48.18441452, 44.30411404,
-                                      50.05167959])
+                                      50.05167959])  # fmt: skip
     assert_almost_equal(expected[1], [38.5647217, 42.0627596, 37.9693676, 43.8641553,
-                                      48.3458438, 47.095672, 46.7363662, 46.127465])
+                                      48.3458438, 47.095672, 46.7363662, 46.127465])  # fmt: skip
 
 
 def test_rsi_normalized(engine):
@@ -67,5 +68,6 @@ def test_stochf(engine):
 
 
 def test_stochf_normalized(engine):
-    assert_factor(engine, factors.STOCHF().normalized(),
-                  *ref.expected(lambda df: ref.stochf(df) / 100 - 0.5))
+    assert_factor(
+        engine, factors.STOCHF().normalized(), *ref.expected(lambda df: ref.stochf(df) / 100 - 0.5)
+    )

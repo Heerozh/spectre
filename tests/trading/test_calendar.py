@@ -34,8 +34,9 @@ def test_build_pops_passed_events(calendar):
 def test_build_without_pop_passed():
     cal = trading.Calendar()
     cal.hr_now = lambda: ts('2020-01-03 16:00')
-    cal.build(start='2020-01-03', end='2020-01-17', daily_events=DAILY_EVENTS, tz=TZ,
-              pop_passed=False)
+    cal.build(
+        start='2020-01-03', end='2020-01-17', daily_events=DAILY_EVENTS, tz=TZ, pop_passed=False
+    )
     assert cal.events['Open'][0] == ts('2020-01-03 09:00')
 
 

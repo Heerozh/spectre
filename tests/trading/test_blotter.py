@@ -41,13 +41,14 @@ def test_commission_model():
 def test_slippage_model():
     model = trading.blotter.SlippageModel(0.01, 0.1)
     # sigmoid of amount/volume, from 1 / (1 + 200^0.5) at 0 to 1 / (1 + 200^-0.5) at max ratio
-    low, high = 1 / (1 + 200 ** 0.5), 1 / (1 + 200 ** -0.5)
+    low, high = 1 / (1 + 200**0.5), 1 / (1 + 200**-0.5)
     assert model.calculate('AAPL', 100, 0) == pytest.approx(100 + 100 * 0.01 * low)
     assert model.calculate('AAPL', 100, 0.1) == pytest.approx(100 + 100 * 0.01 * high)
     # sell orders get lower price
     assert model.calculate('AAPL', 100, -0.1) == pytest.approx(100 - 100 * 0.01 * high)
     assert model.calculate('AAPL', 100, -0.05) == pytest.approx(
-        200 - model.calculate('AAPL', 100, 0.05))
+        200 - model.calculate('AAPL', 100, 0.05)
+    )
     # no slippage
     assert trading.blotter.SlippageModel(0.01, 0).calculate('AAPL', 100, 0.1) == 100
     assert trading.blotter.SlippageModel(0, 0).is_empty()
@@ -74,16 +75,16 @@ def blotter(adjusted_daily_loader_no_calendar):
 
 
 def test_out_of_market_hours(blotter):
-    blotter.set_datetime(ts("2019-01-02"))
-    blotter.set_price("open")
+    blotter.set_datetime(ts('2019-01-02'))
+    blotter.set_price('open')
     with pytest.raises(RuntimeError, match='Out of market hours'):
         blotter.order('AAPL', 1)
 
 
 def test_order_checks(blotter):
-    blotter.set_datetime(ts("2019-01-02"))
+    blotter.set_datetime(ts('2019-01-02'))
     blotter.market_open(None)
-    blotter.set_price("open")
+    blotter.set_price('open')
     with pytest.raises(OverflowError):
         blotter.order('AAPL', blotter.max_shares + 1)
     with pytest.raises(KeyError, match='must be a string'):
@@ -100,14 +101,14 @@ def test_order_checks(blotter):
 
 
 def test_t0_and_double_purchase(blotter):
-    date = ts("2019-01-02")
+    date = ts('2019-01-02')
     blotter.set_datetime(date)
     blotter.market_open(None)
-    blotter.set_price("open")
+    blotter.set_price('open')
     blotter.order_target_percent('AAPL', 0.3)
     # already reached the target, no order
     blotter.order_target_percent('AAPL', 0.3)
-    blotter.set_price("close")
+    blotter.set_price('close')
     blotter.order_target_percent('AAPL', 0.0)
     blotter.market_close(None)
     blotter.update_portfolio_value()
@@ -117,28 +118,32 @@ def test_t0_and_double_purchase(blotter):
     commission = per_share_commission(shares)
     realized = (AAPL_0102['close'] - AAPL_0102['open']) * shares - commission * 2
     open_, close = AAPL_0102['open'], AAPL_0102['close']
-    expected = pd.DataFrame([['AAPL', shares, open_, open_, commission, 0.0],
-                             ['AAPL', -shares, close, close, commission, realized]],
-                            columns=['symbol', 'amount', 'price', 'fill_price', 'commission',
-                                     'realized'],
-                            index=[date, date])
+    expected = pd.DataFrame(
+        [
+            ['AAPL', shares, open_, open_, commission, 0.0],
+            ['AAPL', -shares, close, close, commission, realized],
+        ],
+        columns=['symbol', 'amount', 'price', 'fill_price', 'commission', 'realized'],
+        index=[date, date],
+    )
     expected.index.name = 'index'
     pd.testing.assert_frame_equal(expected, blotter.get_transactions())
 
-    expected = pd.DataFrame([[200000 + realized]],
-                            columns=pd.MultiIndex.from_tuples([('value', 'cash')]), index=[date])
+    expected = pd.DataFrame(
+        [[200000 + realized]], columns=pd.MultiIndex.from_tuples([('value', 'cash')]), index=[date]
+    )
     expected.index.name = 'index'
     pd.testing.assert_frame_equal(expected, blotter.get_historical_positions())
 
 
 def test_slippage(blotter):
     blotter.set_slippage(0.005, 0.4)
-    date = ts("2019-01-02")
+    date = ts('2019-01-02')
     blotter.set_datetime(date)
     blotter.market_open(None)
-    blotter.set_price("open")
+    blotter.set_price('open')
     blotter.order('AAPL', 385)
-    blotter.set_price("close")
+    blotter.set_price('close')
     blotter.order('AAPL', -385)
     blotter.market_close(None)
 
@@ -153,7 +158,8 @@ def test_slippage(blotter):
     commission = per_share_commission(385)
     assert txn.realized.iloc[1] == pytest.approx((sell_price - buy_price) * 385 - commission * 2)
     assert blotter.portfolio.cash == pytest.approx(
-        200000 - 385 * buy_price + 385 * sell_price - commission * 2)
+        200000 - 385 * buy_price + 385 * sell_price - commission * 2
+    )
 
 
 def test_dividend_curb_and_split(blotter):
@@ -165,9 +171,9 @@ def test_dividend_curb_and_split(blotter):
     cash = 200000
 
     # 01-09 dividend, paid at the close of the day before ex-date
-    blotter.set_datetime(ts("2019-01-09"))
+    blotter.set_datetime(ts('2019-01-09'))
     blotter.market_open(None)
-    blotter.set_price("close")
+    blotter.set_price('close')
     blotter.order('MSFT', 2)
     cash -= 2 * MSFT_0109_CLOSE + per_share_commission(2)
     assert blotter.portfolio.cash == pytest.approx(cash)
@@ -177,9 +183,9 @@ def test_dividend_curb_and_split(blotter):
     assert blotter.portfolio.cash == pytest.approx(cash)
 
     # 01-10 no data of MSFT
-    blotter.set_datetime(ts("2019-01-10"))
+    blotter.set_datetime(ts('2019-01-10'))
     blotter.market_open(None)
-    blotter.set_price("close")
+    blotter.set_price('close')
     assert blotter.order_target_percent('MSFT', 0.5) is False
     # AAPL changed 3.2% from last close, curbed by 1%
     assert AAPL_0110_CLOSE / AAPL_0109_CLOSE - 1 == pytest.approx(0.0319, abs=1e-4)
@@ -198,9 +204,9 @@ def test_dividend_curb_and_split(blotter):
     assert blotter.portfolio.cash == pytest.approx(cash)
 
     # 01-11 overnight neutralized portfolio, MSFT valued by the close of 01-09
-    blotter.set_datetime(ts("2019-01-11"))
+    blotter.set_datetime(ts('2019-01-11'))
     blotter.market_open(None)
-    blotter.set_price("close")
+    blotter.set_price('close')
     value = cash + 2 * MSFT_0109_CLOSE
     blotter.order_target_percent('AAPL', -0.5)
     blotter.order_target_percent('MSFT', 0.5)
@@ -223,26 +229,48 @@ def test_dividend_curb_and_split(blotter):
     assert blotter.portfolio.cash == pytest.approx(cash)
 
     # 01-15, 01-14 is filled up automatically
-    date = ts("2019-01-15")
+    date = ts('2019-01-15')
     blotter.set_datetime(date)
     blotter.market_open(None)
-    blotter.set_price("close")
+    blotter.set_price('close')
     blotter.market_close(None)
     blotter.update_portfolio_value()
 
     aapl_basis = AAPL_0111_CLOSE + aapl_commission / aapl_shares
-    msft_cost = (2 * MSFT_0109_CLOSE + per_share_commission(2) - 2 * MSFT_DIVIDEND +
-                 (msft_shares - 2) * MSFT_0111_CLOSE + msft_commission)
+    msft_cost = (
+        2 * MSFT_0109_CLOSE
+        + per_share_commission(2)
+        - 2 * MSFT_DIVIDEND
+        + (msft_shares - 2) * MSFT_0111_CLOSE
+        + msft_commission
+    )
     msft_basis = msft_cost / msft_shares * 15
     expected = pd.Series(
-        [aapl_basis, msft_basis, aapl_shares, msft_split_shares,
-         aapl_shares * AAPL_0115_CLOSE, msft_split_shares * MSFT_0115_CLOSE, cash],
+        [
+            aapl_basis,
+            msft_basis,
+            aapl_shares,
+            msft_split_shares,
+            aapl_shares * AAPL_0115_CLOSE,
+            msft_split_shares * MSFT_0115_CLOSE,
+            cash,
+        ],
         index=pd.MultiIndex.from_tuples(
-            [('avg_px', 'AAPL'), ('avg_px', 'MSFT'), ('shares', 'AAPL'), ('shares', 'MSFT'),
-             ('value', 'AAPL'), ('value', 'MSFT'), ('value', 'cash')]),
-        name=date)
-    pd.testing.assert_series_equal(expected, blotter.get_historical_positions().iloc[-1],
-                                   check_dtype=False)
+            [
+                ('avg_px', 'AAPL'),
+                ('avg_px', 'MSFT'),
+                ('shares', 'AAPL'),
+                ('shares', 'MSFT'),
+                ('value', 'AAPL'),
+                ('value', 'MSFT'),
+                ('value', 'cash'),
+            ]
+        ),
+        name=date,
+    )
+    pd.testing.assert_series_equal(
+        expected, blotter.get_historical_positions().iloc[-1], check_dtype=False
+    )
 
 
 def test_intraday(intraday_loader):
@@ -250,18 +278,18 @@ def test_intraday(intraday_loader):
     blotter.set_commission(0, 0.005, 1)
     blotter.set_slippage(0.005, 0.4)
 
-    datetime1 = ts("2019-01-02 14:35:00")
+    datetime1 = ts('2019-01-02 14:35:00')
     blotter.set_datetime(datetime1)
     blotter.market_open(None)
-    blotter.set_price("open")
-    blotter.set_price("close")
+    blotter.set_price('open')
+    blotter.set_price('close')
     blotter.order_target_percent('AAPL', 0.3)
 
     # intraday orders are not out of market hours
-    datetime2 = ts("2019-01-02 14:40:00")
+    datetime2 = ts('2019-01-02 14:40:00')
     blotter.set_datetime(datetime2)
-    blotter.set_price("close")
-    blotter.order_target_percent('AAPL', 0.)
+    blotter.set_price('close')
+    blotter.order_target_percent('AAPL', 0.0)
     blotter.market_close(None)
     blotter.update_portfolio_value()
 
@@ -278,16 +306,16 @@ def test_intraday_stop_model(intraday_loader):
     # close the position if the price raised 0.2% from the lowest price
     blotter.portfolio.set_stop_model(trading.TrailingStopModel(0.002, blotter.order))
 
-    blotter.set_datetime(ts("2019-01-02 14:45:00"))
+    blotter.set_datetime(ts('2019-01-02 14:45:00'))
     blotter.market_open(None)
-    blotter.set_price("close")
-    blotter.order_target_percent('AAPL', 1.)
+    blotter.set_price('close')
+    blotter.order_target_percent('AAPL', 1.0)
     blotter.update_portfolio_value()
     assert blotter.portfolio.check_stop_trigger() == [False]
     open_price = blotter.positions['AAPL'].last_price
 
-    blotter.set_datetime(ts("2019-01-02 14:50:00"))
-    blotter.set_price("close")
+    blotter.set_datetime(ts('2019-01-02 14:50:00'))
+    blotter.set_price('close')
     blotter.update_portfolio_value()
     assert blotter.positions['AAPL'].last_price >= open_price * 1.002
     assert blotter.portfolio.check_stop_trigger() == [True]
@@ -323,30 +351,45 @@ def test_manual_blotter(tmp_path):
     assert len(blotter.pendings) == 0
 
     # fill_price includes commission
-    expected_txn = pd.DataFrame([['test', 5., 200., 201., 5., 0.],
-                                 ['batch2', 10., 200., 200.5, 5., 0.],
-                                 ['test', -5., 300., 299, 5., 490.]],
-                                columns=['symbol', 'amount', 'price', 'fill_price',
-                                         'commission', 'realized'],
-                                index=pd.DatetimeIndex([day1, day1, day2]))
+    expected_txn = pd.DataFrame(
+        [
+            ['test', 5.0, 200.0, 201.0, 5.0, 0.0],
+            ['batch2', 10.0, 200.0, 200.5, 5.0, 0.0],
+            ['test', -5.0, 300.0, 299, 5.0, 490.0],
+        ],
+        columns=['symbol', 'amount', 'price', 'fill_price', 'commission', 'realized'],
+        index=pd.DatetimeIndex([day1, day1, day2]),
+    )
     expected_txn.index.name = 'index'
     pd.testing.assert_frame_equal(expected_txn, blotter.get_transactions())
 
-    expected_pos = pd.DataFrame([[200.5, 201., 10, 5., 2000., 6990., 1000.],
-                                 [132.666667, nan, 15, nan, 2000., 28500., nan]],
-                                columns=pd.MultiIndex.from_tuples(
-                                    [('avg_px', 'batch2'), ('avg_px', 'test'),
-                                     ('shares', 'batch2'), ('shares', 'test'),
-                                     ('value', 'batch2'), ('value', 'cash'),
-                                     ('value', 'test')]),
-                                index=pd.DatetimeIndex([day1, day2]))
+    expected_pos = pd.DataFrame(
+        [
+            [200.5, 201.0, 10, 5.0, 2000.0, 6990.0, 1000.0],
+            [132.666667, nan, 15, nan, 2000.0, 28500.0, nan],
+        ],
+        columns=pd.MultiIndex.from_tuples(
+            [
+                ('avg_px', 'batch2'),
+                ('avg_px', 'test'),
+                ('shares', 'batch2'),
+                ('shares', 'test'),
+                ('value', 'batch2'),
+                ('value', 'cash'),
+                ('value', 'test'),
+            ]
+        ),
+        index=pd.DatetimeIndex([day1, day2]),
+    )
     expected_pos.index.name = 'index'
     pd.testing.assert_frame_equal(expected_pos, blotter.portfolio.history)
 
     # save and load
     blotter.save()
-    assert sorted(p.name for p in tmp_path.iterdir()) == ['orders_2020-06-01.csv',
-                                                          'orders_2020-06-02.csv']
+    assert sorted(p.name for p in tmp_path.iterdir()) == [
+        'orders_2020-06-01.csv',
+        'orders_2020-06-02.csv',
+    ]
     new_blotter = trading.ManualBlotter(working_dir, 'Asia/Shanghai')
     expected_pos[('shares', 'batch2')] = expected_pos[('shares', 'batch2')].astype('float')
     pd.testing.assert_frame_equal(expected_txn, new_blotter.get_transactions())

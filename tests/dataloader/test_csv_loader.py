@@ -10,8 +10,7 @@ START, END = pd.Timestamp('2019-01-01', tz='UTC'), pd.Timestamp('2019-01-15', tz
 
 
 def read_raw(asset, folder='daily', index_col='date'):
-    return pd.read_csv(DATA_DIR / folder / f'{asset}.csv', index_col=index_col,
-                       parse_dates=True)
+    return pd.read_csv(DATA_DIR / folder / f'{asset}.csv', index_col=index_col, parse_dates=True)
 
 
 def first_last(df, asset, col):
@@ -30,13 +29,13 @@ def values_of(df, asset, col):
 @pytest.mark.parametrize('kwargs', [{}, {'prices_index': 'date'}])
 def test_index_must_be_datetime(kwargs):
     loader = spectre.data.CsvDirLoader(str(DATA_DIR / 'daily'), **kwargs)
-    with pytest.raises(ValueError, match="df must index by datetime.*"):
+    with pytest.raises(ValueError, match='df must index by datetime.*'):
         loader.load(START, END, 0)
 
 
 def test_empty_dir(tmp_path):
     loader = spectre.data.CsvDirLoader(str(tmp_path), prices_index='date', parse_dates=True)
-    with pytest.raises(ValueError, match="There are no files"):
+    with pytest.raises(ValueError, match='There are no files'):
         loader.load()
 
 
@@ -47,8 +46,7 @@ def test_format(daily_loader):
     assert list(df.index.levels[1]) == ['AAPL', 'MSFT']
     # time category is the id of unique datetime
     dates = df.index.get_level_values(0)
-    assert_array_equal(df[daily_loader.time_category].values,
-                       pd.factorize(dates, sort=True)[0])
+    assert_array_equal(df[daily_loader.time_category].values, pd.factorize(dates, sort=True)[0])
 
 
 def test_calender_asset(daily_loader, daily_loader_no_calendar):
@@ -60,15 +58,17 @@ def test_calender_asset(daily_loader, daily_loader_no_calendar):
 
 def test_load_values():
     loader = spectre.data.CsvDirLoader(
-        str(DATA_DIR / 'daily'), calender_asset='AAPL', prices_index='date', parse_dates=True)
+        str(DATA_DIR / 'daily'), calender_asset='AAPL', prices_index='date', parse_dates=True
+    )
 
     df = loader.load(START, END, 0)
     aapl, msft = read_raw('AAPL'), read_raw('MSFT')
     assert first_last(df, 'AAPL', 'close') == (160.35, 158.09)
     assert first_last(df, 'MSFT', 'close') == (100.1, 105.36)
     assert_array_equal(values_of(df, 'AAPL', 'close'), aapl.close['2019-01-01':'2019-01-15'].values)
-    assert_array_equal(values_of(df, 'MSFT', 'close'),
-                       msft.close['2019-01-01':'2019-01-15'].dropna().values)
+    assert_array_equal(
+        values_of(df, 'MSFT', 'close'), msft.close['2019-01-01':'2019-01-15'].dropna().values
+    )
 
     # 2019-01-12 is Saturday
     df = loader.load(pd.Timestamp('2019-01-11', tz='UTC'), pd.Timestamp('2019-01-12', tz='UTC'))
@@ -77,7 +77,8 @@ def test_load_values():
 
 def test_load_backwards():
     loader = spectre.data.CsvDirLoader(
-        str(DATA_DIR / 'daily'), calender_asset='AAPL', prices_index='date', parse_dates=True)
+        str(DATA_DIR / 'daily'), calender_asset='AAPL', prices_index='date', parse_dates=True
+    )
     df = loader.load(START, END, 11)
     # 11 trading days before START
     dates = dates_of(df)
@@ -93,22 +94,26 @@ def test_load_out_of_range(daily_loader):
     with pytest.raises(ValueError, match='cannot be greater than latest time'):
         daily_loader.load(START, pd.Timestamp('2030-01-01', tz='UTC'))
     with pytest.raises(AssertionError, match='There is no data between'):
-        daily_loader.load(pd.Timestamp('2019-01-05', tz='UTC'),
-                          pd.Timestamp('2019-01-06', tz='UTC'))
+        daily_loader.load(
+            pd.Timestamp('2019-01-05', tz='UTC'), pd.Timestamp('2019-01-06', tz='UTC')
+        )
 
 
 def test_earliest_date():
     loader = spectre.data.CsvDirLoader(
-        str(DATA_DIR / 'daily'), prices_index='date', parse_dates=True,
-        earliest_date=pd.Timestamp('2019-01-02'))
+        str(DATA_DIR / 'daily'),
+        prices_index='date',
+        parse_dates=True,
+        earliest_date=pd.Timestamp('2019-01-02'),
+    )
     assert loader.load().index.levels[0][0] == pd.Timestamp('2019-01-02', tz='UTC')
 
 
 def test_zero_prices_are_forward_filled(tmp_path):
     index = ['2019-01-01', '2019-01-02', '2019-01-03']
     ohlcv = ('open', 'high', 'low', 'close', 'volume')
-    a = pd.DataFrame({'date': index, **{c: [1., 0, 3] for c in ohlcv}})
-    b = pd.DataFrame({'date': index, **{c: [0., 2, 0] for c in ohlcv}})
+    a = pd.DataFrame({'date': index, **{c: [1.0, 0, 3] for c in ohlcv}})
+    b = pd.DataFrame({'date': index, **{c: [0.0, 2, 0] for c in ohlcv}})
     a.to_csv(tmp_path / 'A.csv', index=False)
     b.to_csv(tmp_path / 'B.csv', index=False)
     loader = spectre.data.CsvDirLoader(str(tmp_path), prices_index='date', parse_dates=True)
@@ -148,9 +153,9 @@ def test_dividends_and_splits(adjusted_daily_loader):
 def expected_msft_adjusted():
     """MSFT adjusted to the price of 2019-01-15."""
     msft = read_raw('MSFT').loc['2019-01-02':'2019-01-15'].dropna()
-    split = pd.Series(1., index=msft.index)
+    split = pd.Series(1.0, index=msft.index)
     split[:'2019-01-11'] = 15
-    dividend = pd.Series(1., index=msft.index)
+    dividend = pd.Series(1.0, index=msft.index)
     dividend[:'2019-01-09'] = 1 - (0.46 + 0.11) / msft.uClose['2019-01-09']
     return msft.uOpen * split * dividend, msft.uVolume / split
 
@@ -168,7 +173,7 @@ def test_adjusted_column(adjusted_daily_loader):
     assert_almost_equal(values_of(df, 'MSFT', 'vol'), expected_vol.values, decimal=0)
     assert_almost_equal(expected_open.values,
                         [1526.24849, 1548.329113, 1536.244448, 1541.16783, 1563.696033,
-                         1585.47827, 1569.750105, 104.9, 103.19], decimal=4)
+                         1585.47827, 1569.750105, 104.9, 103.19], decimal=4)  # fmt: skip
 
     # AAPL has no dividends and splits in this period
     aapl = read_raw('AAPL').loc['2019-01-02':'2019-01-15']
@@ -211,13 +216,20 @@ def test_rolling_window_is_adjusted(adjusted_daily_loader):
 def test_no_ohlcv():
     start = pd.Timestamp('2019-01-02')
     loader = spectre.data.CsvDirLoader(
-        prices_path=str(DATA_DIR / 'daily'), earliest_date=start, calender_asset='AAPL',
-        ohlcv=None, adjustments=None, prices_index='date', parse_dates=True)
+        prices_path=str(DATA_DIR / 'daily'),
+        earliest_date=start,
+        calender_asset='AAPL',
+        ohlcv=None,
+        adjustments=None,
+        prices_index='date',
+        parse_dates=True,
+    )
     engine = spectre.factors.FactorEngine(loader)
     engine.add(spectre.factors.ColumnDataFactor(inputs=['uOpen']), 'open')
     df = engine.run(start, pd.Timestamp('2019-01-15'), delay_factor=False)
-    assert_array_equal(values_of(df, 'AAPL', 'open'),
-                       read_raw('AAPL').uOpen['2019-01-02':'2019-01-15'].values)
+    assert_array_equal(
+        values_of(df, 'AAPL', 'open'), read_raw('AAPL').uOpen['2019-01-02':'2019-01-15'].values
+    )
 
 
 def test_align_by_time_loader():

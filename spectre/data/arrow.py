@@ -4,6 +4,7 @@
 @license: GPL-3.0-only
 @email: heeroz@gmail.com
 """
+
 import os
 import warnings
 
@@ -13,7 +14,7 @@ from .dataloader import DataLoader
 
 
 class ArrowLoader(DataLoader):
-    """ Read from persistent data. """
+    """Read from persistent data."""
 
     def __init__(self, path: str = None, keep_in_memory: bool = True) -> None:
         if not os.path.exists(path + '.meta'):
@@ -22,6 +23,7 @@ class ArrowLoader(DataLoader):
         # pandas 0.22 has the fastest MultiIndex
         if pd.__version__.startswith('0.22'):
             import feather
+
             cols = feather.read_dataframe(path + '.meta')
         else:
             cols = pd.read_feather(path + '.meta')
@@ -50,9 +52,11 @@ class ArrowLoader(DataLoader):
     @classmethod
     def ingest(cls, source: DataLoader, save_to, force: bool = False) -> None:
         if not force and (source.last_modified <= cls._last_modified(save_to)):
-            warnings.warn("You called `ingest()`, but `source` seems unchanged, "
-                          "no ingestion required. Set `force=True` to re-ingest.",
-                          RuntimeWarning)
+            warnings.warn(
+                'You called `ingest()`, but `source` seems unchanged, '
+                'no ingestion required. Set `force=True` to re-ingest.',
+                RuntimeWarning,
+            )
             return
 
         df = source.test_load()
@@ -76,6 +80,7 @@ class ArrowLoader(DataLoader):
 
         if pd.__version__.startswith('0.22'):
             import feather
+
             df = feather.read_dataframe(self._path)
         else:
             df = pd.read_feather(self._path)

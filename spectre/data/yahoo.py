@@ -4,6 +4,7 @@
 @license: GPL-3.0-only
 @email: heeroz@gmail.com
 """
+
 import datetime
 import os
 import time
@@ -16,7 +17,6 @@ from .csv import CsvDirLoader
 
 
 class YahooDownloader:
-
     @classmethod
     def ingest(cls, start_date: str, save_to: str, symbols: list = None, skip_exists=True) -> None:
         """
@@ -31,15 +31,18 @@ class YahooDownloader:
         import requests
         from tqdm.auto import tqdm
 
-        print("Download prices from yahoo...")
+        print('Download prices from yahoo...')
 
         start_date = pd.to_datetime(start_date, utc=True)
 
         calender_asset = None
         if symbols is None:
-            etf = pd.read_html(requests.get(
-                'https://etfdailynews.com/etf/spy/', headers={'User-agent': 'Mozilla/5.0'}
-            ).text, attrs={'id': 'etfs-that-own'})
+            etf = pd.read_html(
+                requests.get(
+                    'https://etfdailynews.com/etf/spy/', headers={'User-agent': 'Mozilla/5.0'}
+                ).text,
+                attrs={'id': 'etfs-that-own'},
+            )
             symbols = [x for x in etf[0].Symbol.values.tolist() if isinstance(x, str)]
             symbols.extend(['SPY', 'QQQ'])
             calender_asset = 'SPY'
@@ -59,8 +62,10 @@ class YahooDownloader:
                 csv_path = os.path.join(folder, f'{symbol}.csv')
                 if os.path.exists(csv_path) and skip_exists:
                     continue
-                url = "https://query1.finance.yahoo.com/v7/finance/download/" \
-                      f"{symbol}?period1={start}&period2={now}&interval=1d&events={event}&crumb={crumb}"
+                url = (
+                    'https://query1.finance.yahoo.com/v7/finance/download/'
+                    f'{symbol}?period1={start}&period2={now}&interval=1d&events={event}&crumb={crumb}'
+                )
 
                 retry = 0.25
                 while True:
@@ -71,7 +76,9 @@ class YahooDownloader:
                             break
                         retry *= 2
                         if retry >= 5:
-                            print(f'Get {symbol} failed, Over 4 retries, skipped, reason: {req.text}')
+                            print(
+                                f'Get {symbol} failed, Over 4 retries, skipped, reason: {req.text}'
+                            )
                             break
                         else:
                             time.sleep(retry)
@@ -103,7 +110,8 @@ class YahooDownloader:
 
         print('Converting...')
         loader = CsvDirLoader(
-            prices_dir, calender_asset=calender_asset,
+            prices_dir,
+            calender_asset=calender_asset,
             # dividends_path=div_dir,
             # splits_path=sp_dir,
             ohlcv=('Open', 'High', 'Low', 'Close', 'Volume'),
@@ -111,12 +119,20 @@ class YahooDownloader:
             prices_index='Date',
             # dividends_index='Date', splits_index='Date', split_ratio_is_fraction=True,
             parse_dates=True,
-            dtype={'Open': np.float32, 'High': np.float32, 'Low': np.float32,
-                   'Close': np.float32,
-                   'Volume': np.float64, 'Dividends': np.float64})
+            dtype={
+                'Open': np.float32,
+                'High': np.float32,
+                'Low': np.float32,
+                'Close': np.float32,
+                'Volume': np.float64,
+                'Dividends': np.float64,
+            },
+        )
 
         arrow_file = os.path.join(save_to, 'yahoo.feather')
         ArrowLoader.ingest(source=loader, save_to=arrow_file, force=True)
 
-        print(f'Ingest completed! Use `loader = spectre.data.ArrowLoader(r"{arrow_file}")` '
-              'to load your data.')
+        print(
+            f'Ingest completed! Use `loader = spectre.data.ArrowLoader(r"{arrow_file}")` '
+            'to load your data.'
+        )

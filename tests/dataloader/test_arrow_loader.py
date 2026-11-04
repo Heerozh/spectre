@@ -51,5 +51,6 @@ def test_engine_with_arrow_loader(ingested, adjusted_daily_loader):
         engine.add(spectre.factors.MA(5), 'ma5')
         return engine.run('2019-01-01', '2019-01-15')
 
-    pd.testing.assert_frame_equal(run(spectre.data.ArrowLoader(ingested)),
-                                  run(adjusted_daily_loader))
+    pd.testing.assert_frame_equal(
+        run(spectre.data.ArrowLoader(ingested)), run(adjusted_daily_loader)
+    )

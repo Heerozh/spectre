@@ -3,6 +3,7 @@ Shared fixtures for the spectre test-suite.
 
 Run all tests in parallel:  ``pytest -n auto``  (needs pytest-xdist)
 """
+
 import os
 from pathlib import Path
 
@@ -22,23 +23,30 @@ INTRADAY_OHLCV = ('Open', 'High', 'Low', 'Close', 'Volume')
 
 # Datasets which are too big to be included in this repository, tests using them are skipped
 # when they are not found. Defaults to `../historical_data/us/prices/quandl` next to the repo.
-EXTERNAL_DATA_DIR = Path(os.environ.get(
-    'SPECTRE_EXTERNAL_DATA',
-    Path(__file__).parents[2] / 'historical_data' / 'us' / 'prices' / 'quandl'))
+EXTERNAL_DATA_DIR = Path(
+    os.environ.get(
+        'SPECTRE_EXTERNAL_DATA',
+        Path(__file__).parents[2] / 'historical_data' / 'us' / 'prices' / 'quandl',
+    )
+)
 
 
 def pytest_addoption(parser):
-    parser.addoption('--run-network', action='store_true', default=False,
-                     help='run tests that download data from the internet')
-    parser.addoption('--run-slow', action='store_true', default=False,
-                     help='run slow tests')
+    parser.addoption(
+        '--run-network',
+        action='store_true',
+        default=False,
+        help='run tests that download data from the internet',
+    )
+    parser.addoption('--run-slow', action='store_true', default=False, help='run slow tests')
 
 
 def pytest_collection_modifyitems(config, items):
     skip_cuda = pytest.mark.skip(reason='CUDA is not available')
     skip_network = pytest.mark.skip(reason='needs internet, use --run-network to run')
-    skip_slow = pytest.mark.skip(reason='TODO: slow test, split and simplify it. '
-                                        'Use --run-slow to run')
+    skip_slow = pytest.mark.skip(
+        reason='TODO: slow test, split and simplify it. Use --run-slow to run'
+    )
     has_cuda = torch.cuda.is_available()
     run_network = config.getoption('--run-network')
     run_slow = config.getoption('--run-slow')
@@ -84,9 +92,13 @@ def daily_loader_no_calendar():
 
 def make_adjusted_daily_loader(**kwargs):
     return make_daily_loader(
-        dividends_path=str(DATA_DIR / 'dividends'), splits_path=str(DATA_DIR / 'splits'),
-        adjustments=('amount', 'ratio'), dividends_index='exDate', splits_index='exDate',
-        **kwargs)
+        dividends_path=str(DATA_DIR / 'dividends'),
+        splits_path=str(DATA_DIR / 'splits'),
+        adjustments=('amount', 'ratio'),
+        dividends_index='exDate',
+        splits_index='exDate',
+        **kwargs,
+    )
 
 
 @pytest.fixture(scope='session')
@@ -104,8 +116,12 @@ def adjusted_daily_loader_no_calendar():
 def intraday_loader():
     """5 minutes bars of AAPL and MSFT, from 2018-12 to 2019-01."""
     return spectre.data.CsvDirLoader(
-        str(DATA_DIR / '5mins'), prices_by_year=True, prices_index='Date',
-        ohlcv=INTRADAY_OHLCV, parse_dates=True)
+        str(DATA_DIR / '5mins'),
+        prices_by_year=True,
+        prices_index='Date',
+        ohlcv=INTRADAY_OHLCV,
+        parse_dates=True,
+    )
 
 
 # ------------------------------------ engines ------------------------------------
@@ -128,6 +144,7 @@ def external_data(file_name):
     """Path of the external data file, skips the test if not found."""
     path = EXTERNAL_DATA_DIR / file_name
     if not path.exists():
-        pytest.skip(f'external data {path} not found, set SPECTRE_EXTERNAL_DATA to the folder '
-                    'contains it')
+        pytest.skip(
+            f'external data {path} not found, set SPECTRE_EXTERNAL_DATA to the folder contains it'
+        )
     return path

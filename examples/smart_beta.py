@@ -24,7 +24,7 @@ class SmartBeta(trading.CustomAlgorithm):
         sp500 = factors.AverageDollarVolume(win=63)
         # our alpha is put more weight on NVDA! StaticAssets return True(1) on NVDA
         # and False(0) on others
-        alpha = sp500 * (factors.StaticAssets({'NVDA'})*5 + 1)
+        alpha = sp500 * (factors.StaticAssets({'NVDA'}) * 5 + 1)
         engine.add(alpha.to_weight(demean=False), 'weight')
 
         # schedule rebalance before market close
@@ -47,17 +47,17 @@ class SmartBeta(trading.CustomAlgorithm):
 
 if __name__ == '__main__':
     import plotly.io as pio
-    pio.renderers.default = "browser"
+
+    pio.renderers.default = 'browser'
 
     import argparse
+
     parser = argparse.ArgumentParser()
-    parser.add_argument("--download", help="download yahoo data")
+    parser.add_argument('--download', help='download yahoo data')
     args = parser.parse_args()
 
     if args.download:
-        YahooDownloader.ingest(
-            start_date="2001", save_to="./yahoo",
-            symbols=None, skip_exists=True)
+        YahooDownloader.ingest(start_date='2001', save_to='./yahoo', symbols=None, skip_exists=True)
 
     loader = ArrowLoader('./yahoo/yahoo.feather')
     results = trading.run_backtest(loader, SmartBeta, '2013-01-01', '2018-01-01')

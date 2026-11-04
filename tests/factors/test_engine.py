@@ -36,7 +36,7 @@ def test_run_raw_index_without_filter(engine):
 
 def test_no_trading_day(engine):
     engine.add(factors.SMA(2), 'test')
-    with pytest.raises(AssertionError, match="There is no data between.*"):
+    with pytest.raises(AssertionError, match='There is no data between.*'):
         engine.run('2019-01-05', '2019-01-06')
 
 
@@ -50,7 +50,7 @@ def test_delay_factor(engine):
     engine.add(factors.OHLCV.open, 'open')
     df = engine.run(ref.START, ref.END)
     # close is available after market closed, so it's delayed, open is not
-    aapl = ref.daily_prices('AAPL').loc['2019-01-03':ref.END]
+    aapl = ref.daily_prices('AAPL').loc['2019-01-03' : ref.END]
     previous = ref.daily_prices('AAPL').loc['2019-01-02':'2019-01-14']
     assert_array_equal(df.xs('AAPL', level=1).close.values, previous.close.values)
     assert_array_equal(df.xs('AAPL', level=1).open.values, aapl.open.values)
@@ -82,12 +82,21 @@ def test_lookahead_bias(engine):
 def test_align_by_time(loader_aligned):
     if loader_aligned:
         loader = spectre.data.CsvDirLoader(
-            str(ref.DATA_DIR / 'daily'), calender_asset='AAPL', ohlcv=ref.DAILY_OHLCV,
-            prices_index='date', parse_dates=True, align_by_time=True)
+            str(ref.DATA_DIR / 'daily'),
+            calender_asset='AAPL',
+            ohlcv=ref.DAILY_OHLCV,
+            prices_index='date',
+            parse_dates=True,
+            align_by_time=True,
+        )
     else:
         loader = spectre.data.CsvDirLoader(
-            str(ref.DATA_DIR / 'daily'), calender_asset='AAPL', ohlcv=ref.DAILY_OHLCV,
-            prices_index='date', parse_dates=True)
+            str(ref.DATA_DIR / 'daily'),
+            calender_asset='AAPL',
+            ohlcv=ref.DAILY_OHLCV,
+            prices_index='date',
+            parse_dates=True,
+        )
     engine = spectre.factors.FactorEngine(loader)
     engine.align_by_time = not loader_aligned
     engine.add(close, 'close')
@@ -96,9 +105,9 @@ def test_align_by_time(loader_aligned):
 
     # MSFT has a nan row on 2019-01-10, so all assets have the same number of rows
     assert len(df.xs('MSFT', level=1)) == len(df.xs('AAPL', level=1)) == 9
-    assert np.isnan(df.loc[("2019-01-11", 'MSFT'), 'close'])
+    assert np.isnan(df.loc[('2019-01-11', 'MSFT'), 'close'])
     # mean of 2019-01-09 and nan
-    assert df.loc[("2019-01-11", 'MSFT'), 'ma'] == df.loc[("2019-01-10", 'MSFT'), 'close']
+    assert df.loc[('2019-01-11', 'MSFT'), 'ma'] == df.loc[('2019-01-10', 'MSFT'), 'close']
 
 
 def test_same_factor_in_two_engines(daily_loader):
@@ -131,7 +140,7 @@ def test_ref_count_after_run(engine_no_calendar):
     t = factors.OHLCV.volume.top(1)
     b = factors.OHLCV.volume.bottom(1)
     engine_no_calendar.add([t, t & b, t | b, ~t], ['t', 't&b', 't|b', '~t'])
-    engine_no_calendar.run("2019-01-01", "2019-01-05")
+    engine_no_calendar.run('2019-01-01', '2019-01-05')
     for f in engine_no_calendar.factors.values():
         check_ref_count_cleared(f)
 
@@ -172,19 +181,19 @@ def test_keep_cache(engine_no_calendar):
     ma5._keep_cache = True
 
     engine.add(ma5, 'a')
-    engine.run("2019-01-01", "2019-01-05")
+    engine.run('2019-01-01', '2019-01-05')
     shape1 = ma5._cache.shape
 
     # cache is kept when ma5 is not used
     engine.remove_all_factors()
     engine.add(factors.MA(10), 'a')
-    engine.run("2019-01-01", "2019-01-05")
+    engine.run('2019-01-01', '2019-01-05')
     assert ma5._cache.shape == shape1
 
     # longer history loaded by MA(10), so cache invalidated and recalculated
     engine.remove_all_factors()
     engine.add(ma5, 'a')
-    engine.run("2019-01-01", "2019-01-05")
+    engine.run('2019-01-01', '2019-01-05')
     assert ma5._cache.shape[0] == shape1[0]
     assert ma5._cache.shape[1] > shape1[1]
     assert tuple(ma5._cache.shape) == (2, 13)
@@ -210,7 +219,7 @@ def test_get_price_matrix(engine):
     engine.set_filter(factors.StaticAssets({'MSFT'}))
     prices = engine.get_price_matrix(ref.START, ref.END)
     assert list(prices.columns) == ['MSFT']
-    msft = ref.daily_prices('MSFT').close.loc['2019-01-02':ref.END]
+    msft = ref.daily_prices('MSFT').close.loc['2019-01-02' : ref.END]
     assert_array_equal(prices.MSFT.dropna().values, msft.values)
 
 
@@ -218,12 +227,18 @@ def test_full_run(engine):
     engine.add(factors.MA(5) - factors.MA(10), 'ma_cross')
     with pytest.warns(RuntimeWarning, match='mask parameter not set'):
         factor_data, mean_returns = engine.full_run(
-            '2018-06-01', ref.END, periods=(1, 5), quantiles=2, filter_zscore=None,
-            preview=False)
+            '2018-06-01', ref.END, periods=(1, 5), quantiles=2, filter_zscore=None, preview=False
+        )
 
     assert set(factor_data.columns) == {
-        ('Demeaned', '1D'), ('Demeaned', '5D'), ('Returns', '1D'), ('Returns', '5D'),
-        ('ma_cross', 'factor'), ('ma_cross', 'factor_quantile'), ('ma_cross', 'factor_weight')}
+        ('Demeaned', '1D'),
+        ('Demeaned', '5D'),
+        ('Returns', '1D'),
+        ('Returns', '5D'),
+        ('ma_cross', 'factor'),
+        ('ma_cross', 'factor_quantile'),
+        ('ma_cross', 'factor_weight'),
+    }
     # forward returns at the close of the day
     aapl = ref.daily_prices('AAPL').close
     returns = factor_data.xs('AAPL', level=1)[('Returns', '5D')]
@@ -238,6 +253,7 @@ def test_full_run(engine):
 
 def test_factors_reset_after_error(engine):
     """Shared factors (like OHLCV.close) should not keep the data of a failed run."""
+
     class Fail(factors.CustomFactor):
         inputs = [factors.MarketReturn()]
 
@@ -253,9 +269,10 @@ def test_factors_reset_after_error(engine):
     engine.remove_all_factors()
     engine.add(factors.MarketReturn(), 'market_return')
     result = engine.run(ref.START, ref.END)
-    expected = (ref.daily_prices('AAPL').close / ref.daily_prices('AAPL').close.shift(1) - 1)
+    expected = ref.daily_prices('AAPL').close / ref.daily_prices('AAPL').close.shift(1) - 1
     assert result.xs('AAPL', level=1).market_return.iloc[6] == pytest.approx(
-        expected.loc['2019-01-10'])
+        expected.loc['2019-01-10']
+    )
 
 
 def test_settings_invalidate_cache(engine):

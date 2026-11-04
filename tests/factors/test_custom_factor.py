@@ -52,13 +52,13 @@ class WrongShape(factors.CustomFactor):
 
 def test_wrong_return_shape(engine_no_calendar):
     engine_no_calendar.add(WrongShape(), 'test2')
-    with pytest.raises(ValueError, match="The return data shape.*test2.*"):
+    with pytest.raises(ValueError, match='The return data shape.*test2.*'):
         engine_no_calendar.run('2019-01-11', '2019-01-15', False)
 
 
 def test_duplicate_name(engine_no_calendar):
     engine_no_calendar.add(Arange(), 'test1')
-    with pytest.raises(KeyError, match=".*exists.*"):
+    with pytest.raises(KeyError, match='.*exists.*'):
         engine_no_calendar.add(Arange(), 'test1')
     engine_no_calendar.add(Arange(), 'test1', replace=True)
 

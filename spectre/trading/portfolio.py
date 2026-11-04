@@ -4,6 +4,7 @@
 @license: GPL-3.0-only
 @email: heeroz@gmail.com
 """
+
 from collections.abc import Callable
 
 import numpy as np
@@ -47,8 +48,9 @@ class Portfolio:
             funds = pd.DataFrame(self._funds_change)
             # funds transferred before the first datetime is set have no date (None or NaT),
             # convert to datetime explicitly, or it may be an object index which can't align.
-            funds['index'] = pd.to_datetime([value.index[0] if pd.isna(date) else date
-                                             for date in funds['index']])
+            funds['index'] = pd.to_datetime(
+                [value.index[0] if pd.isna(date) else date for date in funds['index']]
+            )
             # sum up multiple transfers on the same day, or the result has duplicate dates.
             funds = funds.groupby('index').amount.sum()
             return value.sub(funds, fill_value=0) / value.shift(1) - 1
@@ -81,7 +83,7 @@ class Portfolio:
         return self._current_dt
 
     def __repr__(self):
-        return "<Portfolio>" + str(self.history)[11:]
+        return '<Portfolio>' + str(self.history)[11:]
 
     def clear(self):
         self.__init__(self.stop_model)
@@ -124,17 +126,19 @@ class Portfolio:
             return 0
         if asset in self._positions:
             empty, realized = self._positions[asset].update(
-                amount, fill_price, commission, self._current_dt)
+                amount, fill_price, commission, self._current_dt
+            )
             if empty:
                 del self._positions[asset]
             return realized
         else:
             self._positions[asset] = Position(
-                amount, fill_price, commission, self._current_dt, self.stop_model)
+                amount, fill_price, commission, self._current_dt, self.stop_model
+            )
             return 0
 
     def update_cash(self, amount, is_funds=False):
-        """ is_funds: Is this cash update related to funds transfer, (deposits/withdraw) """
+        """is_funds: Is this cash update related to funds transfer, (deposits/withdraw)"""
         assert amount == amount
         self._cash += amount
         if is_funds:

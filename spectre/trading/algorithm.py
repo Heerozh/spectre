@@ -4,6 +4,7 @@
 @license: GPL-3.0-only
 @email: heeroz@gmail.com
 """
+
 import gc
 import os
 from abc import ABC
@@ -28,7 +29,7 @@ class Recorder:
         if 'date' in table:
             raise ValueError('`date` is reserved key for record.')
         if np.any([isinstance(v, np.ndarray) for v in table.values()]):
-            raise ValueError("recorder does not support np.ndarray datatype")
+            raise ValueError('recorder does not support np.ndarray datatype')
         table['date'] = date
         self._records.append(table)
 
@@ -44,6 +45,7 @@ class CustomAlgorithm(EventReceiver, ABC):
     """
     Base class for custom trading algorithm.
     """
+
     def __init__(self, blotter: BaseBlotter, **data_sources: DataLoader):
         """
         :param blotter: order management system for this algorithm.
@@ -51,7 +53,7 @@ class CustomAlgorithm(EventReceiver, ABC):
         """
         super().__init__()
         if not data_sources:
-            raise ValueError("At least one data source.")
+            raise ValueError('At least one data source.')
 
         self._history_window = pd.DateOffset(0)
         self._data = None
@@ -81,8 +83,10 @@ class CustomAlgorithm(EventReceiver, ABC):
             name = next(iter(self._engines))
 
         if name not in self._engines:
-            raise KeyError(f"Data source '{name}' not found, please pass in the algorithm "
-                           f"initialization: `YourAlgorithm({name}=DataLoader())`")
+            raise KeyError(
+                f"Data source '{name}' not found, please pass in the algorithm "
+                f'initialization: `YourAlgorithm({name}=DataLoader())`'
+            )
         return self._engines[name]
 
     def get_price_matrix(self, length: pd.DateOffset, name: str = None, prices=OHLCV.close):
@@ -90,10 +94,13 @@ class CustomAlgorithm(EventReceiver, ABC):
             name = next(iter(self._engines))
 
         if name not in self._engines:
-            raise KeyError(f"Data source '{name}' not found, please pass in the algorithm "
-                           f"initialization: `YourAlgorithm({name}=DataLoader())`")
+            raise KeyError(
+                f"Data source '{name}' not found, please pass in the algorithm "
+                f'initialization: `YourAlgorithm({name}=DataLoader())`'
+            )
         return self._engines[name].get_price_matrix(
-            self._current_dt - length, self._current_dt, prices=prices)
+            self._current_dt - length, self._current_dt, prices=prices
+        )
 
     def set_datetime(self, dt: pd.Timestamp) -> None:
         self._current_dt = dt
@@ -142,7 +149,7 @@ class CustomAlgorithm(EventReceiver, ABC):
 
         bench = None
         if isinstance(benchmark, pd.Series):
-            bench = benchmark.loc[returns.index[0]:returns.index[-1]]
+            bench = benchmark.loc[returns.index[0] : returns.index[-1]]
         elif isinstance(benchmark, str):
             engine = self.get_factor_engine()
             filter_ = engine.get_filter()
@@ -157,8 +164,14 @@ class CustomAlgorithm(EventReceiver, ABC):
             else:
                 bench = None
 
-        fig = cumulative_returns_fig(returns, self._results.positions,  self._results.transactions,
-                                     bench, annual_risk_free, start=start)
+        fig = cumulative_returns_fig(
+            returns,
+            self._results.positions,
+            self._results.transactions,
+            bench,
+            annual_risk_free,
+            start=start,
+        )
         return fig
 
     def plot(self, annual_risk_free=0.04, benchmark: pd.Series | str = None) -> None:
@@ -170,14 +183,16 @@ class CustomAlgorithm(EventReceiver, ABC):
         history = self._data
         if isinstance(self._data, dict):
             if self._history_window is not None and self._history_window.n != 0:
-                history = {k: v.loc[(self._current_dt - self._history_window):]
-                           for k, v in self._data.items()}
+                history = {
+                    k: v.loc[(self._current_dt - self._history_window) :]
+                    for k, v in self._data.items()
+                }
         elif self._data is None:
             # data not ready
             return
         else:
             if self._history_window is not None and self._history_window.n != 0:
-                history = self._data.loc[(self._current_dt - self._history_window):]
+                history = self._data.loc[(self._current_dt - self._history_window) :]
         self._rebalance_callback(self._last_row, history)
 
     def schedule_rebalance(self, event: Event):
@@ -201,8 +216,9 @@ class CustomAlgorithm(EventReceiver, ABC):
             last_dt = df.index.get_level_values(0)[-1]
             return df, df.loc[last_dt]
         else:
-            dfs = {name: engine.run(start, end, delay_factor)
-                   for name, engine in self._engines.items()}
+            dfs = {
+                name: engine.run(start, end, delay_factor) for name, engine in self._engines.items()
+            }
             lasts = {k: v.loc[v.index.get_level_values(0)[-1]] for k, v in dfs.items()}
             return dfs, lasts
 
@@ -219,11 +235,12 @@ class CustomAlgorithm(EventReceiver, ABC):
         self._results = CustomAlgorithm.Results(
             returns=self.blotter.get_returns(),
             positions=self.blotter.get_historical_positions(),
-            transactions=self.blotter.get_transactions())
+            transactions=self.blotter.get_transactions(),
+        )
         self.terminate(self._recorder.to_df())
 
     def initialize(self):
-        raise NotImplementedError("abstractmethod")
+        raise NotImplementedError('abstractmethod')
 
     def terminate(self, records: pd.DataFrame) -> None:
         pass
@@ -238,7 +255,7 @@ class SimulationEventManager(EventManager):
 
     @classmethod
     def _get_most_granular(cls, data):
-        freq = {k: min(v.index.levels[0][1:]-v.index.levels[0][:-1]) for k, v in data.items()}
+        freq = {k: min(v.index.levels[0][1:] - v.index.levels[0][:-1]) for k, v in data.items()}
         return data[min(freq, key=freq.get)]
 
     @classmethod
@@ -286,7 +303,7 @@ class SimulationEventManager(EventManager):
     def mock_data(self, data, datetime):
         def _mock_one(_getter):
             last = _getter.get_as_df(datetime)
-            head = _getter.source.iloc[:_getter.last_row_slice.stop]
+            head = _getter.source.iloc[: _getter.last_row_slice.stop]
             return last, head
 
         if isinstance(data, dict):
@@ -315,7 +332,7 @@ class SimulationEventManager(EventManager):
         # process data
         ticks = self.get_data_ticks(data, start)
         if len(ticks) == 0:
-            raise ValueError("No data returned, please set `start`, `end` time correctly")
+            raise ValueError('No data returned, please set `start`, `end` time correctly')
         data = self.wrap_data(data, DataLoaderFastGetter)
         # mock CustomAlgorithm
         alg.run_engine = lambda *args, **kwargs: (self._mocked_data, self._mocked_last)
@@ -367,7 +384,7 @@ class SimulationEventManager(EventManager):
         start, end = pd.to_datetime(start, utc=True), pd.to_datetime(end, utc=True)
 
         if not self._subscribers:
-            raise ValueError("At least one subscriber.")
+            raise ValueError('At least one subscriber.')
 
         for r, events in self._subscribers.items():
             # clear scheduled events

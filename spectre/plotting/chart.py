@@ -4,6 +4,7 @@
 @license: GPL-3.0-only
 @email: heeroz@gmail.com
 """
+
 import warnings
 
 
@@ -14,8 +15,7 @@ def plot_chart(df_prices, ohlcv, df_factor, trace_types=None, styles=None, inlin
     asset_group = df_factor.index.get_level_values(1).remove_unused_categories()
     dfs = list(df_factor.groupby(asset_group))
     if len(dfs) > 5:
-        warnings.warn(f"Warning!! Too many assets {len(dfs)}, only plotting top 5.",
-                      RuntimeWarning)
+        warnings.warn(f'Warning!! Too many assets {len(dfs)}, only plotting top 5.', RuntimeWarning)
         dfs = dfs[:5]
     dfs = [(asset, factors) for (asset, factors) in dfs if factors.shape[0] > 0]
     trace_types = trace_types and trace_types or {}
@@ -53,22 +53,26 @@ def plot_chart(df_prices, ohlcv, df_factor, trace_types=None, styles=None, inlin
         start, end = factors.index[0], factors.index[-1]
 
         prices = df_prices.loc[(slice(start, end), asset), :].droplevel(level=1)
-        index = prices.index.strftime("%y-%m-%d %H%M%S")
+        index = prices.index.strftime('%y-%m-%d %H%M%S')
         if ohlcv[0] is not None:
             # add candlestick
             fig.add_trace(
-                go.Candlestick(x=index, open=prices[ohlcv[0]], high=prices[ohlcv[1]],
-                               low=prices[ohlcv[2]], close=prices[ohlcv[3]], **styles['price']))
-            fig.add_trace(
-                go.Bar(x=index, y=prices[ohlcv[4]], **styles['volume']))
+                go.Candlestick(
+                    x=index,
+                    open=prices[ohlcv[0]],
+                    high=prices[ohlcv[1]],
+                    low=prices[ohlcv[2]],
+                    close=prices[ohlcv[3]],
+                    **styles['price'],
+                )
+            )
+            fig.add_trace(go.Bar(x=index, y=prices[ohlcv[4]], **styles['volume']))
         else:
             # add line plot
             if ohlcv[3] is not None:
-                fig.add_trace(
-                    go.Scatter(x=index, y=prices[ohlcv[3]], **styles['price']))
+                fig.add_trace(go.Scatter(x=index, y=prices[ohlcv[3]], **styles['price']))
             if ohlcv[4] is not None:
-                fig.add_trace(
-                    go.Scatter(x=index, y=prices[ohlcv[4]], **styles['volume']))
+                fig.add_trace(go.Scatter(x=index, y=prices[ohlcv[4]], **styles['volume']))
 
         # add factors
         for col in factors.columns:
@@ -79,7 +83,7 @@ def plot_chart(df_prices, ohlcv, df_factor, trace_types=None, styles=None, inlin
             style['name'] = style.get('name', col)
             fig.add_trace(getattr(go, trace_type)(x=index, y=factors[col], **style))
 
-        new_axis = dict(anchor="free", overlaying="y", side="right", position=1)
+        new_axis = dict(anchor='free', overlaying='y', side='right', position=1)
         alpha_ordered_axises = list(y_axes)
         alpha_ordered_axises.sort()
         for y_axis in alpha_ordered_axises:
@@ -89,10 +93,11 @@ def plot_chart(df_prices, ohlcv, df_factor, trace_types=None, styles=None, inlin
 
         fig.update_layout(xaxis=dict(domain=[0, x_right]))
         fig.update_xaxes(rangeslider=dict(visible=False))
-        fig.update_yaxes(showgrid=False, scaleanchor="x", scaleratio=1)
+        fig.update_yaxes(showgrid=False, scaleanchor='x', scaleratio=1)
         fig.update_layout(legend=dict(xanchor='right', x=x_right, y=1, bgcolor='rgba(0,0,0,0)'))
-        fig.update_layout(height=styles['height'], barmode='group', bargap=0.5, margin={'t': 50},
-                          title=asset)
+        fig.update_layout(
+            height=styles['height'], barmode='group', bargap=0.5, margin={'t': 50}, title=asset
+        )
 
         if inline:
             fig.show()

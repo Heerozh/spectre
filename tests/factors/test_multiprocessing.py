@@ -28,15 +28,19 @@ def test_cpu_parallel_factor(engine_no_calendar, device, multiprocess):
     engine = engine_no_calendar
     if device == 'cuda':
         engine.to_cuda()
-    engine.add(MeanOfProduct(win=10, core=3, inputs=[adjusted_open, adjusted_close],
-                             multiprocess=multiprocess), 'f')
+    engine.add(
+        MeanOfProduct(
+            win=10, core=3, inputs=[adjusted_open, adjusted_close], multiprocess=multiprocess
+        ),
+        'f',
+    )
     engine.add(factors.MA(win=10, inputs=[adjusted_open * adjusted_close]), 'f2')
-    result = engine.run("2018-12-25", "2019-01-05")
+    result = engine.run('2018-12-25', '2019-01-05')
     assert_almost_equal(result.f.values, result.f2.values)
     assert not np.isnan(result.f.values).all()
 
     # one row
-    result = engine.run("2019-01-04", "2019-01-05")
+    result = engine.run('2019-01-04', '2019-01-05')
     assert_almost_equal(result.f.values, result.f2.values)
 
 
@@ -46,5 +50,5 @@ def test_nested_window(engine):
     engine.align_by_time = True
     engine.add(MeanOfProduct(win=10, core=3, inputs=[factors.MA(3), factors.MA(4)]), 'f')
     engine.add(factors.MA(win=10, inputs=[factors.MA(3) * factors.MA(4)]), 'f2')
-    result = engine.run("2019-01-04", "2019-01-15")
+    result = engine.run('2019-01-04', '2019-01-15')
     assert_almost_equal(result.f.values, result.f2.values)

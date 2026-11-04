@@ -4,6 +4,7 @@
 @license: GPL-3.0-only
 @email: heeroz@gmail.com
 """
+
 from collections.abc import Sequence
 
 import numpy as np
@@ -17,7 +18,8 @@ from .statistical import STDDEV
 
 
 class BollingerBands(CustomFactor):
-    """ usage: BBANDS(win, inputs=[OHLCV.close, k]), k is constant normally 2 """
+    """usage: BBANDS(win, inputs=[OHLCV.close, k]), k is constant normally 2"""
+
     inputs = (OHLCV.close, 2)
     win = 20
     _min_win = 2
@@ -25,14 +27,18 @@ class BollingerBands(CustomFactor):
     def __init__(self, win: int | None = None, inputs: Sequence[BaseFactor] | None = None):
         super().__init__(win, inputs)
         if len(self.inputs) < 2:
-            raise ValueError("BollingerBands's inputs needs 2 inputs, "
-                             "inputs=[OHLCV.close, k]), k is constant normally 2.")
+            raise ValueError(
+                "BollingerBands's inputs needs 2 inputs, "
+                'inputs=[OHLCV.close, k]), k is constant normally 2.'
+            )
         comm_inputs = (self.inputs[0],)
         k = self.inputs[1]
-        self.inputs = (self.inputs[0],
-                       MA(win=self.win, inputs=comm_inputs),
-                       STDDEV(win=self.win, inputs=comm_inputs),
-                       k)
+        self.inputs = (
+            self.inputs[0],
+            MA(win=self.win, inputs=comm_inputs),
+            STDDEV(win=self.win, inputs=comm_inputs),
+            k,
+        )
         self.win = 1
 
     def compute(self, closes, ma, std, k):
@@ -56,12 +62,14 @@ class MovingAverageConvergenceDivergenceSignal(EMA):
     or
     engine.add( MACD().normalized() )
     """
+
     inputs = (OHLCV.close,)
     win = 9
     _min_win = 2
 
-    def __init__(self, fast=12, slow=26, sign=9, inputs: Sequence[BaseFactor] | None = None,
-                 adjust=False):
+    def __init__(
+        self, fast=12, slow=26, sign=9, inputs: Sequence[BaseFactor] | None = None, adjust=False
+    ):
         super().__init__(sign, inputs, adjust)
         self.inputs = (EMA(inputs=self.inputs, span=fast) - EMA(inputs=self.inputs, span=slow),)
 
@@ -74,6 +82,7 @@ class MovingAverageConvergenceDivergenceSignal(EMA):
 
 class TrueRange(CustomFactor):
     """ATR = MA(14, inputs=(TrueRange(),))"""
+
     inputs = (OHLCV.high, OHLCV.low, OHLCV.close)
     win = 2
     _min_win = 2
@@ -87,7 +96,8 @@ class TrueRange(CustomFactor):
 
 
 class RSI(CustomFactor):
-    """ usage: RSI(win, inputs=[OHLCV.close]) """
+    """usage: RSI(win, inputs=[OHLCV.close])"""
+
     inputs = (OHLCV.close,)
     win = 14
     _min_win = 2
@@ -113,6 +123,7 @@ class RSI(CustomFactor):
             # Wilder's RSI
             # up = up.ewm(com=14-1, adjust=False).mean()
             # down = down.ewm(com=14-1, adjust=False).mean().abs()
+
         return closes.agg(_rsi)
 
     def normalized(self):
@@ -120,7 +131,8 @@ class RSI(CustomFactor):
 
 
 class FastStochasticOscillator(CustomFactor):
-    """ usage: STOCHF(win, inputs=[OHLCV.high, OHLCV.low, OHLCV.close]) """
+    """usage: STOCHF(win, inputs=[OHLCV.high, OHLCV.low, OHLCV.close])"""
+
     inputs = (OHLCV.high, OHLCV.low, OHLCV.close)
     win = 14
     _min_win = 2

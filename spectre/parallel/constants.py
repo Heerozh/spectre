@@ -15,7 +15,8 @@ class TensorConstant:
                 return w[:size]
 
         self.linspace_cache[dtype] = new = torch.linspace(
-            0.0, 0.9, size, dtype=dtype, device=self.device)
+            0.0, 0.9, size, dtype=dtype, device=self.device
+        )
         return new
 
     def r_linspace(self, size, dtype):
@@ -25,7 +26,8 @@ class TensorConstant:
                 return w[:size]
 
         self.r_linspace_cache[dtype] = new = torch.linspace(
-            0.9, 0.0, size, dtype=dtype, device=self.device)
+            0.9, 0.0, size, dtype=dtype, device=self.device
+        )
         return new
 
     def arange(self, size, dtype):
@@ -52,8 +54,3 @@ class DeviceConstant:
 
         cls.constants[device] = new = TensorConstant(device)
         return new
-
-
-
-
-

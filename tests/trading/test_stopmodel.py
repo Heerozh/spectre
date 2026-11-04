@@ -42,8 +42,9 @@ def test_trailing_stop_lower_bound():
 
 def test_trailing_stop_callback():
     calls = []
-    tracker = trading.TrailingStopModel(-0.1, lambda *args: calls.append(args) or 'fired') \
-        .new_tracker(10, False)
+    tracker = trading.TrailingStopModel(
+        -0.1, lambda *args: calls.append(args) or 'fired'
+    ).new_tracker(10, False)
     tracker.update_price(8)
     assert tracker.check_trigger('AAPL', -10) == 'fired'
     assert calls == [('AAPL', -10)]
@@ -51,7 +52,8 @@ def test_trailing_stop_callback():
 
 def pnl_decay_tracker(ratio, pnl_target, position):
     tracker = trading.PnLDecayTrailingStopModel(ratio, pnl_target, True).new_tracker(
-        position.last_price, False)
+        position.last_price, False
+    )
     tracker.tracking_position = position
     return tracker
 
@@ -108,8 +110,9 @@ def test_pnl_decay_long_stop_gain():
 
 def test_time_decay_stop():
     pos = trading.Position(10, 9, 0, pd.Timestamp('2014-01-02', tz='UTC'), None)
-    tracker = trading.TimeDecayTrailingStopModel(-0.1, pd.Timedelta(days=5), True) \
-        .new_tracker(pos.last_price, False)
+    tracker = trading.TimeDecayTrailingStopModel(-0.1, pd.Timedelta(days=5), True).new_tracker(
+        pos.last_price, False
+    )
     tracker.tracking_position = pos
     assert tracker.stop_price == pytest.approx(9 * 0.9)
 
@@ -119,4 +122,4 @@ def test_time_decay_stop():
 
     # 3 of 5 days passed
     pos.current_dt = pd.Timestamp('2014-01-05', tz='UTC')
-    assert tracker.stop_price == pytest.approx(9 * (1 - 0.1 * 0.05 ** 0.6))
+    assert tracker.stop_price == pytest.approx(9 * (1 - 0.1 * 0.05**0.6))

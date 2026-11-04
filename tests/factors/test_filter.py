@@ -23,8 +23,17 @@ def test_filter_without_calendar(engine_no_calendar):
     engine_no_calendar.add(volume, 'not_used')
     engine_no_calendar.set_filter(volume.top(1))
     result = engine_no_calendar.run(ref.START, ref.END)
-    assert assets_of(result) == ['MSFT', 'AAPL', 'AAPL', 'AAPL', 'AAPL', 'AAPL', 'AAPL',
-                                 'MSFT', 'AAPL']
+    assert assets_of(result) == [
+        'MSFT',
+        'AAPL',
+        'AAPL',
+        'AAPL',
+        'AAPL',
+        'AAPL',
+        'AAPL',
+        'MSFT',
+        'AAPL',
+    ]
 
 
 def test_filter_does_not_affect_inputs(engine):
@@ -33,9 +42,18 @@ def test_filter_does_not_affect_inputs(engine):
     result = engine.run(ref.START, ref.END)
 
     # dates of each asset when it has the highest volume (delayed)
-    expected_dates = {'AAPL': ['2019-01-04', '2019-01-07', '2019-01-08', '2019-01-09',
-                               '2019-01-10', '2019-01-11', '2019-01-15'],
-                      'MSFT': ['2019-01-03', '2019-01-14']}
+    expected_dates = {
+        'AAPL': [
+            '2019-01-04',
+            '2019-01-07',
+            '2019-01-08',
+            '2019-01-09',
+            '2019-01-10',
+            '2019-01-11',
+            '2019-01-15',
+        ],
+        'MSFT': ['2019-01-03', '2019-01-14'],
+    }
     for asset, dates in expected_dates.items():
         sma = ref.sma(ref.daily_prices(asset).close, 5).shift(1)
         selected = result.xs(asset, level=1).ma5
@@ -43,11 +61,16 @@ def test_filter_does_not_affect_inputs(engine):
         assert_almost_equal(selected.values, sma[dates].values)
 
 
-@pytest.mark.parametrize('method, n, top_aapl, solo', [
-    ('top', 1, True, True), ('bottom', 1, False, True),
-    # only AAPL on 2019-01-10, 50% of 1 asset is 0.5, nothing selected
-    ('top', 0.5, True, False), ('bottom', 0.5, False, False),
-])
+@pytest.mark.parametrize(
+    'method, n, top_aapl, solo',
+    [
+        ('top', 1, True, True),
+        ('bottom', 1, False, True),
+        # only AAPL on 2019-01-10, 50% of 1 asset is 0.5, nothing selected
+        ('top', 0.5, True, False),
+        ('bottom', 0.5, False, False),
+    ],
+)
 def test_top_bottom(engine, method, n, top_aapl, solo):
     engine.add(getattr(close, method)(n), 'test')
     result = engine.run(ref.START, ref.END)

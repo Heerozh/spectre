@@ -41,15 +41,18 @@ def test_column_data_dtype(engine):
     assert df.close.dtype == np.float32
 
 
-@pytest.mark.parametrize('fill_na, expected', [
-    (None, [1., np.nan, 3.]),
-    ('ffill', [1., 1., 3.]),
-    ('bfill', [1., 3., 3.]),
-])
+@pytest.mark.parametrize(
+    'fill_na, expected',
+    [
+        (None, [1.0, np.nan, 3.0]),
+        ('ffill', [1.0, 1.0, 3.0]),
+        ('bfill', [1.0, 3.0, 3.0]),
+    ],
+)
 def test_series_data(engine, fill_na, expected):
     dates = pd.to_datetime(['2019-01-11', '2019-01-15'], utc=True)
     index = pd.MultiIndex.from_arrays([dates, ['AAPL', 'AAPL']], names=['date', 'asset'])
-    series = pd.Series([1., 3.], index=index, name='my_data')
+    series = pd.Series([1.0, 3.0], index=index, name='my_data')
     engine.add(factors.SeriesDataFactor(series, fill_na=fill_na, should_delay=False), 'test')
     df = engine.run(START, END)
     assert_array_equal(values(df, 'AAPL', 'test'), expected)
@@ -57,9 +60,10 @@ def test_series_data(engine, fill_na, expected):
 
 
 def test_series_data_invalid_fill_na(engine):
-    index = pd.MultiIndex.from_arrays([pd.to_datetime(['2019-01-11'], utc=True), ['AAPL']],
-                                      names=['date', 'asset'])
-    series = pd.Series([1.], index=index, name='my_data')
+    index = pd.MultiIndex.from_arrays(
+        [pd.to_datetime(['2019-01-11'], utc=True), ['AAPL']], names=['date', 'asset']
+    )
+    series = pd.Series([1.0], index=index, name='my_data')
     engine.add(factors.SeriesDataFactor(series, fill_na='zero'), 'test')
     with pytest.raises(ValueError, match='`fill_na` must be one of'):
         engine.run(START, END)

@@ -111,6 +111,7 @@ evt_mgr.subscribe(alg)
 evt_mgr.run()
 
 """
+
 from .algorithm import CustomAlgorithm, SimulationEventManager
 from .blotter import (
     BaseBlotter,
@@ -154,12 +155,19 @@ from .stopmodel import (
 )
 
 
-def run_backtest(loader: 'DataLoader', alg_type: 'Type[CustomAlgorithm]', start, end,
-                 delay_factor=True, ohlcv=None):
+def run_backtest(
+    loader: 'DataLoader',
+    alg_type: 'Type[CustomAlgorithm]',
+    start,
+    end,
+    delay_factor=True,
+    ohlcv=None,
+):
     # force python to free memory, else may be encountering cuda out of memory
     import gc
 
     import pandas as pd
+
     gc.collect()
 
     _blotter = SimulationBlotter(loader, start=pd.to_datetime(start, utc=True), ohlcv=ohlcv)
@@ -172,9 +180,11 @@ def run_backtest(loader: 'DataLoader', alg_type: 'Type[CustomAlgorithm]', start,
     return alg.results
 
 
-def get_algorithm_data(loader: 'DataLoader', alg_type: 'Type[CustomAlgorithm]',
-                       start, end, delay_factor=True):
+def get_algorithm_data(
+    loader: 'DataLoader', alg_type: 'Type[CustomAlgorithm]', start, end, delay_factor=True
+):
     import pandas as pd
+
     start, end = pd.to_datetime(start, utc=True), pd.to_datetime(end, utc=True)
 
     _blotter = SimulationBlotter(loader, start=start)

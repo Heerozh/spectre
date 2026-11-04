@@ -16,8 +16,10 @@ def run_factor(engine, factor, start=START, end=END, delay=True, check_bias=True
     result = engine.run(start, end, delay)
     if check_bias:
         engine.test_lookahead_bias(start, end)
-    return (result.loc[(slice(None), 'AAPL'), 'test'].values,
-            result.loc[(slice(None), 'MSFT'), 'test'].values)
+    return (
+        result.loc[(slice(None), 'AAPL'), 'test'].values,
+        result.loc[(slice(None), 'MSFT'), 'test'].values,
+    )
 
 
 def assert_factor(engine, factor, expected_aapl, expected_msft, decimal=7, **kwargs):
@@ -34,7 +36,7 @@ def delete(values, index):
 # data of the `late_listing_engine` fixture
 LATE_DATES = pd.date_range('2020-01-01', periods=12, freq='D', tz='UTC')
 # closes of B, which is listed on 2020-01-06
-LATE_CLOSES = [10., 20, 11, 30, 12, 13, 14]
+LATE_CLOSES = [10.0, 20, 11, 30, 12, 13, 14]
 
 
 def run_late_listed(engine, factor):
