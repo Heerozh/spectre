@@ -552,6 +552,8 @@ class FactorEngine:
         if delayed:  # if any factors delayed, return df also should be delayed
             unique_date_index = self._dataframe.index.levels[0]
             start_unique_ind = unique_date_index.get_indexer([start], "bfill")[0]
+            if (start_unique_ind + 1) >= len(unique_date_index):
+                raise ValueError("There is no data between start and end.")
             start = unique_date_index[start_unique_ind + 1]
 
         index = self._dataframe_index[0]

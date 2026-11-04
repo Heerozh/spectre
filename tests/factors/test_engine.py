@@ -49,6 +49,14 @@ def test_run_up_to_the_last_bar(dirty_engine):
     assert dirty_engine.test_lookahead_bias(start, None) == "No assertion raised."
 
 
+@pytest.mark.parametrize("method", ["run", "run_raw"])
+def test_delayed_run_on_the_last_bar_has_no_data(dirty_engine, method):
+    """The only bar of the range is dropped by the delay."""
+    dirty_engine.add(close, "close")
+    with pytest.raises(ValueError, match="There is no data between start and end"):
+        getattr(dirty_engine, method)(DIRTY_DATES[-1], DIRTY_DATES[-1])
+
+
 def test_no_trading_day(engine):
     engine.add(factors.SMA(2), "test")
     with pytest.raises(AssertionError, match="There is no data between.*"):
