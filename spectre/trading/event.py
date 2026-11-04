@@ -6,6 +6,7 @@
 """
 
 import time
+import warnings
 
 import pandas as pd
 
@@ -68,6 +69,12 @@ class CalendarEvent(Event):
         offset = pd.Timedelta(self.offset, unit="ns")
         times = (dt + offset for dt in self.calendar.events[self.event_name])
         self.trigger_time = next((t for t in times if t > now), None)
+        if self.trigger_time is None:
+            warnings.warn(
+                f"The calendar has no {self.event_name} events left, this event will not fire "
+                "again.",
+                RuntimeWarning,
+            )
         self.calendar.pop_passed(self.event_name)
         return True
 

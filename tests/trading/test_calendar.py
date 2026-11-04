@@ -59,6 +59,32 @@ def test_build_empty_range():
         cal.build(start="2020-01-03", end="2019", daily_events=DAILY_EVENTS, tz=TZ)
 
 
+def test_pop_passed_with_no_events_left(calendar):
+    calendar.hr_now = lambda: ts("2020-02-03 12:00")
+    assert calendar.pop_passed("Open") is calendar
+    assert calendar.events["Open"] == []
+    # and when there was nothing to pop
+    calendar.pop_passed("Open")
+    assert calendar.events["Open"] == []
+    # the other event is untouched
+    assert len(calendar.events["Close"]) == 10
+
+
+def test_today_next_with_no_events_left(calendar):
+    calendar.hr_now = lambda: ts("2020-01-17 12:00")
+    calendar.pop_passed("Open").pop_passed("Close")
+    assert calendar.events["Open"] == []
+    assert calendar.today_next() == {"Close": ts("2020-01-17 15:00")}
+
+
+def test_build_with_every_event_passed():
+    cal = trading.Calendar()
+    cal.hr_now = lambda: ts("2020-02-03 12:00")
+    cal.build(start="2020-01-03", end="2020-01-17", daily_events=DAILY_EVENTS, tz=TZ)
+    assert cal.events == {"Open": [], "Close": []}
+    assert cal.today_next() == {}
+
+
 def test_cn_calendar_skips_2026_holidays():
     # `pd.date_range` is empty if the end is before the start, so a wrong year in the table of
     # `CNCalendar.closed` removes the holidays silently

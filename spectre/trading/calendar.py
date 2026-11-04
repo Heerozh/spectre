@@ -76,11 +76,8 @@ class Calendar:
         now = self.hr_now()
         # every event is daily, so will not be overkilled
         dts = self.events[event_name]
-        while True:
-            if dts[0] <= now:
-                del dts[0]
-            else:
-                break
+        while dts and dts[0] <= now:
+            del dts[0]
         return self
 
     def today_next(self):
@@ -89,7 +86,7 @@ class Calendar:
         return {
             event: dts[0]
             for event, dts in self.events.items()
-            if dts[0].normalize() == now.normalize()
+            if dts and dts[0].normalize() == now.normalize()
         }
 
 

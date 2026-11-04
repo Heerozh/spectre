@@ -225,3 +225,17 @@ def test_calendar_event_starting_inside_its_lead_fires_once(monkeypatch):
 
     # late, the first poll is past its time
     assert fired[-10 * MINUTE] == [polls[0]]
+
+
+@pytest.mark.parametrize("offset", [0, -SECOND, SECOND])
+def test_calendar_event_at_the_end_of_the_calendar(monkeypatch, offset):
+    events = [ts(f"2020-01-{day:02} 15:00") for day in (6, 7, 8, 9, 10, 13, 14, 15, 16, 17)]
+    polls = polls_around(events, [offset])
+    polls += [ts("2020-01-20 15:00"), ts("2020-01-21 15:00")]
+
+    with pytest.warns(RuntimeWarning, match="no Close events left") as warned:
+        fired = run_live(monkeypatch, trading.event.MarketClose, [offset], polls)
+
+    # the last one fires too, and the loop goes on
+    assert fired[offset] == [event + delta(offset) for event in events]
+    assert len(warned) == 1
