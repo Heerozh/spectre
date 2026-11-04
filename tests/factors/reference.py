@@ -46,12 +46,14 @@ def expected_xs(func, values=lambda df: df.close, delayed=True, start=START, end
     `values(prices)` (rows are dates, columns are assets), and returns a DataFrame of same shape.
     Like the engine, it is calculated cross-sectionally first, then delayed by each asset.
     """
-    wide = pd.DataFrame({asset: values(daily_prices(asset)) for asset in ASSETS})
+    prices = {asset: daily_prices(asset) for asset in ASSETS}
+    wide = pd.DataFrame({asset: values(df) for asset, df in prices.items()})
     result = func(wide)
     ret = {}
     for asset in ASSETS:
-        values = result[asset][wide[asset].notna()]
-        ret[asset] = values.shift(1) if delayed else values
+        # only the days the asset has data
+        asset_values = result[asset].loc[prices[asset].index]
+        ret[asset] = asset_values.shift(1) if delayed else asset_values
     return _select(ret, delayed, start, end)
 
 

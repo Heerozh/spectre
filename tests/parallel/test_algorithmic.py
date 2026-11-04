@@ -103,6 +103,14 @@ def test_rolling_split_large_data(monkeypatch):
                         .values.T[:, 4:])
 
 
+def test_rolling_fill():
+    x = torch.tensor([[True, False, True]])
+    # nan is True for bool tensor
+    assert parallel.Rolling(x, 3).values[0, 0].tolist() == [True, True, True]
+    assert parallel.Rolling(x, 3, fill=False).values[0, 0].tolist() == [False, False, True]
+    assert parallel.Rolling(x, 3, fill=False).values[0, 2].tolist() == [True, False, True]
+
+
 def test_rolling_aggregations():
     x = tensor([[1, 2, nan, 4, 8, 3]], dtype=torch.float64)
     r = parallel.Rolling(x, 3)

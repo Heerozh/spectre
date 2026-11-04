@@ -9,11 +9,12 @@ import torch
 from numpy.testing import assert_almost_equal
 
 import spectre
+from tests.conftest import external_data
 
 
 @pytest.fixture
-def quandl_loader(quandl_dir):
-    return spectre.data.ArrowLoader(str(quandl_dir / 'wiki_prices.feather'))
+def quandl_loader():
+    return spectre.data.ArrowLoader(str(external_data('wiki_prices.feather')))
 
 
 @pytest.mark.cuda
@@ -33,6 +34,7 @@ def test_memory_leak(quandl_loader):
     assert torch.cuda.memory_allocated() == 0
 
 
+@pytest.mark.slow
 @pytest.mark.external_data
 def test_full_run_same_as_alphalens(quandl_loader):
     al = pytest.importorskip('alphalens')

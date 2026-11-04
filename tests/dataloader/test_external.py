@@ -1,13 +1,12 @@
 """
 Tests need data outside of this repository or the internet, they are skipped by default.
 """
-from pathlib import Path
-
 import pytest
 import torch
 from numpy.testing import assert_almost_equal
 
 import spectre
+from tests.conftest import external_data
 
 
 @pytest.mark.network
@@ -19,11 +18,10 @@ def test_yahoo(tmp_path):
     assert list(df.index.levels[1]) == ['AAPL', 'IBM']
 
 
+@pytest.mark.slow
 @pytest.mark.external_data
-def test_quandl_loader(quandl_dir, tmp_path, monkeypatch):
-    zip_file = Path(quandl_dir) / 'WIKI_PRICES.zip'
-    if not zip_file.exists():
-        pytest.skip('{} not found'.format(zip_file))
+def test_quandl_loader(tmp_path, monkeypatch):
+    zip_file = external_data('WIKI_PRICES.zip')
     # ingest to a temporary file, don't touch the shared data used by other tests
     feather = str(tmp_path / 'wiki_prices.feather')
     spectre.data.ArrowLoader.ingest(spectre.data.QuandlLoader(str(zip_file)), feather)

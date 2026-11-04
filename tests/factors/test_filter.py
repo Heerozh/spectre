@@ -5,6 +5,7 @@ from numpy.testing import assert_almost_equal, assert_array_equal
 
 from spectre import factors
 from tests.factors import reference as ref
+from tests.factors.helpers import run_late_listed
 
 volume = factors.OHLCV.volume
 close = factors.OHLCV.close
@@ -122,3 +123,21 @@ def test_one_hot_many_classes_warns(engine):
         # volume has more than 1000 unique values
         engine.run('2014-11-01', ref.END)
     assert np.issubdtype(engine.run(ref.START, ref.END).test.dtype, np.bool_)
+
+
+# ------------------------------------ newly listed asset ------------------------------------
+# B is listed on the first day of the results, so its rolling windows have no data at first.
+
+
+@pytest.mark.filterwarnings('ignore:Warning!! delay_factor is set to False')
+def test_ts_any_of_new_listed_asset(late_listing_engine):
+    # no data before listing is not True
+    result = run_late_listed(late_listing_engine, (close > 15).ts_any(3))
+    assert_array_equal(result, [False, True, True, True, True, True, False])
+
+
+@pytest.mark.filterwarnings('ignore:Warning!! delay_factor is set to False')
+def test_ts_all_of_new_listed_asset(late_listing_engine):
+    # days before listing are ignored
+    result = run_late_listed(late_listing_engine, (close > 5).ts_all(3))
+    assert_array_equal(result, [True] * 7)

@@ -35,3 +35,4 @@ Some tests are skipped by default:
 * `external_data`: needs the quandl dataset (`wiki_prices.feather`, `WIKI_PRICES.zip`), set
   `SPECTRE_EXTERNAL_DATA` to the folder contains it, defaults to
   `../historical_data/us/prices/quandl` next to the repository.
+* `slow`: takes minutes, run with `pytest --run-slow`. TODO: split and simplify them.

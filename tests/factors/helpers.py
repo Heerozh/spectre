@@ -1,4 +1,5 @@
 import numpy as np
+import pandas as pd
 from numpy.testing import assert_almost_equal
 
 from tests.factors.reference import START, END
@@ -28,3 +29,16 @@ def assert_factor(engine, factor, expected_aapl, expected_msft, decimal=7, **kwa
 def delete(values, index):
     """MSFT has no data on 2019-01-10, remove it from the expected values of AAPL."""
     return np.delete(np.asarray(values), index)
+
+
+# data of the `late_listing_engine` fixture
+LATE_DATES = pd.date_range('2020-01-01', periods=12, freq='D', tz='UTC')
+# closes of B, which is listed on 2020-01-06
+LATE_CLOSES = [10., 20, 11, 30, 12, 13, 14]
+
+
+def run_late_listed(engine, factor):
+    """Values of B from 2020-01-06 (listing day) to the end, not delayed."""
+    engine.add(factor, 'test')
+    result = engine.run(LATE_DATES[4], LATE_DATES[-1], delay_factor=False)
+    return result.xs('B', level=1).test.values

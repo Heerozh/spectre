@@ -30,18 +30,25 @@ EXTERNAL_DATA_DIR = Path(os.environ.get(
 def pytest_addoption(parser):
     parser.addoption('--run-network', action='store_true', default=False,
                      help='run tests that download data from the internet')
+    parser.addoption('--run-slow', action='store_true', default=False,
+                     help='run slow tests')
 
 
 def pytest_collection_modifyitems(config, items):
     skip_cuda = pytest.mark.skip(reason='CUDA is not available')
     skip_network = pytest.mark.skip(reason='needs internet, use --run-network to run')
+    skip_slow = pytest.mark.skip(reason='TODO: slow test, split and simplify it. '
+                                        'Use --run-slow to run')
     has_cuda = torch.cuda.is_available()
     run_network = config.getoption('--run-network')
+    run_slow = config.getoption('--run-slow')
     for item in items:
         if 'cuda' in item.keywords and not has_cuda:
             item.add_marker(skip_cuda)
         if 'network' in item.keywords and not run_network:
             item.add_marker(skip_network)
+        if 'slow' in item.keywords and not run_slow:
+            item.add_marker(skip_slow)
 
 
 # ------------------------------------ devices ------------------------------------
@@ -117,9 +124,10 @@ def engine_no_calendar(daily_loader_no_calendar):
 # --------------------------------- external data ---------------------------------
 
 
-@pytest.fixture(scope='session')
-def quandl_dir():
-    if not (EXTERNAL_DATA_DIR / 'wiki_prices.feather').exists():
+def external_data(file_name):
+    """Path of the external data file, skips the test if not found."""
+    path = EXTERNAL_DATA_DIR / file_name
+    if not path.exists():
         pytest.skip('external data {} not found, set SPECTRE_EXTERNAL_DATA to the folder '
-                    'contains wiki_prices.feather'.format(EXTERNAL_DATA_DIR))
-    return EXTERNAL_DATA_DIR
+                    'contains it'.format(path))
+    return path
