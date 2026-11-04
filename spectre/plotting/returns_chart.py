@@ -21,6 +21,21 @@ DEFAULT_COLORS = [
 ]
 
 
+def _rows_per_period(dates, period):
+    """
+    How many rows of `dates`, the dates of a full_run, one return of `period` spans. full_run labels
+    a period as its number of bars of the data times the bar size, and rows that follow each other
+    are one bar apart on any calendar. A filter can leave rows further apart, and the bars it
+    removed are not in `dates`, so the usual gap between the rows stands in for the bar size.
+    """
+    if len(dates) < 2:
+        return 1
+    gaps = (dates[1:] - dates[:-1]).sort_values()
+    # closures and sessions make some gaps long, with two bars a day that is half of them
+    bar, usual = gaps[0], gaps[2 * len(gaps) // 5]
+    return math.ceil(pd.Timedelta(period) / (bar if usual < 1.5 * bar else usual))
+
+
 def plot_quantile_and_cumulative_returns(factor_data, mean_ret):
     """
     Plotly Installation:
@@ -100,15 +115,16 @@ def plot_quantile_and_cumulative_returns(factor_data, mean_ret):
             )
             quantile_styles[period]["showlegend"] = False
 
-            open_period = period
-            if period.endswith("D"):
-                open_period = period[:-1] + "B"
-            # on the wall clock, because a bin can't start on a midnight skipped by daylight saving
-            cum_ret = factor_return[period].tz_localize(None).resample(open_period).mean().dropna()
+            returns = factor_return[period]
+            step = _rows_per_period(returns.index, period)
+            cum_ret = returns.groupby(pd.RangeIndex(len(returns)) // step).mean()
             cum_ret = (cum_ret + 1).cumprod() * 100 - 100
             fig.add_trace(
                 go.Scatter(
-                    x=cum_ret.index, y=cum_ret.values, yaxis="y2", **cumulative_styles[period]
+                    x=returns.index[::step],
+                    y=cum_ret.values,
+                    yaxis="y2",
+                    **cumulative_styles[period],
                 ),
                 row=row,
                 col=2,
