@@ -111,13 +111,15 @@ class CustomAlgorithm(EventReceiver, ABC):
             return engine.get_price_matrix(start, end, prices=prices)
 
         universe = engine.get_filter()
-        if universe is not None and universe.should_delay():
+        delay_universe = universe is not None and universe.should_delay()
+        if delay_universe:
             engine.set_filter(universe.shift(1))
         try:
             # up to `end` even if that row is dropped, a split on the current bar is known already
             matrix = engine.get_price_matrix(start, end, prices=prices)
         finally:
-            engine.set_filter(universe)
+            if delay_universe:
+                engine.set_filter(universe)
         return matrix[matrix.index < end] if prices.should_delay() else matrix
 
     def set_datetime(self, dt: pd.Timestamp) -> None:

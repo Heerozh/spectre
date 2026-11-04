@@ -663,6 +663,24 @@ def test_price_matrix_gives_the_filter_back_after_an_error():
     assert alg.get_factor_engine().get_filter() is universe
 
 
+def test_price_matrix_leaves_a_filter_that_reads_no_close_alone(capsys):
+    """StaticAssets doesn't read a close, and setting it again empties the engine cache."""
+    dates = pd.bdate_range("2020-01-01", periods=14, tz="UTC")
+
+    seen = matrices_at(
+        trading.event.MarketOpen,
+        make_loader(make_panel(dates)),
+        dates[6],
+        dates[-1],
+        pd.DateOffset(days=3),
+        factors.OHLCV.close,
+        universe=factors.StaticAssets({"A", "B"}),
+    )
+
+    assert all(list(matrix.columns) == ["A", "B"] for matrix, _ in seen.values())
+    assert "Cache clean" not in capsys.readouterr().out
+
+
 # ------------------------------------- the simulation loop --------------------------------------
 
 
