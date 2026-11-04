@@ -9,6 +9,8 @@ import math
 import sys
 from itertools import cycle
 
+import pandas as pd
+
 DEFAULT_COLORS = [
     "rgb(99, 110, 250)",
     "rgb(239, 85, 59)",
@@ -34,7 +36,7 @@ def plot_quantile_and_cumulative_returns(factor_data, mean_ret):
     x = quantiles
     factors = mean_ret.columns.levels[0]
     periods = list(mean_ret.columns.levels[1])
-    periods.sort(key=lambda cn: int(cn[:-1]))
+    periods.sort(key=pd.Timedelta)
     rows = math.ceil(len(factors))
 
     colors = dict(zip(periods + ["to"], cycle(DEFAULT_COLORS)))

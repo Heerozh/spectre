@@ -45,19 +45,23 @@ def chart(panel, shown, periods, timezone="UTC"):
     return factor_data, {t.name: t for t in shown[-1].data if t.type == "scatter"}
 
 
-def expected_line(panel, factor_data, bars):
-    """
-    The cumulative return in percent of holding the factor weights for `bars` bars from raw prices,
-    without any of the code that draws the chart. Every `bars` bars gives one return, the mean of
-    the portfolios that started on those bars.
-    """
+def held_for(panel, factor_data, bars):
+    """The return of holding the weights of each bar for `bars` bars, from the raw prices."""
     weights = factor_data[("alpha", "factor_weight")].unstack()
     weights.index = weights.index.tz_convert("UTC")
     close = panel["close"].unstack()
     forward = (close.shift(-bars) / close - 1).reindex(index=weights.index, columns=weights.columns)
-    portfolio = (weights * forward).sum(axis=1)
-    per_group = portfolio.groupby(np.arange(len(portfolio)) // bars).mean()
-    return ((1 + per_group).cumprod().to_numpy() - 1) * 100
+    return (weights * forward).sum(axis=1)
+
+
+def cumulative_percent(returns):
+    return ((1 + returns).cumprod().to_numpy() - 1) * 100
+
+
+def expected_line(panel, factor_data, bars):
+    """Every `bars` bars give one return, the mean of the portfolios started on those bars."""
+    portfolio = held_for(panel, factor_data, bars)
+    return cumulative_percent(portfolio.groupby(np.arange(len(portfolio)) // bars).mean())
 
 
 def test_full_run_chart_compounds_the_returns(shown):
@@ -124,3 +128,39 @@ def test_full_run_chart_when_a_bin_starts_on_a_skipped_midnight(shown):
 @pytest.mark.filterwarnings("error::pandas.errors.Pandas4Warning")
 def test_full_run_chart_has_no_deprecated_frequency(shown):
     chart(make_panel(pd.bdate_range("2018-01-01", periods=60, tz="UTC")), shown, (1, 4))
+
+
+@pytest.mark.parametrize(
+    "bar, periods, names",
+    [
+        ("5min", (12, 1, 4), ["5min", "20min", "60min"]),
+        ("1h", (1, 4, 24), ["1h", "4h", "24h"]),
+        ("30s", (1, 2, 10), ["30s", "60s", "300s"]),
+        ("250ms", (1, 4), ["250ms", "1000ms"]),
+    ],
+)
+def test_full_run_chart_of_intraday_bars(shown, bar, periods, names):
+    panel = make_panel(pd.date_range("2019-01-07", periods=400, freq=bar, tz="UTC"))
+
+    factor_data, lines = chart(panel, shown, periods)
+
+    # in order of length, a sort by name would put 20min first
+    assert list(lines) == names
+    for name, bars in zip(names, sorted(periods)):
+        # these bins follow the clock and not the first bar
+        portfolio = held_for(panel, factor_data, bars)
+        expected = cumulative_percent(portfolio.groupby(portfolio.index.floor(name)).mean())
+        assert np.asarray(lines[name].y) == pytest.approx(expected, rel=1e-3)
+
+
+def test_full_run_chart_of_the_5_minute_test_data(shown, intraday_loader):
+    engine = factors.FactorEngine(intraday_loader)
+    engine.add(factors.MA(3), "alpha")
+
+    factor_data, _ = engine.full_run("2019-01-03", "2019-01-11", periods=(1, 4, 12), quantiles=2)
+
+    lines = {t.name: t for t in shown[-1].data if t.type == "scatter"}
+    assert list(lines) == ["5min", "20min", "60min"]
+    # one point for each bar of the 5 minutes line, the nights have no bars
+    assert len(lines["5min"].y) == factor_data.index.get_level_values(0).nunique()
+    assert all(np.isfinite(line.y).all() for line in lines.values())
