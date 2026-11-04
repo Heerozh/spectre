@@ -61,8 +61,13 @@ and factors.
   `!` marks a breaking change, a `BREAKING CHANGE:` footer is not read. Any other title is listed
   under "Other changes", and `.github/release-drafter.yml` has the rest of the mapping.
 - A PR that changes the drafter config gets a dry run, and its log shows the notes it would write.
-- Nothing updates `version` in `pyproject.toml`. Before publishing a draft, merge a PR with
-  `uv version X.Y.Z`, using the version of the draft.
+- Publishing the draft is the whole release. `hatch-vcs` takes the package version from the git
+  tag, so `pyproject.toml` has no version to update, and `uv version` fails with an error. Commits
+  after a tag get a version like `1.0.1.dev3+g42e441ef5`.
+- A clone with no tags, such as the shallow one in CI, gets `0.1.dev1+g...`. The tests don't care,
+  but a package built there would have the wrong version.
+- GitHub's source archives have no `.git`, so `.git_archival.txt` and `.gitattributes` put the
+  tag in them. Without those two files, installing an archive fails.
 
 ## Architecture
 

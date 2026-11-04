@@ -1,6 +1,6 @@
 [project]
 name = "spectre"
-version = "0.5"
+dynamic = ["version"]
 description = "GPU-accelerated Parallel quantitative trading library"
 readme = "README.md"
 requires-python = ">=3.14"
@@ -40,15 +40,18 @@ cuda = ["torch"]
 cpu = ["torch"]
 
 [build-system]
-requires = ["uv_build>=0.13.7,<0.14.0"]
-build-backend = "uv_build"
+requires = ["hatchling>=1.33", "hatch-vcs>=0.5"]
+build-backend = "hatchling.build"
+
+[tool.hatch.version]
+source = "vcs"
+
+[tool.hatch.build.targets.wheel]
+packages = ["spectre"]
 
 [tool.uv]
 default-groups = ["dev", "cuda"]
 conflicts = [[{ group = "cpu" }, { group = "cuda" }]]
-
-[tool.uv.build-backend]
-module-root = ""
 
 [tool.uv.sources]
 torch = [
