@@ -344,6 +344,64 @@ def test_ic_to_ir():
     )
 
 
+IR_DATES = pd.date_range("2020-01-01", periods=45, freq="D", tz="UTC")
+
+
+@pytest.fixture
+def ir_panel():
+    """Random walks with a noisy open, so the IC of open and close changes from date to date."""
+    steps = np.random.default_rng(2).normal(0, 2, (len(IR_DATES), 6, 2))
+    walks = 100 + steps[:, :, 0].cumsum(axis=0)
+    index = pd.MultiIndex.from_product([IR_DATES, list("ABCDEF")], names=["date", "asset"])
+    df = pd.DataFrame(
+        {"close": walks.ravel().round(3), "open": (walks + steps[:, :, 1]).ravel().round(3)},
+        index=index,
+    )
+    df["high"] = df[["open", "close"]].max(axis=1)
+    df["low"] = df[["open", "close"]].min(axis=1)
+    df["volume"] = 1.0
+    return df
+
+
+@pytest.fixture
+def ir_engine(ir_panel, device):
+    loader = spectre.data.MemoryLoader(ir_panel, ohlcv=("open", "high", "low", "close", "volume"))
+    engine = factors.FactorEngine(loader)
+    if device == "cuda":
+        engine.to_cuda()
+    return engine
+
+
+def rolling_ir(ic, win):
+    return ic.rolling(win).mean() / ic.rolling(win).std(ddof=1)
+
+
+@pytest.mark.filterwarnings("ignore:Warning!! delay_factor is set to False")
+def test_ic_to_ir_loads_the_history_of_its_window(ir_engine, ir_panel):
+    win, start = 10, IR_DATES[20]
+    ic = factors.InformationCoefficient(factors.OHLCV.open, close)
+    ir_engine.add(ic.to_ir(win), "ir")
+    result = ir_engine.run(start, IR_DATES[-1], delay_factor=False)
+
+    closes, opens = ir_panel.close.unstack(), ir_panel.open.unstack()
+    expected = rolling_ir(opens.corrwith(closes, axis=1), win).loc[start:]
+    assert_allclose(result.ir.xs("A", level="asset").values, expected.values, rtol=1e-6)
+    assert_almost_equal(expected.values[:3], [14.32, 14.27, 13.93], decimal=2)
+
+
+@pytest.mark.filterwarnings("ignore:Warning!! delay_factor is set to False")
+def test_ic_to_ir_adds_its_window_to_the_one_of_its_inputs(ir_engine, ir_panel):
+    win, ma_win, start = 10, 5, IR_DATES[20]
+    ma = factors.MA(ma_win, inputs=[factors.OHLCV.open])
+    ir_engine.add(factors.InformationCoefficient(ma, close).to_ir(win), "ir")
+    result = ir_engine.run(start, IR_DATES[-1], delay_factor=False)
+
+    closes, opens = ir_panel.close.unstack(), ir_panel.open.unstack()
+    ic = opens.rolling(ma_win).mean().corrwith(closes, axis=1)
+    expected = rolling_ir(ic, win).loc[start:]
+    assert_allclose(result.ir.xs("A", level="asset").values, expected.values, rtol=1e-6)
+
+
 # ------------------------------------ t-test ------------------------------------
 
 

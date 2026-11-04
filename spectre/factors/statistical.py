@@ -226,6 +226,9 @@ class InformationCoefficient(CrossSectionFactor):
                 super().__init__(1, inputs)
                 self.rolling_win = win_
 
+            def get_total_backwards_(self) -> int:
+                return super().get_total_backwards_() + self.rolling_win - 1
+
             def compute(self, ic):
                 x = ic[:, 0]
                 nan_stack = x.new_full((self.rolling_win - 1,), np.nan)
