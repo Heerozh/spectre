@@ -141,11 +141,15 @@ class Position:
         return cash
 
     def process_dividend(self, amount: float, tax: float) -> float:
-        if amount != amount or amount == 0:
+        """`amount` is net of `tax`. A short pays both, the tax only comes off what a long gets."""
+        gross = amount + tax
+        if gross != gross or gross == 0:
             return 0
+        if self._shares < 0:
+            amount = gross
         self._average_price -= amount
         self._cost_basis -= amount
-        self.last_price -= amount + tax
+        self.last_price -= gross
         cash = self._shares * amount
         return cash
 

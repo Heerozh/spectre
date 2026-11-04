@@ -338,8 +338,10 @@ def test_dividend_curb_and_split(blotter):
         (-100, 0, 100000 + 10000 - 200, -200 * 49),
         # 10% tax on the dividend, 0.2 per share is gone
         (100, 0.1, 100000 - 10000 + 180, 200 * 49),
+        # the tax is on the receiver, the short still pays all of it
+        (-100, 0.1, 100000 + 10000 - 200, -200 * 49),
     ],
-    ids=["long", "short", "long_taxed"],
+    ids=["long", "short", "long_taxed", "short_taxed"],
 )
 def test_dividend_and_split_on_the_same_ex_date(amount, tax, cash, value):
     # the market prices the ex-date bar at (100 - 2) * 0.5 = 49, a holder has lost nothing
@@ -383,6 +385,21 @@ def test_dividend_and_reverse_split_on_the_same_ex_date():
     blotter.set_datetime(days[2])
     blotter.set_price("close")
     blotter.update_portfolio_value()
+    assert blotter.portfolio.value == pytest.approx(100000)
+
+
+def test_taxed_dividend_of_short():
+    # gross dividend of 2 and a 10% tax, the ex-date bar is 2 lower
+    days = pd.bdate_range("2020-01-06", periods=4, tz="UTC")
+    loader = asset_a_loader(days, [100, 100, 98, 98], dividends={2: 2})
+    blotter = trading.SimulationBlotter(loader, capital_base=100000)
+    blotter.borrow_stock_interest_rate = 0
+    blotter.div_tax = trading.CommissionModel(0.1, 0, 0)
+
+    trade_until_after_bar(blotter, days, 1, -100)
+    assert blotter.portfolio.cash == pytest.approx(100000 + 100 * 100 - 200)
+    assert blotter.positions["A"].value == pytest.approx(-100 * 98)
+    # what the short paid is what the shares it owes became cheaper by
     assert blotter.portfolio.value == pytest.approx(100000)
 
 

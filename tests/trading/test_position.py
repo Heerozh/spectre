@@ -276,6 +276,18 @@ def test_dividend():
     assert pos.process_dividend(float("nan"), tax=0) == 0
 
 
+@pytest.mark.parametrize("amount, tax", [(0.5, 0.1), (0, 0.6)], ids=["taxed", "all_tax"])
+def test_short_pays_the_gross_dividend(amount, tax):
+    # the tax comes off what the receiver gets, the short pays the whole dividend of 0.6
+    pos = trading.Position(-10, 10, 0, None)
+    assert pos.process_dividend(amount, tax=tax) == pytest.approx(-10 * 0.6)
+    assert pos.average_price == pytest.approx(10 - 0.6)
+    assert pos.cost_basis == pytest.approx(10 - 0.6)
+    assert pos.last_price == pytest.approx(10 - 0.6)
+    # the shares owed are 0.6 cheaper, and that is what it paid
+    assert pos.unrealized == pytest.approx(0)
+
+
 def test_split_adjusts_trailing_stop():
     # long position, stop at 90% of the highest price
     pos = trading.Position(10, 10, 0, None, trading.TrailingStopModel(-0.1))
