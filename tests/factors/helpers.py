@@ -56,3 +56,12 @@ def run_dirty(engine, factor, start=0):
     with warnings.catch_warnings():
         warnings.filterwarnings("ignore", "Warning!! delay_factor is set to False")
         return engine.run(DIRTY_DATES[start], DIRTY_DATES[-1], delay_factor=False).test
+
+
+def nansplit_bars(panel):
+    """
+    The bars of NANSPLIT, and the scale of each bar. A bar with no prices has the scale of the bar
+    before it, because the split only starts on its ex-date.
+    """
+    bars = panel.xs("NANSPLIT", level="asset")
+    return bars, (bars.close / bars.clean_close).ffill()

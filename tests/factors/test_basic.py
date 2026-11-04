@@ -9,7 +9,13 @@ import spectre
 from spectre import factors, parallel
 from tests.conftest import DIRTY_DATES, HALTED_BARS, NANSPLIT_ON, SPLIT_ON
 from tests.factors import reference as ref
-from tests.factors.helpers import assert_factor, run_dirty, run_factor, run_late_listed
+from tests.factors.helpers import (
+    assert_factor,
+    nansplit_bars,
+    run_dirty,
+    run_factor,
+    run_late_listed,
+)
 
 nan = np.nan
 
@@ -198,6 +204,18 @@ def test_ema_across_split(dirty_engine, dirty_panel, span, adjust):
     assert_allclose(result.values, expected.values, rtol=0, atol=atol)
     assert scale.iloc[SPLIT_ON - 1] == pytest.approx(1)
     assert scale.iloc[SPLIT_ON] == pytest.approx(0.5)
+
+
+@pytest.mark.filterwarnings("ignore:Warning!! delay_factor is set to False")
+@pytest.mark.parametrize("adjust", [False, True])
+@pytest.mark.parametrize("span", [3, 5, 12, 26])
+def test_ema_across_split_after_nan_bar(dirty_engine, dirty_panel, span, adjust):
+    factor = factors.EMA(span, adjust=adjust)
+    result = run_dirty(dirty_engine, factor).xs("NANSPLIT", level="asset")
+    bars, scale = nansplit_bars(dirty_panel)
+    expected = ewm_mean(bars.clean_close, span, adjust) * scale
+    atol = ema_truncation_bound(span, bars.clean_close, missing=1) + 1e-4
+    assert_allclose(result.values, expected.values, rtol=0, atol=atol)
 
 
 @pytest.mark.filterwarnings("ignore:Warning!! delay_factor is set to False")

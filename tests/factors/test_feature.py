@@ -7,11 +7,12 @@ import torch
 from numpy.testing import assert_allclose, assert_almost_equal, assert_array_equal
 
 from spectre import factors, parallel
-from tests.conftest import DIRTY_DATES, DIVIDEND_ON, NAN_BAR, SPLIT_ON
+from tests.conftest import DIRTY_DATES, DIVIDEND_ON, NAN_BAR, NANSPLIT_ON, SPLIT_ON
 from tests.factors import reference as ref
 from tests.factors.helpers import (
     assert_factor,
     delete,
+    nansplit_bars,
     run_dirty,
     run_factor,
     run_late_listed,
@@ -213,6 +214,23 @@ def test_forward_signal_data_across_split(dirty_engine, dirty_panel):
     assert_allclose(result.values, (first / split.clean_close - 1).values, rtol=0, atol=1e-6)
     # rows that cross the split and the dividend, both ex-dates are days before the signal
     for bar in (SPLIT_ON - 2, SPLIT_ON - 1, DIVIDEND_ON - 2, DIVIDEND_ON - 1):
+        assert abs(result.iloc[bar]) < 0.1
+
+
+@pytest.mark.filterwarnings("ignore:Warning!! delay_factor is set to False")
+def test_forward_signal_data_across_split_after_nan_bar(dirty_engine, dirty_panel):
+    close = factors.OHLCV.close
+    bars, scale = nansplit_bars(dirty_panel)
+    first = forward_signal_values(bars.clean_close)
+
+    factor = factors.ForwardSignalData(FORWARD_WIN, close, FORWARD_SIGNAL)
+    result = run_dirty(dirty_engine, factor).xs("NANSPLIT", level="asset")
+    assert_allclose(result.values, (first * scale).values, rtol=1e-6)
+
+    result = run_dirty(dirty_engine, factor / close - 1).xs("NANSPLIT", level="asset")
+    assert_allclose(result.values, (first / bars.clean_close - 1).values, rtol=0, atol=1e-6)
+    # rows that cross the split, the signal of the bar on the split is in reach of both
+    for bar in (NANSPLIT_ON - 3, NANSPLIT_ON - 2):
         assert abs(result.iloc[bar]) < 0.1
 
 
