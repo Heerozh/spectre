@@ -13,4 +13,7 @@ def stack_keep_nan(df: pd.DataFrame, level=-1):
     """
     if PANDAS_GE_3:
         return df.stack(level)
-    return df.stack(level, future_stack=True)
+    try:
+        return df.stack(level, future_stack=True)
+    except TypeError:  # pandas < 2.1
+        return df.stack(level, dropna=False)

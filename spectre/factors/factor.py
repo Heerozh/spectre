@@ -966,7 +966,7 @@ class DemeanFactor(CrossSectionFactor):
             s = self._revert_to_series(data)
             d = dict.fromkeys(s.index.levels[1], -1)
             d.update(self.group_dict)
-            g = s.groupby([d, 'date'], level=1)
+            g = s.groupby([d, 'date'], level=1, observed=False)
             ret = g.transform(lambda x: x - x.mean())
             print('Spectre: Deprecated, group_dict will be removed in the future')
             return self._regroup(ret)

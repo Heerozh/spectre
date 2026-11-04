@@ -43,9 +43,10 @@ class Portfolio:
         if self._funds_change:
             value = self.history.value.sum(axis=1)
             funds = pd.DataFrame(self._funds_change)
-            # funds transferred before the first datetime is set have no date (None),
-            # convert to datetime explicitly, or it is an object index which can't align.
-            funds['index'] = pd.to_datetime(funds['index'].fillna(value.index[0]))
+            # funds transferred before the first datetime is set have no date (None or NaT),
+            # convert to datetime explicitly, or it may be an object index which can't align.
+            funds['index'] = pd.to_datetime([value.index[0] if pd.isna(date) else date
+                                             for date in funds['index']])
             # sum up multiple transfers on the same day, or the result has duplicate dates.
             funds = funds.groupby('index').amount.sum()
             return value.sub(funds, fill_value=0) / value.shift(1) - 1
