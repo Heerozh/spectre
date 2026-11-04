@@ -375,7 +375,8 @@ class SimulationEventManager(EventManager):
             self.mock_data(data, dt)
 
             # if date changed
-            if dt.day != last_day and last_day is not None:
+            day = dt.normalize()
+            if day != last_day and last_day is not None:
                 self.fire_market_close(alg)
             alg.set_datetime(dt)
             alg._bar_closed = False
@@ -385,9 +386,9 @@ class SimulationEventManager(EventManager):
                 self.fire_event(self, EveryBarData)
 
             # fire open event
-            if dt.day != last_day:
+            if day != last_day:
                 self.fire_market_open(alg)
-                last_day = dt.day
+                last_day = day
 
             # fire intraday data event
             if data_freq != "D":

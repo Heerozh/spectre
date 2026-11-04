@@ -648,3 +648,83 @@ def test_price_matrix_gives_the_filter_back_after_an_error():
     with pytest.raises(KeyError):
         evt_mgr.run(dates[6], dates[-1])
     assert alg.get_factor_engine().get_filter() is universe
+
+
+# ------------------------------------- the simulation loop --------------------------------------
+
+
+def flat_panel(dates, dividend_on, split_on):
+    """A at 100 pays 1 on `dividend_on`, B at 100 splits 2:1 on `split_on`, to 50."""
+    index = pd.MultiIndex.from_product([dates, ["A", "B"]], names=["date", "asset"])
+    panel = pd.DataFrame(100.0, index=index, columns=list(OHLCV))
+    panel = panel.assign(**{"volume": 1e6, "ex-dividend": 0.0, "split_ratio": 1.0})
+    panel.loc[(dates[dates >= split_on], "B"), ["open", "high", "low", "close"]] = 50.0
+    panel.loc[(split_on, "B"), "split_ratio"] = 0.5
+    panel.loc[(dividend_on, "A"), "ex-dividend"] = 1.0
+    return panel
+
+
+def monthly_bars():
+    dates = pd.date_range("2019-01-01", periods=12, freq="MS", tz="UTC")
+    return flat_panel(dates, ts("2019-06-01"), ts("2019-09-01")), dates, dates, None
+
+
+def daily_bars_filtered_to_the_15th():
+    days = pd.bdate_range("2019-01-01", "2019-12-31", tz="UTC")
+    panel = flat_panel(days, ts("2019-05-16"), ts("2019-08-16"))
+    panel["flag"] = (panel.index.get_level_values(0).day == 15).astype(float)
+    flag = factors.ColumnDataFactor(inputs=("flag",), should_delay=False)
+    fifteenths = days[days.day == 15]
+    return panel, fifteenths, fifteenths, flag > 0.5
+
+
+def intraday_bars_a_month_apart():
+    days = pd.DatetimeIndex([ts(f"2019-0{month}-15") for month in range(1, 7)])
+    first, last = (
+        days + pd.Timedelta(hours=14, minutes=30),
+        days + pd.Timedelta(hours=14, minutes=35),
+    )
+    dates = first.append(last).sort_values()
+    return flat_panel(dates, first[2], first[4]), first, last, None
+
+
+@pytest.mark.parametrize(
+    "bars", [monthly_bars, daily_bars_filtered_to_the_15th, intraday_bars_a_month_apart]
+)
+def test_ticks_a_month_apart_are_different_days(bars):
+    panel, first_bars, last_bars, universe = bars()
+    adjustments = ("ex-dividend", "split_ratio")
+    opens, closes = [], []
+
+    class Alg(trading.CustomAlgorithm):
+        def initialize(self):
+            engine = self.get_factor_engine()
+            engine.add(factors.OHLCV.open, "open")
+            if universe is not None:
+                engine.set_filter(universe)
+            self.blotter.set_commission(0, 0, 0)
+            self.blotter.set_slippage(0, 0)
+            self.blotter.borrow_money_interest_rate = 0
+            self.blotter.borrow_stock_interest_rate = 0
+            self.schedule(trading.event.MarketOpen(self.on_open))
+            self.schedule(trading.event.MarketClose(self.on_close))
+
+        def on_open(self, _):
+            opens.append(self.current)
+            if not self.blotter.positions:
+                self.blotter.order("A", 100)
+                self.blotter.order("B", 100)
+
+        def on_close(self, _):
+            closes.append(self.current)
+
+    loader = make_loader(panel, adjustments=adjustments)
+    results = trading.run_backtest(loader, Alg, first_bars[0], last_bars[-1])
+
+    assert opens == list(first_bars)
+    assert closes == list(last_bars)
+    last = results.positions.iloc[-1]
+    assert last[("shares", "A")] == 100
+    assert last[("shares", "B")] == 200
+    assert last[("value", "cash")] == pytest.approx(100000 - 20000 + 100)
+    assert last[("value", "B")] == pytest.approx(10000)
