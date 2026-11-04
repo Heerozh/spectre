@@ -605,7 +605,55 @@ def test_spearman():
         expected = scipy.stats.spearmanr(X[i], Y[i])[0]
         assert result[i].item() == pytest.approx(expected, abs=1e-6)
     # constant input, all ranks are the same
-    assert result[2].item() == 1
+    assert np.isnan(result[2].item())
+
+
+@pytest.mark.filterwarnings("ignore::scipy.stats.ConstantInputWarning")
+@pytest.mark.parametrize("dtype", DTYPES)
+@pytest.mark.parametrize(
+    "x, y",
+    [
+        ([1.0, 1, 2, 2, 3, 3], [2.0, 1, 4, 3, 6, 5]),  # ties in x
+        ([1.0, 1, 2, 2, 3, 3], [1.0, 2, 2, 3, 3, 3]),  # ties in both
+        ([3.0, 3, 3, 3, 3, 3], [2.0, 1, 4, 3, 6, 5]),  # x is constant
+        ([2.0, 1, 4, 3, 6, 5], [3.0, 3, 3, 3, 3, 3]),  # y is constant
+        ([3.0, 3, 3, 3, 3, 3], [3.0, 3, 3, 3, 3, 3]),  # both are constant
+    ],
+)
+def test_spearman_same_as_scipy(device, dtype, x, y):
+    rank_x = parallel.rankdata(tensor([x], device, dtype))
+    rank_y = parallel.rankdata(tensor([y], device, dtype))
+    expected = scipy.stats.spearmanr(x, y)[0]
+    assert_allclose(to_np(parallel.spearman(rank_x, rank_y)), [expected], rtol=1e-6)
+
+
+@pytest.mark.parametrize("normalize", [False, True])
+@pytest.mark.parametrize("dtype", DTYPES)
+def test_spearman_of_ranks_of_the_common_samples(device, dtype, normalize):
+    """Ranks can't be redone from ranks of other samples, so they have to be of these samples."""
+    rng = np.random.default_rng(0)
+    x = rng.integers(0, 5, (100, 30)).astype(float)
+    y = x + rng.integers(0, 3, x.shape)
+    x[rng.random(x.shape) < 0.2] = nan
+    y[rng.random(x.shape) < 0.2] = nan
+    tx, ty = tensor(x, device, dtype), tensor(y, device, dtype)
+    common = torch.isnan(tx * ty)
+    rank_x = parallel.rankdata(tx.masked_fill(common, nan), normalize=normalize)
+    rank_y = parallel.rankdata(ty.masked_fill(common, nan), normalize=normalize)
+
+    expected = [scipy.stats.spearmanr(a, b, nan_policy="omit")[0] for a, b in zip(x, y)]
+    result = parallel.spearman(rank_x, rank_y)
+    assert_allclose(to_np(result), expected, rtol=1e-5, atol=1e-5)
+
+
+def test_spearman_along_the_last_dim(device):
+    rng = np.random.default_rng(0)
+    x = rng.integers(0, 5, (3, 4, 20)).astype(float)
+    y = x + rng.integers(0, 3, x.shape)
+    rank_x = parallel.rankdata(tensor(x, device, torch.float64), dim=2)
+    rank_y = parallel.rankdata(tensor(y, device, torch.float64), dim=2)
+    expected = [[scipy.stats.spearmanr(a, b)[0] for a, b in zip(*row)] for row in zip(x, y)]
+    assert_allclose(to_np(parallel.spearman(rank_x, rank_y, dim=2)), expected, rtol=1e-6)
 
 
 QUANTILE_X = [[1, 2, nan, 3, 4, 5, 6], [3, 4, 5, 1.01, nan, 1.02, 1.03]]

@@ -306,11 +306,7 @@ def pearsonr(x, y, dim=1, ddof=0):
 
 
 def spearman(rank_x, rank_y, dim=1):
-    se = (rank_x - rank_y) ** 2
-    mask = torch.isnan(se)
-    n = (~mask).sum(dim=dim)
-    p = 1 - 6 * unmasked_sum(se, mask, dim=dim) / (n * (n**2 - 1))
-    return p
+    return pearsonr(rank_x, rank_y, dim=dim)
 
 
 def linear_regression_1d(x, y, dim=1):
