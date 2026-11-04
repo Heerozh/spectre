@@ -246,6 +246,9 @@ class CsvDirLoader(DataLoader):
             # causing extra row of nan to all others assets.
             df = self._align_to(df, self._calender, self._align_by_time)
             df = df.sort_index(level=[0, 1])
+            if self._align_by_time and self.adjustments is not None:
+                # the rows added by the alignment have no events, they are not missing data
+                df = df.fillna({self.adjustments[0]: 0, self.adjustments[1]: 1})
 
         if self._dividends_path is not None:
             dfs = self._walk_dir(self._dividends_path, self._dividends_index)

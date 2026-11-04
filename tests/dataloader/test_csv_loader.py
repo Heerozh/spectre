@@ -528,3 +528,90 @@ def test_events_of_the_intraday_test_data():
     expected = pd.Series(1.0, index=msft.index)
     expected[:last_bar_01_11] = 1 / 15
     assert_allclose(msft.vol_multi, expected, rtol=1e-6)
+
+
+@pytest.mark.filterwarnings("ignore:Warning!! delay_factor is set to False")
+def test_adjusted_column_of_aligned_bars():
+    """The dividend of MSFT moves up onto the NaN row of 2019-01-10, the split onto the next."""
+    loader = make_adjusted_daily_loader(calender_asset="AAPL", align_by_time=True)
+    df = loader.test_load()
+    assert not df[["price_multi", "vol_multi"]].isna().any(axis=None)
+
+    engine = spectre.factors.FactorEngine(loader)
+    engine.add(spectre.factors.AdjustedColumnDataFactor(spectre.factors.OHLCV.volume), "vol")
+    engine.add(spectre.factors.AdjustedColumnDataFactor(spectre.factors.OHLCV.open), "open")
+    df = engine.run(pd.Timestamp("2019-01-02", tz="UTC"), END, delay_factor=False)
+
+    expected_open, expected_vol = expected_msft_adjusted()
+    msft = df.xs("MSFT", level=1).drop(pd.Timestamp("2019-01-10", tz="UTC"))
+    assert_almost_equal(msft.open.values, expected_open.values, decimal=4)
+    assert_almost_equal(msft.vol.values, expected_vol.values, decimal=0)
+
+
+def inline_events_loader(tmp_path, prices, **kwargs):
+    """Like `events_loader`, but the columns of the events are in the prices csv."""
+    folder = tmp_path / "prices"
+    for asset, closes in prices.items():
+        write_prices(folder, asset, closes)
+        frame = pd.read_csv(folder / f"{asset}.csv")
+        frame = frame.assign(**{"ex-dividend": 0.0, "split_ratio": 1.0})
+        frame.to_csv(folder / f"{asset}.csv", index=False)
+    return spectre.data.CsvDirLoader(
+        str(folder),
+        ohlcv=MEMORY_OHLCV,
+        adjustments=("ex-dividend", "split_ratio"),
+        parse_dates=True,
+        **kwargs,
+    )
+
+
+def joined_events_loader(tmp_path, prices, **kwargs):
+    return events_loader(tmp_path, prices, NO_DIVIDEND, NO_SPLIT, **kwargs)
+
+
+@pytest.mark.parametrize("make_loader", [inline_events_loader, joined_events_loader])
+@pytest.mark.filterwarnings("ignore:Warning!! delay_factor is set to False")
+def test_moving_average_over_an_aligned_gap(tmp_path, device, make_loader):
+    close = pd.Series(100.0 + np.arange(8) ** 2, index=DAYS)
+    gap = close.drop(DAYS[3])
+    prices = {"GAP": gap.to_dict(), "FULL": close.to_dict()}
+    loader = make_loader(tmp_path, prices, calender_asset="FULL", align_by_time=True)
+
+    engine = spectre.factors.FactorEngine(loader)
+    if device == "cuda":
+        engine.to_cuda()
+    engine.add(spectre.factors.MA(3), "ma")
+    result = engine.run(DAYS[2], DAYS[-1], delay_factor=False)
+    # a window with a missing bar is the mean of its valid bars
+    expected = gap.reindex(DAYS).rolling(3, min_periods=1).mean()[DAYS[2] :]
+    assert_allclose(result.ma.xs("GAP", level=1), expected, rtol=1e-6)
+
+    df = loader.test_load()
+    assert (df[["price_multi", "vol_multi"]] == 1).all(axis=None)
+    assert (df["ex-dividend"] == 0).all()
+    assert (df["split_ratio"] == 1).all()
+
+
+def test_event_in_the_prices_csv_after_an_aligned_gap(tmp_path):
+    prices = tmp_path / "prices"
+    prices.mkdir()
+    full = pd.DataFrame({col: [100.0, 100, 50, 50] for col in MEMORY_OHLCV}, index=DAYS[:4])
+    full = full.assign(**{"ex-dividend": 0.0, "split_ratio": 1.0}).rename_axis("date")
+    full.to_csv(prices / "FULL.csv")
+    gap = full.drop(DAYS[1])
+    gap.loc[DAYS[2], ["ex-dividend", "split_ratio"]] = (1.0, 0.5)
+    gap.to_csv(prices / "GAP.csv")
+
+    loader = spectre.data.CsvDirLoader(
+        str(prices),
+        ohlcv=MEMORY_OHLCV,
+        adjustments=("ex-dividend", "split_ratio"),
+        calender_asset="FULL",
+        align_by_time=True,
+        parse_dates=True,
+    )
+    df = loader.test_load().xs("GAP", level=1)
+    assert list(df["ex-dividend"]) == [0, 1, 0, 0]
+    assert list(df["split_ratio"]) == [1, 0.5, 1, 1]
+    assert_allclose(df.price_multi, [(1 - 1 / 100) * 0.5] * 2 + [1, 1], rtol=1e-6)
+    assert list(df.vol_multi) == [2, 2, 1, 1]
