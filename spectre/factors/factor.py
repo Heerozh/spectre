@@ -236,12 +236,12 @@ class BaseFactor:
     def ts_max(self, win=2):
         from .statistical import RollingHigh
 
-        return RollingHigh(win=win, inputs=(self,))
+        return RollingHigh(win=win, inputs=(self._numeric(),))
 
     def ts_min(self, win=2):
         from .statistical import RollingLow
 
-        return RollingLow(win=win, inputs=(self,))
+        return RollingLow(win=win, inputs=(self._numeric(),))
 
     def quantile(self, bins=5, mask: BaseFactor = None, groupby: str = "date"):
         """Cross-section quantiles to which the factor belongs"""
@@ -347,7 +347,7 @@ class BaseFactor:
 
     def ts_count(self, win: int):
         """Return Non-NaN data count"""
-        return NonNaNCountFactor(win, inputs=(self,))
+        return NonNaNCountFactor(win, inputs=(self._numeric(),))
 
     def clamp(self, left: float, right: float, fill=None):
         return ClampFactor(self, left, right, fill)

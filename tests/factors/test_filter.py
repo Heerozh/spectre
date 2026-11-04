@@ -429,6 +429,21 @@ def test_group_helpers_of_filter_with_mask(
     assert_values(result, reference(masked))
 
 
+ROLLING_HELPERS = {
+    "ts_max": (lambda f: f.ts_max(3), lambda x: x.rolling(3, min_periods=1).max()),
+    "ts_min": (lambda f: f.ts_min(3), lambda x: x.rolling(3, min_periods=1).min()),
+    "ts_count": (lambda f: f.ts_count(3), lambda x: x.rolling(3, min_periods=1).count()),
+}
+
+
+@pytest.mark.parametrize("helper, reference", ROLLING_HELPERS.values(), ids=ROLLING_HELPERS)
+def test_rolling_helpers_of_filter(dirty_engine, selected, cast, helper, reference):
+    factor, values = selected
+    result = run_dirty(dirty_engine, helper(cast(factor)))
+    assert_values(result, by_asset(values).transform(reference))
+    assert result.dtype == "float32"
+
+
 # ------------------------------------ newly listed asset ------------------------------------
 # B is listed on the first day of the results, so its rolling windows have no data at first.
 
