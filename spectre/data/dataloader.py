@@ -78,15 +78,15 @@ class DataLoader:
         df = df.rename_axis(['date', 'asset'])
         # speed up asset index search time
         df = df.reset_index()
-        asset_type = pd.api.types.CategoricalDtype(categories=pd.unique(df.asset).sort(),
-                                                   ordered=True)
+        # categories=None: categories are inferred from the sorted unique values
+        asset_type = pd.api.types.CategoricalDtype(categories=None, ordered=True)
         df.asset = df.asset.astype(asset_type)
         # format index and convert to utc timezone-aware
         df.set_index(['date', 'asset'], inplace=True)
         if df.index.levels[0].tzinfo is None:
-            df = df.tz_localize('UTC', level=0, copy=False)
+            df = df.tz_localize('UTC', level=0)
         else:
-            df = df.tz_convert('UTC', level=0, copy=False)
+            df = df.tz_convert('UTC', level=0)
         df.sort_index(level=[0, 1], inplace=True)
         # generate time key for parallel
         # print(pd.Timestamp.now(), 'Formatting time key for gpu sorting...')

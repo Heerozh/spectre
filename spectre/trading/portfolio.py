@@ -43,7 +43,9 @@ class Portfolio:
         if self._funds_change:
             value = self.history.value.sum(axis=1)
             funds = pd.DataFrame(self._funds_change)
-            funds['index'] = funds['index'].fillna(value.index[0])
+            # funds transferred before the first datetime is set have no date (None),
+            # convert to datetime explicitly, or it is an object index which can't align.
+            funds['index'] = pd.to_datetime(funds['index'].fillna(value.index[0]))
             funds = funds.set_index('index').amount
             return value.sub(funds, fill_value=0) / value.shift(1) - 1
         else:
