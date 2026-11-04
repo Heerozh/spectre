@@ -140,8 +140,12 @@ class SeriesDataFactor(ColumnDataFactor):
         super().__init__(inputs=[str(series.name)], should_delay=should_delay)
 
     def pre_compute_(self, engine, start, end) -> None:
-        if self.series.name not in engine.dataframe_.columns:
-            engine._dataframe = engine.dataframe_.join(self.series)
+        # Not a column of the frame. Its name says nothing about its data, pandas keeps the name on
+        # derived series, and a private column would stay in the frame after the run, one for each
+        # series ever run on it.
+        BaseFactor.pre_compute_(self, engine, start, end)
+        if self._data is None:
+            series = self.series.reindex(engine.dataframe_.index)
             if self.fill_na is not None:
                 # GroupBy.fillna(method=...) was removed in pandas 3.0
                 fill_methods = {
@@ -152,9 +156,10 @@ class SeriesDataFactor(ColumnDataFactor):
                 }
                 if self.fill_na not in fill_methods:
                     raise ValueError(f"`fill_na` must be one of {list(fill_methods)}")
-                grouped = engine._dataframe[self.series.name].groupby(level=1, observed=False)
-                engine._dataframe[self.series.name] = getattr(grouped, fill_methods[self.fill_na])()
-        super().pre_compute_(engine, start, end)
+                grouped = series.groupby(level=1, observed=False)
+                series = getattr(grouped, fill_methods[self.fill_na])()
+            self._data = engine.group_by_(series, self.groupby)
+            self._clean_required = True
 
 
 class DatetimeDataFactor(BaseFactor):
