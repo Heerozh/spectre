@@ -1,3 +1,4 @@
+[![CI](https://github.com/Heerozh/spectre/actions/workflows/ci.yml/badge.svg?branch=master)](https://github.com/Heerozh/spectre/actions/workflows/ci.yml)
 [![Coverage Status](https://coveralls.io/repos/github/Heerozh/spectre/badge.svg?branch=master)](https://coveralls.io/github/Heerozh/spectre?branch=master)
 
 # ||spectre
