@@ -609,7 +609,7 @@ class ManualBlotter(BaseBlotter):
             print('Create ManualBlotter with empty orders.')
             for k, v in col_types.items():
                 self.orders[k] = self.orders[k].astype(v)
-            self.orders.set_index('id', inplace=True)
+            self.orders = self.orders.set_index('id')
         else:
             self.orders = pd.concat([
                 pd.read_csv(fn, index_col='id', dtype=col_types, parse_dates=False)
@@ -629,7 +629,8 @@ class ManualBlotter(BaseBlotter):
         for n, g in self.orders.groupby(pd.Grouper(key='date', freq='D')):
             name = n.strftime('orders_%Y-%m-%d.csv')
             if not g.empty:
-                g.round(4).to_csv(os.path.join(self.working_dir, name))
+                numbers = g.select_dtypes('number').columns
+                g.round(dict.fromkeys(numbers, 4)).to_csv(os.path.join(self.working_dir, name))
 
     def set_datetime(self, dt: pd.Timestamp) -> None:
         assert str(dt.tz) == self.time_zone

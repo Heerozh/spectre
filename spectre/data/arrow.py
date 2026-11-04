@@ -24,9 +24,10 @@ class ArrowLoader(DataLoader):
         else:
             cols = pd.read_feather(path + '.meta')
 
-        ohlcv = cols.ohlcv.values
-        adjustments = cols.adjustments.values[:2]
-        if adjustments[0] is None:
+        ohlcv = tuple(cols.ohlcv)
+        adjustments = tuple(cols.adjustments.values[:2])
+        # missing values may be read as None or NaN, depends on pandas version
+        if pd.isna(adjustments[0]):
             adjustments = None
         super().__init__(path, ohlcv, adjustments)
         self.keep_in_memory = keep_in_memory
@@ -53,13 +54,14 @@ class ArrowLoader(DataLoader):
             return
 
         df = source.test_load()
-        df.reset_index(inplace=True)
+        df = df.reset_index()
         df.to_feather(save_to)
 
-        meta = pd.DataFrame(columns=['ohlcv', 'adjustments'])
-        meta.ohlcv = source.ohlcv
-        meta.adjustments[:2] = source.adjustments
-        # meta.loc[:2, "adjustments"] = source.adjustments
+        # don't use chained assignment like `meta.adjustments[:2] = ...` here, it does nothing
+        # under the Copy-on-Write of pandas 3.
+        meta = pd.DataFrame({'ohlcv': list(source.ohlcv)})
+        adjustments = list(source.adjustments or [])
+        meta['adjustments'] = adjustments + [None] * (len(meta) - len(adjustments))
         meta.to_feather(save_to + '.meta')
 
     def filter(self, func):
@@ -75,7 +77,7 @@ class ArrowLoader(DataLoader):
             df = feather.read_dataframe(self._path)
         else:
             df = pd.read_feather(self._path)
-        df.set_index(['date', 'asset'], inplace=True)
+        df = df.set_index(['date', 'asset'])
 
         if self._filter is not None:
             df = self._filter(df)

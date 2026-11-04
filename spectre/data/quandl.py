@@ -41,11 +41,11 @@ class QuandlLoader(DataLoader):
                                      'ex-dividend': np.float64, 'split_ratio': np.float64
                                  })
 
-        df.set_index(['date', 'ticker'], inplace=True)
-        df.split_ratio.loc[("2001-09-12", 'GMT')] = 1  # fix nan
+        df = df.set_index(['date', 'ticker'])
+        df.loc[("2001-09-12", 'GMT'), 'split_ratio'] = 1  # fix nan
         if self._calender:
             df = self._align_to(df, self._calender)
-            df.sort_index(level=[0, 1], inplace=True)
+            df = df.sort_index(level=[0, 1])
         df = self._format(df, split_ratio_is_inverse=True)
 
         return df

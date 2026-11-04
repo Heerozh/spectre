@@ -206,7 +206,7 @@ def nanlast(data: torch.Tensor, dim=1, offset=0) -> torch.Tensor:
     if offset > 0:
         s = [slice(None)] * len(data.shape)
         s[dim] = slice(offset, None)
-        data = data[s]
+        data = data[tuple(s)]
     mask = ~torch.isnan(data)
     return masked_last(data, mask, dim)
 
