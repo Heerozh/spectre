@@ -7,7 +7,7 @@ from numpy.testing import assert_allclose, assert_almost_equal, assert_array_equ
 
 import spectre
 from spectre import factors, parallel
-from tests.conftest import DATA_DIR, DIRTY_DATES, LISTED_ON
+from tests.conftest import DATA_DIR, DIRTY_ADJUSTMENTS, DIRTY_DATES, DIRTY_OHLCV, LISTED_ON
 from tests.factors import reference as ref
 from tests.factors.helpers import assert_factor, delete, run_dirty, run_factor
 
@@ -256,8 +256,9 @@ def test_weighted_zscore_without_spread(device, data, weight):
     assert torch.isnan(result).all()
 
 
+@pytest.mark.parametrize("weighted", [False, True], ids=["unweighted", "weighted"])
 @pytest.mark.parametrize("dtype", [torch.float32, torch.float64])
-def test_weighted_zscore_of_constant_rows(device, dtype):
+def test_zscore_of_constant_rows(device, dtype, weighted):
     """The rounding of the mean must not give scores to equal values."""
     rng = np.random.default_rng(0)
     data = np.full((200, 40), nan)
@@ -265,8 +266,60 @@ def test_weighted_zscore_of_constant_rows(device, dtype):
         data[row, : 3 + row % 37] = value
     data = torch.tensor(data, dtype=dtype, device=device)
     weight = torch.tensor(rng.uniform(1, 1000, data.shape), dtype=dtype, device=device)
-    result = factors.factor.ZScoreFactor(close).compute(data, weight)
+    result = factors.factor.ZScoreFactor(close).compute(data, weight if weighted else None)
     assert torch.isnan(result).all()
+
+
+@pytest.mark.parametrize("dtype", [torch.float32, torch.float64])
+def test_zscore_of_the_smallest_spread(device, dtype):
+    """Rounding must not hide a spread either, one step of the float type is still a spread."""
+    value = torch.tensor(123.456, dtype=dtype)
+    next_value = torch.nextafter(value, torch.tensor(np.inf, dtype=dtype))
+    data = torch.stack([value, value, value, next_value]).view(1, 4).to(device)
+    result = factors.factor.ZScoreFactor(close).compute(data)
+    expected = np.array([-1, -1, -1, 3]) / 3**0.5
+    assert_allclose(result.cpu().numpy()[0], expected, rtol=1e-6)
+
+
+@pytest.mark.parametrize("dtype, atol", [(torch.float32, 2e-5), (torch.float64, 1e-12)])
+def test_zscore_of_random_rows(device, dtype, atol):
+    rng = np.random.default_rng(0)
+    data = rng.normal(100, rng.uniform(0.01, 30, (500, 1)), (500, 60))
+    data[rng.random(data.shape) < 0.2] = nan
+    data = torch.tensor(data, dtype=dtype, device=device)
+    # the same values, without the rounding of the float type
+    exact = data.cpu().numpy().astype(np.float64)
+    mean, std = np.nanmean(exact, axis=1, keepdims=True), np.nanstd(exact, axis=1, keepdims=True)
+    result = factors.factor.ZScoreFactor(close).compute(data)
+    assert_allclose(result.cpu().numpy(), (exact - mean) / std, rtol=0, atol=atol)
+
+
+@pytest.mark.parametrize("groupby", ["date", "asset"])
+@pytest.mark.parametrize("dtype", ["float32", "float64"])
+def test_zscore_agrees_with_pandas(dirty_panel, device, dtype, groupby):
+    panel = dirty_panel.astype(dict.fromkeys(DIRTY_OHLCV, dtype))
+    engine = factors.FactorEngine(spectre.data.MemoryLoader(panel, DIRTY_OHLCV, DIRTY_ADJUSTMENTS))
+    if device == "cuda":
+        engine.to_cuda()
+    closes = panel.close.astype("float64")
+    expected = closes.groupby(level=groupby).transform(lambda x: (x - x.mean()) / x.std(ddof=0))
+    result = run_dirty(engine, close.zscore(groupby=groupby))
+    assert_allclose(result, expected, rtol=1e-5, atol=1e-5)
+    assert result.dtype == dtype
+
+
+@pytest.mark.parametrize("dtype", ["float32", "float64"])
+def test_weighted_zscore_agrees_with_pandas(dirty_panel, device, dtype):
+    panel = dirty_panel.astype(dict.fromkeys(DIRTY_OHLCV, dtype))
+    engine = factors.FactorEngine(spectre.data.MemoryLoader(panel, DIRTY_OHLCV, DIRTY_ADJUSTMENTS))
+    if device == "cuda":
+        engine.to_cuda()
+    closes, volumes = panel.close.astype("float64"), panel.volume.astype("float64")
+    std = closes.groupby(level="date").transform("std", ddof=0)
+    expected = (closes - xs_weighted_mean(closes, volumes)) / std
+    result = run_dirty(engine, close.zscore(weight=volume))
+    assert_allclose(result, expected, rtol=1e-5, atol=1e-5)
+    assert result.dtype == dtype
 
 
 def test_zscore_shift_with_filter(engine):
