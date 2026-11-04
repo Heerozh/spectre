@@ -471,6 +471,41 @@ def test_mad_clamp_fill_center():
     assert_array_equal(result.numpy(), [[2.5, 2, 3, 2.5], [25, 20, 30, 25]])
 
 
+@pytest.mark.parametrize("mean", [False, True])
+def test_mad_clamp_fill_constant_rows(device, mean):
+    """With MAD 0 both bounds are the center, which is not an outlier."""
+    x = torch.tensor([[1.0, 1, 1, 1], [8, nan, 8, 8]], dtype=torch.float64, device=device)
+    factor = factors.MADClampFactor()
+    factor.z = 3
+    factor.m_is_mean = mean
+    result = compute_with_mask(factor, x, -1.0)
+    assert_array_equal(result.cpu().numpy(), x.cpu().numpy())
+
+
+@pytest.mark.parametrize("dtype", [torch.float32, torch.float64])
+def test_mad_clamp_mean_fill_constant_rows(device, dtype):
+    """The mean of equal values must not round away from them, a bound would then cut them."""
+    values = np.random.default_rng(0).uniform(0.01, 500, 200)
+    x = np.full((200, 40), nan)
+    for row, value in enumerate(values):
+        x[row, : 3 + row % 37] = value
+    x = torch.tensor(x, dtype=dtype, device=device)
+    factor = factors.MADClampFactor()
+    factor.z = 1
+    factor.m_is_mean = True
+    result = compute_with_mask(factor, x, -1.0)
+    assert_array_equal(result.cpu().numpy(), x.cpu().numpy())
+
+
+def test_mad_clamp_fill_with_mad_of_zero(device):
+    x = torch.tensor([[5.0, 5, 5, 5, 7], [2, nan, 2, 0, 2]], dtype=torch.float64, device=device)
+    factor = factors.MADClampFactor()
+    factor.z = 3
+    result = compute_with_mask(factor, x, -1.0)
+    # the values that are not the center are out of it, like the clamp without `fill` does
+    assert_array_equal(result.cpu().numpy(), [[5, 5, 5, 5, -1], [2, nan, 2, -1, 2]])
+
+
 @pytest.mark.parametrize("z", [0.2, 0.01, 0.001])
 def test_winsorizing_groupby_asset(engine, z):
     weekdays = loaded_weekdays()

@@ -1215,7 +1215,9 @@ class MADClampFactor(CustomFactor):
 
         universe_mask = self._get_computed_mask()
         if self.m_is_mean:
-            center = nanmean(data).unsqueeze(-1)
+            # from the lowest value, so the mean of equal values doesn't round away from them
+            lowest = nanmin(data).unsqueeze(-1)
+            center = lowest + nanmean(data - lowest).unsqueeze(-1)
             diff = (data - center).abs()
             mad = nanmean(diff).unsqueeze(-1)
         else:
@@ -1241,7 +1243,8 @@ class MADClampFactor(CustomFactor):
                 fill_mask, center.expand(data.shape[0], data.shape[1]).masked_select(fill_mask)
             )
         else:
-            ret.masked_fill_((ret <= lower) | (ret >= upper), fill)
+            # if MAD is 0, both bounds are the center, which is not an outlier
+            ret.masked_fill_(((ret <= lower) | (ret >= upper)) & (ret != center), fill)
         return ret
 
 
