@@ -101,7 +101,7 @@ class ExponentialWeightedMovingAverage(CustomFactor):
             self.win = int(4.5 * (span + 1))
         else:
             self.alpha = 1 - math.exp(math.log(0.5) / half_life)
-            self.win = 15 * half_life
+            self.win = max(math.ceil(15 * half_life), self._min_win)
 
         super().__init__(None, inputs)
         self.adjust = adjust

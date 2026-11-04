@@ -128,6 +128,19 @@ def test_ema_half_life(engine):
 
 
 @pytest.mark.filterwarnings("ignore:Warning!! delay_factor is set to False")
+@pytest.mark.parametrize("half_life", [2.5, 2.0, 0.5, 0.1, 0.05])
+def test_ema_half_life_of_float(dirty_engine, dirty_panel, half_life):
+    result = run_dirty(dirty_engine, factors.EMA(half_life=half_life))
+    for asset in ("FULL", "LISTED", "NANBAR"):
+        close = dirty_panel.xs(asset, level="asset").close
+        expected = close.ewm(halflife=half_life, adjust=False).mean()
+        # window is at least 15 half-lives, as in test_ema_half_life
+        atol = 0.5**15 * (close.max() - close.min()) + 1e-5
+        got = result.xs(asset, level="asset").values
+        assert_allclose(got, expected.values, rtol=0, atol=atol, err_msg=asset)
+
+
+@pytest.mark.filterwarnings("ignore:Warning!! delay_factor is set to False")
 @pytest.mark.parametrize("start", [0, 40])
 @pytest.mark.parametrize("adjust", [False, True])
 @pytest.mark.parametrize("span", [3, 5, 12, 26])
