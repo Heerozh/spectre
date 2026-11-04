@@ -14,6 +14,9 @@ from .memory import (
 from .quandl import (
     QuandlLoader,
 )
+from .sp500 import (
+    sp500_constituents,
+)
 from .yahoo import (
     YahooDownloader,
 )

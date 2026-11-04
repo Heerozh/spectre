@@ -2,6 +2,8 @@
 Tests need data outside of this repository or the internet, they are skipped by default.
 """
 
+import warnings
+
 import pytest
 import torch
 from numpy.testing import assert_almost_equal
@@ -18,6 +20,18 @@ def test_yahoo(tmp_path):
     loader = spectre.data.ArrowLoader(str(tmp_path / "yahoo.feather"))
     df = loader._load()
     assert list(df.index.levels[1]) == ["AAPL", "IBM"]
+
+
+@pytest.mark.network
+def test_sp500_constituents():
+    with warnings.catch_warnings():
+        # a warning here means the format of the Wikipedia page changed
+        warnings.simplefilter("error", RuntimeWarning)
+        members = spectre.data.sp500_constituents()
+    assert 490 <= len(members.iloc[-1]) <= 510
+    assert "TSLA" not in members.asof("2020-12-18")
+    assert "TSLA" in members.asof("2020-12-21")
+    assert "LEHMQ" in members.asof("2008-09-01")
 
 
 @pytest.mark.slow
