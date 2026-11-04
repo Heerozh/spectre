@@ -5,10 +5,11 @@
 @email: heeroz@gmail.com
 """
 
+import builtins
 import warnings
 from abc import ABC
 from collections.abc import Sequence
-from typing import TYPE_CHECKING, Union
+from typing import TYPE_CHECKING
 
 import numpy as np
 import torch
@@ -145,7 +146,7 @@ class BaseFactor:
 
     # --------------- helper functions ---------------
 
-    def top(self, n: float, mask: "BaseFactor" = None):
+    def top(self, n: float, mask: BaseFactor = None):
         """Cross-section top values"""
         rank_data = self.rank(ascending=False, mask=mask, method="ordinal")
         if type(n) is float:
@@ -154,7 +155,7 @@ class BaseFactor:
         else:
             return rank_data <= n
 
-    def bottom(self, n: float, mask: "BaseFactor" = None):
+    def bottom(self, n: float, mask: BaseFactor = None):
         rank_data = self.rank(ascending=True, mask=mask, method="ordinal")
         if type(n) is float:
             assert 0 < n < 1
@@ -162,7 +163,7 @@ class BaseFactor:
         else:
             return rank_data <= n
 
-    def rank(self, ascending=True, mask: "BaseFactor" = None, normalize=False, method="average"):
+    def rank(self, ascending=True, mask: BaseFactor = None, normalize=False, method="average"):
         """Cross-section rank"""
         factor = RankFactor(inputs=(self,), mask=mask)
         factor.method = method
@@ -170,7 +171,7 @@ class BaseFactor:
         factor.normalize = normalize
         return factor
 
-    def zscore(self, groupby: str = "date", mask: "BaseFactor" = None, weight: "BaseFactor" = None):
+    def zscore(self, groupby: str = "date", mask: BaseFactor = None, weight: BaseFactor = None):
         """Cross-section zscore"""
         factor = ZScoreFactor(data=self, mask=mask, groupby=groupby, weight=weight)
         return factor
@@ -178,8 +179,8 @@ class BaseFactor:
     def demean(
         self,
         groupby: str | dict | None = None,
-        mask: "BaseFactor" = None,
-        beta: "BaseFactor" = None,
+        mask: BaseFactor = None,
+        beta: BaseFactor = None,
     ):
         """
         Cross-section demean.
@@ -196,7 +197,7 @@ class BaseFactor:
             raise ValueError()
         return factor
 
-    def demedian(self, groupby: str = "date", mask: "BaseFactor" = None):
+    def demedian(self, groupby: str = "date", mask: BaseFactor = None):
         factor = DemedianFactor(inputs=(self,), mask=mask)
         factor.groupby = groupby
         return factor
@@ -204,9 +205,9 @@ class BaseFactor:
     def mean(
         self,
         groupby: str = "date",
-        mask: Union["BaseFactor", str] = None,
-        weight: "BaseFactor" = None,
-        weight_sum: float | None = None,
+        mask: BaseFactor | str = None,
+        weight: BaseFactor = None,
+        weight_sum: builtins.float | None = None,
     ):
         """
         Cross-section mean.
@@ -215,17 +216,17 @@ class BaseFactor:
         factor.groupby = groupby
         return factor
 
-    def median(self, mask: "BaseFactor" = None, groupby: str = "date"):
+    def median(self, mask: BaseFactor = None, groupby: str = "date"):
         factor = MedianFactor(inputs=(self,), mask=mask)
         factor.groupby = groupby
         return factor
 
-    def max(self, mask: "BaseFactor" = None, groupby: str = "date"):
+    def max(self, mask: BaseFactor = None, groupby: str = "date"):
         factor = XSMax(inputs=(self,), mask=mask)
         factor.groupby = groupby
         return factor
 
-    def min(self, mask: "BaseFactor" = None, groupby: str = "date"):
+    def min(self, mask: BaseFactor = None, groupby: str = "date"):
         factor = XSMin(inputs=(self,), mask=mask)
         factor.groupby = groupby
         return factor
@@ -240,7 +241,7 @@ class BaseFactor:
 
         return RollingLow(win=win, inputs=(self,))
 
-    def quantile(self, bins=5, mask: "BaseFactor" = None, groupby: str = "date"):
+    def quantile(self, bins=5, mask: BaseFactor = None, groupby: str = "date"):
         """Cross-section quantiles to which the factor belongs"""
         if not mask:
             warnings.warn(
@@ -253,14 +254,14 @@ class BaseFactor:
         factor.bins = bins
         return factor
 
-    def std(self, groupby: str = "date", mask: "BaseFactor" = None):
+    def std(self, groupby: str = "date", mask: BaseFactor = None):
         from .statistical import XSStandardDeviation
 
         factor = XSStandardDeviation(inputs=(self,), mask=mask)
         factor.groupby = groupby
         return factor
 
-    def to_weight(self, demean=True, mask: "BaseFactor" = None):
+    def to_weight(self, demean=True, mask: BaseFactor = None):
         """factor value to portfolio weight, which sum(abs(weight)) == 1"""
         factor = ToWeightFactor(inputs=(self,), mask=mask)
         factor.demean = demean
@@ -280,12 +281,12 @@ class BaseFactor:
     def sign(self):
         return SignFactor(inputs=(self,))
 
-    def ts_sum(self, win: int, mask: "BaseFactor" = None):
+    def ts_sum(self, win: int, mask: BaseFactor = None):
         ret = SumFactor(win, inputs=(self,))
         ret.set_mask(mask)
         return ret
 
-    def xs_sum(self, mask: "BaseFactor" = None, groupby="date"):
+    def xs_sum(self, mask: BaseFactor = None, groupby="date"):
         # todo future name will change to sum
         ret = XSSumFactor(inputs=(self,), mask=mask)
         ret.groupby = groupby
@@ -300,7 +301,7 @@ class BaseFactor:
     def tanh(self):
         return TanhFactor(inputs=(self,))
 
-    def filter(self, mask: "BaseFactor"):
+    def filter(self, mask: BaseFactor):
         """Local filter, fill unmasked elements with NaNs."""
         mf = DoNothingFactor(inputs=(self,))
         mf.set_mask(mask)
@@ -312,7 +313,9 @@ class BaseFactor:
         factor = OneHotEncoder(self)
         return factor
 
-    def fill_na(self, value: float | None = None, ffill: bool | None = None, inf=False, nan=True):
+    def fill_na(
+        self, value: builtins.float | None = None, ffill: bool | None = None, inf=False, nan=True
+    ):
         if value is not None:
             factor = FillNANFactor(inputs=(self, value))
         elif ffill:
@@ -325,7 +328,7 @@ class BaseFactor:
 
     fill_nan = fill_na
 
-    def masked_fill(self, mask: "BaseFactor", fill: Union["BaseFactor", float, bool]):
+    def masked_fill(self, mask: BaseFactor, fill: BaseFactor | builtins.float | bool):
         return MaskedFillFactor(inputs=(self, mask, fill))
 
     def ts_any(self, win: int):
@@ -347,7 +350,7 @@ class BaseFactor:
     def clamp(self, left: float, right: float, fill=None):
         return ClampFactor(self, left, right, fill)
 
-    def mad_clamp(self, z: float, mask: "BaseFactor" = None, groupby="date", fill=None, mean=False):
+    def mad_clamp(self, z: float, mask: BaseFactor = None, groupby="date", fill=None, mean=False):
         """Cross-section MAD clamp"""
         factor = MADClampFactor(inputs=(self, fill))
         factor.groupby = groupby
@@ -356,7 +359,7 @@ class BaseFactor:
         factor.m_is_mean = mean
         return factor
 
-    def winsorizing(self, z: float = 0.05, mask: "BaseFactor" = None):
+    def winsorizing(self, z: float = 0.05, mask: BaseFactor = None):
         """Cross-section winsorizing clamp"""
         factor = WinsorizingFactor(inputs=(self,))
         factor.groupby = CrossSectionFactor.groupby
@@ -406,7 +409,8 @@ class BaseFactor:
         """Is this factor should be delayed?"""
         return False
 
-    def pre_compute_(self, engine: "FactorEngine", start, end) -> None:
+    # quoted, because engine.py imports this module and inspect.signature() evaluates annotations
+    def pre_compute_(self, engine: "FactorEngine", start, end) -> None:  # noqa: UP037
         self._engine = engine
         engine.column_to_parallel_groupby_(self.groupby)
 

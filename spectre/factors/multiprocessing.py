@@ -5,14 +5,14 @@
 @email: heeroz@gmail.com
 """
 
+import sys
 from collections.abc import Sequence
-from multiprocessing import Pool, cpu_count
+from multiprocessing import Pool, cpu_count, get_start_method
 from multiprocessing.pool import ThreadPool
 
 import numpy as np
 import pandas as pd
 
-from .._compat import stack_keep_nan
 from ..parallel import Rolling
 from .datafactor import ColumnDataFactor
 from .factor import BaseFactor, CustomFactor
@@ -50,8 +50,9 @@ class CPUParallelFactor(CustomFactor):
         core=None,
     ):
         """
-        `multiprocess=True` may not working on windows If your code is written in a notebook cell.
-         So it is recommended that you write the CPUParallelFactor code in a file.
+        `multiprocess=True` needs the child processes to import `mp_compute`, so write the
+        CPUParallelFactor code in a file. In a notebook cell it raises ValueError, unless you
+        choose the `fork` start method, which no platform uses by default since Python 3.14.
         """
         super().__init__(win, inputs)
 
@@ -69,6 +70,20 @@ class CPUParallelFactor(CustomFactor):
             self.core = cpu_count()
         else:
             self.core = core
+
+    def _check_importable(self) -> None:
+        """
+        Only `fork` children inherit `mp_compute`, the others have to import it. If they can't,
+        each one dies, the pool keeps replacing them and `map` never returns.
+        """
+        in_main = type(self).mp_compute.__module__ == "__main__"
+        no_file = not hasattr(sys.modules["__main__"], "__file__")
+        if in_main and no_file and get_start_method() != "fork":
+            raise ValueError(
+                f"multiprocess=True can't import {type(self).__name__}.mp_compute, because "
+                "it is defined in a notebook cell or another `__main__` without a file. "
+                "Move it to a .py file, or use multiprocess=False."
+            )
 
     def compute(self, *inputs):
         n_cores = self.core
@@ -101,6 +116,8 @@ class CPUParallelFactor(CustomFactor):
         n_cores = min(n_cores, len(ranges))
         split_range = np.array_split(ranges, n_cores)
 
+        if self.pool is Pool:
+            self._check_importable()
         with self.pool(n_cores) as p:
             pool_ret = p.map(caller.split_call, split_range)
 
@@ -112,7 +129,7 @@ class CPUParallelFactor(CustomFactor):
             )
 
         ret.iloc[backwards:] = pool_ret
-        ret = stack_keep_nan(ret)[origin_input.index]
+        ret = ret.stack()[origin_input.index]
 
         return self._regroup(ret)
 

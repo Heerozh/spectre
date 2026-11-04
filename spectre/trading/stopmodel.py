@@ -6,10 +6,8 @@
 """
 
 import math
-from typing import TYPE_CHECKING
 
-if TYPE_CHECKING:
-    import pandas as pd
+import pandas as pd
 
 
 def sign(x):
@@ -171,7 +169,7 @@ class TimeDecayTrailingStopModel(StopModel):
     def __init__(
         self,
         ratio: float,
-        period_target: "pd.Timedelta",
+        period_target: pd.Timedelta,
         callback=None,
         decay_rate=0.05,
         max_decay=0,

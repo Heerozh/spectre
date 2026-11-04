@@ -483,7 +483,7 @@ class Rolling:
     def __repr__(self):
         return "spectre.parallel.Rolling object contains:\n" + self.values.__repr__()
 
-    def agg(self, op: Callable, *others: "Rolling"):
+    def agg(self, op: Callable, *others: Rolling):
         """
         Call `op` on the split rolling data one by one, pass in all the adjusted values,
         and finally aggregate them into a whole.

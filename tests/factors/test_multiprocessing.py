@@ -1,8 +1,11 @@
+import sys
+
 import numpy as np
 import pytest
 from numpy.testing import assert_almost_equal
 
 from spectre import factors
+from spectre.factors import multiprocessing as cpf
 
 adjusted_open = factors.AdjustedColumnDataFactor(factors.OHLCV.open)
 adjusted_close = factors.AdjustedColumnDataFactor(factors.OHLCV.close)
@@ -21,8 +24,6 @@ def test_column_data_not_allowed():
         MeanOfProduct(inputs=[factors.OHLCV.open])
 
 
-# Pool forks the process which has torch threads, python warns it may deadlock.
-@pytest.mark.filterwarnings("ignore:This process .* is multi-threaded:DeprecationWarning")
 @pytest.mark.parametrize("multiprocess", [False, True])
 def test_cpu_parallel_factor(engine_no_calendar, device, multiprocess):
     engine = engine_no_calendar
@@ -42,6 +43,45 @@ def test_cpu_parallel_factor(engine_no_calendar, device, multiprocess):
     # one row
     result = engine.run("2019-01-04", "2019-01-05")
     assert_almost_equal(result.f.values, result.f2.values)
+
+
+class PoolStarted(Exception):
+    pass
+
+
+def fake_pool(_):
+    raise PoolStarted
+
+
+@pytest.fixture
+def in_notebook(monkeypatch):
+    """Make `mp_compute` look like it was defined in a notebook cell."""
+    monkeypatch.delattr(sys.modules["__main__"], "__file__", raising=False)
+    monkeypatch.setattr(MeanOfProduct.mp_compute, "__module__", "__main__")
+    # a real pool would hang here if the check failed, this one only fails the test
+    monkeypatch.setattr(cpf, "Pool", fake_pool)
+    monkeypatch.setattr(cpf, "get_start_method", lambda: "forkserver")
+
+
+def run_multiprocess(engine, multiprocess=True):
+    inputs = [adjusted_open, adjusted_close]
+    engine.add(MeanOfProduct(win=10, core=2, inputs=inputs, multiprocess=multiprocess), "f")
+    return engine.run("2018-12-25", "2019-01-05")
+
+
+def test_multiprocess_rejects_notebook_factor(engine_no_calendar, in_notebook):
+    with pytest.raises(ValueError, match="notebook cell"):
+        run_multiprocess(engine_no_calendar)
+
+
+def test_multiprocess_notebook_factor_works_with_fork(engine_no_calendar, in_notebook, monkeypatch):
+    monkeypatch.setattr(cpf, "get_start_method", lambda: "fork")
+    with pytest.raises(PoolStarted):
+        run_multiprocess(engine_no_calendar)
+
+
+def test_threads_allow_notebook_factor(engine_no_calendar, in_notebook):
+    assert len(run_multiprocess(engine_no_calendar, multiprocess=False)) > 0
 
 
 def test_nested_window(engine):
