@@ -178,6 +178,10 @@ class DataLoader:
             assert not any(df[self.adjustments[1]].isna()), (
                 "There is nan value in split_ratio column, should be filled with 1."
             )
+            assert not df[self.adjustment_multipliers].isna().any(axis=None), (
+                "There is nan value in adjustment multipliers columns, the prices before it would "
+                "lose the dividends and splits after it."
+            )
             assert not any(df[self.time_category].isna()), (
                 "There is nan value in time_category column, should be filled with time id."
             )

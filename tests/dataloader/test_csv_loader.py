@@ -304,6 +304,39 @@ def test_nan_close_keeps_events(closes, dividends, splits, price_multi, vol_mult
     assert df.vol_multi.dtype == np.float32
 
 
+class FrameLoader(spectre.data.DataLoader):
+    """Returns the frame as is, for frames that `_format` doesn't produce."""
+
+    def __init__(self, df):
+        super().__init__("", MEMORY_OHLCV, ("ex-dividend", "split_ratio"))
+        self.df = df
+
+    @property
+    def last_modified(self):
+        return 1
+
+    def _load(self):
+        return self.df
+
+
+@pytest.mark.parametrize("column", ["price_multi", "vol_multi"])
+def test_test_load_finds_nan_multipliers(tmp_path, column):
+    df = memory_loader([10, 10, 10]).load().copy()
+    df.loc[df.index[1], column] = nan
+    with pytest.raises(AssertionError, match="nan value in adjustment multipliers"):
+        FrameLoader(df).test_load()
+
+    # so it can't be written to disk
+    path = tmp_path / "prices.feather"
+    with pytest.raises(AssertionError, match="nan value in adjustment multipliers"):
+        spectre.data.ArrowLoader.ingest(FrameLoader(df), str(path), force=True)
+    assert not path.exists()
+
+
+def test_test_load_passes_nan_prices(dirty_loader):
+    assert dirty_loader.test_load()["close"].isna().any()
+
+
 def test_dirty_panel_multipliers(dirty_loader, dirty_panel):
     df = dirty_loader.load()
     assert not df[["price_multi", "vol_multi"]].isna().any(axis=None)
