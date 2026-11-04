@@ -145,8 +145,35 @@ def test_unrealized_percent_after_reducing(shares, closed, price, average_price,
 
 
 def lifetime_pnl(pos):
-    """Realized P&L + the shares left marked to market against what they cost."""
-    return pos.realized + (pos.last_price - pos.cost_basis) * pos.shares
+    return pos.realized + pos.unrealized
+
+
+@pytest.mark.parametrize("side", [1, -1], ids=["long", "short"])
+def test_realized_plus_unrealized_is_the_total_pnl(side):
+    # P&L of a long, a short is the opposite: its cash flows are the opposite of the long's
+    pos = trading.Position(side * 100, 10, 0, None)
+    assert pos.unrealized == 0
+
+    # close 50 at 12. 100 is realized, and the 50 left are 2 above their cost
+    pos.update(-side * 50, 12, 0, None)
+    assert pos.realized == pytest.approx(side * 100)
+    assert pos.unrealized == pytest.approx(side * 100)
+    assert lifetime_pnl(pos) == pytest.approx(side * 200)
+
+    # a dividend of 1 moves money, the holder is not richer: price 11, cost 9
+    pos.process_dividend(1, tax=0)
+    assert pos.unrealized == pytest.approx(side * (11 - 9) * 50)
+    assert lifetime_pnl(pos) == pytest.approx(side * 200)
+
+    # a 2-for-1 split changes nothing either: 100 shares, price 5.5, cost 4.5
+    pos.process_split(2, 11)
+    assert pos.unrealized == pytest.approx(side * (5.5 - 4.5) * 100)
+    assert lifetime_pnl(pos) == pytest.approx(side * 200)
+
+    # and the price moves: 100 shares gain 7 - 5.5 each
+    pos.last_price = 7
+    assert pos.realized == pytest.approx(side * 100)
+    assert lifetime_pnl(pos) == pytest.approx(side * (200 + 150))
 
 
 def test_cost_basis_of_long():

@@ -75,7 +75,7 @@ class Position:
 
     @property
     def unrealized(self):
-        return (self._last_price - self._average_price) * self._shares
+        return (self._last_price - self._cost_basis) * self._shares
 
     @property
     def unrealized_percent(self):
