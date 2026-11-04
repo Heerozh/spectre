@@ -4,11 +4,13 @@
 @license: GPL-3.0-only
 @email: heeroz@gmail.com
 """
-from typing import Callable, Union
-import torch
+from collections.abc import Callable
+
 import numpy as np
-from .constants import DeviceConstant
+import torch
+
 from ..config import Global
+from .constants import DeviceConstant
 
 
 class ParallelGroupBy:
@@ -74,14 +76,14 @@ class ParallelGroupBy:
     def revert(self, split_data: torch.Tensor, dbg_str='None') -> torch.Tensor:
         if tuple(split_data.shape) != self._data_shape:
             if tuple(split_data.shape[:2]) == self._data_shape[:2]:
-                raise ValueError('The downstream needs shape{2}, and the input factor "{1}" is '
-                                 'shape{0}. Look like this factor has multiple return values, '
+                raise ValueError(f'The downstream needs shape{self._data_shape}, and the input factor "{dbg_str}" is '
+                                 f'shape{tuple(split_data.shape)}. Look like this factor has multiple return values, '
                                  'using slice to select a value before using it, for example: '
                                  '`factor[0]`.'
-                                 .format(tuple(split_data.shape), dbg_str, self._data_shape))
+                                 )
             else:
-                raise ValueError('The return data shape{} of Factor `{}` must same as input{}.'
-                                 .format(tuple(split_data.shape), dbg_str, self._data_shape))
+                raise ValueError(f'The return data shape{tuple(split_data.shape)} of Factor `{dbg_str}` must same as input{self._data_shape}.'
+                                 )
         return torch.take(split_data, self._inverse_indices)
 
     def create(self, dtype, values, nan_fill=np.nan):
@@ -344,7 +346,7 @@ def quantile(data, bins, dim=1):
 
 
 def masked_kth_value_1d(data, universe_mask, k_percents, even_mean=True,
-                        nan_policy: Union[str, float] = 'omit', dim=1):
+                        nan_policy: str | float = 'omit', dim=1):
     """
     :param data:
     :param universe_mask:

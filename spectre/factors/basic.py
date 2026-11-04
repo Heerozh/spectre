@@ -4,14 +4,16 @@
 @license: GPL-3.0-only
 @email: heeroz@gmail.com
 """
-from typing import Sequence
+import math
+from collections.abc import Sequence
+
 import numpy as np
 import torch
-import math
-from .factor import BaseFactor, CustomFactor
-from ..parallel import nansum, nanmean
-from .engine import OHLCV
+
 from ..config import Global
+from ..parallel import nanmean, nansum
+from .engine import OHLCV
+from .factor import BaseFactor, CustomFactor
 
 
 class Returns(CustomFactor):

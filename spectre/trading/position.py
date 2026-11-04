@@ -5,7 +5,6 @@
 @email: heeroz@gmail.com
 """
 import math
-from typing import Tuple
 
 from .stopmodel import StopModel
 
@@ -72,7 +71,7 @@ class Position:
     def unrealized_percent(self):
         return (self._last_price / self._average_price - 1) * sign(self._shares)
 
-    def update(self, amount: int, fill_price: float, commission: float, dt) -> Tuple[bool, float]:
+    def update(self, amount: int, fill_price: float, commission: float, dt) -> tuple[bool, float]:
         """
         position + amount, fill_price and commission is for calculation average_price and P&L
         return (True, realized) when position is empty.

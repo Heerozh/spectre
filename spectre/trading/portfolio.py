@@ -4,9 +4,11 @@
 @license: GPL-3.0-only
 @email: heeroz@gmail.com
 """
-from typing import Union, Callable
-import pandas as pd
+from collections.abc import Callable
+
 import numpy as np
+import pandas as pd
+
 from .position import Position
 from .stopmodel import StopModel
 
@@ -178,7 +180,7 @@ class Portfolio:
             if price == price:
                 pos.last_price = price
 
-    def update_value(self, prices: Union[Callable, dict]):
+    def update_value(self, prices: Callable | dict):
         if callable(prices):
             self._update_value_func(prices)
         elif isinstance(prices, dict):

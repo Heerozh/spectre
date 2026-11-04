@@ -4,15 +4,29 @@
 @license: GPL-3.0-only
 @email: heeroz@gmail.com
 """
-from abc import ABC
-from typing import Optional, Sequence, Union
-import numpy as np
 import warnings
+from abc import ABC
+from collections.abc import Sequence
+from typing import Union
+
+import numpy as np
 import torch
-from ..parallel import (nansum, nanmean, nanstd, nanmax, nanmin, pad_2d, Rolling, quantile,
-                        masked_kth_value_1d, clamp_1d_, rankdata)
-from ..plotting import plot_factor_diagram
+
 from ..config import Global
+from ..parallel import (
+    Rolling,
+    clamp_1d_,
+    masked_kth_value_1d,
+    nanmax,
+    nanmean,
+    nanmin,
+    nanstd,
+    nansum,
+    pad_2d,
+    quantile,
+    rankdata,
+)
+from ..plotting import plot_factor_diagram
 
 
 class BaseFactor:
@@ -116,7 +130,7 @@ class BaseFactor:
 
     # --------------- helper functions ---------------
 
-    def top(self, n: Union[int, float], mask: 'BaseFactor' = None):
+    def top(self, n: float, mask: 'BaseFactor' = None):
         """ Cross-section top values """
         rank_data = self.rank(ascending=False, mask=mask, method='ordinal')
         if type(n) is float:
@@ -125,7 +139,7 @@ class BaseFactor:
         else:
             return rank_data <= n
 
-    def bottom(self, n: Union[int, float], mask: 'BaseFactor' = None):
+    def bottom(self, n: float, mask: 'BaseFactor' = None):
         rank_data = self.rank(ascending=True, mask=mask, method='ordinal')
         if type(n) is float:
             assert 0 < n < 1
@@ -146,7 +160,7 @@ class BaseFactor:
         factor = ZScoreFactor(data=self, mask=mask, groupby=groupby, weight=weight)
         return factor
 
-    def demean(self, groupby: Union[str, dict] = None, mask: 'BaseFactor' = None,
+    def demean(self, groupby: str | dict = None, mask: 'BaseFactor' = None,
                beta: 'BaseFactor' = None):
         """
         Cross-section demean.
@@ -282,7 +296,7 @@ class BaseFactor:
 
     fill_nan = fill_na
 
-    def masked_fill(self, mask: 'BaseFactor', fill: Union['BaseFactor', float, int, bool]):
+    def masked_fill(self, mask: 'BaseFactor', fill: Union['BaseFactor', float, bool]):
         return MaskedFillFactor(inputs=(self, mask, fill))
 
     def ts_any(self, win: int):
@@ -299,7 +313,7 @@ class BaseFactor:
         """ Return Non-NaN data count """
         return NonNaNCountFactor(win, inputs=(self,))
 
-    def clamp(self, left: Union[float, int], right: Union[float, int], fill=None):
+    def clamp(self, left: float, right: float, fill=None):
         return ClampFactor(self, left, right, fill)
 
     def mad_clamp(self, z: float, mask: 'BaseFactor' = None, groupby='date', fill=None, mean=False):
@@ -368,7 +382,7 @@ class BaseFactor:
     def clean_up_(self, force=False) -> None:
         self._engine = None
 
-    def compute_(self, stream: Union[torch.cuda.Stream, None]) -> torch.Tensor:
+    def compute_(self, stream: torch.cuda.Stream | None) -> torch.Tensor:
         raise NotImplementedError("abstractmethod")
 
     def __init__(self) -> None:
@@ -398,7 +412,7 @@ class CustomFactor(BaseFactor):
     _total_backwards = None
     _cache_hash = None
 
-    def __init__(self, win: Optional[int] = None, inputs: Optional[Sequence[BaseFactor]] = None):
+    def __init__(self, win: int | None = None, inputs: Sequence[BaseFactor] | None = None):
         """
         :param win:  Optional[int]
             Including additional past data with 'window length' in `input`
@@ -417,8 +431,7 @@ class CustomFactor(BaseFactor):
         assert isinstance(self.win, int), '`factor.win` must be a integer.'
 
         if not (self.win >= (self._min_win or 1)):
-            raise ValueError('factor({}) win ({}) must  >= [_min_win({}) and 1]'.format(
-                str(self), self.win, self._min_win))
+            raise ValueError(f'factor({self!s}) win ({self.win}) must  >= [_min_win({self._min_win}) and 1]')
 
         if self.inputs:
             self.inputs = list(ipt() if callable(ipt) else ipt for ipt in self.inputs)
@@ -439,7 +452,7 @@ class CustomFactor(BaseFactor):
         else:
             return cls(inputs=[*args[0:]])
 
-    def set_mask(self, mask: Union[BaseFactor, str] = None):
+    def set_mask(self, mask: BaseFactor | str = None):
         """ Input data mask, fill all unmasked **INPUT** data to NaN """
         self._mask = mask
         self._total_backwards = None
@@ -587,8 +600,8 @@ class CustomFactor(BaseFactor):
         # TODO If the same factor added to 2 different engines, the _keep_cache should not able to
         #  be enabled. alert or rise.
         if engine.cache_hash != self._cache_hash and self._cache is not None:
-            print('The factor({}) data cached for the original engine is invalidated due to engine '
-                  'changes.'.format(self))
+            print(f'The factor({self}) data cached for the original engine is invalidated due to engine '
+                  'changes.')
             self._cache = None
             self._cache_stream = None
 
@@ -626,17 +639,17 @@ class CustomFactor(BaseFactor):
         # if need rolling and adjustment
         if self.win > 1:
             if len(ret.shape) >= 3:
-                raise ValueError("upstream factor `{}` has multiple outputs ({}), "
+                raise ValueError(f"upstream factor `{upstream!s}` has multiple outputs ({ret.shape[2]}), "
                                  "rolling win > 1 only supports one output, "
                                  "use slice to select a value before using it, for example: "
-                                 "`factor[0]`.".format(str(upstream), ret.shape[2]))
+                                 "`factor[0]`.")
             # todo: If the indirect children is a column factor, also need to adjust.
             #  for now, only adjust direct children.
             #  refactor: if any shift occurs, adjust them.
             ret = Rolling(ret, self.win, upstream.adjustments, self._rolling_fill)
         return ret
 
-    def compute_(self, down_stream: Union[torch.cuda.Stream, None]) -> torch.Tensor:
+    def compute_(self, down_stream: torch.cuda.Stream | None) -> torch.Tensor:
         # return cached result
         self._ref_count -= 1
         if self._ref_count < 0:
@@ -760,8 +773,8 @@ class CrossSectionFactor(CustomFactor, ABC):
     groupby = 'date'
     win = 1
 
-    def __init__(self, win: Optional[int] = None, inputs: Optional[Sequence[BaseFactor]] = None,
-                 mask: Optional[BaseFactor] = None):
+    def __init__(self, win: int | None = None, inputs: Sequence[BaseFactor] | None = None,
+                 mask: BaseFactor | None = None):
         super().__init__(win, inputs)
         self.set_mask(mask)
         assert self.win == 1, 'CrossSectionFactor.win can only be 1'
@@ -781,12 +794,9 @@ class MultiRetSelector(CustomFactor):
 
     def compute(self, data: torch.Tensor, key) -> torch.Tensor:
         if len(data.shape) < 3:
-            raise KeyError('This factor({}) has only one return value, cannot slice.'.format(
-                type(self.inputs[0]).__name__
-            ))
+            raise KeyError(f'This factor({type(self.inputs[0]).__name__}) has only one return value, cannot slice.')
         elif data.shape[2] <= key:
-            raise KeyError('OutOfBounds: factor has only {} return values, and slice is [{}].'.
-                           format(data.shape[2], key))
+            raise KeyError(f'OutOfBounds: factor has only {data.shape[2]} return values, and slice is [{key}].')
         return data[:, :, key]
 
 
@@ -805,8 +815,8 @@ class RawShiftFactor(CustomFactor):
     def compute(self, data: torch.Tensor) -> torch.Tensor:
         if data.dtype in {torch.bool, torch.int8, torch.int16, torch.int32, torch.int64}:
             raise ValueError('RawShiftFactor does not support `int` or `bool` type, '
-                             'please convert to float by using `factor.float()`, upstreams: {}'
-                             .format(self.inputs))
+                             f'please convert to float by using `factor.float()`, upstreams: {self.inputs}'
+                             )
 
         shift = data.roll(self.periods, dims=1)
         if self.periods > 0:

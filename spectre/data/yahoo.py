@@ -7,8 +7,9 @@
 import datetime
 import os
 import time
-import pandas as pd
+
 import numpy as np
+import pandas as pd
 
 from .arrow import ArrowLoader
 from .csv import CsvDirLoader
@@ -25,8 +26,9 @@ class YahooDownloader:
         :param symbols: list of symbol to download. If is None, download SP500 components.
         :param skip_exists: skip if file exists, useful for resume from interruption.
         """
-        import requests
         import re
+
+        import requests
         from tqdm.auto import tqdm
 
         print("Download prices from yahoo...")
@@ -54,24 +56,22 @@ class YahooDownloader:
             now = int(datetime.datetime.now().timestamp())
             for symbol in tqdm(symbols):
                 symbol = symbol.replace('.', '-')
-                csv_path = os.path.join(folder, '{}.csv'.format(symbol))
+                csv_path = os.path.join(folder, f'{symbol}.csv')
                 if os.path.exists(csv_path) and skip_exists:
                     continue
                 url = "https://query1.finance.yahoo.com/v7/finance/download/" \
-                      "{}?period1={}&period2={}&interval=1d&events={}&crumb={}".format(
-                       symbol, start, now, event, crumb)
+                      f"{symbol}?period1={start}&period2={now}&interval=1d&events={event}&crumb={crumb}"
 
                 retry = 0.25
                 while True:
                     req = session.get(url)
                     if req.status_code != requests.codes.ok:
                         if 'No data found' in req.text:
-                            print('Symbol invalid, skipped: {}.'.format(symbol))
+                            print(f'Symbol invalid, skipped: {symbol}.')
                             break
                         retry *= 2
                         if retry >= 5:
-                            print('Get {} failed, Over 4 retries, skipped, reason: {}'.format(
-                                symbol, req.text))
+                            print(f'Get {symbol} failed, Over 4 retries, skipped, reason: {req.text}')
                             break
                         else:
                             time.sleep(retry)
@@ -118,5 +118,5 @@ class YahooDownloader:
         arrow_file = os.path.join(save_to, 'yahoo.feather')
         ArrowLoader.ingest(source=loader, save_to=arrow_file, force=True)
 
-        print('Ingest completed! Use `loader = spectre.data.ArrowLoader(r"{}")` '
-              'to load your data.'.format(arrow_file))
+        print(f'Ingest completed! Use `loader = spectre.data.ArrowLoader(r"{arrow_file}")` '
+              'to load your data.')

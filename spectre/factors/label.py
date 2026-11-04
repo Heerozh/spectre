@@ -4,8 +4,8 @@
 @license: GPL-3.0-only
 @email: heeroz@gmail.com
 """
-from .factor import CustomFactor
 from ..parallel import masked_first
+from .factor import CustomFactor
 
 
 class RollingFirst(CustomFactor):

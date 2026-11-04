@@ -4,19 +4,21 @@
 @license: GPL-3.0-only
 @email: heeroz@gmail.com
 """
-from typing import Union, Iterable, Tuple, Dict
-import warnings
-import pandas as pd
-import numpy as np
-import torch
 import uuid
+import warnings
+from collections.abc import Iterable
+
+import numpy as np
+import pandas as pd
+import torch
+
+from .._compat import stack_keep_nan
+from ..data import DataLoader
+from ..parallel import DummyParallelGroupBy, ParallelGroupBy
+from ..plotting import plot_chart, plot_quantile_and_cumulative_returns
+from .datafactor import AdjustedColumnDataFactor, ColumnDataFactor
 from .factor import BaseFactor
 from .filter import FilterFactor, StaticAssets
-from .datafactor import ColumnDataFactor, AdjustedColumnDataFactor
-from ..plotting import plot_quantile_and_cumulative_returns, plot_chart
-from ..data import DataLoader
-from ..parallel import ParallelGroupBy, DummyParallelGroupBy
-from .._compat import stack_keep_nan
 
 
 class OHLCV:
@@ -109,7 +111,7 @@ class FactorEngine:
         array = self.revert_(data, group, factor_name).cpu()
         return pd.Series(array.numpy(), index=self._dataframe.index)
 
-    def group_by_(self, data: Union[torch.Tensor, pd.Series], group: str) -> torch.Tensor:
+    def group_by_(self, data: torch.Tensor | pd.Series, group: str) -> torch.Tensor:
         if isinstance(data, torch.Tensor):
             if isinstance(group, torch.Tensor):
                 g = ParallelGroupBy(group)
@@ -153,17 +155,17 @@ class FactorEngine:
             # not `.loc[]`, it raises KeyError if any asset is not found since pandas 2.0
             df = df[df.index.get_level_values(1).isin(list(self._filter.assets))]
             if df.shape[0] == 0:
-                raise ValueError("The assets {} specified by StaticAssets filter, was not found in "
-                                 "DataLoader.".format(self._filter.assets))
+                raise ValueError(f"The assets {self._filter.assets} specified by StaticAssets filter, was not found in "
+                                 "DataLoader.")
         # check history data is insufficient
         df.index = df.index.remove_unused_levels()
         history_win = df.index.levels[0].get_indexer([start], method='bfill')[0]
         if history_win < backwards:
             warnings.warn("Historical data seems insufficient. "
-                          "{} rows of historical data are required, but only {} rows are obtained. "
+                          f"{backwards} rows of historical data are required, but only {history_win} rows are obtained. "
                           "It is also possible that `calender_asset` of the loader is not set, "
                           "some out of trading hours data will cause indexing problems."
-                          .format(backwards, history_win),
+                          ,
                           RuntimeWarning)
         # post processing data
         if self._align_by_time:
@@ -269,8 +271,8 @@ class FactorEngine:
         self._timezone = tz
 
     def add(self,
-            factor: Union[Iterable[BaseFactor], BaseFactor],
-            name: Union[Iterable[str], str],
+            factor: Iterable[BaseFactor] | BaseFactor,
+            name: Iterable[str] | str,
             replace=False) -> None:
         """
         Add factor or filter to engine, as a column.
@@ -281,12 +283,12 @@ class FactorEngine:
                 self.add(fct, name[i], replace)
         else:
             if name in self._factors and not replace:
-                raise KeyError('A factor with the name {} already exists.'
+                raise KeyError(f'A factor with the name {name} already exists.'
                                'please specify a new name by engine.add(factor, new_name)'
-                               .format(name))
+                               )
             self._factors[name] = factor
 
-    def set_filter(self, factor: Union[FilterFactor, None]) -> None:
+    def set_filter(self, factor: FilterFactor | None) -> None:
         if isinstance(self._filter, StaticAssets) or isinstance(factor, StaticAssets):
             if self._dataframe is not None:
                 print('Cache clean due to the StaticAssets filter changed.')
@@ -368,8 +370,8 @@ class FactorEngine:
             delays = {col for col, fct in self._factors.items() if fct.should_delay()}
         if delay_factor is False and len(delays) > 0:
             warnings.warn("Warning!! delay_factor is set to False, "
-                          "but {} factors uses data that is only available "
-                          "after the market is closed.".format(str(delays)),
+                          f"but {delays!s} factors uses data that is only available "
+                          "after the market is closed.",
                           RuntimeWarning)
             delays = {}
 
@@ -436,7 +438,7 @@ class FactorEngine:
 
         return results, shifted_mask, len(delays) > 0
 
-    def run(self, start: Union[str, pd.Timestamp], end: Union[str, pd.Timestamp],
+    def run(self, start: str | pd.Timestamp, end: str | pd.Timestamp,
             delay_factor=True) -> pd.DataFrame:
         """
         Compute factors and filters, return a df contains all.
@@ -463,8 +465,8 @@ class FactorEngine:
         ret = ret.sort_index()
         return ret.loc[start:]
 
-    def run_raw(self, start: Union[str, pd.Timestamp], end: Union[str, pd.Timestamp],
-                delay_factor=True, return_index=False) -> Union[Dict[str, torch.Tensor], Tuple]:
+    def run_raw(self, start: str | pd.Timestamp, end: str | pd.Timestamp,
+                delay_factor=True, return_index=False) -> dict[str, torch.Tensor] | tuple:
         """
         Compute factors and filters, return a dict contains factor_name = torch.Tensor
         """
@@ -505,8 +507,8 @@ class FactorEngine:
         return {c: f.compute_(stream) for c, f in self._factors.items()}
 
     def get_price_matrix(self,
-                         start: Union[str, pd.Timestamp],
-                         end: Union[str, pd.Timestamp],
+                         start: str | pd.Timestamp,
+                         end: str | pd.Timestamp,
                          prices: ColumnDataFactor = OHLCV.close,
                          ) -> pd.DataFrame:
         """
@@ -579,7 +581,7 @@ class FactorEngine:
     def full_run(self, start, end, trade_at='close', periods=(1, 4, 9),
                  quantiles=5, filter_zscore=20, demean=True, preview=True, to_weight=True,
                  xs_quantile=True, demean_weight=True
-                 ) -> Tuple[pd.DataFrame, pd.DataFrame]:
+                 ) -> tuple[pd.DataFrame, pd.DataFrame]:
         """
         Return this:
         |    	                    |    	|  Returns  |      factor_name          	|

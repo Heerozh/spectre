@@ -6,7 +6,6 @@
 """
 
 from collections import defaultdict
-from typing import Dict
 
 import pandas as pd
 
@@ -28,7 +27,7 @@ class Calendar:
         self,
         start: str,
         end: str,
-        daily_events: Dict[str, str],
+        daily_events: dict[str, str],
         tz="UTC",
         freq="B",
         pop_passed=True,
@@ -43,9 +42,7 @@ class Calendar:
         )
         if len(days) == 0:
             raise ValueError(
-                "Empty date range between now({}) to end({})".format(
-                    pd.Timestamp.now(tz=tz).normalize(), end
-                )
+                f"Empty date range between now({pd.Timestamp.now(tz=tz).normalize()}) to end({end})"
             )
 
         self.events = {

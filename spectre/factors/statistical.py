@@ -4,15 +4,26 @@
 @license: GPL-3.0-only
 @email: heeroz@gmail.com
 """
-import torch
 import math
+
 import numpy as np
-from .factor import CustomFactor, CrossSectionFactor
-from .engine import OHLCV
-from ..parallel import (linear_regression_1d, quantile, pearsonr, unmasked_mean, unmasked_sum,
-                        nanmean, nanstd, covariance, nanvar)
-from ..parallel import DeviceConstant
+import torch
+
 from ..config import Global
+from ..parallel import (
+    DeviceConstant,
+    covariance,
+    linear_regression_1d,
+    nanmean,
+    nanstd,
+    nanvar,
+    pearsonr,
+    quantile,
+    unmasked_mean,
+    unmasked_sum,
+)
+from .engine import OHLCV
+from .factor import CrossSectionFactor, CustomFactor
 
 
 class StandardDeviation(CustomFactor):
@@ -233,7 +244,7 @@ class RollingInformationCoefficient(RollingCorrelation):
 
 class RankWeightedInformationCoefficient(InformationCoefficient):
     def __init__(self, x, y, half_life, mask=None):
-        alpha = np.exp((np.log(0.5) / half_life))
+        alpha = np.exp(np.log(0.5) / half_life)
         y_rank = y.rank(ascending=False, mask=mask) - 1
         weight = alpha ** y_rank
         super().__init__(x, y, mask=mask, weight=weight)

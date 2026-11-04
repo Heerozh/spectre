@@ -5,12 +5,12 @@
 @email: heeroz@gmail.com
 """
 import warnings
+
+from ..config import Global
+from ..parallel import nanmean, nanstd, nansum
+from .basic import Returns
 from .datafactor import DatetimeDataFactor
 from .factor import CrossSectionFactor, CustomFactor
-from .basic import Returns
-from ..parallel import nanstd, nanmean, nansum
-from ..config import Global
-
 
 # ----------- Common Market Features -----------
 

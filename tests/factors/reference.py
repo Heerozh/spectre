@@ -5,7 +5,7 @@ They are used to check the results of spectre, independently of the engine.
 import numpy as np
 import pandas as pd
 
-from tests.conftest import DATA_DIR, DAILY_OHLCV
+from tests.conftest import DAILY_OHLCV, DATA_DIR
 
 ASSETS = ('AAPL', 'MSFT')
 START, END = '2019-01-01', '2019-01-15'
@@ -14,7 +14,7 @@ START, END = '2019-01-01', '2019-01-15'
 def daily_prices(asset):
     """Raw daily prices with columns open/high/low/close/volume, aligned to AAPL's calendar."""
     def read(name):
-        return pd.read_csv(DATA_DIR / 'daily' / '{}.csv'.format(name), index_col='date',
+        return pd.read_csv(DATA_DIR / 'daily' / f'{name}.csv', index_col='date',
                            parse_dates=True)
 
     calendar = read('AAPL').index

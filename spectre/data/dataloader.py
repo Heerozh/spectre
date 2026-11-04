@@ -4,9 +4,9 @@
 @license: GPL-3.0-only
 @email: heeroz@gmail.com
 """
-from typing import Optional
-import pandas as pd
+
 import numpy as np
+import pandas as pd
 
 
 class DataLoader:
@@ -158,9 +158,9 @@ class DataLoader:
 
         if self.adjustments:
             assert all(x in df for x in self.adjustments), \
-                "Adjustments columns `{}` not found.".format(self.adjustments)
+                f"Adjustments columns `{self.adjustments}` not found."
             assert all(x in df for x in self.adjustment_multipliers), \
-                "Adjustment multipliers columns `{}` not found.".format(self.adjustment_multipliers)
+                f"Adjustment multipliers columns `{self.adjustment_multipliers}` not found."
             assert not any(df[self.adjustments[0]].isna()), \
                 "There is nan value in ex-dividend column, should be filled with 0."
             assert not any(df[self.adjustments[1]].isna()), \
@@ -169,7 +169,7 @@ class DataLoader:
                 "There is nan value in time_category column, should be filled with time id."
         return df
 
-    def load(self, start: Optional[pd.Timestamp] = None, end: Optional[pd.Timestamp] = None,
+    def load(self, start: pd.Timestamp | None = None, end: pd.Timestamp | None = None,
              backwards: int = 0) -> pd.DataFrame:
         df = self._load()
 
@@ -219,9 +219,9 @@ class DataLoaderFastGetter:
             cursor_index = self.index
             i = cursor_index.searchsorted(asset_id)
             if i >= self.length:
-                raise KeyError('{} not found'.format(asset))
+                raise KeyError(f'{asset} not found')
             if cursor_index[i] != asset_id:
-                raise KeyError('{} not found'.format(asset))
+                raise KeyError(f'{asset} not found')
             return self.data[i]
 
         def items(self):

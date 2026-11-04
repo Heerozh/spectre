@@ -4,12 +4,13 @@
 @license: GPL-3.0-only
 @email: heeroz@gmail.com
 """
-from abc import ABC
-from typing import Set
-from .factor import BaseFactor, CustomFactor, MultiRetSelector
-from ..parallel import Rolling
-import torch
 import warnings
+from abc import ABC
+
+import torch
+
+from ..parallel import Rolling
+from .factor import BaseFactor, CustomFactor, MultiRetSelector
 
 
 class FilterFactor(CustomFactor, ABC):
@@ -40,7 +41,6 @@ class FilterFactor(CustomFactor, ABC):
 
 class FilterMultiRetSelector(MultiRetSelector, FilterFactor):
     """MultiRetSelector returns CustomFactor, we're override here as FilterFactor"""
-    pass
 
 
 class PlaceHolderFilter(FilterFactor):
@@ -64,7 +64,7 @@ class FilterRawShiftFactor(FilterFactor):
 
 class StaticAssets(FilterFactor):
     """Useful for remove specific outliers or debug some assets"""
-    def __init__(self, assets: Set[str]):
+    def __init__(self, assets: set[str]):
         from .engine import OHLCV
         super().__init__(win=1, inputs=[OHLCV.open])
         self.assets = assets
@@ -85,8 +85,8 @@ class OneHotEncoder(FilterFactor):
         classes = classes[~torch.isnan(classes)]
         one_hot = []
         if classes.shape[0] > 1000:
-            warnings.warn("One hot encoding with too many features: ({}). "
-                          .format(classes.shape[0]),
+            warnings.warn(f"One hot encoding with too many features: ({classes.shape[0]}). "
+                          ,
                           RuntimeWarning)
         for i in range(classes.shape[0]):
             one_hot.append((data == classes[i]).unsqueeze(-1))

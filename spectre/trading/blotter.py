@@ -4,15 +4,17 @@
 @license: GPL-3.0-only
 @email: heeroz@gmail.com
 """
-from typing import Union, Iterable
+import glob
+import os
+from collections import defaultdict, namedtuple
+from collections.abc import Iterable
+
 # import pandas as pd
 import numpy as np
-import os
-import glob
-from collections import namedtuple, defaultdict
+
+from ..data import DataLoaderFastGetter
 from .event import *
 from .portfolio import Portfolio
-from ..data import DataLoaderFastGetter
 
 
 class CommissionModel:
@@ -144,7 +146,7 @@ class BaseBlotter:
         """
         self.short_fee = CommissionModel(percentage, 0, 0)
 
-    def get_price(self, asset: Union[str, Iterable]):
+    def get_price(self, asset: str | Iterable):
         raise NotImplementedError("abstractmethod")
 
     def _order(self, asset, amount, price=None):
@@ -153,33 +155,31 @@ class BaseBlotter:
     def order(self, asset: str, amount: int, price: str = None):
         if abs(amount) > self.max_shares:
             raise OverflowError(
-                'Cannot order more than ±{} shares: {}, set `blotter.max_shares` value '
-                'to change this limit.'.format(self.max_shares, amount))
+                f'Cannot order more than ±{self.max_shares} shares: {amount}, set `blotter.max_shares` value '
+                'to change this limit.')
 
         if not isinstance(asset, str):
             raise KeyError("`asset` must be a string")
 
         opened = self._portfolio.shares(asset)
         if self.long_only and (amount + opened) < 0:
-            raise ValueError("Long only blotter, order amount {}, opened {}.".format(
-                amount, opened))
+            raise ValueError(f"Long only blotter, order amount {amount}, opened {opened}.")
         if (amount % self.order_multiplier) != 0:
-            raise ValueError("Order amount must be placed in multiples of {}".format(
-                self.order_multiplier))
+            raise ValueError(f"Order amount must be placed in multiples of {self.order_multiplier}")
         return self._order(asset, amount, price)
 
-    def _order_target(self, asset: str, target: Union[int, float]):
+    def _order_target(self, asset: str, target: float):
         opened = self._portfolio.shares(asset)
         amount = target - opened
 
         if abs(amount) > self.max_shares:
             raise OverflowError(
-                'Cannot order more than ±{} shares: {}, set `blotter.max_shares` value'
-                'to change this limit.'.format(self.max_shares, amount))
+                f'Cannot order more than ±{self.max_shares} shares: {amount}, set `blotter.max_shares` value'
+                'to change this limit.')
 
         return self._order(asset, amount)
 
-    def order_target(self, asset: str, target: Union[int, float]):
+    def order_target(self, asset: str, target: float):
         if not isinstance(asset, str):
             raise KeyError("`asset` must be a string")
         if not isinstance(target, (int, float)):
@@ -231,9 +231,7 @@ class BaseBlotter:
                 if price != price:
                     raise KeyError("")
                 if price == 0:
-                    raise RuntimeError('{} price on {} is zero, you have a data error'.format(
-                        asset, self._current_dt
-                    ))
+                    raise RuntimeError(f'{asset} price on {self._current_dt} is zero, you have a data error')
                 target = (pf_value * pct) / price
                 # todo 碎股情况，持有160股并不能再买40股，影响不大但最好弄掉, 不过现在交易股数方式就已经不一样了，所以也无所谓？
                 target = int(round(target / self.order_multiplier)) * self.order_multiplier
@@ -373,7 +371,7 @@ class SimulationBlotter(BaseBlotter, EventReceiver):
 
         return self._current_prices
 
-    def get_price(self, asset: Union[str, Iterable, None]):
+    def get_price(self, asset: str | Iterable | None):
         if not self.market_opened:
             raise RuntimeError('Out of market hours. Maybe you rebalance at AfterMarketClose; '
                                'or BeforeMarketOpen; or EveryBarData on daily data; '
@@ -621,8 +619,7 @@ class ManualBlotter(BaseBlotter):
                 for fn in files
             ])
             self.orders.date = pd.to_datetime(self.orders.date, utc=True)
-            print('Orders loaded: {} - {}, total: {} orders'.format(
-                self.orders.date.iloc[0], self.orders.date.iloc[-1], len(self.orders)))
+            print(f'Orders loaded: {self.orders.date.iloc[0]} - {self.orders.date.iloc[-1]}, total: {len(self.orders)} orders')
             self.orders['date'] = self.orders['date'].dt.tz_convert(self.time_zone)
             self._rebuild_from_orders()
 
@@ -665,7 +662,7 @@ class ManualBlotter(BaseBlotter):
     def order(self, asset: str, amount: int, price: str = None):
         raise NotImplementedError("not support")
 
-    def order_target(self, asset: str, target: Union[int, float]):
+    def order_target(self, asset: str, target: float):
         raise NotImplementedError("not support")
 
     def batch_order_target(self, assets: Iterable[str], targets: Iterable[float]):
@@ -808,7 +805,7 @@ class ManualBlotter(BaseBlotter):
         if len(self._portfolio.positions) > 0:
             self._portfolio.update_value(prices)
 
-    def get_price(self, asset: Union[str, Iterable]):
+    def get_price(self, asset: str | Iterable):
         raise NotImplementedError("not supported")
 
     def get_transactions(self):

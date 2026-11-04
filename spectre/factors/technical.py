@@ -4,14 +4,16 @@
 @license: GPL-3.0-only
 @email: heeroz@gmail.com
 """
-from typing import Optional, Sequence
-from .factor import BaseFactor, CustomFactor
-from .basic import MA, EMA
-from .statistical import STDDEV
-from .engine import OHLCV
-from ..parallel import nanmean
+from collections.abc import Sequence
+
 import numpy as np
 import torch
+
+from ..parallel import nanmean
+from .basic import EMA, MA
+from .engine import OHLCV
+from .factor import BaseFactor, CustomFactor
+from .statistical import STDDEV
 
 
 class BollingerBands(CustomFactor):
@@ -20,7 +22,7 @@ class BollingerBands(CustomFactor):
     win = 20
     _min_win = 2
 
-    def __init__(self, win: Optional[int] = None, inputs: Optional[Sequence[BaseFactor]] = None):
+    def __init__(self, win: int | None = None, inputs: Sequence[BaseFactor] | None = None):
         super().__init__(win, inputs)
         if len(self.inputs) < 2:
             raise ValueError("BollingerBands's inputs needs 2 inputs, "
@@ -58,7 +60,7 @@ class MovingAverageConvergenceDivergenceSignal(EMA):
     win = 9
     _min_win = 2
 
-    def __init__(self, fast=12, slow=26, sign=9, inputs: Optional[Sequence[BaseFactor]] = None,
+    def __init__(self, fast=12, slow=26, sign=9, inputs: Sequence[BaseFactor] | None = None,
                  adjust=False):
         super().__init__(sign, inputs, adjust)
         self.inputs = (EMA(inputs=self.inputs, span=fast) - EMA(inputs=self.inputs, span=slow),)
@@ -90,7 +92,7 @@ class RSI(CustomFactor):
     win = 14
     _min_win = 2
 
-    def __init__(self, win: Optional[int] = None, inputs: Optional[Sequence[BaseFactor]] = None):
+    def __init__(self, win: int | None = None, inputs: Sequence[BaseFactor] | None = None):
         super().__init__(win, inputs)
         self.win = self.win + 1  # +1 for 1 day diff
 

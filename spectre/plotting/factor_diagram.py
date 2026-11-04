@@ -9,8 +9,8 @@ from itertools import cycle, islice
 
 def plot_factor_diagram(factor):
     import plotly.graph_objects as go
-    from ..factors import BaseFactor, CustomFactor
-    from ..factors import ColumnDataFactor, DatetimeDataFactor
+
+    from ..factors import BaseFactor, ColumnDataFactor, CustomFactor, DatetimeDataFactor
 
     color = [
         "rgba(31, 119, 180, 0.8)", "rgba(255, 127, 14, 0.8)", "rgba(44, 160, 44, 0.8)",

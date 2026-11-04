@@ -4,18 +4,19 @@
 @license: GPL-3.0-only
 @email: heeroz@gmail.com
 """
-import numpy as np
-import torch
-import pandas as pd
+from collections.abc import Sequence
 
-from typing import Optional, Sequence, Union
+import numpy as np
+import pandas as pd
+import torch
+
+from ..config import Global
 from ..parallel import nanlast
 from .factor import BaseFactor, CustomFactor
-from ..config import Global
 
 
 class ColumnDataFactor(BaseFactor):
-    def __init__(self, inputs: Optional[Sequence[str]] = None,
+    def __init__(self, inputs: Sequence[str] | None = None,
                  should_delay=True, dtype=None) -> None:
         super().__init__()
         if inputs:
@@ -60,7 +61,7 @@ class ColumnDataFactor(BaseFactor):
         self._multiplier = None
         self._clean_required = False
 
-    def compute_(self, stream: Union[torch.cuda.Stream, None]) -> torch.Tensor:
+    def compute_(self, stream: torch.cuda.Stream | None) -> torch.Tensor:
         return self._data
 
     def compute(self, *inputs: Sequence[torch.Tensor]) -> torch.Tensor:
@@ -117,7 +118,7 @@ class AssetClassifierDataFactor(BaseFactor):
         super().clean_up_(force)
         self._data = None
 
-    def compute_(self, stream: Union[torch.cuda.Stream, None]) -> torch.Tensor:
+    def compute_(self, stream: torch.cuda.Stream | None) -> torch.Tensor:
         return self._data
 
     def compute(self, *inputs: Sequence[torch.Tensor]) -> torch.Tensor:
@@ -141,7 +142,7 @@ class SeriesDataFactor(ColumnDataFactor):
                 fill_methods = {'ffill': 'ffill', 'pad': 'ffill', 'bfill': 'bfill',
                                 'backfill': 'bfill'}
                 if self.fill_na not in fill_methods:
-                    raise ValueError("`fill_na` must be one of {}".format(list(fill_methods)))
+                    raise ValueError(f"`fill_na` must be one of {list(fill_methods)}")
                 grouped = engine._dataframe[self.series.name].groupby(level=1, observed=False)
                 engine._dataframe[self.series.name] = getattr(
                     grouped, fill_methods[self.fill_na])()
@@ -190,7 +191,7 @@ class DatetimeDataFactor(BaseFactor):
         self._data = None
         self._clean_required = False
 
-    def compute_(self, stream: Union[torch.cuda.Stream, None]) -> torch.Tensor:
+    def compute_(self, stream: torch.cuda.Stream | None) -> torch.Tensor:
         return self._data
 
     def compute(self, *inputs: Sequence[torch.Tensor]) -> torch.Tensor:

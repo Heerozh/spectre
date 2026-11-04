@@ -4,19 +4,20 @@
 @license: GPL-3.0-only
 @email: heeroz@gmail.com
 """
-from abc import ABC
-from typing import Union
-import pandas as pd
-import numpy as np
 import gc
 import os
-import torch
+from abc import ABC
 from collections import namedtuple
-from .event import Event, EventReceiver, EventManager, EveryBarData, MarketOpen, MarketClose
+
+import numpy as np
+import pandas as pd
+import torch
+
+from ..data import DataLoader, DataLoaderFastGetter
+from ..factors import OHLCV, FactorEngine, StaticAssets
 from ..plotting import cumulative_returns_fig
 from .blotter import BaseBlotter, SimulationBlotter
-from ..factors import FactorEngine, OHLCV, StaticAssets
-from ..data import DataLoader, DataLoaderFastGetter
+from .event import Event, EventManager, EventReceiver, EveryBarData, MarketClose, MarketOpen
 
 
 class Recorder:
@@ -80,8 +81,8 @@ class CustomAlgorithm(EventReceiver, ABC):
             name = next(iter(self._engines))
 
         if name not in self._engines:
-            raise KeyError("Data source '{0}' not found, please pass in the algorithm "
-                           "initialization: `YourAlgorithm({0}=DataLoader())`".format(name))
+            raise KeyError(f"Data source '{name}' not found, please pass in the algorithm "
+                           f"initialization: `YourAlgorithm({name}=DataLoader())`")
         return self._engines[name]
 
     def get_price_matrix(self, length: pd.DateOffset, name: str = None, prices=OHLCV.close):
@@ -89,8 +90,8 @@ class CustomAlgorithm(EventReceiver, ABC):
             name = next(iter(self._engines))
 
         if name not in self._engines:
-            raise KeyError("Data source '{0}' not found, please pass in the algorithm "
-                           "initialization: `YourAlgorithm({0}=DataLoader())`".format(name))
+            raise KeyError(f"Data source '{name}' not found, please pass in the algorithm "
+                           f"initialization: `YourAlgorithm({name}=DataLoader())`")
         return self._engines[name].get_price_matrix(
             self._current_dt - length, self._current_dt, prices=prices)
 
@@ -160,7 +161,7 @@ class CustomAlgorithm(EventReceiver, ABC):
                                      bench, annual_risk_free, start=start)
         return fig
 
-    def plot(self, annual_risk_free=0.04, benchmark: Union[pd.Series, str] = None) -> None:
+    def plot(self, annual_risk_free=0.04, benchmark: pd.Series | str = None) -> None:
         fig = self.cumulative_returns_fig(annual_risk_free, benchmark)
         if fig:
             fig.show()

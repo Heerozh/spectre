@@ -5,9 +5,8 @@
 @email: heeroz@gmail.com
 """
 import math
-from itertools import cycle
 import sys
-
+from itertools import cycle
 
 DEFAULT_COLORS = [
     'rgb(99, 110, 250)', 'rgb(239, 85, 59)', 'rgb(0, 204, 150)',
@@ -25,7 +24,7 @@ def plot_quantile_and_cumulative_returns(factor_data, mean_ret):
     if 'plotly.graph_objects' not in sys.modules:
         print('Importing plotly, it may take a while...')
     import plotly.graph_objects as go
-    import plotly.subplots as subplots
+    from plotly import subplots
 
     x = quantiles
     factors = mean_ret.columns.levels[0]
@@ -80,7 +79,7 @@ def plot_quantile_and_cumulative_returns(factor_data, mean_ret):
                 open_period = 'b' + open_period
             try:
                 cum_ret = factor_return[period].resample(open_period).mean().dropna()
-            except ValueError as e:
+            except ValueError:
                 print("pandas re-sampling failed, try set "
                       "`engine.timezone = 'your local timezone'`")
                 cum_ret = factor_return[period].resample(period).mean().dropna()
@@ -114,10 +113,10 @@ def plot_quantile_and_cumulative_returns(factor_data, mean_ret):
 
 
 def cumulative_returns_fig(returns, positions, transactions, benchmark, annual_risk_free, start=0):
-    from ..trading import turnover, sharpe_ratio, drawdown, annual_volatility
-
     import plotly.graph_objects as go
-    import plotly.subplots as subplots
+    from plotly import subplots
+
+    from ..trading import annual_volatility, drawdown, sharpe_ratio, turnover
 
     fig = subplots.make_subplots(specs=[[{"secondary_y": True}]])
 
@@ -164,10 +163,10 @@ def cumulative_returns_fig(returns, positions, transactions, benchmark, annual_r
         x=0.01, y=0.98, xref="paper", yref="paper",
         showarrow=False, borderwidth=1, bordercolor='black', align='left',
         text="<b>Overall</b> (portfolio/benchmark)<br>"
-             "SharpeRatio:      {:.3f}/{:.3f}<br>"
-             "MaxDrawDown:  {:.2f}%, {} Days<br>"
-             "AnnualVolatility: {:.2f}%/{:.2f}%</b>"
-            .format(sr, bench_sr, mdd * 100, mdd_dur, vol, bench_vol),
+             f"SharpeRatio:      {sr:.3f}/{bench_sr:.3f}<br>"
+             f"MaxDrawDown:  {mdd * 100:.2f}%, {mdd_dur} Days<br>"
+             f"AnnualVolatility: {vol:.2f}%/{bench_vol:.2f}%</b>"
+            ,
     )
 
     fig.update_layout(height=400, annotations=[ann], margin={'t': 50})

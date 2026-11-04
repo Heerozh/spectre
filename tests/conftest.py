@@ -128,6 +128,6 @@ def external_data(file_name):
     """Path of the external data file, skips the test if not found."""
     path = EXTERNAL_DATA_DIR / file_name
     if not path.exists():
-        pytest.skip('external data {} not found, set SPECTRE_EXTERNAL_DATA to the folder '
-                    'contains it'.format(path))
+        pytest.skip(f'external data {path} not found, set SPECTRE_EXTERNAL_DATA to the folder '
+                    'contains it')
     return path

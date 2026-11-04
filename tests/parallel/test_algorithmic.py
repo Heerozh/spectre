@@ -215,7 +215,7 @@ def test_rankdata_methods(device, ascending, method, pd_method):
     result = to_np(parallel.rankdata(x, ascending=ascending, method=method))
     for i in range(2):
         expected = pd.Series(to_np(x[i])).rank(method=pd_method, ascending=ascending)
-        assert_array_equal(result[i], expected, err_msg='row {}'.format(i))
+        assert_array_equal(result[i], expected, err_msg=f'row {i}')
 
 
 @pytest.mark.parametrize('ascending', [True, False])

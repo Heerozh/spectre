@@ -4,13 +4,13 @@ import pytest
 from numpy.testing import assert_almost_equal, assert_array_equal
 
 import spectre
-from tests.conftest import DATA_DIR, DAILY_OHLCV, make_adjusted_daily_loader
+from tests.conftest import DAILY_OHLCV, DATA_DIR, make_adjusted_daily_loader
 
 START, END = pd.Timestamp('2019-01-01', tz='UTC'), pd.Timestamp('2019-01-15', tz='UTC')
 
 
 def read_raw(asset, folder='daily', index_col='date'):
-    return pd.read_csv(DATA_DIR / folder / '{}.csv'.format(asset), index_col=index_col,
+    return pd.read_csv(DATA_DIR / folder / f'{asset}.csv', index_col=index_col,
                        parse_dates=True)
 
 
@@ -130,7 +130,7 @@ def test_split_by_year(intraday_loader):
     assert dates_of(df)[-1] == end
 
     df = intraday_loader.test_load()
-    raw = pd.concat([read_raw('AAPL_{}'.format(year), '5mins', 'Date') for year in (2018, 2019)])
+    raw = pd.concat([read_raw(f'AAPL_{year}', '5mins', 'Date') for year in (2018, 2019)])
     assert len(df.loc[(slice(None), 'AAPL'), :]) == len(raw.index.unique())
 
 

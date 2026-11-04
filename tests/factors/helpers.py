@@ -2,7 +2,7 @@ import numpy as np
 import pandas as pd
 from numpy.testing import assert_almost_equal
 
-from tests.factors.reference import START, END
+from tests.factors.reference import END, START
 
 
 def run_factor(engine, factor, start=START, end=END, delay=True, check_bias=True):

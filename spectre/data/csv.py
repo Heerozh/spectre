@@ -4,11 +4,13 @@
 @license: GPL-3.0-only
 @email: heeroz@gmail.com
 """
+import glob
+import os
+import warnings
+
 import numpy as np
 import pandas as pd
-import os
-import glob
-import warnings
+
 from .dataloader import DataLoader
 
 
@@ -108,7 +110,7 @@ class CsvDirLoader(DataLoader):
         pattern = os.path.join(self._path, self._file_pattern)
         files = glob.glob(pattern)
         if len(files) == 0:
-            raise ValueError("Dir '{}' does not contains any csv files.".format(self._path))
+            raise ValueError(f"Dir '{self._path}' does not contains any csv files.")
         return max([os.path.getmtime(fn) for fn in files])
 
     def _walk_split_by_year_dir(self, csv_path, index_col):
@@ -144,7 +146,7 @@ class CsvDirLoader(DataLoader):
         pattern = os.path.join(csv_path, self._file_pattern)
         files = glob.glob(pattern)
         if len(files) == 0:
-            raise ValueError("There are no files is {}".format(csv_path))
+            raise ValueError(f"There are no files is {csv_path}")
 
         def symbol(file):
             return os.path.basename(file)[:-4].upper()

@@ -14,7 +14,7 @@ def plot_chart(df_prices, ohlcv, df_factor, trace_types=None, styles=None, inlin
     asset_group = df_factor.index.get_level_values(1).remove_unused_categories()
     dfs = list(df_factor.groupby(asset_group))
     if len(dfs) > 5:
-        warnings.warn("Warning!! Too many assets {}, only plotting top 5.".format(len(dfs)),
+        warnings.warn(f"Warning!! Too many assets {len(dfs)}, only plotting top 5.",
                       RuntimeWarning)
         dfs = dfs[:5]
     dfs = [(asset, factors) for (asset, factors) in dfs if factors.shape[0] > 0]

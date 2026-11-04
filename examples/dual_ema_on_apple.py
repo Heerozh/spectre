@@ -5,9 +5,10 @@
 @email: heeroz@gmail.com
 """
 
-from spectre import factors, trading
-from spectre.data import YahooDownloader, ArrowLoader
 import pandas as pd
+
+from spectre import factors, trading
+from spectre.data import ArrowLoader, YahooDownloader
 
 
 class AppleDualEma(trading.CustomAlgorithm):
