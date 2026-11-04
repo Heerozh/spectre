@@ -149,6 +149,9 @@ class Position:
             amount = gross
         self._average_price -= amount
         self._cost_basis -= amount
+        if self.stop_tracker:
+            # adjust the tracked prices first, then update it with the adjusted last price
+            self.stop_tracker.process_dividend(gross)
         self.last_price -= gross
         cash = self._shares * amount
         return cash

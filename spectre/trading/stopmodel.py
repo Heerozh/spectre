@@ -28,6 +28,9 @@ class PriceTracker:
     def process_split(self, inverse_ratio: float):
         self.recorded_price /= inverse_ratio
 
+    def process_dividend(self, amount: float):
+        self.recorded_price -= amount
+
 
 # -----------------------------------------------------------------------------
 
@@ -46,6 +49,10 @@ class StopTracker(PriceTracker):
     def process_split(self, inverse_ratio: float):
         super().process_split(inverse_ratio)
         self._stop_price /= inverse_ratio
+
+    def process_dividend(self, amount: float):
+        super().process_dividend(amount)
+        self._stop_price -= amount
 
     def fire(self, *args):
         if callable(self.callback):

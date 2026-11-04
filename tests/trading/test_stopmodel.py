@@ -154,6 +154,26 @@ def test_pnl_decay_with_zero_average_price():
     assert pos.stop_tracker.stop_price == pytest.approx(20 * (1 - 0.1 * 0.05 ** (1 / 0.1)))
 
 
+def test_pnl_decay_with_a_dividend():
+    pos = trading.Position(100, 100, 0, None, trading.PnLDecayTrailingStopModel(-0.05, 0.1, True))
+
+    # price and cost both 6 lower, there is still no PnL, so no decay, and the stop is -5%
+    pos.process_dividend(6, tax=0)
+    assert pos.stop_tracker.current == 0
+    assert pos.stop_tracker.stop_price == pytest.approx(94 * 0.95)
+    assert not pos.check_stop_trigger()
+
+
+def test_time_decay_with_a_dividend():
+    dt = pd.Timestamp("2014-01-02", tz="UTC")
+    model = trading.TimeDecayTrailingStopModel(-0.05, pd.Timedelta(days=5), True)
+    pos = trading.Position(100, 100, 0, dt, model)
+
+    pos.process_dividend(6, tax=0)
+    assert pos.stop_tracker.stop_price == pytest.approx(94 * 0.95)
+    assert not pos.check_stop_trigger()
+
+
 def test_time_decay_stop():
     pos = trading.Position(10, 9, 0, pd.Timestamp("2014-01-02", tz="UTC"), None)
     tracker = trading.TimeDecayTrailingStopModel(-0.1, pd.Timedelta(days=5), True).new_tracker(

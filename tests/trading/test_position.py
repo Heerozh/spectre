@@ -324,3 +324,60 @@ def test_split_adjusts_fixed_stop():
     assert not pos.check_stop_trigger()
     pos.last_price = 4.4
     assert pos.check_stop_trigger()
+
+
+# a dividend of 6 with and without tax, the price drops by 6 either way
+TAX = pytest.mark.parametrize("amount, tax", [(6, 0), (5.4, 0.6)], ids=["no_tax", "taxed"])
+
+
+@TAX
+def test_dividend_adjusts_trailing_stop(amount, tax):
+    # long position, stop at 95% of the highest price
+    pos = trading.Position(100, 100, 0, None, trading.TrailingStopModel(-0.05, callback=True))
+
+    # the price goes to 94, below the stop of 95, and the holder got 6 for it
+    pos.process_dividend(amount, tax=tax)
+    assert pos.last_price == pytest.approx(94)
+    assert pos.stop_tracker.stop_price == pytest.approx(94 * 0.95)
+    assert not pos.check_stop_trigger()
+
+    # a real fall of 6% still fires it
+    pos.last_price = 94 * 0.94
+    assert pos.check_stop_trigger()
+
+
+@TAX
+def test_dividend_adjusts_trailing_stop_of_short(amount, tax):
+    # short position, stop at 105% of the lowest price
+    pos = trading.Position(-100, 100, 0, None, trading.TrailingStopModel(-0.05, callback=True))
+    pos.last_price = 96
+    pos.last_price = 100
+    assert pos.stop_tracker.stop_price == pytest.approx(96 * 1.05)
+
+    # the fall to 94 is not a new low. The low moves with the price, 4 below it like before
+    pos.process_dividend(amount, tax=tax)
+    assert pos.last_price == pytest.approx(94)
+    assert pos.stop_tracker.recorded_price == pytest.approx(90)
+    assert pos.stop_tracker.stop_price == pytest.approx(90 * 1.05)
+    assert not pos.check_stop_trigger()
+
+
+@TAX
+def test_dividend_adjusts_fixed_stop(amount, tax):
+    # stop loss at 90% of the open price, a dividend of 6 keeps it 10 below the price
+    pos = trading.Position(100, 100, 0, None, trading.StopModel(-0.1, callback=True))
+    pos.process_dividend(amount, tax=tax)
+    assert pos.stop_tracker.stop_price == pytest.approx(84)
+    assert not pos.check_stop_trigger()
+    pos.last_price = 83.9
+    assert pos.check_stop_trigger()
+
+
+def test_dividend_and_split_adjust_trailing_stop():
+    pos = trading.Position(100, 100, 0, None, trading.TrailingStopModel(-0.05, callback=True))
+    # both on the same day, the highest price is (100 - 2) * 0.5 now
+    pos.process_dividend(2, tax=0)
+    pos.process_split(2, 98)
+    assert pos.last_price == pytest.approx(49)
+    assert pos.stop_tracker.stop_price == pytest.approx(49 * 0.95)
+    assert not pos.check_stop_trigger()

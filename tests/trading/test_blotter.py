@@ -403,6 +403,23 @@ def test_taxed_dividend_of_short():
     assert blotter.portfolio.value == pytest.approx(100000)
 
 
+def test_trailing_stop_is_not_fired_by_a_dividend():
+    # a dividend of 6, the ex-date bar is at 94 and the total return is 0
+    days = pd.bdate_range("2020-01-06", periods=4, tz="UTC")
+    loader = asset_a_loader(days, [100, 100, 94, 94], dividends={2: 6})
+    blotter = trading.SimulationBlotter(loader, capital_base=100000)
+    blotter.portfolio.set_stop_model(trading.TrailingStopModel(-0.05, True))
+
+    trade_until_after_bar(blotter, days, 1, 100)
+    assert blotter.portfolio.check_stop_trigger() == [False]
+
+    blotter.set_datetime(days[2])
+    blotter.set_price("close")
+    blotter.update_portfolio_value()
+    assert blotter.portfolio.value == pytest.approx(100000)
+    assert blotter.portfolio.check_stop_trigger() == [False]
+
+
 @pytest.mark.parametrize("amount", [100, -100], ids=["long", "short"])
 def test_split_on_a_bar_without_a_close(amount):
     # the row that gets the split has no close, 2-for-1 of the last valid close of 100 is 50
