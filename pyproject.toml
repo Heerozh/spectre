@@ -4,6 +4,7 @@ version = "0.5"
 description = "GPU-accelerated Parallel quantitative trading library"
 readme = "README.md"
 requires-python = ">=3.11"
+license = "GPL-3.0-only"
 license-files = ["LICENSE"]
 authors = [{ name = "Zhang Jianhao", email = "heeroz@gmail.com" }]
 keywords = ["quantitative", "analysis", "backtesting", "parallel", "algorithmic", "trading"]
