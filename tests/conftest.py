@@ -7,6 +7,8 @@ Run all tests in parallel:  ``pytest -n auto``  (needs pytest-xdist)
 import os
 from pathlib import Path
 
+import numpy as np
+import pandas as pd
 import pytest
 import torch
 
@@ -135,6 +137,117 @@ def engine(daily_loader):
 @pytest.fixture
 def engine_no_calendar(daily_loader_no_calendar):
     return spectre.factors.FactorEngine(daily_loader_no_calendar)
+
+
+# ------------------------------------ dirty data -----------------------------------
+# The csv data above is nearly clean, so it can't show how a factor treats missing data. This
+# panel has one asset per defect, so a test can choose the defect it is about.
+
+DIRTY_OHLCV = ("open", "high", "low", "close", "volume")
+DIRTY_ADJUSTMENTS = ("ex-dividend", "split_ratio")
+DIRTY_DATES = pd.date_range("2020-01-01", periods=60, freq="B", tz="UTC")
+DIRTY_SECTORS = {
+    "FULL": 1,
+    "LISTED": 1,
+    "DELISTED": 2,
+    "HALTED": 2,
+    "NANBAR": 3,
+    "SPLIT": 3,
+    "NANSPLIT": 3,
+}
+# Positions in `DIRTY_DATES`.
+LISTED_ON = 30
+DELISTED_ON = 40
+HALTED_BARS = slice(20, 32)
+NAN_BAR = 25
+SPLIT_ON = 35
+DIVIDEND_ON = 45
+NANSPLIT_ON = 36
+
+
+def make_dirty_panel():
+    """
+    Daily bars of these assets, indexed by ['date', 'asset']:
+
+    ========  ======================================================================
+    FULL      no defects
+    LISTED    no rows before bar `LISTED_ON`
+    DELISTED  no rows after bar `DELISTED_ON`
+    HALTED    no rows on `HALTED_BARS`
+    NANBAR    NaN prices on bar `NAN_BAR`, and a valid volume
+    SPLIT     2-for-1 split on bar `SPLIT_ON`, dividend of 0.5 on bar `DIVIDEND_ON`
+    NANSPLIT  2-for-1 split on bar `NANSPLIT_ON`, and NaN prices on the bar before it
+    ========  ======================================================================
+
+    Prices are raw. `clean_close` is the close if the split and the dividend never happened,
+    so `close / clean_close` is the scale of each bar, and an adjusted window moves like
+    `clean_close` in the scale of its last bar. `sector` is an integer column for `groupby`.
+    """
+    rng = np.random.default_rng(0)
+    bars = len(DIRTY_DATES)
+    frames = {}
+    for asset, sector in DIRTY_SECTORS.items():
+        clean = 100 * np.cumprod(1 + rng.normal(0.0005, 0.02, bars))
+        split_scale, dividend_scale = np.ones(bars), np.ones(bars)
+        dividend, split_ratio = np.zeros(bars), np.ones(bars)
+        if asset == "SPLIT":
+            split_ratio[SPLIT_ON] = 0.5
+            split_scale[SPLIT_ON:] = 0.5
+            dividend[DIVIDEND_ON] = 0.5
+            last_close = clean[DIVIDEND_ON - 1] * split_scale[DIVIDEND_ON - 1]
+            dividend_scale[DIVIDEND_ON:] = 1 - dividend[DIVIDEND_ON] / last_close
+        elif asset == "NANSPLIT":
+            split_ratio[NANSPLIT_ON] = 0.5
+            split_scale[NANSPLIT_ON:] = 0.5
+        close = clean * split_scale * dividend_scale
+        open_ = close * (1 + rng.normal(0, 0.005, bars))
+        df = pd.DataFrame(
+            {
+                "open": open_,
+                "high": np.maximum(open_, close) * 1.01,
+                "low": np.minimum(open_, close) * 0.99,
+                "close": close,
+                "volume": rng.integers(1000, 2000, bars) / split_scale,
+                "ex-dividend": dividend,
+                "split_ratio": split_ratio,
+                "clean_close": clean,
+                "sector": sector,
+            },
+            index=DIRTY_DATES,
+        )
+        prices = ["open", "high", "low", "close", "clean_close"]
+        if asset == "LISTED":
+            df = df.iloc[LISTED_ON:]
+        elif asset == "DELISTED":
+            df = df.iloc[: DELISTED_ON + 1]
+        elif asset == "HALTED":
+            df = df.drop(DIRTY_DATES[HALTED_BARS])
+        elif asset == "NANBAR":
+            df.loc[DIRTY_DATES[NAN_BAR], prices] = np.nan
+        elif asset == "NANSPLIT":
+            df.loc[DIRTY_DATES[NANSPLIT_ON - 1], prices] = np.nan
+        frames[asset] = df
+    return pd.concat(frames, names=["asset", "date"]).swaplevel().sort_index()
+
+
+@pytest.fixture(scope="session")
+def dirty_panel():
+    """The raw data of `dirty_loader`, for computing expected values with pandas."""
+    return make_dirty_panel()
+
+
+@pytest.fixture(scope="session")
+def dirty_loader(dirty_panel):
+    return spectre.data.MemoryLoader(dirty_panel, DIRTY_OHLCV, DIRTY_ADJUSTMENTS)
+
+
+@pytest.fixture
+def dirty_engine(dirty_loader, device):
+    """An engine on the dirty panel, the test runs on cpu and on cuda if available."""
+    engine = spectre.factors.FactorEngine(dirty_loader)
+    if device == "cuda":
+        engine.to_cuda()
+    return engine
 
 
 # --------------------------------- external data ---------------------------------
