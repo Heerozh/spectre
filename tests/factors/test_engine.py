@@ -1007,6 +1007,26 @@ def test_full_run_keeps_the_rows_with_a_full_return(
 
 
 @pytest.mark.filterwarnings("ignore:quantile.. mask parameter not set")
+def test_full_run_labels_periods_in_bars_of_the_data(device):
+    """A return counts the bars of the data, a filter that keeps mondays doesn't stretch it."""
+    panel, _, _ = forward_data()
+    universe = factors.WEEKDAY == 0
+    universe.set_delay(True)  # like the factor, or their rows have no date in common
+    engine = forward_engine(panel, device, universe)
+    engine.add(factors.MA(2), "f")
+    factor_data, _ = engine.full_run(
+        FORWARD_START,
+        FORWARD_END,
+        periods=(3,),
+        quantiles=2,
+        filter_zscore=None,
+        demean=False,
+        preview=False,
+    )
+    assert list(factor_data["Returns"].columns) == ["3D"]
+
+
+@pytest.mark.filterwarnings("ignore:quantile.. mask parameter not set")
 def test_full_run_takes_its_columns_back_if_the_run_fails(device):
     class Fails(factors.CustomFactor):
         inputs = [close]

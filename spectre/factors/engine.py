@@ -792,7 +792,7 @@ class FactorEngine:
         assert len(factor_data) > 0, no_data
 
         # infer freq
-        delta = min(factor_data.index.levels[0][1:] - factor_data.index.levels[0][:-1])
+        delta = min(dates[1:] - dates[:-1])
         unit = delta.resolution_string
         freq = int(delta / pd.Timedelta(1, unit))
         # change columns name
