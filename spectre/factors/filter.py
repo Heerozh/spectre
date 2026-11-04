@@ -19,6 +19,8 @@ class FilterFactor(CustomFactor, ABC):
         return FilterMultiRetSelector(inputs=(self, key))
 
     def shift(self, periods=1):
+        if periods == 0:
+            return self
         factor = FilterRawShiftFactor(inputs=(self,))
         factor.periods = periods
         return factor

@@ -57,6 +57,12 @@ def test_filter_shift(engine):
     assert_array_equal(msft, [False] * 8)
 
 
+def test_filter_shift_zero(dirty_engine, dirty_panel):
+    result = run_dirty(dirty_engine, (close > 100).shift(0))
+    assert_array_equal(result, dirty_panel.close > 100)
+    assert result.any()
+
+
 # ------------------------------------ fill ------------------------------------
 
 LOCAL_FILTERED = np.array([nan, 3.0, 4.0, nan, nan, nan, 3.0, 4.0, nan, nan])
