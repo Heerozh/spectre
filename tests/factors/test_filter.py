@@ -444,6 +444,33 @@ def test_rolling_helpers_of_filter(dirty_engine, selected, cast, helper, referen
     assert result.dtype == "float32"
 
 
+ELEMENT_HELPERS = {
+    "abs": (lambda f: f.abs(), lambda x: x.abs()),
+    "sign": (lambda f: f.sign(), np.sign),
+    "clamp": (lambda f: f.clamp(0, 1), lambda x: x.clip(0, 1)),
+    "clamp_inside": (lambda f: f.clamp(0.2, 0.8), lambda x: x.clip(0.2, 0.8)),
+    "clamp_fill": (
+        lambda f: f.clamp(0.2, 0.8, fill=0.5),
+        lambda x: x.mask((x < 0.2) | (x > 0.8), 0.5),
+    ),
+}
+
+
+@pytest.mark.parametrize("helper, reference", ELEMENT_HELPERS.values(), ids=ELEMENT_HELPERS)
+def test_element_helpers_of_filter(dirty_engine, selected, cast, helper, reference):
+    factor, values = selected
+    result = run_dirty(dirty_engine, helper(cast(factor)))
+    assert_values(result, reference(values))
+    assert result.dtype == "float32"
+
+
+def test_one_hot_of_filter(dirty_engine, selected, cast):
+    """The first class is the lowest value of the rows, not the False of the padding."""
+    factor, values = selected
+    result = run_dirty(dirty_engine, cast(factor).one_hot()[0])
+    assert_array_equal(result, values == values.min())
+
+
 # ------------------------------------ newly listed asset ------------------------------------
 # B is listed on the first day of the results, so its rolling windows have no data at first.
 

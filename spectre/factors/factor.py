@@ -275,13 +275,13 @@ class BaseFactor:
         return RawShiftFactor(self, periods)
 
     def abs(self):
-        return AbsFactor(inputs=(self,))
+        return AbsFactor(inputs=(self._numeric(),))
 
     def log(self):
         return LogFactor(inputs=(self,))
 
     def sign(self):
-        return SignFactor(inputs=(self,))
+        return SignFactor(inputs=(self._numeric(),))
 
     def ts_sum(self, win: int, mask: BaseFactor = None):
         ret = SumFactor(win, inputs=(self._numeric(),))
@@ -312,7 +312,7 @@ class BaseFactor:
     def one_hot(self):
         from .filter import OneHotEncoder
 
-        factor = OneHotEncoder(self)
+        factor = OneHotEncoder(self._numeric())
         return factor
 
     def fill_na(
@@ -350,7 +350,7 @@ class BaseFactor:
         return NonNaNCountFactor(win, inputs=(self._numeric(),))
 
     def clamp(self, left: float, right: float, fill=None):
-        return ClampFactor(self, left, right, fill)
+        return ClampFactor(self._numeric(), left, right, fill)
 
     def mad_clamp(self, z: float, mask: BaseFactor = None, groupby="date", fill=None, mean=False):
         """Cross-section MAD clamp"""
