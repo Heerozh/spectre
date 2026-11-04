@@ -381,7 +381,7 @@ Reading csv is very slow, so you also need to use [ArrowLoader](#arrowloader).
 **\*\*read_csv:** Parameters for all csv when calling `pd.read_csv`.
  `parse_dates` or `date_parser` is required.
 
-Example for load [IEX](https://github.com/Heerozh/iex_fetcher) CSV files:
+Example for load IEX CSV files:
 
 ```python
 usecols = {'date', 'uOpen', 'uHigh', 'uLow', 'uClose', 'uVolume', 'exDate', 'amount', 'ratio'}

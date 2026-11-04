@@ -33,7 +33,7 @@ and factors.
   tests/` is clean. `spectre/` has about 200 existing findings, mostly `__init__.py` re-exports.
 - `pyproject.toml` holds the metadata, dependencies and pytest config, and `uv.lock` is committed.
   Change dependencies with `uv add` and `uv remove`. `uv build` needs no package list, it takes all
-  of `spectre/` except the `iex_fetcher` submodule. `.python-version` pins development to 3.13.
+  of `spectre/`. `.python-version` pins development to 3.13.
 - `tool.uv.sources` chooses the torch build with the `cuda` and `cpu` groups. uv is the only tool
   that reads it, and the groups are not in the built package, so a plain install gets torch from
   PyPI, which is CPU-only on Windows. After changing it, run `rm uv.lock && uv lock`: an existing

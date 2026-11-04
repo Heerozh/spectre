@@ -43,8 +43,6 @@ conflicts = [[{ group = "cpu" }, { group = "cuda" }]]
 
 [tool.uv.build-backend]
 module-root = ""
-# A git submodule, spectre/data/iex.py is not imported by default.
-source-exclude = ["/spectre/data/iex_fetcher"]
 
 [tool.uv.sources]
 torch = [
