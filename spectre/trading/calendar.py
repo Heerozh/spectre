@@ -156,7 +156,9 @@ class CNCalendar(Calendar):
         timezone = "Asia/Shanghai"
         if start is None:
             start = pd.Timestamp.now(self.timezone).normalize()
-        assert start.year <= CNCalendar.closed[-1].year
+        assert start.year <= CNCalendar.closed[-1].year, (
+            f"CNCalendar.closed ends in {CNCalendar.closed[-1].year}, it needs its yearly update"
+        )
         self.build(
             start=str(start),
             end=str(CNCalendar.closed[-1].year + 1),

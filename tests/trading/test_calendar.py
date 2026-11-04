@@ -100,6 +100,11 @@ def test_cn_calendar_skips_2026_holidays():
     assert open_on("2026-10-08") in opens
 
 
+def test_cn_calendar_says_when_its_table_needs_an_update():
+    with pytest.raises(AssertionError, match="CNCalendar.closed ends in .* yearly update"):
+        trading.CNCalendar(start=pd.Timestamp("2099-01-01"))
+
+
 # fmt: off
 # As listed by JPX: https://www.jpx.co.jp/english/corporate/about-jpx/calendar/index.html
 # It shows the current and the next year, so 2025 is from a copy of that page archived in 2025.
