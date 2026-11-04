@@ -251,6 +251,23 @@ def test_reverse_split_remaining_to_cash():
     assert pos.last_price == pytest.approx(135)
 
 
+@pytest.mark.parametrize("side", [1, -1], ids=["long", "short"])
+def test_reverse_split_cash_out_is_realized(side):
+    # 970 = 64 * 15 + 10, the 10 left over are closed at 9, 1 under their cost of 10
+    pos = trading.Position(side * 970, 10, 0, None)
+    cash = pos.process_split(1 / 15, 9)
+    assert cash == pytest.approx(side * 10 * 9)
+    assert pos.realized == pytest.approx(side * -10)
+    # the 64 shares left are at 135, and each of them cost 150
+    assert pos.unrealized == pytest.approx(side * 64 * (135 - 150))
+
+    empty, realized = pos.update(-side * 64, 135, 0, None)
+    assert empty
+    assert realized == pytest.approx(side * 64 * (135 - 150))
+    # cash flow of the long: -970 * 10 + 10 * 9 + 64 * 135
+    assert pos.realized == pytest.approx(side * -970)
+
+
 def test_split_without_a_price_uses_the_last_price():
     pos = trading.Position(10, 10, 0, None)
     assert pos.process_split(2, float("nan")) == 0

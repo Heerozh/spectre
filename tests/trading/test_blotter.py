@@ -388,6 +388,21 @@ def test_dividend_and_reverse_split_on_the_same_ex_date():
     assert blotter.portfolio.value == pytest.approx(100000)
 
 
+def test_reverse_split_cash_out_is_in_the_pnl_of_the_position():
+    # bought at 10, the 1-for-15 reverse split comes at 9, and the ex-date bar is 9 * 15
+    days = pd.bdate_range("2020-01-06", periods=4, tz="UTC")
+    loader = asset_a_loader(days, [10, 9, 135, 135], split_ratios={2: 15})
+    blotter = trading.SimulationBlotter(loader, capital_base=100000)
+
+    trade_until_after_bar(blotter, days, 1, 970)
+    pos = blotter.positions["A"]
+    assert pos.shares == 64
+    assert pos.realized == pytest.approx(10 * (9 - 10))
+    # the position lost 1 on each of its 970 shares, which is all the portfolio lost
+    assert blotter.portfolio.value == pytest.approx(100000 - 970)
+    assert pos.realized + pos.unrealized == pytest.approx(-970)
+
+
 def test_taxed_dividend_of_short():
     # gross dividend of 2 and a 10% tax, the ex-date bar is 2 lower
     days = pd.bdate_range("2020-01-06", periods=4, tz="UTC")

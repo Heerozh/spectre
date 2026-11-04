@@ -104,8 +104,8 @@ class Position:
             self._shares = after_shares
             if after_shares == 0:
                 self._average_price = 0
-                realized = -cum_cost - self._realized
-                self._realized = -cum_cost
+                realized = (self._cost_basis - fill_price) * amount - commission
+                self._realized += realized
                 self.last_price = fill_price
                 return True, realized
             else:
@@ -131,6 +131,7 @@ class Position:
             remaining = int(self._shares - int(sp) / inverse_ratio)  # for more precise
             if remaining != 0:
                 cash = remaining * last_price
+                self._realized += (last_price - self._cost_basis) * remaining
         self._shares = int(round(sp, 5))
         self._average_price = self._average_price / inverse_ratio
         self._cost_basis = self._cost_basis / inverse_ratio
