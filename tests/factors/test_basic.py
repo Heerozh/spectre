@@ -64,6 +64,24 @@ def test_log_returns(engine):
     assert_factor(engine, factors.LogReturns(), *ref.expected(lambda df: ref.log_returns(df.close)))
 
 
+def test_log_returns_with_nan(device):
+    """Same as Returns, a window with no valid bar after its first one has no return."""
+    data = torch.tensor([[1, 2, nan, 4, 8, nan], [3, 4, 4.5, 6, nan, nan]], device=device)
+    result = factors.LogReturns().compute(parallel.Rolling(data, win=3)).cpu().numpy()
+    expected = np.log1p([[nan, nan, 1, 1, nan, 1], [nan, nan, 0.5, 0.5, 1 / 3, nan]])
+    assert_almost_equal(result, expected)
+
+
+@pytest.mark.filterwarnings("ignore:Warning!! delay_factor is set to False")
+def test_log_returns_of_dirty_assets(dirty_engine, dirty_panel):
+    result = run_dirty(dirty_engine, factors.LogReturns())
+    for asset in ("FULL", "LISTED", "DELISTED", "HALTED", "NANBAR"):
+        close = dirty_panel.xs(asset, level="asset").close
+        got = result.xs(asset, level="asset").values
+        expected = ref.log_returns(close).values
+        assert_allclose(got, expected, rtol=0, atol=1e-9, err_msg=asset)
+
+
 # ------------------------------------ moving averages ------------------------------------
 
 
