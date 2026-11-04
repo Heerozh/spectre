@@ -150,7 +150,7 @@ class BaseFactor:
     def top(self, n: float, mask: BaseFactor = None):
         """Cross-section top values"""
         rank_data = self.rank(ascending=False, mask=mask, method="ordinal")
-        if type(n) is float:
+        if isinstance(n, (float, np.floating)):
             assert 0 < n < 1
             return rank_data <= (XSMax(inputs=[rank_data]) * n)
         else:
@@ -158,7 +158,7 @@ class BaseFactor:
 
     def bottom(self, n: float, mask: BaseFactor = None):
         rank_data = self.rank(ascending=True, mask=mask, method="ordinal")
-        if type(n) is float:
+        if isinstance(n, (float, np.floating)):
             assert 0 < n < 1
             return rank_data <= (XSMax(inputs=[rank_data]) * n)
         else:

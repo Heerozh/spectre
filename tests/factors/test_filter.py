@@ -69,6 +69,10 @@ def test_filter_does_not_affect_inputs(engine):
         # only AAPL on 2019-01-10, 50% of 1 asset is 0.5, nothing selected
         ("top", 0.5, True, False),
         ("bottom", 0.5, False, False),
+        ("top", np.float64(0.5), True, False),
+        ("bottom", np.float64(0.5), False, False),
+        ("top", np.float32(0.5), True, False),
+        ("bottom", np.float32(0.5), False, False),
     ],
 )
 def test_top_bottom(engine, method, n, top_aapl, solo):
