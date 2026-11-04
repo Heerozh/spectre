@@ -119,6 +119,22 @@ def test_set_datetime_backwards():
         pf.set_datetime("2019-01-02")
 
 
+def test_cash_of_a_split():
+    pf = trading.Portfolio()
+    pf.set_datetime("2019-01-03")
+    pf.update_cash(1000, is_funds=True)
+    pf.update("AAPL", 15, 10, 0)
+    pf.update_cash(-150)
+
+    # 3-for-2 is 22.5 shares at 6.67, half a share is paid in cash
+    pf.process_split("AAPL", 1.5, 10)
+    assert pf.shares("AAPL") == 22
+    assert pf.cash == pytest.approx(850 + 0.5 * 10 / 1.5)
+    assert pf.value == pytest.approx(1000)
+    # that is not a transfer of funds, the deposit is the only one
+    assert len(pf.fund_history) == 1
+
+
 def test_update_returns_realized():
     pf = trading.Portfolio()
     pf.set_datetime("2019-01-03")

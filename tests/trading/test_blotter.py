@@ -403,6 +403,30 @@ def test_reverse_split_cash_out_is_in_the_pnl_of_the_position():
     assert pos.realized + pos.unrealized == pytest.approx(-970)
 
 
+@pytest.mark.parametrize(
+    "shares, split_ratio, kept",
+    [(49, 49, 1), (50, 49, 1), (2, 1.5, 1), (3, 2.5, 1), (15, 2 / 3, 22)],
+    ids=["1-for-49", "1-for-49_left_over", "2-for-3", "2-for-5", "3-for-2"],
+)
+@pytest.mark.parametrize("side", [1, -1], ids=["long", "short"])
+def test_split_keeps_the_value_of_the_portfolio(side, shares, split_ratio, kept):
+    # the ex-date bar is at the same value, for a split ratio of 49 the price is 490
+    days = pd.bdate_range("2020-01-06", periods=4, tz="UTC")
+    close = [10, 10, 10 * split_ratio, 10 * split_ratio]
+    loader = asset_a_loader(days, close, split_ratios={2: split_ratio})
+    blotter = trading.SimulationBlotter(loader, capital_base=100000)
+    blotter.borrow_stock_interest_rate = 0
+
+    trade_until_after_bar(blotter, days, 1, side * shares)
+    assert blotter.positions["A"].shares == side * kept
+    assert blotter.portfolio.value == pytest.approx(100000)
+
+    blotter.set_datetime(days[2])
+    blotter.set_price("close")
+    blotter.update_portfolio_value()
+    assert blotter.portfolio.value == pytest.approx(100000)
+
+
 def test_taxed_dividend_of_short():
     # gross dividend of 2 and a 10% tax, the ex-date bar is 2 lower
     days = pd.bdate_range("2020-01-06", periods=4, tz="UTC")

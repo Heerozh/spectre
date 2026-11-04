@@ -121,18 +121,22 @@ class Position:
                 return False, realized
 
     def process_split(self, inverse_ratio: float, last_price: float) -> float:
+        """
+        Keeps the whole shares, and returns the cash for the fraction of a share left over, at the
+        price after the split.
+        """
         if inverse_ratio != inverse_ratio or inverse_ratio == 1:
             return 0
         if last_price != last_price:  # no price on this bar
             last_price = self._last_price
         sp = self._shares * inverse_ratio
-        cash = 0
-        if inverse_ratio < 1:  # reverse split remaining to cash
-            remaining = int(self._shares - int(sp) / inverse_ratio)  # for more precise
-            if remaining != 0:
-                cash = remaining * last_price
-                self._realized += (last_price - self._cost_basis) * remaining
-        self._shares = int(round(sp, 5))
+        # rounding removes float noise: 49 * (1 / 49) is 0.9999999999999999, which is 1 share
+        rounded = round(sp, 5)
+        self._shares = int(rounded)
+        # only the unrounded product keeps the value: 64.66667 shares of 970 / 15 would pay too much
+        fraction = sp - self._shares if rounded != self._shares else 0
+        cash = fraction * last_price / inverse_ratio
+        self._realized += (last_price - self._cost_basis) * fraction / inverse_ratio
         self._average_price = self._average_price / inverse_ratio
         self._cost_basis = self._cost_basis / inverse_ratio
         if self.stop_tracker:

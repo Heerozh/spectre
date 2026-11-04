@@ -268,6 +268,67 @@ def test_reverse_split_cash_out_is_realized(side):
     assert pos.realized == pytest.approx(side * -970)
 
 
+@pytest.mark.parametrize("ratio", [49, 98, 103, 107, 161, 187, 196, 197])
+@pytest.mark.parametrize("side", [1, -1], ids=["long", "short"])
+def test_reverse_split_of_whole_shares(side, ratio):
+    # ratio * (1 / ratio) can be 0.9999999999999999 in floats, it is exactly 1 share
+    pos = trading.Position(side * ratio, 10, 0, None)
+    assert pos.process_split(1 / ratio, 10) == 0
+    assert pos.shares == side
+    assert pos.last_price == pytest.approx(10 * ratio)
+    assert pos.value == pytest.approx(side * 10 * ratio)
+
+
+@pytest.mark.parametrize(
+    "shares, new, old, kept, cash",
+    [
+        # new shares for old shares, at a price of 10. What is left over is paid at the new price
+        (50, 1, 49, 1, 1 / 49 * 490),  # 1 share and 1 old share, worth 10
+        (99, 1, 98, 1, 1 / 98 * 980),
+        (15, 1, 2, 7, 0.5 * 20),  # 7.5 shares at 20
+        (3, 2, 5, 1, 0.2 * 25),  # 1.2 shares at 25
+        (2, 3, 4, 1, 0.5 * 40 / 3),  # 1.5 shares at 13.33
+        (2, 2, 3, 1, 1 / 3 * 15),  # 1.33 shares at 15
+        (15, 3, 2, 22, 0.5 * 20 / 3),  # 22.5 shares at 6.67
+    ],
+    ids=["1:49", "1:98", "1:2", "2:5", "3:4", "2:3", "3:2"],
+)
+@pytest.mark.parametrize("side", [1, -1], ids=["long", "short"])
+def test_split_pays_what_is_left_over(side, shares, new, old, kept, cash):
+    pos = trading.Position(side * shares, 10, 0, None)
+    assert pos.process_split(1 / (old / new), 10) == pytest.approx(side * cash)
+    assert pos.shares == side * kept
+    assert pos.value + side * cash == pytest.approx(side * shares * 10)
+
+
+@pytest.mark.parametrize("side", [1, -1], ids=["long", "short"])
+def test_forward_split_cash_out_is_realized(side):
+    # 15 at 10, 3-for-2 at 12. That is 22.5 shares at 8, each of them cost 6.67
+    pos = trading.Position(side * 15, 10, 0, None)
+    assert pos.process_split(1.5, 12) == pytest.approx(side * 0.5 * 8)
+    assert pos.shares == side * 22
+    assert pos.realized == pytest.approx(side * 0.5 * (8 - 10 / 1.5))
+    # the 15 shares made 2 each before the split, and it doesn't matter how they are split up
+    assert pos.realized + pos.unrealized == pytest.approx(side * 15 * 2)
+
+
+def test_split_conserves_value():
+    ratios = [(1, old) for old in (2, 3, 7, 15, 49, 50, 98, 100, 103, 107, 161, 187, 196, 197)]
+    ratios += [(2, 5), (3, 4), (2, 3), (3, 2), (5, 4), (7, 3), (2, 1), (3, 1)]
+    counts = [*range(1, 400), 970, 9999, 49000, 99999]
+    for new, old in ratios:
+        inverse_ratio = 1 / (old / new)  # what SimulationBlotter.market_close passes
+        for shares in counts:
+            for side in (1, -1):
+                pos = trading.Position(side * shares, 10, 0, None)
+                cash = pos.process_split(inverse_ratio, 9)
+                where = (new, old, side * shares)
+                # integers, nothing here depends on how the float was rounded
+                assert pos.shares == side * (shares * new // old), where
+                assert abs(pos.value + cash - side * shares * 9) < 1e-6, where
+                assert abs(pos.realized + pos.unrealized + side * shares) < 1e-6, where
+
+
 def test_split_without_a_price_uses_the_last_price():
     pos = trading.Position(10, 10, 0, None)
     assert pos.process_split(2, float("nan")) == 0
