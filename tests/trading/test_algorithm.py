@@ -1,13 +1,73 @@
+import numpy as np
 import pandas as pd
 import pytest
 from numpy import nan
 from numpy.testing import assert_almost_equal, assert_array_equal
 
+import spectre
 from spectre import factors, trading
 
 
 def ts(date):
     return pd.Timestamp(date, tz="UTC")
+
+
+@pytest.mark.filterwarnings("ignore:quantile.. mask parameter not set")
+def test_market_open_earns_the_returns_of_full_run():
+    """A delayed factor enters at the open of its row, in full_run and in a backtest."""
+    rng = np.random.default_rng(3)
+    dates = pd.bdate_range("2020-01-01", periods=40, tz="UTC")
+    assets = list("ABCD")
+    shape = len(dates), len(assets)
+    walk = 100 * np.exp(np.cumsum(rng.normal(0, 0.03, shape), axis=0))
+    opens = pd.DataFrame(walk, index=dates, columns=assets)
+    closes = opens * np.exp(rng.normal(0, 0.01, shape))
+    columns = {
+        "open": opens,
+        "high": np.maximum(opens, closes),
+        "low": np.minimum(opens, closes),
+        "close": closes,
+        "volume": opens * 0 + 1000,
+        # known after a close, it tells the return from the open of the next bar
+        "signal": (opens.shift(-1) / opens - 1).shift(-1),
+    }
+    panel = pd.concat({col: df.stack() for col, df in columns.items()}, axis=1)
+    ohlcv = ("open", "high", "low", "close", "volume")
+    loader = spectre.data.MemoryLoader(panel.rename_axis(["date", "asset"]), ohlcv=ohlcv)
+    start, end = dates[5], dates[-3]
+
+    class Alg(trading.CustomAlgorithm):
+        def initialize(self):
+            self.get_factor_engine().add(factors.ColumnDataFactor(inputs=("signal",)), "signal")
+            self.blotter.set_commission(0, 0, 0)
+            self.blotter.set_slippage(0, 0)
+            self.schedule_rebalance(trading.event.MarketOpen(self.rebalance))
+
+        def rebalance(self, data, history):
+            weights = (data.index == data.signal.idxmax()).astype(float)
+            self.blotter.batch_order_target_percent(data.index, weights)
+
+    earned = (1 + trading.run_backtest(loader, Alg, start, end).returns.fillna(0)).prod()
+
+    engine = factors.FactorEngine(loader)
+    engine.add(factors.ColumnDataFactor(inputs=("signal",)), "signal")
+    factor_data, _ = engine.full_run(
+        start, dates[-1], trade_at="open", periods=(1,), quantiles=2, preview=False
+    )
+    returns = factor_data["Returns"]["1D"].unstack()
+
+    top = panel["signal"].unstack().shift(1).loc[dates[6] : end].idxmax(axis=1)
+    by_hand, one_bar_later, reported = 1.0, 1.0, 1.0
+    for date, asset in top.iloc[:-1].items():
+        bar = dates.get_loc(date)
+        by_hand *= opens[asset].iloc[bar + 1] / opens[asset].iloc[bar]
+        one_bar_later *= opens[asset].iloc[bar + 2] / opens[asset].iloc[bar + 1]
+        reported *= 1 + returns.loc[date, asset]
+    assert reported == pytest.approx(by_hand)
+    # the backtest ends at the close of its last bar
+    last_day = closes.loc[end, top.iloc[-1]] / opens.loc[end, top.iloc[-1]]
+    assert earned == pytest.approx(by_hand * last_day, rel=0.01)
+    assert by_hand > 2 * one_bar_later
 
 
 def test_simulation_event_manager(daily_loader_no_calendar):

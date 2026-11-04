@@ -651,6 +651,10 @@ class FactorEngine:
         :param str, pd.Timestamp start: Factor analysis start time
         :param str, pd.Timestamp end: Factor analysis end time
         :param trade_at: Which price for forward returns. 'open', or 'close.
+                         With 'open', a delayed factor enters at the open of its row, and a factor
+                         that isn't delayed at the open of the next row. All factors of a run share
+                         one return column, so if only some of them are delayed, all are delayed.
+                         If is a factor, its values are the prices, and all factors are delayed.
                          If is 'current_close', same as run engine with delay_factor=False,
                          Be sure that no any high,low,close data is used in factor, otherwise will
                          cause lookahead bias.
@@ -684,14 +688,34 @@ class FactorEngine:
             column_names[c + "_w_"] = (c, "factor_weight")
 
         # add the rolling returns of each period, use AdjustedColumnDataFactor for best performance
+        # `shift` puts on row t the return of entering on t + 1, or on t if that row is delayed.
+        # The delay of the return columns is set here, or a universe would decide it by its mask.
         shift = -1
+        delay_factor = True
+        delay_returns = True
+        # bars to drop at the end on top of the longest period, 'close' could keep one more of them
+        extra_tail = 1
         inputs = (AdjustedColumnDataFactor(OHLCV.close),)
         if isinstance(trade_at, BaseFactor):
             inputs = (trade_at,)
+            delay_factor = "all"
+            extra_tail = 0
         elif trade_at == "open":
             inputs = (AdjustedColumnDataFactor(OHLCV.open),)
+            # On row t a delayed factor knows close[t - 1], so it can enter at open[t]. A factor
+            # that isn't delayed knows open[t], so it can only enter at open[t + 1].
+            with self._masks_know_the_filter():
+                delays = [f.should_delay() for f in self._factors.values()]
+            delay_returns = any(delays)
+            if delay_returns:
+                extra_tail = 0
+                if not all(delays):
+                    delay_factor = "all"
         elif trade_at == "current_close":
             shift = 0
+            delay_factor = False
+            delay_returns = None
+            extra_tail = 0
 
         from .basic import Returns
 
@@ -699,6 +723,7 @@ class FactorEngine:
             # Different: returns here diff by bar, which alphalens diff by time
             ret = Returns(win=n + 1, inputs=inputs).shift(-n + shift)
             mask = universe
+            returns = ret
             if filter_zscore is not None:
                 # Different: The zscore here contains all backward data which alphalens not counted.
                 zscore_factor = ret.zscore(groupby="asset", mask=universe)
@@ -707,21 +732,23 @@ class FactorEngine:
                     mask = mask & zscore_filter
                 else:
                     mask = zscore_filter
-                self.add(ret.filter(mask), str(n) + "_r_")
-            else:
-                self.add(ret, str(n) + "_r_")
+                returns = ret.filter(mask)
+            returns.set_delay(delay_returns)
+            self.add(returns, str(n) + "_r_")
             if demean:
-                self.add(ret.demean(mask=mask), str(n) + "_d_")
+                demeaned = ret.demean(mask=mask)
+                demeaned.set_delay(delay_returns)
+                self.add(demeaned, str(n) + "_d_")
 
         # run and get df
-        factor_data = self.run(start, end, trade_at != "current_close")
+        factor_data = self.run(start, end, delay_factor)
         self._factors = factors
         factor_data.index = factor_data.index.remove_unused_levels()
         # factor_data = factor_data.sort_index()  # 140 ms
-        assert len(factor_data.index.levels[0]) > max(periods) - shift, (
+        assert len(factor_data.index.levels[0]) > max(periods) + extra_tail, (
             "No enough data for forward returns, please expand the end date"
         )
-        last_date = factor_data.index.levels[0][-max(periods) + shift - 1]
+        last_date = factor_data.index.levels[0][-max(periods) - extra_tail - 1]
         factor_data = factor_data.loc[:last_date].copy()
 
         # infer freq

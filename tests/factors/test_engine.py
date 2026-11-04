@@ -514,6 +514,249 @@ def test_full_run(engine):
     assert ("ma_cross", "1D", "mean") in mean_returns.columns
 
 
+FORWARD_DATES = pd.date_range("2020-01-01", periods=40, freq="B", tz="UTC")
+FORWARD_START, FORWARD_END = FORWARD_DATES[5], FORWARD_DATES[-1]
+
+
+def forward_data():
+    """
+    Random walks, returns the panel and its wide opens and closes. Opens and closes are unrelated,
+    so a return can't be mistaken for another. Two columns have a signal planted in them:
+
+    * `after_close` is known after the close of a bar, and tells the return of holding from the
+      open of the next bar. It is delayed, so on row t it is open[t + 1] / open[t] - 1.
+    * `at_open` is known at the open of a bar, and tells the return of holding from the open of the
+      next bar. It's not delayed, so on row t it is open[t + 2] / open[t + 1] - 1.
+    """
+    rng = np.random.default_rng(11)
+    assets = list("ABCDEF")
+    shape = len(FORWARD_DATES), len(assets)
+    walk = 100 * np.exp(np.cumsum(rng.normal(0, 0.02, shape), axis=0))
+    opens = pd.DataFrame(walk, index=FORWARD_DATES, columns=assets)
+    closes = opens * np.exp(rng.normal(0, 0.01, shape))
+    columns = {
+        "open": opens,
+        "close": closes,
+        "high": np.maximum(opens, closes),
+        "low": np.minimum(opens, closes),
+        "volume": pd.DataFrame(1000.0, index=FORWARD_DATES, columns=assets),
+        "after_close": (opens.shift(-1) / opens - 1).shift(-1),
+        "at_open": opens.shift(-2) / opens.shift(-1) - 1,
+    }
+    panel = pd.concat({col: df.stack() for col, df in columns.items()}, axis=1)
+    return panel.rename_axis(["date", "asset"]), opens, closes
+
+
+def forward_engine(panel, device, universe=None):
+    engine = factors.FactorEngine(spectre.data.MemoryLoader(panel, ohlcv=OHLCV_COLUMNS))
+    if device == "cuda":
+        engine.to_cuda()
+    engine.set_filter(universe)
+    return engine
+
+
+def after_close():
+    return factors.ColumnDataFactor(inputs=("after_close",))
+
+
+def at_open():
+    return factors.ColumnDataFactor(inputs=("at_open",), should_delay=False)
+
+
+def forward_return(prices, n, entry):
+    """The return of buying at `prices[t + entry]` and selling `n` bars later, by hand."""
+    return prices.shift(-entry - n) / prices.shift(-entry) - 1
+
+
+def assert_returns(factor_data, column, prices, entry, n=3):
+    returns = factor_data[column][f"{n}D"].unstack()
+    expected = forward_return(prices, n, entry).reindex_like(returns).where(returns.notna())
+    assert returns.notna().to_numpy().sum() > 0
+    pd.testing.assert_frame_equal(returns, expected, check_names=False, check_freq=False)
+
+
+# on row t a delayed factor can buy at open[t], and one that isn't delayed at open[t + 1]
+TRADE_AT_OPEN_CASES = {
+    "delayed": (after_close, None, None, 0),
+    "delayed_universe_of_all": (after_close, None, lambda: close > 0, 0),
+    "delayed_universe_on_open": (after_close, None, lambda: open_price > 0, 0),
+    "delayed_adv_universe": (after_close, None, lambda: factors.AverageDollarVolume(5).top(3), 0),
+    "not_delayed": (at_open, None, None, 1),
+    "not_delayed_universe_on_open": (at_open, None, lambda: open_price > 0, 1),
+    "not_delayed_adv_on_open": (at_open, None, lambda: open_price.top(4), 1),
+    "mixed_factors": (after_close, at_open, None, 0),
+    "mixed_by_universe": (at_open, None, lambda: close > 0, 0),
+    "mixed_by_adv_universe": (at_open, None, lambda: factors.AverageDollarVolume(5).top(3), 0),
+}
+
+
+@pytest.mark.filterwarnings("ignore:quantile.. mask parameter not set")
+@pytest.mark.parametrize("filter_zscore", [None, 20])
+@pytest.mark.parametrize(
+    "factor, other, universe, entry", TRADE_AT_OPEN_CASES.values(), ids=TRADE_AT_OPEN_CASES.keys()
+)
+def test_full_run_trade_at_open(device, factor, other, universe, entry, filter_zscore):
+    panel, opens, _ = forward_data()
+    engine = forward_engine(panel, device, universe and universe())
+    engine.add(factor(), "f")
+    if other:
+        engine.add(other(), "other")
+    factor_data, _ = engine.full_run(
+        FORWARD_START,
+        FORWARD_END,
+        trade_at="open",
+        periods=(1, 3),
+        quantiles=2,
+        filter_zscore=filter_zscore,
+        preview=False,
+    )
+
+    for n in (1, 3):
+        assert_returns(factor_data, "Returns", opens, entry, n)
+        # the same rows and the same bars as Returns
+        returns = factor_data["Returns"][f"{n}D"]
+        demeaned = returns - returns.groupby(level="date").transform("mean")
+        pd.testing.assert_series_equal(
+            factor_data["Demeaned"][f"{n}D"], demeaned, check_names=False
+        )
+
+    # the signal is planted on the bar of its entry
+    correlation = factor_data["f"]["factor"].corr(factor_data["Returns"]["1D"])
+    assert correlation > 0.999
+
+    # a run that isn't delayed keeps its first bar
+    dates = factor_data.index.get_level_values(0)
+    assert dates.min() == FORWARD_DATES[6 if entry == 0 else 5]
+    # the last bar with a return of the longest period, and no bar after it
+    assert dates.max() == FORWARD_DATES[-1 - 3 - entry]
+    assert factor_data["Returns"]["3D"].loc[dates.max()].notna().all()
+
+
+@pytest.mark.filterwarnings("ignore:quantile.. mask parameter not set")
+def test_full_run_without_demean_or_zscore_is_aligned_too(device):
+    panel, opens, _ = forward_data()
+    engine = forward_engine(panel, device, close > 0)
+    engine.add(at_open(), "f")
+    factor_data, _ = engine.full_run(
+        FORWARD_START,
+        FORWARD_END,
+        trade_at="open",
+        periods=(1, 3),
+        quantiles=2,
+        filter_zscore=None,
+        demean=False,
+        preview=False,
+    )
+    assert_returns(factor_data, "Returns", opens, 0)
+
+
+def test_full_run_universe_mask_by_name(device):
+    """The raw factor is delayed by its mask too, so this is not a mix."""
+    panel, opens, _ = forward_data()
+    engine = forward_engine(panel, device, close > 0)
+    engine.add(open_price.rank(mask="universe"), "f")
+    factor_data, _ = engine.full_run(
+        FORWARD_START, FORWARD_END, trade_at="open", periods=(1, 3), quantiles=2, preview=False
+    )
+    assert_returns(factor_data, "Returns", opens, 0)
+    ranks = opens.rank(axis=1).shift(1)
+    result = factor_data["f"]["factor"].unstack()
+    pd.testing.assert_frame_equal(
+        result, ranks.reindex_like(result), check_names=False, check_freq=False, check_dtype=False
+    )
+
+
+@pytest.mark.filterwarnings("ignore:quantile.. mask parameter not set")
+def test_full_run_mixed_factors_are_all_delayed(device):
+    """Factors of one run share one return column, so the ones that don't need it are delayed."""
+    panel, opens, _ = forward_data()
+    engine = forward_engine(panel, device)
+    engine.add(after_close(), "delayed")
+    engine.add(open_price, "open")
+    factor_data, _ = engine.full_run(
+        FORWARD_START,
+        FORWARD_END,
+        trade_at="open",
+        periods=(1, 3),
+        quantiles=2,
+        preview=False,
+    )
+    first_row = factor_data.xs("A", level=1).iloc[0]
+    assert first_row[("open", "factor")] == pytest.approx(opens["A"].iloc[5])
+    # no factors are left delayed
+    assert list(engine.factors) == ["delayed", "open"]
+    assert not open_price.should_delay()
+
+
+@pytest.mark.filterwarnings("ignore:quantile.. mask parameter not set")
+@pytest.mark.parametrize("make_factor", [after_close, at_open], ids=["delayed", "not_delayed"])
+def test_full_run_trade_at_a_factor(device, make_factor):
+    panel, opens, closes = forward_data()
+    engine = forward_engine(panel, device)
+    engine.add(make_factor(), "f")
+    factor_data, _ = engine.full_run(
+        FORWARD_START,
+        FORWARD_END,
+        trade_at=(open_price + close) / 2,
+        periods=(1, 3),
+        quantiles=2,
+        preview=False,
+    )
+    assert_returns(factor_data, "Returns", (opens + closes) / 2, 0)
+    returns = factor_data["Returns"]["3D"]
+    demeaned = returns - returns.groupby(level="date").transform("mean")
+    pd.testing.assert_series_equal(factor_data["Demeaned"]["3D"], demeaned, check_names=False)
+    # all factors are delayed
+    dates = factor_data.index.get_level_values(0)
+    assert dates.min() == FORWARD_DATES[6]
+    assert dates.max() == FORWARD_DATES[-1 - 3]
+    planted = panel[make_factor().inputs[0]].unstack().shift(1)
+    result = factor_data["f"]["factor"].unstack()
+    pd.testing.assert_frame_equal(
+        result, planted.reindex_like(result), check_names=False, check_freq=False
+    )
+
+
+@pytest.mark.filterwarnings("ignore:quantile.. mask parameter not set")
+@pytest.mark.parametrize("make_factor", [after_close, at_open], ids=["delayed", "not_delayed"])
+def test_full_run_trade_at_close(device, make_factor):
+    panel, _, closes = forward_data()
+    engine = forward_engine(panel, device)
+    engine.add(make_factor(), "f")
+    factor_data, _ = engine.full_run(
+        FORWARD_START, FORWARD_END, periods=(1, 3), quantiles=2, preview=False
+    )
+    assert_returns(factor_data, "Returns", closes, 0)
+    assert factor_data.index.get_level_values(0).min() == FORWARD_DATES[6]
+    assert factor_data.index.get_level_values(0).max() == FORWARD_DATES[-1 - 3 - 1]
+
+
+@pytest.mark.filterwarnings("ignore:quantile.. mask parameter not set")
+@pytest.mark.filterwarnings("ignore:Warning!! delay_factor is set to False")
+def test_full_run_trade_at_current_close(device):
+    panel, _, closes = forward_data()
+    engine = forward_engine(panel, device)
+    engine.add(after_close(), "f")
+    factor_data, _ = engine.full_run(
+        FORWARD_START,
+        FORWARD_END,
+        trade_at="current_close",
+        periods=(1, 3),
+        quantiles=2,
+        preview=False,
+    )
+    assert_returns(factor_data, "Returns", closes, 0)
+    dates = factor_data.index.get_level_values(0)
+    assert dates.min() == FORWARD_DATES[5]
+    assert dates.max() == FORWARD_DATES[-1 - 3]
+    # nothing is delayed
+    planted = panel["after_close"].unstack()
+    result = factor_data["f"]["factor"].unstack()
+    pd.testing.assert_frame_equal(
+        result, planted.reindex_like(result), check_names=False, check_freq=False
+    )
+
+
 @pytest.mark.filterwarnings("ignore:quantile\\(\\) mask parameter not set")
 @pytest.mark.parametrize("filter_zscore", [None, 20])
 def test_full_run_keeps_forward_returns_of_delisted_asset(dirty_engine, dirty_panel, filter_zscore):
