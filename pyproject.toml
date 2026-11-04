@@ -28,7 +28,12 @@ dependencies = [
 Homepage = "https://github.com/Heerozh/spectre"
 
 [dependency-groups]
-dev = ["pytest", "pytest-xdist", "scipy"]
+dev = [
+    "pytest",
+    "pytest-xdist",
+    "ruff>=0.17.3",
+    "scipy",
+]
 # These two only pick the torch build, see `tool.uv.sources`. `cuda` is on by default, select the
 # CPU build with `--no-group cuda --group cpu`. Groups are not part of the built package.
 cuda = ["torch"]
@@ -83,3 +88,23 @@ filterwarnings = [
     # CsvDirLoader recommends float32 dtypes, the test data intentionally uses the defaults.
     "ignore:It is recommended to set the `dtype` parameter:RuntimeWarning",
 ]
+
+[tool.ruff]
+line-length = 100
+extend-exclude = ["benchmarks"]
+
+[tool.ruff.format]
+quote-style = "single"
+
+[tool.ruff.lint]
+extend-select = ["E", "W", "F"]
+ignore = [
+    "C408",    # dict(a=1) reads better in plotly configs
+    "PLR0124", # x != x is how this code checks for NaN
+    "RUF012",  # class-level `inputs` are part of the factor API
+    "RUF046",  # round() of a numpy or torch value is not always an int
+    "TRY004",  # changing the exception type changes the API
+]
+
+[tool.ruff.lint.per-file-ignores]
+"__init__.py" = ["F401"]
