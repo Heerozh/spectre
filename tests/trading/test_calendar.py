@@ -57,3 +57,18 @@ def test_build_empty_range():
     cal = trading.Calendar()
     with pytest.raises(ValueError, match="Empty date range"):
         cal.build(start="2020-01-03", end="2019", daily_events=DAILY_EVENTS, tz=TZ)
+
+
+def test_cn_calendar_skips_2026_holidays():
+    # `pd.date_range` is empty if the end is before the start, so a wrong year in the table of
+    # `CNCalendar.closed` removes the holidays silently
+    cal = trading.CNCalendar(start=pd.Timestamp("2026-09-01"), pop_passed=False)
+    opens = cal.events["Open"]
+
+    def open_on(date):
+        return pd.Timestamp(f"{date} 09:30", tz="Asia/Shanghai")
+
+    assert open_on("2026-09-30") in opens
+    assert open_on("2026-10-01") not in opens
+    assert open_on("2026-10-07") not in opens
+    assert open_on("2026-10-08") in opens
