@@ -10,10 +10,10 @@ DAILY_RETURNS = [0.0022, 0.0090, -0.0067, 0.0052, 0.0030, -0.0012, -0.0091, 0.00
 
 @pytest.fixture
 def returns():
-    return pd.Series(DAILY_RETURNS, index=pd.date_range('2040-01-01', periods=10))
+    return pd.Series(DAILY_RETURNS, index=pd.date_range("2040-01-01", periods=10))
 
 
-@pytest.mark.parametrize('risk_free, expected', [(0.0, 2.9101144), (0.04, 2.5492371)])
+@pytest.mark.parametrize("risk_free, expected", [(0.0, 2.9101144), (0.04, 2.5492371)])
 def test_sharpe_ratio(returns, risk_free, expected):
     # sqrt(252) * mean(r - rf / 252) / std(r - rf / 252, ddof=1)
     assert trading.sharpe_ratio(returns, risk_free) == pytest.approx(expected)
@@ -39,16 +39,16 @@ def test_drawdown(returns):
 
 def test_turnover():
     txn = pd.DataFrame(
-        [['AAPL', 384, 155.92, 157.09960, 1.92], ['AAPL', -384, 158.61, 157.41695, 1.92]],
-        columns=['symbol', 'amount', 'price', 'fill_price', 'commission'],
-        index=pd.to_datetime(['2040-01-01', '2040-01-02']),
+        [["AAPL", 384, 155.92, 157.09960, 1.92], ["AAPL", -384, 158.61, 157.41695, 1.92]],
+        columns=["symbol", "amount", "price", "fill_price", "commission"],
+        index=pd.to_datetime(["2040-01-01", "2040-01-02"]),
     )
     pos = pd.DataFrame(
         [[384, 384 * 155.92, 10000], [nan, nan, 10000 + 384 * 158.61]],
         columns=pd.MultiIndex.from_tuples(
-            [('shares', 'AAPL'), ('value', 'AAPL'), ('value', 'cash')]
+            [("shares", "AAPL"), ("value", "AAPL"), ("value", "cash")]
         ),
-        index=pd.to_datetime(['2040-01-01', '2040-01-02']),
+        index=pd.to_datetime(["2040-01-01", "2040-01-02"]),
     )
 
     # traded value / portfolio value
@@ -58,6 +58,6 @@ def test_turnover():
 
 
 def test_turnover_without_transactions():
-    txn = pd.DataFrame(columns=['symbol', 'amount', 'price', 'fill_price', 'commission'])
-    pos = pd.DataFrame({('value', 'cash'): [10000.0]}, index=pd.to_datetime(['2040-01-01']))
+    txn = pd.DataFrame(columns=["symbol", "amount", "price", "fill_price", "commission"])
+    pos = pd.DataFrame({("value", "cash"): [10000.0]}, index=pd.to_datetime(["2040-01-01"]))
     assert len(trading.turnover(pos, txn)) == 0

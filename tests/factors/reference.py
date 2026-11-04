@@ -8,20 +8,20 @@ import pandas as pd
 
 from tests.conftest import DAILY_OHLCV, DATA_DIR
 
-ASSETS = ('AAPL', 'MSFT')
-START, END = '2019-01-01', '2019-01-15'
+ASSETS = ("AAPL", "MSFT")
+START, END = "2019-01-01", "2019-01-15"
 
 
 def daily_prices(asset):
     """Raw daily prices with columns open/high/low/close/volume, aligned to AAPL's calendar."""
 
     def read(name):
-        return pd.read_csv(DATA_DIR / 'daily' / f'{name}.csv', index_col='date', parse_dates=True)
+        return pd.read_csv(DATA_DIR / "daily" / f"{name}.csv", index_col="date", parse_dates=True)
 
-    calendar = read('AAPL').index
+    calendar = read("AAPL").index
     df = read(asset)
     df = df[df.index.isin(calendar)][list(DAILY_OHLCV)]
-    df.columns = ['open', 'high', 'low', 'close', 'volume']
+    df.columns = ["open", "high", "low", "close", "volume"]
     return df
 
 
@@ -59,7 +59,7 @@ def expected_xs(func, values=lambda df: df.close, delayed=True, start=START, end
 
 
 def _select(series, delayed, start, end):
-    calendar = series['AAPL'].loc[start:end].index
+    calendar = series["AAPL"].loc[start:end].index
     if delayed:
         calendar = calendar[1:]
     return tuple(
@@ -67,7 +67,7 @@ def _select(series, delayed, start, end):
     )
 
 
-def loaded_closes(asset, start='2019-01-02', end=END):
+def loaded_closes(asset, start="2019-01-02", end=END):
     """Closes loaded by the engine for factors without rolling window."""
     return daily_prices(asset).close.loc[start:end].to_numpy(copy=True)
 

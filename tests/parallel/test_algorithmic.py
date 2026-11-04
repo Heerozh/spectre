@@ -10,7 +10,7 @@ from spectre import parallel
 nan = np.nan
 
 
-def tensor(data, device='cpu', dtype=torch.float32):
+def tensor(data, device="cpu", dtype=torch.float32):
     return torch.tensor(data, dtype=dtype, device=device)
 
 
@@ -44,16 +44,16 @@ def test_groupby_bool_padding_is_false():
 
 def test_groupby_rejects_int():
     groupby = parallel.ParallelGroupBy(torch.tensor([0, 0, 1]))
-    with pytest.raises(ValueError, match='cannot be any type of int'):
+    with pytest.raises(ValueError, match="cannot be any type of int"):
         groupby.split(torch.tensor([1, 2, 3]))
 
 
 def test_groupby_revert_shape_mismatch():
     groupby = parallel.ParallelGroupBy(torch.tensor([0, 0, 1]))
-    with pytest.raises(ValueError, match='must same as input'):
-        groupby.revert(torch.zeros(3, 3), 'test')
-    with pytest.raises(ValueError, match='multiple return values'):
-        groupby.revert(torch.zeros(2, 2, 3), 'test')
+    with pytest.raises(ValueError, match="must same as input"):
+        groupby.revert(torch.zeros(3, 3), "test")
+    with pytest.raises(ValueError, match="multiple return values"):
+        groupby.revert(torch.zeros(2, 2, 3), "test")
 
 
 # ------------------------------------ rolling ------------------------------------
@@ -64,7 +64,7 @@ PRICES = [[164.0000, 163.7100, 158.6100, 145.230], [104.6100, 104.4200, 101.3000
 def test_rolling_sum():
     x = tensor(PRICES)
     assert str(parallel.Rolling(x, 3)).startswith(
-        'spectre.parallel.Rolling object contains:\ntensor('
+        "spectre.parallel.Rolling object contains:\ntensor("
     )
 
     s = parallel.Rolling(x, 3).sum()
@@ -99,7 +99,7 @@ def test_rolling_split_large_data(monkeypatch):
     expected = parallel.Rolling(x, 5).nanmean()
 
     # pretend memory usage is huge, so every column becomes a chunk
-    monkeypatch.setattr(parallel.Rolling, '_split_multi', 1e12)
+    monkeypatch.setattr(parallel.Rolling, "_split_multi", 1e12)
     rolling = parallel.Rolling(x, 5)
     assert len(rolling.split) == 50
     assert_almost_equal(rolling.nanmean().numpy(), expected.numpy())
@@ -140,7 +140,7 @@ DATA_2D = [[1, 2, 1], [4, nan, 2], [7, 8, 1]]
 DATA_3D = [[[nan, 1, 2], [1, 2, 1]], [[nan, 4, nan], [4, nan, 2]], [[nan, 7, 8], [7, 8, 1]]]
 
 
-@pytest.mark.parametrize('ddof', [0, 1])
+@pytest.mark.parametrize("ddof", [0, 1])
 def test_nanmean_nanstd(device, ddof):
     data = tensor(DATA_2D, device)
     assert_almost_equal(to_np(parallel.nanmean(data)), np.nanmean(DATA_2D, axis=1), decimal=6)
@@ -214,25 +214,25 @@ def test_rankdata_ties(device):
     x = tensor([[2, 3, 6, 8, 3, 6, 6], [2, 3, 6, nan, 3, 2, 9]], device)
     result = to_np(parallel.rankdata(x))
     assert_array_equal(result[0], scipy.stats.rankdata(to_np(x[0])))
-    assert_array_equal(result[1], pd.Series(to_np(x[1])).rank(method='average'))
+    assert_array_equal(result[1], pd.Series(to_np(x[1])).rank(method="average"))
 
 
-@pytest.mark.parametrize('ascending', [True, False])
-@pytest.mark.parametrize('method, pd_method', [('average', 'average'), ('dense', 'dense')])
+@pytest.mark.parametrize("ascending", [True, False])
+@pytest.mark.parametrize("method, pd_method", [("average", "average"), ("dense", "dense")])
 def test_rankdata_methods(device, ascending, method, pd_method):
     x = tensor([[2, 3, 6, 8, 3, 6, 6], [2, 3, 6, nan, 3, nan, 9]], device)
     result = to_np(parallel.rankdata(x, ascending=ascending, method=method))
     for i in range(2):
         expected = pd.Series(to_np(x[i])).rank(method=pd_method, ascending=ascending)
-        assert_array_equal(result[i], expected, err_msg=f'row {i}')
+        assert_array_equal(result[i], expected, err_msg=f"row {i}")
 
 
-@pytest.mark.parametrize('ascending', [True, False])
+@pytest.mark.parametrize("ascending", [True, False])
 def test_rankdata_ordinal(device, ascending):
     x = tensor([[2, 3, 6, 8, 1], [2, nan, 6, 7, 3]], device)
-    result = to_np(parallel.rankdata(x, ascending=ascending, method='ordinal'))
+    result = to_np(parallel.rankdata(x, ascending=ascending, method="ordinal"))
     for i in range(2):
-        expected = pd.Series(to_np(x[i])).rank(method='first', ascending=ascending)
+        expected = pd.Series(to_np(x[i])).rank(method="first", ascending=ascending)
         assert_array_equal(result[i], expected)
 
 

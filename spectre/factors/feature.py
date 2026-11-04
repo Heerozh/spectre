@@ -75,8 +75,8 @@ class AssetData(CustomFactor):
         super().pre_compute_(engine, start, end)
         if not engine.align_by_time:
             warnings.warn(
-                'Make sure your data is aligned by time, otherwise will cause data '
-                'disorder. Or set engine.align_by_time = True.',
+                "Make sure your data is aligned by time, otherwise will cause data "
+                "disorder. Or set engine.align_by_time = True.",
                 RuntimeWarning,
             )
         self.asset_ind = engine.dataframe_index[1].unique().categories.get_loc(self.asset)
@@ -89,10 +89,10 @@ class AssetData(CustomFactor):
 # ----------- Common Calendar Features -----------
 
 
-MONTH = DatetimeDataFactor('month')
-WEEKDAY = DatetimeDataFactor('weekday')
-QUARTER = DatetimeDataFactor('quarter')
-TIME = DatetimeDataFactor('hour') + DatetimeDataFactor('minute') / 60.0
+MONTH = DatetimeDataFactor("month")
+WEEKDAY = DatetimeDataFactor("weekday")
+QUARTER = DatetimeDataFactor("quarter")
+TIME = DatetimeDataFactor("hour") + DatetimeDataFactor("minute") / 60.0
 
 IS_JANUARY = MONTH == 1
 IS_DECEMBER = MONTH == 12

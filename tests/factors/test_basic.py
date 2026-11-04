@@ -49,7 +49,7 @@ def test_log_returns(engine):
 # ------------------------------------ moving averages ------------------------------------
 
 
-@pytest.mark.parametrize('win', [3, 11])
+@pytest.mark.parametrize("win", [3, 11])
 def test_sma(engine, win):
     assert_factor(engine, factors.SMA(win), *ref.expected(lambda df: ref.sma(df.close, win)))
 
@@ -71,8 +71,8 @@ def ema_truncation_bound(span, prices):
     return (1 - alpha) ** win * (prices.max() - prices.min())
 
 
-@pytest.mark.parametrize('span', [11, 50])
-@pytest.mark.parametrize('adjust', [False, True])
+@pytest.mark.parametrize("span", [11, 50])
+@pytest.mark.parametrize("adjust", [False, True])
 def test_ema(engine, span, adjust):
     aapl, msft = run_factor(engine, factors.EMA(span, adjust=adjust))
     expected = ref.expected(lambda df: df.close.ewm(span=span, adjust=adjust).mean())
@@ -135,14 +135,14 @@ def test_linear_weighted_average(engine):
 
 
 def test_element_wise_max(engine):
-    factor = factors.ElementWiseMax(inputs=[factors.WEEKDAY, factors.DatetimeDataFactor('day')])
+    factor = factors.ElementWiseMax(inputs=[factors.WEEKDAY, factors.DatetimeDataFactor("day")])
     expected = ref.expected(lambda df: np.maximum(weekday(df), day(df)), delayed=False)
     assert_factor(engine, factor, *expected)
     assert_almost_equal(expected[0], [2.0, 3, 4, 7, 8, 9, 10, 11, 14, 15])
 
 
 def test_element_wise_min(engine):
-    factor = factors.ElementWiseMin(inputs=[factors.WEEKDAY, factors.DatetimeDataFactor('day') - 1])
+    factor = factors.ElementWiseMin(inputs=[factors.WEEKDAY, factors.DatetimeDataFactor("day") - 1])
     expected = ref.expected(lambda df: np.minimum(weekday(df), day(df) - 1), delayed=False)
     assert_factor(engine, factor, *expected)
     assert_almost_equal(expected[0], [1.0, 2, 3, 0, 1, 2, 3, 4, 0, 1])
@@ -156,7 +156,7 @@ def test_element_wise_max_nan():
 
 
 # weekday has same values in the window, use day as a decimal point to break the ties
-WEEKDAY_DAY = factors.WEEKDAY + factors.DatetimeDataFactor('day') / 100
+WEEKDAY_DAY = factors.WEEKDAY + factors.DatetimeDataFactor("day") / 100
 
 
 def rolling_arg(func):
@@ -189,5 +189,5 @@ def test_constants_factor(engine):
 
 
 def test_min_win():
-    with pytest.raises(ValueError, match='win'):
+    with pytest.raises(ValueError, match="win"):
         factors.SMA(1)

@@ -28,7 +28,7 @@ def compute_with_mask(factor, *inputs):
 # ------------------------------------ rank ------------------------------------
 
 
-@pytest.mark.parametrize('ascending', [True, False])
+@pytest.mark.parametrize("ascending", [True, False])
 def test_rank(engine, ascending):
     expected = ref.expected_xs(lambda df: df.rank(axis=1, ascending=ascending))
     assert_factor(engine, close.rank(ascending=ascending), *expected)
@@ -38,18 +38,18 @@ def test_rank(engine, ascending):
 
 def test_rank_single_day(engine):
     # bug #98a0bdc
-    engine.add(close.rank(), 'test')
-    result = engine.run('2019-01-01', '2019-01-03')
+    engine.add(close.rank(), "test")
+    result = engine.run("2019-01-01", "2019-01-03")
     assert_array_equal(result.values, [[2.0], [1.0]])
 
 
 def test_rank_with_mask(engine, device):
-    if device == 'cuda':
+    if device == "cuda":
         engine.to_cuda()
     universe = factors.OHLCV.volume.top(1)
     engine.set_filter(universe)
-    engine.add(close.rank(mask=universe), 'test')
-    result = engine.run('2019-01-01', '2019-01-15')
+    engine.add(close.rank(mask=universe), "test")
+    result = engine.run("2019-01-01", "2019-01-15")
     assert_array_equal(result.test.values, [1.0] * 9)
 
 
@@ -78,7 +78,7 @@ def test_weighted_mean(engine):
         value = sum(p.close * p.volume for p in prices.values())
         volume = sum(p.volume for p in prices.values())
         # 2019-01-10 only has AAPL
-        solo = prices['AAPL'].close[value.isna()]
+        solo = prices["AAPL"].close[value.isna()]
         mean = (value / volume).fillna(solo)
         return pd.DataFrame({a: mean for a in ref.ASSETS})
 
@@ -108,16 +108,16 @@ def test_median(engine):
 
 def test_median_groupby_asset(engine):
     """groupby='asset' calculates the median of the whole loaded data of each asset."""
-    factor = factors.Returns().round(3).median(groupby='asset')
+    factor = factors.Returns().round(3).median(groupby="asset")
     # closes from 2018-12-31 to 2019-01-15 are loaded, so returns are from 2019-01-02
     returns = {
-        a: ref.returns(ref.daily_prices(a).close).loc['2019-01-02' : ref.END].round(3)
+        a: ref.returns(ref.daily_prices(a).close).loc["2019-01-02" : ref.END].round(3)
         for a in ref.ASSETS
     }
     aapl, msft = run_factor(engine, factor, check_bias=False)
-    assert_almost_equal(aapl, [np.median(returns['AAPL'])] * 9)
-    assert_almost_equal(msft, [np.median(returns['MSFT'])] * 8)
-    assert_almost_equal([np.median(returns['AAPL']), np.median(returns['MSFT'])], [0.0085, 0.007])
+    assert_almost_equal(aapl, [np.median(returns["AAPL"])] * 9)
+    assert_almost_equal(msft, [np.median(returns["MSFT"])] * 8)
+    assert_almost_equal([np.median(returns["AAPL"]), np.median(returns["MSFT"])], [0.0085, 0.007])
 
 
 # ------------------------------------ zscore ------------------------------------
@@ -158,12 +158,12 @@ def demeaned(df):
     return df.sub(df.mean(axis=1), axis=0)
 
 
-@pytest.mark.filterwarnings('ignore:group_dict')
+@pytest.mark.filterwarnings("ignore:group_dict")
 def test_demean_group_dict(engine):
     expected = ref.expected_xs(demeaned)
-    assert_factor(engine, close.demean(groupby={'AAPL': 1, 'MSFT': 1}), *expected)
+    assert_factor(engine, close.demean(groupby={"AAPL": 1, "MSFT": 1}), *expected)
     # different groups
-    assert_factor(engine, close.demean(groupby={'AAPL': 1, 'MSFT': 2}), [0] * 9, [0] * 8)
+    assert_factor(engine, close.demean(groupby={"AAPL": 1, "MSFT": 2}), [0] * 9, [0] * 8)
 
 
 def test_demean(engine):
@@ -199,7 +199,7 @@ def test_quantile_classifier_same_as_pandas():
 
 def test_quantile_classifier_real_data():
     # factor values of a real backtest, with some duplicates
-    data = pd.read_csv(DATA_DIR / 'quantile_values.csv').value.values
+    data = pd.read_csv(DATA_DIR / "quantile_values.csv").value.values
     f = factors.QuantileClassifier()
     f.bins = 5
     result = f.compute(torch.tensor(data[None, :])).numpy()
@@ -222,11 +222,11 @@ def test_rolling_quantile():
 def test_quantile_with_filter(engine):
     """quantile of factor got from engine._factors nan bug"""
     engine.set_filter(close.top(2))
-    engine.add(close.zscore(), 'pre')
-    factor = engine.get_factor('pre')
+    engine.add(close.zscore(), "pre")
+    factor = engine.get_factor("pre")
     expected_aapl = [4.0] * 9
     expected_aapl[SOLO] = nan
-    with pytest.warns(RuntimeWarning, match='mask parameter not set'):
+    with pytest.warns(RuntimeWarning, match="mask parameter not set"):
         quantile = factor.quantile()
     assert_factor(engine, quantile, expected_aapl, [0.0] * 8)
 
@@ -245,18 +245,18 @@ def test_mad_clamp_groupby_asset(engine):
     assert_array_equal(expected, [2, 3, 3, 1, 1, 2, 3, 3, 1, 1])
     assert_factor(
         engine,
-        factors.WEEKDAY.mad_clamp(1, groupby='asset'),
+        factors.WEEKDAY.mad_clamp(1, groupby="asset"),
         expected,
         ref.mad_clamp(delete(weekdays, SOLO), 1),
     )
 
 
-@pytest.mark.parametrize('mean', [False, True])
+@pytest.mark.parametrize("mean", [False, True])
 def test_mad_clamp_close(engine, mean):
     # MAD of the closes from 2019-01-02 to 2019-01-15 (lookahead biased), then delayed
     expected = [ref.mad_clamp(ref.loaded_closes(a), 2, mean)[:-1] for a in ref.ASSETS]
     assert_factor(
-        engine, close.mad_clamp(2, groupby='asset', mean=mean), *expected, check_bias=False
+        engine, close.mad_clamp(2, groupby="asset", mean=mean), *expected, check_bias=False
     )
 
 
@@ -289,7 +289,7 @@ def test_mad_clamp_fill(engine):
     mad_msft = np.median(np.abs(weekdays_msft - center_msft))
     expected_msft = np.where(np.abs(weekdays_msft - center_msft) >= mad_msft, -1, weekdays_msft)
     assert_factor(
-        engine, factors.WEEKDAY.mad_clamp(1, groupby='asset', fill=-1.0), expected, expected_msft
+        engine, factors.WEEKDAY.mad_clamp(1, groupby="asset", fill=-1.0), expected, expected_msft
     )
 
 
@@ -297,16 +297,16 @@ def test_mad_clamp_fill_center():
     x = torch.tensor([[1.0, 2, 3, 100], [10, 20, 30, 1000]], dtype=torch.float64)
     factor = factors.MADClampFactor()
     factor.z = 1
-    result = compute_with_mask(factor, x, 'center')
+    result = compute_with_mask(factor, x, "center")
     # center 2.5 MAD 1, center 25 MAD 10
     assert_array_equal(result.numpy(), [[2.5, 2, 3, 2.5], [25, 20, 30, 25]])
 
 
-@pytest.mark.parametrize('z', [0.2, 0.01, 0.001])
+@pytest.mark.parametrize("z", [0.2, 0.01, 0.001])
 def test_winsorizing_groupby_asset(engine, z):
     weekdays = loaded_weekdays()
     factor = factors.WEEKDAY.winsorizing(z)
-    factor.groupby = 'asset'
+    factor.groupby = "asset"
     assert_factor(
         engine,
         factor,
@@ -317,7 +317,7 @@ def test_winsorizing_groupby_asset(engine, z):
 
 def test_winsorizing_close(engine):
     factor = close.winsorizing(0.2)
-    factor.groupby = 'asset'
+    factor.groupby = "asset"
     expected = [
         scipy.stats.mstats.winsorize(ref.loaded_closes(a), [0.2, 0.2])[:-1] for a in ref.ASSETS
     ]

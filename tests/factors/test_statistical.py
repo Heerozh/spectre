@@ -29,7 +29,7 @@ def rolling_polyfit(y, win, deg, coef, x=None):
     return pd.Series(ret, index=y.index)
 
 
-@pytest.mark.parametrize('win', [2, 5])
+@pytest.mark.parametrize("win", [2, 5])
 def test_stddev(engine, win):
     assert_factor(
         engine, factors.STDDEV(win), *ref.expected(lambda df: df.close.rolling(win).std(ddof=0))
@@ -47,9 +47,9 @@ def test_rolling_linear_regression(engine):
                         decimal=5)  # fmt: skip
 
     engine.remove_all_factors()
-    engine.add(f.coef, 'slope')
-    engine.add(f.intercept, 'intcp')
-    assert list(engine.run(ref.START, ref.END).columns) == ['slope', 'intcp']
+    engine.add(f.coef, "slope")
+    engine.add(f.intercept, "intcp")
+    assert list(engine.run(ref.START, ref.END).columns) == ["slope", "intcp"]
 
 
 def test_rolling_linear_regression_x(engine):
@@ -74,7 +74,7 @@ def weekday_and_day(df):
 
 def test_rolling_covariance(engine):
     factor = factors.RollingCovariance(
-        win=3, inputs=[factors.WEEKDAY, factors.DatetimeDataFactor('day')]
+        win=3, inputs=[factors.WEEKDAY, factors.DatetimeDataFactor("day")]
     )
 
     def cov(df):
@@ -88,7 +88,7 @@ def test_rolling_covariance(engine):
 
 def test_rolling_correlation(engine):
     factor = factors.RollingCorrelation(
-        win=3, inputs=[factors.WEEKDAY, factors.DatetimeDataFactor('day')]
+        win=3, inputs=[factors.WEEKDAY, factors.DatetimeDataFactor("day")]
     )
 
     def corr(df):
@@ -129,7 +129,7 @@ FACTOR_VALUES = [
 ]
 
 
-@pytest.mark.parametrize('kth', [1, 2, 3])
+@pytest.mark.parametrize("kth", [1, 2, 3])
 def test_factor_wise_kth_value(kth):
     result = factors.FactorWiseKthValue(kth, []).compute(*FACTOR_VALUES)
     # kth smallest of the cross-section means of each factor
@@ -157,7 +157,7 @@ IC_DATA = np.array(
         [5, 4, 3, 2, 1, 0, -1, -2, -3, -4],
     ]
 )
-IC_DATE = pd.Timestamp('2020-01-02', tz='UTC')
+IC_DATE = pd.Timestamp("2020-01-02", tz="UTC")
 
 
 def weighted_corr(x, y, w):
@@ -178,40 +178,40 @@ def ic_engine():
     idx = np.random.default_rng(0).permutation(IC_DATA.shape[1])
     data = IC_DATA[:, idx]
     index = pd.MultiIndex.from_arrays(
-        [[IC_DATE] * data.shape[1], list('abcdefghij')], names=('date', 'asset')
+        [[IC_DATE] * data.shape[1], list("abcdefghij")], names=("date", "asset")
     )
-    df = pd.DataFrame(data.T, columns=['a', 'b', 'c', 'r'], index=index)
+    df = pd.DataFrame(data.T, columns=["a", "b", "c", "r"], index=index)
     return spectre.factors.FactorEngine(spectre.data.MemoryLoader(df))
 
 
 def ic_inputs():
-    return [factors.ColumnDataFactor(inputs=[col]) for col in 'abcr']
+    return [factors.ColumnDataFactor(inputs=[col]) for col in "abcr"]
 
 
-@pytest.mark.filterwarnings('ignore:Warning!! delay_factor is set to False')
+@pytest.mark.filterwarnings("ignore:Warning!! delay_factor is set to False")
 def test_information_coefficient(ic_engine):
     a, b, c, r = ic_inputs()
-    ic_engine.add([factors.InformationCoefficient(x, r) for x in (a, b, c)], ['a', 'b', 'c'])
+    ic_engine.add([factors.InformationCoefficient(x, r) for x in (a, b, c)], ["a", "b", "c"])
     ic_engine.add(
         [factors.RankWeightedInformationCoefficient(x, r, 5) for x in (a, b, c)],
-        ['a_weighted', 'b_weighted', 'c_weighted'],
+        ["a_weighted", "b_weighted", "c_weighted"],
     )
     result = ic_engine.run(IC_DATE, IC_DATE, delay_factor=False)
 
-    for i, col in enumerate('abc'):
+    for i, col in enumerate("abc"):
         expected = np.corrcoef(IC_DATA[i], IC_DATA[3])[0, 1]
         assert result[col].iloc[0] == pytest.approx(expected, abs=1e-6)
         expected = weighted_corr(IC_DATA[i], IC_DATA[3], rank_weight(IC_DATA[3], 5))
-        assert result[col + '_weighted'].iloc[0] == pytest.approx(expected, abs=1e-6)
+        assert result[col + "_weighted"].iloc[0] == pytest.approx(expected, abs=1e-6)
     assert_almost_equal(
         result.iloc[0].values, [0.707, 0.716, -0.716, 0.747, 0.633, -0.633], decimal=3
     )
 
 
-@pytest.mark.filterwarnings('ignore:Warning!! delay_factor is set to False')
+@pytest.mark.filterwarnings("ignore:Warning!! delay_factor is set to False")
 def test_rank_weighted_ic_with_mask(ic_engine):
     a, _b, _c, r = ic_inputs()
-    ic_engine.add(factors.RankWeightedInformationCoefficient(a, r, 3, mask=a > 0), 'ic')
+    ic_engine.add(factors.RankWeightedInformationCoefficient(a, r, 3, mask=a > 0), "ic")
     result = ic_engine.run(IC_DATE, IC_DATE, delay_factor=False)
 
     masked = IC_DATA[0] > 0

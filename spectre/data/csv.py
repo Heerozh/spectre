@@ -45,16 +45,16 @@ class CsvDirLoader(DataLoader):
         earliest_date: pd.Timestamp = None,
         dividends_path=None,
         splits_path=None,
-        file_pattern='*.csv',
+        file_pattern="*.csv",
         calender_asset: str | None = None,
         align_by_time=False,
-        ohlcv=('open', 'high', 'low', 'close', 'volume'),
+        ohlcv=("open", "high", "low", "close", "volume"),
         adjustments=None,
         split_ratio_is_inverse=False,
         split_ratio_is_fraction=False,
-        prices_index='date',
-        dividends_index='exDate',
-        splits_index='exDate',
+        prices_index="date",
+        dividends_index="exDate",
+        splits_index="exDate",
         **read_csv,
     ):
         """
@@ -94,15 +94,15 @@ class CsvDirLoader(DataLoader):
         if adjustments is None:
             super().__init__(prices_path, ohlcv, None)
         else:
-            super().__init__(prices_path, ohlcv, ('ex-dividend', 'split_ratio'))
+            super().__init__(prices_path, ohlcv, ("ex-dividend", "split_ratio"))
 
-        assert 'index_col' not in read_csv, (
-            '`index_col` cannot be used here. Use `prices_index` and `dividends_index` and '
-            '`splits_index` instead.'
+        assert "index_col" not in read_csv, (
+            "`index_col` cannot be used here. Use `prices_index` and `dividends_index` and "
+            "`splits_index` instead."
         )
-        if 'dtype' not in read_csv:
+        if "dtype" not in read_csv:
             warnings.warn(
-                'It is recommended to set the `dtype` parameter and use float32 whenever '
+                "It is recommended to set the `dtype` parameter and use float32 whenever "
                 "possible. Example: dtype = {'Open': np.float32, 'High': np.float32, "
                 "'Low': np.float32, 'Close': np.float32, 'Volume': np.float64}",
                 RuntimeWarning,
@@ -152,13 +152,13 @@ class CsvDirLoader(DataLoader):
             )
             if not isinstance(df.index, pd.DatetimeIndex):
                 raise ValueError(
-                    'df must index by datetime, set correct `read_csv`, '
+                    "df must index by datetime, set correct `read_csv`, "
                     "for example index_col='date', parse_dates=True. "
-                    'For mixed-timezone like daylight saving time, '
-                    'set date_parser=lambda col: pd.to_datetime(col, utc=True)'
+                    "For mixed-timezone like daylight saving time, "
+                    "set date_parser=lambda col: pd.to_datetime(col, utc=True)"
                 )
 
-            return df[~df.index.duplicated(keep='last')]
+            return df[~df.index.duplicated(keep="last")]
 
         dfs = {symbol: multi_read_csv(file_list) for symbol, file_list in assets.items()}
         return dfs
@@ -167,7 +167,7 @@ class CsvDirLoader(DataLoader):
         pattern = os.path.join(csv_path, self._file_pattern)
         files = glob.glob(pattern)
         if len(files) == 0:
-            raise ValueError(f'There are no files is {csv_path}')
+            raise ValueError(f"There are no files is {csv_path}")
 
         def symbol(file):
             return os.path.basename(file)[:-4].upper()
@@ -178,10 +178,10 @@ class CsvDirLoader(DataLoader):
                 return None
             if not isinstance(df.index, pd.DatetimeIndex):
                 raise ValueError(
-                    'df must index by datetime, set correct `read_csv`, '
-                    'for example parse_dates=True. '
-                    'For mixed-timezone like daylight saving time, '
-                    'set date_parser=lambda col: pd.to_datetime(col, utc=True)'
+                    "df must index by datetime, set correct `read_csv`, "
+                    "for example parse_dates=True. "
+                    "For mixed-timezone like daylight saving time, "
+                    "set date_parser=lambda col: pd.to_datetime(col, utc=True)"
                 )
             return df[self._earliest_date :]
 
@@ -193,9 +193,9 @@ class CsvDirLoader(DataLoader):
             dfs = self._walk_split_by_year_dir(self._path, self._prices_index)
         else:
             dfs = self._walk_dir(self._path, self._prices_index)
-        dfs = {k: v[~v.index.duplicated(keep='last')] for k, v in dfs.items() if v is not None}
+        dfs = {k: v[~v.index.duplicated(keep="last")] for k, v in dfs.items() if v is not None}
         df = pd.concat(dfs, sort=False)
-        df = df.rename_axis(['asset', 'date'])
+        df = df.rename_axis(["asset", "date"])
 
         if self.ohlcv is not None:
             # 这里把0当成nan进行ffill（按asset分别填充）
@@ -212,7 +212,7 @@ class CsvDirLoader(DataLoader):
                 _df = _df.reset_index().drop_duplicates()
                 _df = _df.dropna(subset=[ex_div_col])
                 _df = _df.set_index(div_index)[ex_div_col]
-                return _df.groupby(level=0).agg('sum')
+                return _df.groupby(level=0).agg("sum")
 
             dfs = {k: _agg_duplicated(v) for k, v in dfs.items()}
             div = pd.concat(dfs, sort=False)
@@ -230,7 +230,7 @@ class CsvDirLoader(DataLoader):
                 if _df is None or sp_rto_col not in _df:
                     return None
                 _df = _df.dropna(subset=[sp_rto_col])[sp_rto_col]
-                return _df[~_df.index.duplicated(keep='last')]
+                return _df[~_df.index.duplicated(keep="last")]
 
             dfs = {k: _drop_na_and_duplicated(v) for k, v in dfs.items()}
             splits = pd.concat(dfs, sort=False)

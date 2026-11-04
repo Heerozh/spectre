@@ -93,9 +93,6 @@ filterwarnings = [
 line-length = 100
 extend-exclude = ["benchmarks"]
 
-[tool.ruff.format]
-quote-style = "single"
-
 [tool.ruff.lint]
 extend-select = ["E", "W", "F"]
 ignore = [

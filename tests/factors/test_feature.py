@@ -58,27 +58,27 @@ def test_advance_decline_ratio(engine):
 def test_asset_data(engine):
     """AssetData broadcasts the data of an asset to all assets, data must be aligned by time."""
     engine.align_by_time = True
-    msft = ref.daily_prices('MSFT').close.reindex(ref.daily_prices('AAPL').index)
-    expected = msft.shift(1).loc['2019-01-03' : ref.END].values
+    msft = ref.daily_prices("MSFT").close.reindex(ref.daily_prices("AAPL").index)
+    expected = msft.shift(1).loc["2019-01-03" : ref.END].values
     assert np.isnan(expected[SOLO])
-    assert_factor(engine, factors.AssetData('MSFT', factors.OHLCV.close), expected, expected)
+    assert_factor(engine, factors.AssetData("MSFT", factors.OHLCV.close), expected, expected)
 
 
 def test_asset_data_warns_not_aligned(engine):
-    with pytest.warns(RuntimeWarning, match='Make sure your data is aligned by time'):
-        run_factor(engine, factors.AssetData('MSFT', factors.OHLCV.close), check_bias=False)
+    with pytest.warns(RuntimeWarning, match="Make sure your data is aligned by time"):
+        run_factor(engine, factors.AssetData("MSFT", factors.OHLCV.close), check_bias=False)
 
 
 # ------------------------------------ calendar features ------------------------------------
 
 
 @pytest.mark.parametrize(
-    'factor, attr',
+    "factor, attr",
     [
-        (factors.WEEKDAY, 'day_of_week'),
-        (factors.MONTH, 'month'),
-        (factors.QUARTER, 'quarter'),
-        (factors.DatetimeDataFactor('day'), 'day'),
+        (factors.WEEKDAY, "day_of_week"),
+        (factors.MONTH, "month"),
+        (factors.QUARTER, "quarter"),
+        (factors.DatetimeDataFactor("day"), "day"),
     ],
 )
 def test_datetime_factor(engine, factor, attr):
@@ -100,10 +100,10 @@ def test_is_january(engine):
 
 
 def test_timezone(engine):
-    engine.timezone = 'America/New_York'
+    engine.timezone = "America/New_York"
 
     def weekday_in_ny(df):
-        ny = df.index.tz_localize('UTC').tz_convert('America/New_York')
+        ny = df.index.tz_localize("UTC").tz_convert("America/New_York")
         return pd.Series(ny.day_of_week, index=df.index)
 
     # 2019-01-02 00:00 UTC is 2019-01-01 19:00 in New York
@@ -112,7 +112,7 @@ def test_timezone(engine):
     assert_factor(engine, factors.WEEKDAY, *expected)
 
     # change back, cached data should be invalidated
-    engine.timezone = 'UTC'
+    engine.timezone = "UTC"
     expected = np.array([2, 3.0, 4.0, 0.0, 1.0, 2.0, 3.0, 4.0, 0.0, 1.0])
     assert_factor(engine, factors.WEEKDAY, expected, delete(expected, SOLO))
 
@@ -121,18 +121,18 @@ def test_timezone(engine):
 
 
 def test_asset_classifier(engine):
-    classifier = factors.AssetClassifierDataFactor({'AAPL': 2}, -1)
+    classifier = factors.AssetClassifierDataFactor({"AAPL": 2}, -1)
     assert_factor(engine, classifier, [2] * 10, [-1] * 9)
 
 
 def test_one_hot(engine, device):
-    if device == 'cuda':
+    if device == "cuda":
         engine.to_cuda()
-    one_hot = factors.AssetClassifierDataFactor({'AAPL': 2}, -1).one_hot()
+    one_hot = factors.AssetClassifierDataFactor({"AAPL": 2}, -1).one_hot()
     # classes are sorted: -1, 2
     assert_factor(engine, one_hot[0], [False] * 10, [True] * 9)
     assert_factor(engine, one_hot[1], [True] * 10, [False] * 9)
-    with pytest.raises(KeyError, match='OutOfBounds'):
+    with pytest.raises(KeyError, match="OutOfBounds"):
         run_factor(engine, one_hot[2])
 
 
@@ -160,7 +160,7 @@ def test_forward_signal_data(engine):
     assert_factor(engine, signal_return, *expected, check_bias=False)
 
 
-@pytest.mark.filterwarnings('ignore:Warning!! delay_factor is set to False')
+@pytest.mark.filterwarnings("ignore:Warning!! delay_factor is set to False")
 def test_forward_signal_data_of_new_listed_asset(late_listing_engine):
     """
     ForwardSignalData shifts the data backward, so the first `win - 1` bars of a newly listed

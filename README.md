@@ -70,7 +70,7 @@ spectre also has built-in Yahoo downloader, `symbols=None` will download all SP5
 ```python
 from spectre.data import YahooDownloader
 
-YahooDownloader.ingest(start_date='2001', save_to='./prices/yahoo', symbols=None, skip_exists=True)
+YahooDownloader.ingest(start_date="2001", save_to="./prices/yahoo", symbols=None, skip_exists=True)
 ```
 
 You can use `spectre.data.ArrowLoader('./prices/yahoo/yahoo.feather')` load those data now.
@@ -81,12 +81,12 @@ You can use `spectre.data.ArrowLoader('./prices/yahoo/yahoo.feather')` load thos
 from spectre import factors
 from spectre.data import ArrowLoader
 
-loader = ArrowLoader('./prices/yahoo/yahoo.feather')
+loader = ArrowLoader("./prices/yahoo/yahoo.feather")
 engine = factors.FactorEngine(loader)
 engine.to_cuda()
-engine.add(factors.SMA(5), 'ma5')
-engine.add(factors.OHLCV.close, 'close')
-df = engine.run('2019-01-11', '2019-01-15')
+engine.add(factors.SMA(5), "ma5")
+engine.add(factors.OHLCV.close, "close")
+df = engine.run("2019-01-11", "2019-01-15")
 df
 ```
 
@@ -165,8 +165,8 @@ The return value of `full_run` is compatible with `alphalens`:
 import alphalens as al
 
 ...
-factor_data, _ = engine.full_run('2013-01-02', '2018-01-19')
-clean_data = factor_data[['{factor_name}', 'Returns']].droplevel(0, axis=1)
+factor_data, _ = engine.full_run("2013-01-02", "2018-01-19")
+clean_data = factor_data[["{factor_name}", "Returns"]].droplevel(0, axis=1)
 al.tears.create_full_tear_sheet(clean_data)
 ```
 
@@ -251,7 +251,7 @@ pf.create_full_tear_sheet(
     results.returns,
     positions=results.positions.value,
     transactions=results.transactions,
-    live_start_date='2017-01-03',
+    live_start_date="2017-01-03",
 )
 ```
 
@@ -392,27 +392,27 @@ Reading csv is very slow, so you also need to use [ArrowLoader](#arrowloader).
 Example for load IEX CSV files:
 
 ```python
-usecols = {'date', 'uOpen', 'uHigh', 'uLow', 'uClose', 'uVolume', 'exDate', 'amount', 'ratio'}
+usecols = {"date", "uOpen", "uHigh", "uLow", "uClose", "uVolume", "exDate", "amount", "ratio"}
 csv_loader = spectre.data.CsvDirLoader(
-    './iex/daily/',
-    calender_asset='SPY',
-    dividends_path='./iex/dividends/',
-    splits_path='./iex/splits/',
-    ohlcv=('uOpen', 'uHigh', 'uLow', 'uClose', 'uVolume'),
-    adjustments=('amount', 'ratio'),
-    prices_index='date',
-    dividends_index='exDate',
-    splits_index='exDate',
+    "./iex/daily/",
+    calender_asset="SPY",
+    dividends_path="./iex/dividends/",
+    splits_path="./iex/splits/",
+    ohlcv=("uOpen", "uHigh", "uLow", "uClose", "uVolume"),
+    adjustments=("amount", "ratio"),
+    prices_index="date",
+    dividends_index="exDate",
+    splits_index="exDate",
     parse_dates=True,
     usecols=lambda x: x in usecols,
     dtype={
-        'uOpen': np.float32,
-        'uHigh': np.float32,
-        'uLow': np.float32,
-        'uClose': np.float32,
-        'uVolume': np.float64,
-        'amount': np.float64,
-        'ratio': np.float64,
+        "uOpen": np.float32,
+        "uHigh": np.float32,
+        "uLow": np.float32,
+        "uClose": np.float32,
+        "uVolume": np.float64,
+        "amount": np.float64,
+        "ratio": np.float64,
     },
 )
 ```
@@ -439,7 +439,7 @@ Download 'WIKI_PRICES.zip' (You need an account):
 ```python
 from spectre.data import ArrowLoader, QuandlLoader
 
-ArrowLoader.ingest(source=QuandlLoader('WIKI_PRICES.zip'), save_to='wiki_prices.feather')
+ArrowLoader.ingest(source=QuandlLoader("WIKI_PRICES.zip"), save_to="wiki_prices.feather")
 ```
 
 ### How to write your own DataLoader
@@ -456,41 +456,41 @@ class YourLoader(spectre.data.DataLoader):
     def last_modified(self) -> float:
         return os.path.getmtime(self._path)
 
-    def __init__(self, file: str, calender_asset='SPY') -> None:
+    def __init__(self, file: str, calender_asset="SPY") -> None:
         super().__init__(
             file,
-            ohlcv=('open', 'high', 'low', 'close', 'volume'),
-            adjustments=('ex-dividend', 'split_ratio'),
+            ohlcv=("open", "high", "low", "close", "volume"),
+            adjustments=("ex-dividend", "split_ratio"),
         )
         self._calender = calender_asset
 
     def _load(self) -> pd.DataFrame:
         df = pd.read_csv(
             self._path,
-            parse_dates=['date'],
+            parse_dates=["date"],
             usecols=[
-                'asset',
-                'date',
-                'open',
-                'high',
-                'low',
-                'close',
-                'volume',
-                'ex-dividend',
-                'split_ratio',
+                "asset",
+                "date",
+                "open",
+                "high",
+                "low",
+                "close",
+                "volume",
+                "ex-dividend",
+                "split_ratio",
             ],
             dtype={
-                'open': np.float32,
-                'high': np.float32,
-                'low': np.float32,
-                'close': np.float32,
-                'volume': np.float64,
-                'ex-dividend': np.float64,
-                'split_ratio': np.float64,
+                "open": np.float32,
+                "high": np.float32,
+                "low": np.float32,
+                "close": np.float32,
+                "volume": np.float64,
+                "ex-dividend": np.float64,
+                "split_ratio": np.float64,
             },
         )
 
-        df.set_index(['date', 'asset'], inplace=True)
+        df.set_index(["date", "asset"], inplace=True)
         if self._calender:
             df = self._align_to(df, self._calender)
         df.sort_index(level=[0, 1], inplace=True)
@@ -586,24 +586,24 @@ rsi = factors.RSI()
 buy_signal = (rsi.shift(1) < 30) & (rsi > 30)
 
 engine = factors.FactorEngine(loader)
-engine.timezone = 'America/New_York'
-engine.set_filter(factors.StaticAssets({'NVDA', 'MSFT'}))
-engine.add(factors.MA(20), 'MA20')
-engine.add(rsi, 'RSI')
-engine.add(factors.OHLCV.close.filter(buy_signal), 'Buy')
+engine.timezone = "America/New_York"
+engine.set_filter(factors.StaticAssets({"NVDA", "MSFT"}))
+engine.add(factors.MA(20), "MA20")
+engine.add(rsi, "RSI")
+engine.add(factors.OHLCV.close.filter(buy_signal), "Buy")
 engine.to_cuda()
 _ = engine.plot_chart(
-    '2017',
-    '2018',
+    "2017",
+    "2018",
     styles={
-        'MA20': {'line': {'dash': 'dash'}},
-        'RSI': {
-            'yaxis': 'y3',  # y1: price axis, y2: volume axis, yN: add new y-axis
-            'line': {'width': 1},
+        "MA20": {"line": {"dash": "dash"}},
+        "RSI": {
+            "yaxis": "y3",  # y1: price axis, y2: volume axis, yN: add new y-axis
+            "line": {"width": 1},
         },
-        'Buy': {
-            'mode': 'markers',
-            'marker': {'symbol': 'triangle-up', 'size': 10, 'color': 'rgba(0, 0, 255, 0.5)'},
+        "Buy": {
+            "mode": "markers",
+            "marker": {"symbol": "triangle-up", "size": 10, "color": "rgba(0, 0, 255, 0.5)"},
         },
     },
 )

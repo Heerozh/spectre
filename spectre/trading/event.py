@@ -20,7 +20,7 @@ class Event:
         pass
 
     def should_trigger(self) -> bool:
-        raise NotImplementedError('abstractmethod')
+        raise NotImplementedError("abstractmethod")
 
 
 class EveryBarData(Event):
@@ -56,7 +56,7 @@ class CalendarEvent(Event):
 
     def calculate_range(self):
         self.trigger_time = self.calendar.events[self.event_name][0] + pd.Timedelta(
-            self.offset, unit='ns'
+            self.offset, unit="ns"
         )
 
     def should_trigger(self) -> bool:
@@ -71,14 +71,14 @@ class MarketOpen(CalendarEvent):
     """Works on both live and backtest"""
 
     def __init__(self, callback, offset_ns=0) -> None:
-        super().__init__('Open', callback, offset_ns)
+        super().__init__("Open", callback, offset_ns)
 
 
 class MarketClose(CalendarEvent):
     """Works on both live and backtest"""
 
     def __init__(self, callback, offset_ns=0) -> None:
-        super().__init__('Close', callback, offset_ns)
+        super().__init__("Close", callback, offset_ns)
 
 
 # ----------------------------------------------------------------
@@ -114,12 +114,12 @@ class EventManager:
         self._stop = False
 
     def subscribe(self, receiver: EventReceiver):
-        assert receiver not in self._subscribers, 'Duplicate subscribe'
+        assert receiver not in self._subscribers, "Duplicate subscribe"
         self._subscribers[receiver] = []
         receiver._event_manager = self
 
     def unsubscribe(self, receiver: EventReceiver):
-        assert receiver in self._subscribers, 'Subscriber not exists'
+        assert receiver in self._subscribers, "Subscriber not exists"
         del self._subscribers[receiver]
         receiver._event_manager = None
 
@@ -138,7 +138,7 @@ class EventManager:
 
     def _beg_run(self):
         if not self._subscribers:
-            raise ValueError('At least one subscriber.')
+            raise ValueError("At least one subscriber.")
 
         for r, events in self._subscribers.items():
             # clear scheduled events

@@ -25,14 +25,14 @@ class FilterFactor(CustomFactor, ABC):
 
     def sum(self, win):
         raise ValueError(
-            'FilterFactor does not support `.sum()` method, '
-            'please convert to float by using `filter_factor.float()`'
+            "FilterFactor does not support `.sum()` method, "
+            "please convert to float by using `filter_factor.float()`"
         )
 
     def filter(self, mask):
         raise ValueError(
-            'FilterFactor does not support local filtering `.filter()` method, '
-            'please convert to float by using `filter_factor.float()`'
+            "FilterFactor does not support local filtering `.filter()` method, "
+            "please convert to float by using `filter_factor.float()`"
         )
 
     def ts_any(self, win):
@@ -94,7 +94,7 @@ class OneHotEncoder(FilterFactor):
         one_hot = []
         if classes.shape[0] > 1000:
             warnings.warn(
-                f'One hot encoding with too many features: ({classes.shape[0]}). ', RuntimeWarning
+                f"One hot encoding with too many features: ({classes.shape[0]}). ", RuntimeWarning
             )
         for i in range(classes.shape[0]):
             one_hot.append((data == classes[i]).unsqueeze(-1))

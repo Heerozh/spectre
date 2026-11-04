@@ -19,7 +19,7 @@ class QuandlLoader(DataLoader):
         """the quandl data is no longer updated, so return a fixed value"""
         return 1
 
-    def __init__(self, file: str, calender_asset='AAPL') -> None:
+    def __init__(self, file: str, calender_asset="AAPL") -> None:
         """
         Usage:
         download data first:
@@ -29,8 +29,8 @@ class QuandlLoader(DataLoader):
         """
         super().__init__(
             file,
-            ohlcv=('open', 'high', 'low', 'close', 'volume'),
-            adjustments=('ex-dividend', 'split_ratio'),
+            ohlcv=("open", "high", "low", "close", "volume"),
+            adjustments=("ex-dividend", "split_ratio"),
         )
         self._calender = calender_asset
 
@@ -38,31 +38,31 @@ class QuandlLoader(DataLoader):
         with ZipFile(self._path) as pkg, pkg.open(pkg.namelist()[0]) as csv:
             df = pd.read_csv(
                 csv,
-                parse_dates=['date'],
+                parse_dates=["date"],
                 usecols=[
-                    'ticker',
-                    'date',
-                    'open',
-                    'high',
-                    'low',
-                    'close',
-                    'volume',
-                    'ex-dividend',
-                    'split_ratio',
+                    "ticker",
+                    "date",
+                    "open",
+                    "high",
+                    "low",
+                    "close",
+                    "volume",
+                    "ex-dividend",
+                    "split_ratio",
                 ],
                 dtype={
-                    'open': np.float32,
-                    'high': np.float32,
-                    'low': np.float32,
-                    'close': np.float32,
-                    'volume': np.float64,
-                    'ex-dividend': np.float64,
-                    'split_ratio': np.float64,
+                    "open": np.float32,
+                    "high": np.float32,
+                    "low": np.float32,
+                    "close": np.float32,
+                    "volume": np.float64,
+                    "ex-dividend": np.float64,
+                    "split_ratio": np.float64,
                 },
             )
 
-        df = df.set_index(['date', 'ticker'])
-        df.loc[('2001-09-12', 'GMT'), 'split_ratio'] = 1  # fix nan
+        df = df.set_index(["date", "ticker"])
+        df.loc[("2001-09-12", "GMT"), "split_ratio"] = 1  # fix nan
         if self._calender:
             df = self._align_to(df, self._calender)
             df = df.sort_index(level=[0, 1])

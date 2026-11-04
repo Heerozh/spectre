@@ -118,7 +118,7 @@ class DecayTrailingStopTracker(TrailingStopTracker):
 
     @property
     def current(self):
-        raise NotImplementedError('abstractmethod')
+        raise NotImplementedError("abstractmethod")
 
     @property
     def stop_price(self):
@@ -171,7 +171,7 @@ class TimeDecayTrailingStopModel(StopModel):
     def __init__(
         self,
         ratio: float,
-        period_target: 'pd.Timedelta',
+        period_target: "pd.Timedelta",
         callback=None,
         decay_rate=0.05,
         max_decay=0,

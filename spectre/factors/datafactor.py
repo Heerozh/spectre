@@ -23,7 +23,7 @@ class ColumnDataFactor(BaseFactor):
             self.inputs = inputs
         assert 3 > len(self.inputs) > 0, (
             "ColumnDataFactor's `inputs` can only contains one data column and corresponding "
-            'adjustments column'
+            "adjustments column"
         )
         self._data = None
         self._multiplier = None
@@ -134,7 +134,7 @@ class SeriesDataFactor(ColumnDataFactor):
     def __init__(self, series: pd.Series, fill_na=None, should_delay=True):
         self.series = series
         self.fill_na = fill_na
-        assert series.index.names == ['date', 'asset'], (
+        assert series.index.names == ["date", "asset"], (
             "df.index.names should be ['date', 'asset'] "
         )
         super().__init__(inputs=[str(series.name)], should_delay=should_delay)
@@ -145,13 +145,13 @@ class SeriesDataFactor(ColumnDataFactor):
             if self.fill_na is not None:
                 # GroupBy.fillna(method=...) was removed in pandas 3.0
                 fill_methods = {
-                    'ffill': 'ffill',
-                    'pad': 'ffill',
-                    'bfill': 'bfill',
-                    'backfill': 'bfill',
+                    "ffill": "ffill",
+                    "pad": "ffill",
+                    "bfill": "bfill",
+                    "backfill": "bfill",
                 }
                 if self.fill_na not in fill_methods:
-                    raise ValueError(f'`fill_na` must be one of {list(fill_methods)}')
+                    raise ValueError(f"`fill_na` must be one of {list(fill_methods)}")
                 grouped = engine._dataframe[self.series.name].groupby(level=1, observed=False)
                 engine._dataframe[self.series.name] = getattr(grouped, fill_methods[self.fill_na])()
         super().pre_compute_(engine, start, end)
@@ -163,10 +163,10 @@ class DatetimeDataFactor(BaseFactor):
     _instance = {}
     # deprecated attributes of DatetimeIndex
     _aliases = {
-        'weekday': 'day_of_week',
-        'dayofweek': 'day_of_week',
-        'dayofyear': 'day_of_year',
-        'daysinmonth': 'days_in_month',
+        "weekday": "day_of_week",
+        "dayofweek": "day_of_week",
+        "dayofyear": "day_of_year",
+        "daysinmonth": "days_in_month",
     }
 
     def __new__(cls, attr):

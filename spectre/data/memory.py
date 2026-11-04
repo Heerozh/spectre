@@ -12,7 +12,7 @@ class MemoryLoader(DataLoader):
     """Convert pd.Dataframe to spectre.data.DataLoader"""
 
     def __init__(self, df, ohlcv=None, adjustments=None) -> None:
-        super().__init__('', ohlcv, adjustments)
+        super().__init__("", ohlcv, adjustments)
         self.df = self._format(df)
         self.test_load()
 

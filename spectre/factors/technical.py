@@ -29,7 +29,7 @@ class BollingerBands(CustomFactor):
         if len(self.inputs) < 2:
             raise ValueError(
                 "BollingerBands's inputs needs 2 inputs, "
-                'inputs=[OHLCV.close, k]), k is constant normally 2.'
+                "inputs=[OHLCV.close, k]), k is constant normally 2."
             )
         comm_inputs = (self.inputs[0],)
         k = self.inputs[1]

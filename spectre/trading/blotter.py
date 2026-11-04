@@ -158,26 +158,26 @@ class BaseBlotter:
         self.short_fee = CommissionModel(percentage, 0, 0)
 
     def get_price(self, asset: str | Iterable):
-        raise NotImplementedError('abstractmethod')
+        raise NotImplementedError("abstractmethod")
 
     def _order(self, asset, amount, price=None):
-        raise NotImplementedError('abstractmethod')
+        raise NotImplementedError("abstractmethod")
 
     def order(self, asset: str, amount: int, price: str | None = None):
         if abs(amount) > self.max_shares:
             raise OverflowError(
-                f'Cannot order more than ±{self.max_shares} shares: {amount}, '
-                'set `blotter.max_shares` value to change this limit.'
+                f"Cannot order more than ±{self.max_shares} shares: {amount}, "
+                "set `blotter.max_shares` value to change this limit."
             )
 
         if not isinstance(asset, str):
-            raise KeyError('`asset` must be a string')
+            raise KeyError("`asset` must be a string")
 
         opened = self._portfolio.shares(asset)
         if self.long_only and (amount + opened) < 0:
-            raise ValueError(f'Long only blotter, order amount {amount}, opened {opened}.')
+            raise ValueError(f"Long only blotter, order amount {amount}, opened {opened}.")
         if (amount % self.order_multiplier) != 0:
-            raise ValueError(f'Order amount must be placed in multiples of {self.order_multiplier}')
+            raise ValueError(f"Order amount must be placed in multiples of {self.order_multiplier}")
         return self._order(asset, amount, price)
 
     def _order_target(self, asset: str, target: float):
@@ -186,28 +186,28 @@ class BaseBlotter:
 
         if abs(amount) > self.max_shares:
             raise OverflowError(
-                f'Cannot order more than ±{self.max_shares} shares: {amount}, '
-                'set `blotter.max_shares` value to change this limit.'
+                f"Cannot order more than ±{self.max_shares} shares: {amount}, "
+                "set `blotter.max_shares` value to change this limit."
             )
 
         return self._order(asset, amount)
 
     def order_target(self, asset: str, target: float):
         if not isinstance(asset, str):
-            raise KeyError('`asset` must be a string')
+            raise KeyError("`asset` must be a string")
         if not isinstance(target, (int, float)):
-            raise ValueError('`target` must be int or float')
+            raise ValueError("`target` must be int or float")
         if self.long_only and target < 0:
-            raise ValueError('Long only blotter, `target` must greater than 0.')
+            raise ValueError("Long only blotter, `target` must greater than 0.")
 
         return self._order_target(asset, target)
 
     def batch_order_target(self, assets: Iterable[str], targets: Iterable[float]):
         skipped = []
         if None in assets or np.any([not (a == a) for a in assets]):
-            raise ValueError('None/NaN in `assets: ' + str(assets))
+            raise ValueError("None/NaN in `assets: " + str(assets))
         if None in targets or np.any([not (t == t) for t in targets]):
-            raise ValueError('None/NaN in `targets: ' + str(targets))
+            raise ValueError("None/NaN in `targets: " + str(targets))
         assets = list(assets)  # copy for preventing del items in loop
         for asset, target in zip(assets, targets):
             if not self.order_target(asset, target):
@@ -216,11 +216,11 @@ class BaseBlotter:
 
     def order_target_percent(self, asset: str, pct: float):
         if not isinstance(asset, str):
-            raise KeyError('`asset` must be a string')
+            raise KeyError("`asset` must be a string")
         if not isinstance(pct, float):
-            raise ValueError('`pct` must be float')
+            raise ValueError("`pct` must be float")
         if self.long_only and pct < 0:
-            raise ValueError('Long only blotter, `pct` must greater than 0.')
+            raise ValueError("Long only blotter, `pct` must greater than 0.")
 
         price = self.get_price(asset)
         if price is None:
@@ -234,18 +234,18 @@ class BaseBlotter:
         prices = self.get_price(assets)
         skipped = []
         if None in assets or np.any([not (a == a) for a in assets]):
-            raise ValueError('None/NaN in `assets: ' + str(assets))
+            raise ValueError("None/NaN in `assets: " + str(assets))
         if None in weights or np.any([not (w == w) for w in weights]):
-            raise ValueError('None/NaN in `weights: ' + str(weights))
+            raise ValueError("None/NaN in `weights: " + str(weights))
         assets = list(assets)  # copy for preventing del items in loop
         for asset, pct in zip(assets, weights):
             try:
                 price = prices[asset]
                 if price != price:
-                    raise KeyError('')
+                    raise KeyError("")
                 if price == 0:
                     raise RuntimeError(
-                        f'{asset} price on {self._current_dt} is zero, you have a data error'
+                        f"{asset} price on {self._current_dt} is zero, you have a data error"
                     )
                 target = (pf_value * pct) / price
                 # todo 碎股情况，持有160股并不能再买40股，影响不大但最好弄掉,
@@ -259,7 +259,7 @@ class BaseBlotter:
         return skipped
 
     def cancel_all_orders(self):
-        raise NotImplementedError('abstractmethod')
+        raise NotImplementedError("abstractmethod")
 
     def get_historical_positions(self):
         return self._portfolio.history
@@ -268,12 +268,12 @@ class BaseBlotter:
         return self._portfolio.returns
 
     def get_transactions(self):
-        raise NotImplementedError('abstractmethod')
+        raise NotImplementedError("abstractmethod")
 
 
 class SimulationBlotter(BaseBlotter, EventReceiver):
     Order = namedtuple(
-        'Order', ['date', 'asset', 'amount', 'price', 'fill_price', 'commission', 'realized']
+        "Order", ["date", "asset", "amount", "price", "fill_price", "commission", "realized"]
     )
 
     def __init__(self, dataloader, capital_base=100000, daily_curb=None, start=None, ohlcv=None):
@@ -306,17 +306,17 @@ class SimulationBlotter(BaseBlotter, EventReceiver):
                 .groupby(level=1, group_keys=False, observed=False)
                 .apply(lambda x: x.ffill().shift(1))
             )
-            df['__last_close'] = lasts[sel_cols[0]]
-            df['__last_div'] = lasts[sel_cols[1]]
-            df['__last_sp'] = lasts[sel_cols[2]]
-            curb_cols = ['__last_close', '__last_div', '__last_sp']
+            df["__last_close"] = lasts[sel_cols[0]]
+            df["__last_div"] = lasts[sel_cols[1]]
+            df["__last_sp"] = lasts[sel_cols[2]]
+            curb_cols = ["__last_close", "__last_div", "__last_sp"]
         else:
-            df['__last_close'] = (
+            df["__last_close"] = (
                 df[ohlcv[3]]
                 .groupby(level=1, group_keys=False, observed=False)
                 .apply(lambda x: x.ffill().shift(1))
             )
-            curb_cols = ['__last_close']
+            curb_cols = ["__last_close"]
         self._data = df
         self._prices = DataLoaderFastGetter(df[list(ohlcv) + curb_cols])
         self._current_prices_col = None
@@ -331,7 +331,7 @@ class SimulationBlotter(BaseBlotter, EventReceiver):
             self._adjustments = None
 
     def __repr__(self):
-        return '<Transactions>' + str(self.get_transactions())[14:] + '\n' + str(self.portfolio)
+        return "<Transactions>" + str(self.get_transactions())[14:] + "\n" + str(self.portfolio)
 
     def clear(self):
         self.orders = defaultdict(list)
@@ -358,12 +358,12 @@ class SimulationBlotter(BaseBlotter, EventReceiver):
 
                     open_time = bar_times[0]
                     super().set_datetime(open_time)
-                    self.set_price('open')
+                    self.set_price("open")
                     self.market_open(self)
 
                     close_time = bar_times[-1]
                     super().set_datetime(close_time)
-                    self.set_price('close')
+                    self.set_price("close")
                     self.update_portfolio_value()
                     self.market_close(self)
         # get last datetime before portfolio datetime change
@@ -377,7 +377,7 @@ class SimulationBlotter(BaseBlotter, EventReceiver):
         super().set_datetime(dt)
 
     def set_price(self, name: str):
-        if name == 'open':
+        if name == "open":
             self._current_prices_col = 0  # ohlcv[0] = o
         else:
             self._current_prices_col = 3  # ohlcv[3] = c
@@ -385,7 +385,7 @@ class SimulationBlotter(BaseBlotter, EventReceiver):
 
     def _get_current_prices(self):
         if self._current_prices_col is None:
-            raise ValueError('_current_prices is None, maybe set_price was not called.')
+            raise ValueError("_current_prices is None, maybe set_price was not called.")
 
         if self._current_prices is None:
             self._current_prices = self._prices.get_as_dict(
@@ -397,9 +397,9 @@ class SimulationBlotter(BaseBlotter, EventReceiver):
     def get_price(self, asset: str | Iterable | None):
         if not self.market_opened:
             raise RuntimeError(
-                'Out of market hours. Maybe you rebalance at AfterMarketClose; '
-                'or BeforeMarketOpen; or EveryBarData on daily data; '
-                'or you did not subscribe this class with SimulationEventManager'
+                "Out of market hours. Maybe you rebalance at AfterMarketClose; "
+                "or BeforeMarketOpen; or EveryBarData on daily data; "
+                "or you did not subscribe this class with SimulationEventManager"
             )
 
         curr_prices = self._get_current_prices()
@@ -415,9 +415,9 @@ class SimulationBlotter(BaseBlotter, EventReceiver):
     def _order(self, asset, amount, price=None):
         if not self.market_opened:
             raise RuntimeError(
-                'Out of market hours. Maybe you rebalance at AfterMarketClose; '
-                'or BeforeMarketOpen; or EveryBarData on daily data; '
-                'or you did not subscribe this class with SimulationEventManager'
+                "Out of market hours. Maybe you rebalance at AfterMarketClose; "
+                "or BeforeMarketOpen; or EveryBarData on daily data; "
+                "or you did not subscribe this class with SimulationEventManager"
             )
         if amount == 0:
             return True
@@ -496,9 +496,9 @@ class SimulationBlotter(BaseBlotter, EventReceiver):
                 )
         ret = pd.DataFrame(
             data,
-            columns=['index', 'symbol', 'amount', 'price', 'fill_price', 'commission', 'realized'],
+            columns=["index", "symbol", "amount", "price", "fill_price", "commission", "realized"],
         )
-        ret = ret.set_index('index').sort_index()
+        ret = ret.set_index("index").sort_index()
         return ret
 
     def update_portfolio_value(self):
@@ -594,7 +594,7 @@ class ManualBlotter(BaseBlotter):
         else:
             prices_df = None
 
-        for date, df in self.orders.groupby(pd.Grouper(key='date', freq='D')):
+        for date, df in self.orders.groupby(pd.Grouper(key="date", freq="D")):
             # skip holiday
             if (
                 prices_df is not None
@@ -615,9 +615,9 @@ class ManualBlotter(BaseBlotter):
                     pass
 
             for i, row in df.iterrows():
-                if row.status == 'Cash':
+                if row.status == "Cash":
                     self._portfolio.update_cash(row.filled_amount, is_funds=True)
-                elif row.status == 'Filled':
+                elif row.status == "Filled":
                     self._portfolio.update(
                         row.symbol, row.filled_amount, row.filled_price, row.commission
                     )
@@ -636,76 +636,76 @@ class ManualBlotter(BaseBlotter):
 
             # update div and split after close, otherwise last price won't be adjusted
             for i, row in df.iterrows():
-                if row.status == 'Dividend':
+                if row.status == "Dividend":
                     self._portfolio.process_dividend(
                         row.symbol, row.filled_amount, tax=row.commission
                     )
-                elif row.status == 'Split':
+                elif row.status == "Split":
                     self._portfolio.process_split(row.symbol, row.filled_amount, row.filled_price)
 
     def load(self):
         """Reload portfolio/orders from working_dir, for updating account and order status"""
-        pattern = os.path.join(self.working_dir, 'orders_*.csv')
+        pattern = os.path.join(self.working_dir, "orders_*.csv")
         files = glob.glob(pattern)
 
         col_types = {
-            'id': np.int64,
-            'target_percent': np.float64,
-            'action_value': np.float64,
-            'amount': np.float64,
-            'limit_price': str,
-            'filled_amount': np.float64,
-            'filled_price': np.float64,
-            'filled_percent': np.float64,
-            'commission': np.float64,
-            'realized': np.float64,
+            "id": np.int64,
+            "target_percent": np.float64,
+            "action_value": np.float64,
+            "amount": np.float64,
+            "limit_price": str,
+            "filled_amount": np.float64,
+            "filled_price": np.float64,
+            "filled_percent": np.float64,
+            "commission": np.float64,
+            "realized": np.float64,
         }
         if len(files) == 0:
             self.orders = pd.DataFrame(
                 columns=[
-                    'id',
-                    'date',
-                    'status',
-                    'symbol',
-                    'target_percent',
-                    'action_value',
-                    'amount',
-                    'limit_price',
-                    'filled_amount',
-                    'filled_price',
-                    'filled_percent',
-                    'commission',
-                    'realized',
+                    "id",
+                    "date",
+                    "status",
+                    "symbol",
+                    "target_percent",
+                    "action_value",
+                    "amount",
+                    "limit_price",
+                    "filled_amount",
+                    "filled_price",
+                    "filled_percent",
+                    "commission",
+                    "realized",
                 ]
             )
-            print('Create ManualBlotter with empty orders.')
+            print("Create ManualBlotter with empty orders.")
             for k, v in col_types.items():
                 self.orders[k] = self.orders[k].astype(v)
-            self.orders = self.orders.set_index('id')
+            self.orders = self.orders.set_index("id")
         else:
             self.orders = pd.concat(
                 [
-                    pd.read_csv(fn, index_col='id', dtype=col_types, parse_dates=False)
+                    pd.read_csv(fn, index_col="id", dtype=col_types, parse_dates=False)
                     for fn in files
                 ]
             )
             self.orders.date = pd.to_datetime(self.orders.date, utc=True)
             print(
-                f'Orders loaded: {self.orders.date.iloc[0]} - {self.orders.date.iloc[-1]}, '
-                f'total: {len(self.orders)} orders'
+                f"Orders loaded: {self.orders.date.iloc[0]} - {self.orders.date.iloc[-1]}, "
+                f"total: {len(self.orders)} orders"
             )
-            self.orders['date'] = self.orders['date'].dt.tz_convert(self.time_zone)
+            self.orders["date"] = self.orders["date"].dt.tz_convert(self.time_zone)
             self._rebuild_from_orders()
 
     def save(self):
         """
         Save orders and changes to working_dir.
         """
-        self.orders.index.name = 'id'
-        for n, g in self.orders.groupby(pd.Grouper(key='date', freq='D')):
-            name = n.strftime('orders_%Y-%m-%d.csv')
+        self.orders.index.name = "id"
+        for n, g in self.orders.groupby(pd.Grouper(key="date", freq="D")):
+            name = n.strftime("orders_%Y-%m-%d.csv")
             if not g.empty:
-                numbers = g.select_dtypes('number').columns
+                numbers = g.select_dtypes("number").columns
                 g.round(dict.fromkeys(numbers, 4)).to_csv(os.path.join(self.working_dir, name))
 
     def set_datetime(self, dt: pd.Timestamp) -> None:
@@ -718,12 +718,12 @@ class ManualBlotter(BaseBlotter):
         order = pd.Series(
             dict(
                 date=self._current_dt,
-                status='Cash',
-                symbol='cash',
+                status="Cash",
+                symbol="cash",
                 target_percent=0.0,
                 action_value=0.0,
                 amount=amount,
-                limit_price='/',
+                limit_price="/",
                 filled_amount=amount,
                 filled_price=0.0,
                 filled_percent=0.0,
@@ -742,16 +742,16 @@ class ManualBlotter(BaseBlotter):
         self._portfolio.update_cash(amount, is_funds=True)
 
     def _order(self, asset, amount, price=None):
-        raise NotImplementedError('not support')
+        raise NotImplementedError("not support")
 
     def order(self, asset: str, amount: int, price: str | None = None):
-        raise NotImplementedError('not support')
+        raise NotImplementedError("not support")
 
     def order_target(self, asset: str, target: float):
-        raise NotImplementedError('not support')
+        raise NotImplementedError("not support")
 
     def batch_order_target(self, assets: Iterable[str], targets: Iterable[float]):
-        raise NotImplementedError('not support')
+        raise NotImplementedError("not support")
 
     def set_last_price(self, price_dict):
         self.last_price = price_dict
@@ -762,11 +762,11 @@ class ManualBlotter(BaseBlotter):
         to your broker, and call `order_filled` after broker tell you order filled.
         """
         if not isinstance(asset, str):
-            raise KeyError('`asset` must be a string')
+            raise KeyError("`asset` must be a string")
         if not isinstance(pct, float):
-            raise ValueError('`pct` must be float')
+            raise ValueError("`pct` must be float")
         if self.long_only and pct < 0:
-            raise ValueError('Long only blotter, `pct` must greater than 0.')
+            raise ValueError("Long only blotter, `pct` must greater than 0.")
         assert self._current_dt is not None
 
         pct = round(pct, 4)
@@ -784,7 +784,7 @@ class ManualBlotter(BaseBlotter):
         action_value = target_value - opened_value
 
         if self.last_price is None:
-            raise ValueError('call blotter.set_last_price(dict) first.')
+            raise ValueError("call blotter.set_last_price(dict) first.")
         if pct == 0:
             # if an asset removed from universe,
             # u don't want to get last_price because it not exists.
@@ -803,12 +803,12 @@ class ManualBlotter(BaseBlotter):
         order = pd.Series(
             dict(
                 date=self._current_dt,
-                status='PendingSubmit',
+                status="PendingSubmit",
                 symbol=asset,
                 target_percent=pct,
                 action_value=action_value,
                 amount=action_amount,
-                limit_price='Market',
+                limit_price="Market",
                 filled_amount=0,
                 filled_price=0,
                 filled_percent=0,
@@ -829,9 +829,9 @@ class ManualBlotter(BaseBlotter):
         to your broker, and call `order_filled` after broker tell you order filled.
         """
         if None in assets or np.any([not (a == a) for a in assets]):
-            raise ValueError('None/NaN in `assets: ' + str(assets))
+            raise ValueError("None/NaN in `assets: " + str(assets))
         if None in weights or np.any([not (w == w) for w in weights]):
-            raise ValueError('None/NaN in `weights: ' + str(weights))
+            raise ValueError("None/NaN in `weights: " + str(weights))
         ret = dict()
         for asset, pct in zip(assets, weights):
             oid = self.order_target_percent(asset, pct)
@@ -847,7 +847,7 @@ class ManualBlotter(BaseBlotter):
         realized = self._portfolio.update(order.symbol, filled_amount, filled_price, commission)
         self._portfolio.update_cash(-filled_amount * filled_price - commission)
 
-        if order.status == 'Filled':
+        if order.status == "Filled":
             total_turnover = abs(order.filled_amount * order.filled_price) + abs(
                 filled_amount * filled_price
             )
@@ -857,7 +857,7 @@ class ManualBlotter(BaseBlotter):
             commission += order.commission
             realized += order.realized
 
-        order.status = 'Filled'
+        order.status = "Filled"
         order.filled_amount = filled_amount
         order.filled_price = filled_price
         order.filled_percent = round(filled_price * filled_amount / order.action_value, 3)
@@ -867,7 +867,7 @@ class ManualBlotter(BaseBlotter):
 
     def order_cancelled(self, oid):
         """Call this after you cancelled one order"""
-        self.orders.loc[oid, 'status'] = 'Cancelled'
+        self.orders.loc[oid, "status"] = "Cancelled"
 
     def position_dividend(self, asset, amount, tax, time_delta):
         """Call this if your position has dividends"""
@@ -876,12 +876,12 @@ class ManualBlotter(BaseBlotter):
         order = pd.Series(
             dict(
                 date=self._current_dt + time_delta,
-                status='Dividend',
+                status="Dividend",
                 symbol=asset,
                 target_percent=0,
                 action_value=0,
                 amount=amount,
-                limit_price='/',
+                limit_price="/",
                 filled_amount=amount,
                 filled_price=0,
                 filled_percent=0,
@@ -903,12 +903,12 @@ class ManualBlotter(BaseBlotter):
         order = pd.Series(
             dict(
                 date=self._current_dt + time_delta,
-                status='Split',
+                status="Split",
                 symbol=asset,
                 target_percent=0,
                 action_value=0,
                 amount=inverse_ratio,
-                limit_price='/',
+                limit_price="/",
                 filled_amount=inverse_ratio,
                 filled_price=last_price,
                 filled_percent=0,
@@ -926,26 +926,26 @@ class ManualBlotter(BaseBlotter):
             self._portfolio.update_value(prices)
 
     def get_price(self, asset: str | Iterable):
-        raise NotImplementedError('not supported')
+        raise NotImplementedError("not supported")
 
     def get_transactions(self):
-        orders = self.orders[self.orders.status == 'Filled']
+        orders = self.orders[self.orders.status == "Filled"]
         ret = pd.DataFrame(
-            columns=['index', 'symbol', 'amount', 'price', 'fill_price', 'commission', 'realized']
+            columns=["index", "symbol", "amount", "price", "fill_price", "commission", "realized"]
         )
-        ret['index'] = orders.date
+        ret["index"] = orders.date
         ret.symbol = orders.symbol
         ret.amount = orders.filled_amount
         ret.price = orders.filled_price
         ret.fill_price = orders.filled_price + orders.commission / orders.filled_amount
         ret.commission = orders.commission
         ret.realized = orders.realized
-        ret = ret.set_index('index').sort_index()
+        ret = ret.set_index("index").sort_index()
         return ret
 
     @property
     def pendings(self):
-        return self.orders[self.orders.status == 'PendingSubmit']
+        return self.orders[self.orders.status == "PendingSubmit"]
 
     def cancel_all_orders(self):
-        raise NotImplementedError('not supported')
+        raise NotImplementedError("not supported")

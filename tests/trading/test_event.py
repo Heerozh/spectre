@@ -38,9 +38,9 @@ def test_unsubscribe():
     rcv.unsubscribe()
     assert len(evt_mgr._subscribers) == 0
 
-    with pytest.raises(ValueError, match='At least one subscriber.'):
+    with pytest.raises(ValueError, match="At least one subscriber."):
         evt_mgr.run()
-    with pytest.raises(AssertionError, match='Subscriber not exists'):
+    with pytest.raises(AssertionError, match="Subscriber not exists"):
         evt_mgr.unsubscribe(rcv)
 
 
@@ -48,7 +48,7 @@ def test_duplicate_subscribe():
     rcv = Receiver()
     evt_mgr = trading.EventManager()
     evt_mgr.subscribe(rcv)
-    with pytest.raises(AssertionError, match='Duplicate subscribe'):
+    with pytest.raises(AssertionError, match="Duplicate subscribe"):
         evt_mgr.subscribe(rcv)
 
 

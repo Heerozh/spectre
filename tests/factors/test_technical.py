@@ -7,7 +7,7 @@ from tests.factors.helpers import assert_factor
 
 
 # The EMAs used by MACD are truncated (see test_basic.test_ema), the error is about 1e-3
-@pytest.mark.parametrize('params', [(12, 26, 9), (10, 15, 5)])
+@pytest.mark.parametrize("params", [(12, 26, 9), (10, 15, 5)])
 def test_macd_signal(engine, params):
     expected = ref.expected(lambda df: ref.macd(df.close, *params)[1])
     assert_factor(engine, factors.MACD(*params), *expected, decimal=3)
@@ -18,7 +18,7 @@ def test_macd_histogram(engine):
     assert_factor(engine, factors.MACD().normalized(), *expected, decimal=3)
 
 
-@pytest.mark.parametrize('band', [0, 1, 2])
+@pytest.mark.parametrize("band", [0, 1, 2])
 def test_bbands(engine, band):
     expected = ref.expected(lambda df: ref.bbands(df.close)[band])
     assert_factor(engine, factors.BBANDS()[band], *expected)
@@ -39,7 +39,7 @@ def test_bbands_normalized(engine):
 
 
 def test_bbands_needs_k():
-    with pytest.raises(ValueError, match='needs 2 inputs'):
+    with pytest.raises(ValueError, match="needs 2 inputs"):
         factors.BBANDS(inputs=[factors.OHLCV.close])
 
 

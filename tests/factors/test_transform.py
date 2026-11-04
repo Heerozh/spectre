@@ -34,7 +34,7 @@ def test_shift(engine):
 
 
 def test_shift_backward_is_lookahead(engine):
-    with pytest.raises(RuntimeError, match='look-ahead bias'):
+    with pytest.raises(RuntimeError, match="look-ahead bias"):
         run_factor(engine, close.shift(-2))
     # shift(-2) then delayed by 1
     expected = ref.expected(lambda df: df.close.loc[: ref.END].shift(-2))
@@ -43,7 +43,7 @@ def test_shift_backward_is_lookahead(engine):
 
 
 def test_shift_bool_raises(engine):
-    with pytest.raises(ValueError, match='does not support `int` or `bool`'):
+    with pytest.raises(ValueError, match="does not support `int` or `bool`"):
         run_factor(engine, factors.factor.RawShiftFactor(close > 150, 1))
 
 
@@ -72,14 +72,14 @@ def test_local_filter(engine):
 
 
 def test_ffill(engine, device):
-    if device == 'cuda':
+    if device == "cuda":
         engine.to_cuda()
     expected = np.array([nan, 3.0, 4.0, 4, 4, 4, 3.0, 4.0, 4, 4])
     assert_factor(engine, filtered_weekday().fill_na(ffill=True), expected, delete(expected, SOLO))
 
 
 def test_fill_inf(engine, device):
-    if device == 'cuda':
+    if device == "cuda":
         engine.to_cuda()
     # 1e10 ** 4 overflows float32 to inf, filled by nan; nan values are not filled
     factor = (1e10 ** filtered_weekday()).fill_na(nan, nan=False, inf=True) / 1e30
@@ -88,7 +88,7 @@ def test_fill_inf(engine, device):
 
 
 def test_fill_value(engine, device):
-    if device == 'cuda':
+    if device == "cuda":
         engine.to_cuda()
     expected = np.array([0, 3.0, 4.0, 0, 0, 0, 3.0, 4.0, 0, 0])
     assert_factor(
@@ -104,7 +104,7 @@ def test_fill_factor(engine):
 
 
 def test_fill_na_needs_value():
-    with pytest.raises(ValueError, match='must be specified'):
+    with pytest.raises(ValueError, match="must be specified"):
         WEEKDAY.fill_na()
 
 
@@ -181,12 +181,12 @@ def test_rolling_zscore(engine):
 
 
 def test_log(engine):
-    with np.errstate(divide='ignore'):
+    with np.errstate(divide="ignore"):
         expected = np.log(WEEKDAYS)
     assert_factor(engine, WEEKDAY.log(), expected, delete(expected, SOLO))
 
 
-@pytest.mark.parametrize('method, func', [('abs', np.abs), ('sign', np.sign), ('tanh', np.tanh)])
+@pytest.mark.parametrize("method, func", [("abs", np.abs), ("sign", np.sign), ("tanh", np.tanh)])
 def test_math(engine, method, func):
     expected = ref.expected(lambda df: func(ref.returns(df.close)))
     assert_factor(engine, getattr(factors.Returns(), method)(), *expected, decimal=6)
@@ -194,14 +194,14 @@ def test_math(engine, method, func):
 
 def test_round(engine):
     expected = np.round(np.array([2.0, 3.0, 4.0, 7.0, 8.0, 9.0, 10.0, 11.0, 14.0, 15.0]) / 1000, 2)
-    factor = (factors.DatetimeDataFactor('day') / 1000).round(2)
+    factor = (factors.DatetimeDataFactor("day") / 1000).round(2)
     assert_factor(engine, factor, expected, delete(expected, SOLO))
 
 
 @pytest.mark.parametrize(
-    'method, dtype', [('float', 'float32'), ('double', 'float64'), ('half', 'float16')]
+    "method, dtype", [("float", "float32"), ("double", "float64"), ("half", "float16")]
 )
 def test_type_cast(engine, method, dtype):
-    engine.add(getattr(close, method)(), 'test')
+    engine.add(getattr(close, method)(), "test")
     result = engine.run(ref.START, ref.END)
     assert result.test.dtype == dtype

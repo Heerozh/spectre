@@ -58,8 +58,8 @@ class CPUParallelFactor(CustomFactor):
         for data in inputs:
             if isinstance(data, ColumnDataFactor):
                 raise ValueError(
-                    'Cannot use ColumnDataFactor in CPUParallelFactor, '
-                    'please use AdjustedColumnDataFactor instead.'
+                    "Cannot use ColumnDataFactor in CPUParallelFactor, "
+                    "please use AdjustedColumnDataFactor instead."
                 )
         if multiprocess:
             self.pool = Pool
@@ -105,10 +105,10 @@ class CPUParallelFactor(CustomFactor):
             pool_ret = p.map(caller.split_call, split_range)
 
         pool_ret = np.concatenate(pool_ret)
-        ret = pd.Series(index=origin_input.index, dtype='float64').unstack(level=1)
+        ret = pd.Series(index=origin_input.index, dtype="float64").unstack(level=1)
         if pool_ret.shape != ret.iloc[backwards:].shape:
             raise ValueError(
-                f'return value shape {pool_ret.shape} != original {ret.iloc[backwards:].shape}'
+                f"return value shape {pool_ret.shape} != original {ret.iloc[backwards:].shape}"
             )
 
         ret.iloc[backwards:] = pool_ret
@@ -129,4 +129,4 @@ class CPUParallelFactor(CustomFactor):
 
         You should return an np.array of length `input.shape[1]`
         """
-        raise NotImplementedError('abstractmethod')
+        raise NotImplementedError("abstractmethod")

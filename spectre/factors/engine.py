@@ -23,11 +23,11 @@ from .filter import FilterFactor, StaticAssets
 
 
 class OHLCV:
-    open = ColumnDataFactor(inputs=('',), should_delay=False)
-    high = ColumnDataFactor(inputs=('',))
-    low = ColumnDataFactor(inputs=('',))
-    close = ColumnDataFactor(inputs=('',))
-    volume = ColumnDataFactor(inputs=('',))
+    open = ColumnDataFactor(inputs=("",), should_delay=False)
+    high = ColumnDataFactor(inputs=("",))
+    low = ColumnDataFactor(inputs=("",))
+    close = ColumnDataFactor(inputs=("",))
+    volume = ColumnDataFactor(inputs=("",))
 
 
 class FactorEngine:
@@ -74,10 +74,10 @@ class FactorEngine:
         if as_group_name in self._groups:
             return
 
-        cols = group_column.split(',')
+        cols = group_column.split(",")
 
         if len(self._dataframe.index.levels[1]) == 1 and (
-            cols[0] == 'date' or cols[0] == self._loader.time_category
+            cols[0] == "date" or cols[0] == self._loader.time_category
         ):
             col = self._loader.time_category
             series = self._dataframe[col]
@@ -87,11 +87,11 @@ class FactorEngine:
         keys = None
         for col in cols:
             if col:
-                if col == 'date':
+                if col == "date":
                     col = self._loader.time_category
                 series = self._dataframe[col]
                 assert not series.isna().any(), col
-                if series.dtype.name == 'category':
+                if series.dtype.name == "category":
                     cat = series.cat.codes
                 else:
                     cat = series.values
@@ -127,7 +127,7 @@ class FactorEngine:
             data = torch.tensor(data, device=self._device)
             return self._groups[group].split(data)
         else:
-            raise ValueError('Invalid data type, should be tensor or series.')
+            raise ValueError("Invalid data type, should be tensor or series.")
 
     def get_group_padding_mask(self, group: str) -> torch.Tensor:
         if isinstance(group, torch.Tensor):
@@ -146,9 +146,9 @@ class FactorEngine:
                 return False
             else:
                 print(
-                    'Due to Factor Rolling window increase, extend the length of historical data '
-                    'in GPU memory, '
-                    f'{self._last_loaded[2]} -> {backwards}'
+                    "Due to Factor Rolling window increase, extend the length of historical data "
+                    "in GPU memory, "
+                    f"{self._last_loaded[2]} -> {backwards}"
                 )
         self._groups = dict()
 
@@ -160,19 +160,19 @@ class FactorEngine:
             df = df[df.index.get_level_values(1).isin(list(self._filter.assets))]
             if df.shape[0] == 0:
                 raise ValueError(
-                    f'The assets {self._filter.assets} specified by StaticAssets filter, '
-                    'was not found in DataLoader.'
+                    f"The assets {self._filter.assets} specified by StaticAssets filter, "
+                    "was not found in DataLoader."
                 )
         # check history data is insufficient
         df.index = df.index.remove_unused_levels()
-        history_win = df.index.levels[0].get_indexer([start], method='bfill')[0]
+        history_win = df.index.levels[0].get_indexer([start], method="bfill")[0]
         if history_win < backwards:
             warnings.warn(
-                'Historical data seems insufficient. '
-                f'{backwards} rows of historical data are required, '
-                f'but only {history_win} rows are obtained. '
-                'It is also possible that `calender_asset` of the loader is not set, '
-                'some out of trading hours data will cause indexing problems.',
+                "Historical data seems insufficient. "
+                f"{backwards} rows of historical data are required, "
+                f"but only {history_win} rows are obtained. "
+                "It is also possible that `calender_asset` of the loader is not set, "
+                "some out of trading hours data will cause indexing problems.",
                 RuntimeWarning,
             )
         # post processing data
@@ -186,8 +186,8 @@ class FactorEngine:
                 .groupby(level=0)
                 .transform(lambda x: x.fillna(x.value_counts().index[0]))
             )
-        if self.timezone != 'UTC':
-            df = df.reset_index('asset').tz_convert(self.timezone).set_index(['asset'], append=True)
+        if self.timezone != "UTC":
+            df = df.reset_index("asset").tz_convert(self.timezone).set_index(["asset"], append=True)
 
         self._dataframe = df
         self._dataframe_index = [df.index.get_level_values(i) for i in range(len(df.index.levels))]
@@ -196,10 +196,10 @@ class FactorEngine:
         cat = self._dataframe_index[1].codes
         # cat.copy() for suppress torch readonly numpy array warning
         keys = torch.tensor(cat.copy(), device=self._device, dtype=torch.int32)
-        self._groups['asset'] = ParallelGroupBy(keys)
+        self._groups["asset"] = ParallelGroupBy(keys)
 
         # time group prepare
-        self.column_to_parallel_groupby_(self._loader.time_category, 'date')
+        self.column_to_parallel_groupby_(self._loader.time_category, "date")
         # change engine cache id
         # print('_cache length changed', max_backwards, self._last_loaded[2])
         self._cache_hash = uuid.uuid4()
@@ -219,7 +219,7 @@ class FactorEngine:
 
     def _compute_and_revert(self, f: BaseFactor, name) -> torch.Tensor:
         stream = None
-        if self._device.type == 'cuda' and self._enable_stream:
+        if self._device.type == "cuda" and self._enable_stream:
             stream = torch.cuda.current_stream()
         data = f.compute_(stream)
         return self._groups[f.groupby].revert(data, name)
@@ -235,10 +235,10 @@ class FactorEngine:
         self._column_cache = {}
         self._factors = {}
         self._filter = None
-        self._device = torch.device('cpu')
+        self._device = torch.device("cpu")
         self._enable_stream = False
         self._align_by_time = False
-        self._timezone = 'UTC'
+        self._timezone = "UTC"
         self._cache_hash = uuid.uuid4()
         self.max_backwards = np.inf
 
@@ -293,15 +293,15 @@ class FactorEngine:
         else:
             if name in self._factors and not replace:
                 raise KeyError(
-                    f'A factor with the name {name} already exists.'
-                    'please specify a new name by engine.add(factor, new_name)'
+                    f"A factor with the name {name} already exists."
+                    "please specify a new name by engine.add(factor, new_name)"
                 )
             self._factors[name] = factor
 
     def set_filter(self, factor: FilterFactor | None) -> None:
         static_assets = isinstance(self._filter, StaticAssets) or isinstance(factor, StaticAssets)
         if static_assets and self._dataframe is not None:
-            print('Cache clean due to the StaticAssets filter changed.')
+            print("Cache clean due to the StaticAssets filter changed.")
             self.empty_cache()
         self._filter = factor
 
@@ -335,12 +335,12 @@ class FactorEngine:
         Set enable_stream to True allows pipeline branches to calculation simultaneously.
         However, this will lead to more VRAM usage and may affect performance.
         """
-        self._device = torch.device(f'cuda:{gpu_id}')
+        self._device = torch.device(f"cuda:{gpu_id}")
         self._enable_stream = enable_stream
         self.empty_cache()
 
     def to_cpu(self) -> None:
-        self._device = torch.device('cpu')
+        self._device = torch.device("cpu")
         self.empty_cache()
 
     def test_lookahead_bias(self, start, end):
@@ -367,22 +367,22 @@ class FactorEngine:
         try:
             pd.testing.assert_frame_equal(df_expected[:mid_left], df[:mid_left])
         except AssertionError:
-            raise RuntimeError('A look-ahead bias was detected, please check your factors code')
-        return 'No assertion raised.'
+            raise RuntimeError("A look-ahead bias was detected, please check your factors code")
+        return "No assertion raised."
 
     def _run(self, start, end, delay_factor):
         if len(self._factors) == 0:
-            raise ValueError('Please add at least one factor to engine, then run again.')
+            raise ValueError("Please add at least one factor to engine, then run again.")
 
-        if delay_factor == 'all':
+        if delay_factor == "all":
             delays = self._factors
         else:
             delays = {col for col, fct in self._factors.items() if fct.should_delay()}
         if delay_factor is False and len(delays) > 0:
             warnings.warn(
-                'Warning!! delay_factor is set to False, '
-                f'but {delays!s} factors uses data that is only available '
-                'after the market is closed.',
+                "Warning!! delay_factor is set to False, "
+                f"but {delays!s} factors uses data that is only available "
+                "after the market is closed.",
                 RuntimeWarning,
             )
             delays = {}
@@ -397,7 +397,7 @@ class FactorEngine:
 
         # shift factors if necessary
         filter_ = self._filter
-        if filter_ and delay_factor and (filter_.should_delay() or delay_factor == 'all'):
+        if filter_ and delay_factor and (filter_.should_delay() or delay_factor == "all"):
             filter_ = filter_.shift(1)
         factors = {col: col in delays and fct.shift(1) or fct for col, fct in self._factors.items()}
 
@@ -430,7 +430,7 @@ class FactorEngine:
             results = {col: self._compute_and_revert(fct, col) for col, fct in factors.items()}
             shifted_mask = None
             if filter_:
-                shifted_mask = self._compute_and_revert(filter_, 'filter')
+                shifted_mask = self._compute_and_revert(filter_, "filter")
         except BaseException:
             # Reset reference counts and cached data, otherwise the factors (some of them are
             # shared, like OHLCV) will use the stale data next time.
@@ -461,7 +461,7 @@ class FactorEngine:
         ret = pd.DataFrame(index=self._dataframe.index.copy())
         # pandas will rise DataFrame is highly fragmented on this, no sense.
         with warnings.catch_warnings():
-            warnings.simplefilter(action='ignore', category=pd.errors.PerformanceWarning)
+            warnings.simplefilter(action="ignore", category=pd.errors.PerformanceWarning)
             ret = ret.assign(**{col: t.cpu().numpy() for col, t in results.items()})
         if shifted_mask is not None:
             ret = ret[shifted_mask.cpu().numpy()]
@@ -469,9 +469,9 @@ class FactorEngine:
         # if any factors delayed, return df also should be delayed
         if delayed:
             index = ret.index.levels[0]
-            start_ind = index.get_indexer([start], method='bfill')[0]
+            start_ind = index.get_indexer([start], method="bfill")[0]
             if (start_ind + 1) >= len(index):
-                raise ValueError('There is no data between start and end.')
+                raise ValueError("There is no data between start and end.")
             start = index[start_ind + 1]
         ret = ret.sort_index()
         return ret.loc[start:]
@@ -491,17 +491,17 @@ class FactorEngine:
         results, shifted_mask, delayed = self._run(start, end, delay_factor)
 
         index = self._dataframe.index.levels[0]
-        start_ind = index.get_indexer([start], method='bfill')[0]
+        start_ind = index.get_indexer([start], method="bfill")[0]
         if delayed:  # if any factors delayed, return df also should be delayed
             unique_date_index = self._dataframe.index.levels[0]
-            start_unique_ind = unique_date_index.get_indexer([start], 'bfill')[0]
+            start_unique_ind = unique_date_index.get_indexer([start], "bfill")[0]
             start = unique_date_index[start_unique_ind + 1]
 
         index = self._dataframe_index[0]
         start_ind = index.searchsorted(start)
 
         if start_ind >= len(index):
-            raise ValueError('There is no data between start and end.')
+            raise ValueError("There is no data between start and end.")
         if shifted_mask is not None:
             shifted_mask = shifted_mask[start_ind:]
             results = {k: v[start_ind:][shifted_mask] for k, v in results.items()}
@@ -518,7 +518,7 @@ class FactorEngine:
 
     def get_factors_raw_value(self):
         stream = None
-        if self._device.type == 'cuda':
+        if self._device.type == "cuda":
             stream = torch.cuda.current_stream()
         return {c: f.compute_(stream) for c, f in self._factors.items()}
 
@@ -536,25 +536,25 @@ class FactorEngine:
                        to OHLCV.open.
         """
         factors_backup = self._factors
-        self._factors = {'price': AdjustedColumnDataFactor(prices)}
+        self._factors = {"price": AdjustedColumnDataFactor(prices)}
 
         # get tickers first
         assets = None
         if self._filter is not None:
             with warnings.catch_warnings():
-                warnings.simplefilter('ignore')
+                warnings.simplefilter("ignore")
                 assets_ret = self.run(start, end, delay_factor=False)
             assets = assets_ret.index.get_level_values(1).unique()
 
         filter_backup = self._filter
         self._filter = StaticAssets(assets)
         with warnings.catch_warnings():
-            warnings.simplefilter('ignore')
+            warnings.simplefilter("ignore")
             ret = self.run(start, end, delay_factor=False)
         self._factors = factors_backup
         self._filter = filter_backup
 
-        ret = ret['price'].unstack(level=[1])
+        ret = ret["price"].unstack(level=[1])
         return ret
 
     def plot_chart(
@@ -590,7 +590,7 @@ class FactorEngine:
 
         """
         assert ohlcv is not None or self.loader_.ohlcv is not None, (
-            'parameter ohlcv cannot be None.'
+            "parameter ohlcv cannot be None."
         )
         df = self.run(start, end, delay_factor)
         figs = plot_chart(
@@ -607,7 +607,7 @@ class FactorEngine:
         self,
         start,
         end,
-        trade_at='close',
+        trade_at="close",
         periods=(1, 4, 9),
         quantiles=5,
         filter_zscore=20,
@@ -649,27 +649,27 @@ class FactorEngine:
         column_names = {}
         # add quantile factor of all factors
         for c, f in factors.items():
-            column_names[c] = (c, 'factor')
+            column_names[c] = (c, "factor")
             quantile_fct = f.quantile(quantiles, mask=universe)
             if not xs_quantile:
-                quantile_fct.groupby = 'asset'
-            self.add(quantile_fct, c + '_q_')
-            column_names[c + '_q_'] = (c, 'factor_quantile')
+                quantile_fct.groupby = "asset"
+            self.add(quantile_fct, c + "_q_")
+            column_names[c + "_q_"] = (c, "factor_quantile")
 
             if to_weight:
-                self.add(f.to_weight(mask=universe, demean=demean_weight), c + '_w_')
+                self.add(f.to_weight(mask=universe, demean=demean_weight), c + "_w_")
             else:
-                self.add(f, c + '_w_')
-            column_names[c + '_w_'] = (c, 'factor_weight')
+                self.add(f, c + "_w_")
+            column_names[c + "_w_"] = (c, "factor_weight")
 
         # add the rolling returns of each period, use AdjustedColumnDataFactor for best performance
         shift = -1
         inputs = (AdjustedColumnDataFactor(OHLCV.close),)
         if isinstance(trade_at, BaseFactor):
             inputs = (trade_at,)
-        elif trade_at == 'open':
+        elif trade_at == "open":
             inputs = (AdjustedColumnDataFactor(OHLCV.open),)
-        elif trade_at == 'current_close':
+        elif trade_at == "current_close":
             shift = 0
 
         from .basic import Returns
@@ -680,25 +680,25 @@ class FactorEngine:
             mask = universe
             if filter_zscore is not None:
                 # Different: The zscore here contains all backward data which alphalens not counted.
-                zscore_factor = ret.zscore(groupby='asset', mask=universe)
+                zscore_factor = ret.zscore(groupby="asset", mask=universe)
                 zscore_filter = zscore_factor.abs() <= filter_zscore
                 if mask is not None:
                     mask = mask & zscore_filter
                 else:
                     mask = zscore_filter
-                self.add(ret.filter(mask), str(n) + '_r_')
+                self.add(ret.filter(mask), str(n) + "_r_")
             else:
-                self.add(ret, str(n) + '_r_')
+                self.add(ret, str(n) + "_r_")
             if demean:
-                self.add(ret.demean(mask=mask), str(n) + '_d_')
+                self.add(ret.demean(mask=mask), str(n) + "_d_")
 
         # run and get df
-        factor_data = self.run(start, end, trade_at != 'current_close')
+        factor_data = self.run(start, end, trade_at != "current_close")
         self._factors = factors
         factor_data.index = factor_data.index.remove_unused_levels()
         # factor_data = factor_data.sort_index()  # 140 ms
         assert len(factor_data.index.levels[0]) > max(periods) - shift, (
-            'No enough data for forward returns, please expand the end date'
+            "No enough data for forward returns, please expand the end date"
         )
         last_date = factor_data.index.levels[0][-max(periods) + shift - 1]
         factor_data = factor_data.loc[:last_date].copy()
@@ -710,9 +710,9 @@ class FactorEngine:
         # change columns name
         period_cols = {n: str(n * freq) + unit for n in periods}
         for n, period_col in period_cols.items():
-            column_names[str(n) + '_r_'] = ('Returns', period_col)
+            column_names[str(n) + "_r_"] = ("Returns", period_col)
             if demean:
-                column_names[str(n) + '_d_'] = ('Demeaned', period_col)
+                column_names[str(n) + "_d_"] = ("Demeaned", period_col)
         new_cols = pd.MultiIndex.from_tuples([column_names[c] for c in factor_data.columns])
         factor_data.columns = new_cols
         factor_data = factor_data.sort_index(axis=1)
@@ -721,20 +721,20 @@ class FactorEngine:
         mean_returns = []
         for fact_name in factors:
             mean_return = pd.DataFrame(columns=pd.MultiIndex.from_arrays([[], []]))
-            group = [(fact_name, 'factor_quantile'), 'date']
+            group = [(fact_name, "factor_quantile"), "date"]
             if demean:
-                returns_col = 'Demeaned'
+                returns_col = "Demeaned"
             else:
-                returns_col = 'Returns'
-            grouped_mean = factor_data[[returns_col, fact_name]].groupby(group).agg('mean')
+                returns_col = "Returns"
+            grouped_mean = factor_data[[returns_col, fact_name]].groupby(group).agg("mean")
             for period_col in period_cols.values():
                 demean_col = (returns_col, period_col)
                 mean_col = (fact_name, period_col)
                 mean_return[mean_col] = grouped_mean[demean_col]
             if mean_return.empty:
                 continue
-            mean_return.index = mean_return.index.set_names('quantile', level=0)
-            mean_return = mean_return.groupby(level=0).agg(['mean', 'sem'])
+            mean_return.index = mean_return.index.set_names("quantile", level=0)
+            mean_return = mean_return.groupby(level=0).agg(["mean", "sem"])
             mean_return = mean_return.sort_index(axis=1)
             mean_returns.append(mean_return)
         mean_returns = pd.concat(mean_returns, axis=1)

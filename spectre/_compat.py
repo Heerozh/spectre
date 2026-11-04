@@ -4,7 +4,7 @@ Small helpers to keep spectre working across pandas versions.
 
 import pandas as pd
 
-PANDAS_GE_3 = int(pd.__version__.split('.')[0]) >= 3
+PANDAS_GE_3 = int(pd.__version__.split(".")[0]) >= 3
 
 
 def stack_keep_nan(df: pd.DataFrame, level=-1):
