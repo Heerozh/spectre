@@ -3,10 +3,10 @@ import pandas as pd
 import pytest
 import scipy.stats
 import torch
-from numpy.testing import assert_almost_equal, assert_array_equal
+from numpy.testing import assert_allclose, assert_almost_equal, assert_array_equal
 
 from spectre import factors, parallel
-from tests.conftest import DATA_DIR
+from tests.conftest import DATA_DIR, DIRTY_DATES, LISTED_ON
 from tests.factors import reference as ref
 from tests.factors.helpers import assert_factor, delete, run_factor
 
@@ -120,6 +120,14 @@ def test_median_groupby_asset(engine):
     assert_almost_equal([np.median(returns["AAPL"]), np.median(returns["MSFT"])], [0.0085, 0.007])
 
 
+@pytest.mark.parametrize("helper", ["mean", "median", "max", "min", "std"])
+def test_empty_universe_is_nan(engine, helper):
+    never = factors.WEEKDAY < 0
+    aapl, msft = run_factor(engine, getattr(close, helper)(mask=never), check_bias=False)
+    assert_array_equal(aapl, [nan] * 9)
+    assert_array_equal(msft, [nan] * 8)
+
+
 # ------------------------------------ zscore ------------------------------------
 
 
@@ -149,6 +157,41 @@ def test_zscore_shift_with_filter(engine):
     assert_factor(
         engine, factors.OHLCV.open.zscore().shift(1), expected_aapl, expected_msft, delay=False
     )
+
+
+def test_zscore_of_ts_max_on_listing_day(dirty_engine, dirty_panel):
+    """A new listing has no returns in its window, that must not wipe the other assets."""
+    returns = dirty_panel.clean_close.groupby(level="asset").pct_change(fill_method=None)
+    ts_max = returns.groupby(level="asset").transform(lambda x: x.rolling(5, min_periods=1).max())
+    expected = ts_max.groupby(level="date").transform(lambda x: (x - x.mean()) / x.std(ddof=0))
+
+    factor = factors.Returns().ts_max(5)
+    dirty_engine.add(factor, "ts_max")
+    dirty_engine.add(factor.zscore(), "zscore")
+    start, listed_on = DIRTY_DATES[10], DIRTY_DATES[LISTED_ON]
+    result = dirty_engine.run(start, DIRTY_DATES[-1], delay_factor=False)
+
+    assert np.isnan(result.ts_max.loc[(listed_on, "LISTED")])
+    assert result.zscore.loc[listed_on].notna().sum() == 5
+    assert_allclose(result.ts_max, ts_max.loc[start:], rtol=1e-6)
+    assert_allclose(result.zscore, expected.loc[start:], rtol=1e-6)
+
+
+def test_bottom_skips_asset_without_returns(dirty_engine, dirty_panel):
+    returns = dirty_panel.clean_close.groupby(level="asset").pct_change(fill_method=None)
+    expected = returns.groupby(level="asset").transform(
+        lambda x: x.rolling(3, min_periods=1).std(0)
+    )
+
+    factor = factors.STDDEV(3, inputs=[factors.Returns()])
+    dirty_engine.add(factor, "std")
+    dirty_engine.add(factor.bottom(1), "bottom")
+    start, listed_on = DIRTY_DATES[10], DIRTY_DATES[LISTED_ON]
+    result = dirty_engine.run(start, DIRTY_DATES[-1], delay_factor=False)
+
+    assert_allclose(result["std"], expected.loc[start:], rtol=1e-6, atol=1e-9)
+    assert np.isnan(result["std"].loc[(listed_on, "LISTED")])
+    assert not result.bottom.loc[(listed_on, "LISTED")]
 
 
 # ------------------------------------ demean ------------------------------------

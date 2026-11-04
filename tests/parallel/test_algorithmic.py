@@ -167,6 +167,62 @@ def test_nanmax_nanmin(device):
     assert_almost_equal(to_np(parallel.nanmin(tensor(data, device))), np.nanmin(data, axis=1))
 
 
+@pytest.mark.parametrize("dtype", [torch.float32, torch.float64])
+def test_nanmax_nanmin_empty_group(device, dtype):
+    data = tensor([[nan, nan, nan], [1, 2, 4]], device, dtype)
+    assert_array_equal(to_np(parallel.nanmax(data)), [nan, 4])
+    assert_array_equal(to_np(parallel.nanmin(data)), [nan, 1])
+
+    # a real inf is a value, not an empty group
+    data = tensor([[-np.inf, nan], [np.inf, nan]], device, dtype)
+    assert_array_equal(to_np(parallel.nanmax(data)), [-np.inf, np.inf])
+    assert_array_equal(to_np(parallel.nanmin(data)), [-np.inf, np.inf])
+
+
+@pytest.mark.parametrize("ddof", [0, 1])
+@pytest.mark.parametrize("dtype", [torch.float32, torch.float64])
+def test_nanvar_covariance_empty_group(device, dtype, ddof):
+    data = tensor([[nan, nan, nan], [1, 2, 4]], device, dtype)
+    var = np.var([1, 2, 4], ddof=ddof)
+    assert_almost_equal(to_np(parallel.nanvar(data, ddof=ddof)), [nan, var], decimal=5)
+    assert_almost_equal(to_np(parallel.nanstd(data, ddof=ddof)), [nan, var**0.5], decimal=5)
+    assert_almost_equal(to_np(parallel.covariance(data, data, ddof=ddof)), [nan, var], decimal=5)
+
+
+def test_covariance_without_common_samples(device):
+    x = tensor([[1, 2, nan, nan]], device)
+    y = tensor([[nan, nan, 3, 4]], device)
+    for ddof in (0, 1):
+        assert_array_equal(to_np(parallel.covariance(x, y, ddof=ddof)), [nan])
+        assert_array_equal(to_np(parallel.pearsonr(x, y, ddof=ddof)), [nan])
+
+
+@pytest.mark.parametrize("ddof", [1, 2])
+def test_too_few_samples_is_nan(device, ddof):
+    data = tensor([[nan, 5, nan]], device)
+    assert_array_equal(to_np(parallel.nanvar(data, ddof=ddof)), [nan])
+    assert_array_equal(to_np(parallel.nanstd(data, ddof=ddof)), [nan])
+    assert_array_equal(to_np(parallel.covariance(data, data, ddof=ddof)), [nan])
+
+
+def test_one_sample_with_ddof_0_has_no_variance(device):
+    data = tensor([[nan, 5, nan]], device)
+    assert_array_equal(to_np(parallel.nanvar(data)), [0])
+    assert_array_equal(to_np(parallel.nanstd(data)), [0])
+    assert_array_equal(to_np(parallel.covariance(data, data)), [0])
+
+
+def test_rolling_empty_window(device):
+    x = tensor([[nan, nan, nan, 1, 2, nan, nan, nan, 4]], device, torch.float64)
+    r = parallel.Rolling(x, 3)
+    expected = pd.Series(to_np(x)[0]).rolling(3, min_periods=1)
+    assert_almost_equal(to_np(r.nanmax())[0], expected.max())
+    assert_almost_equal(to_np(r.nanmin())[0], expected.min())
+    assert_almost_equal(to_np(r.nanstd())[0], expected.std(ddof=0))
+    assert_almost_equal(to_np(r.nanstd(ddof=1))[0], expected.std(ddof=1))
+    assert_almost_equal(to_np(r.nanvar())[0], expected.var(ddof=0))
+
+
 def test_nanlast(device):
     data = [[1, 2, nan], [4, nan, 2], [7, 8, 1]]
     assert_almost_equal(to_np(parallel.nanlast(tensor(data, device))), [2.0, 2.0, 1.0])
@@ -327,6 +383,26 @@ def test_masked_kth_value_median():
     expected = np.nanmedian(torch.masked_fill(x, ~mask, nan).numpy(), axis=1)
     median, _ = parallel.masked_kth_value_1d(x, mask, [0.5], dim=1)
     assert_almost_equal(median[0].squeeze(-1), expected, decimal=6)
+
+
+@pytest.mark.parametrize(
+    "k, even_mean, last_row", [(0.5, True, 5), (0.5, False, 5), (0.25, False, 4), (-0.25, False, 6)]
+)
+def test_masked_kth_value_empty_group(device, k, even_mean, last_row):
+    x = tensor([[1, 2, 3], [nan, nan, nan], [nan, 2, 3], [4, 5, 6]], device)
+    # the first rows have nothing that is both valid and inside the universe
+    mask = [[False] * 3, [True] * 3, [True, False, False], [True] * 3]
+    mask = torch.tensor(mask, device=device)
+    values, _ = parallel.masked_kth_value_1d(x, mask, [k], even_mean=even_mean)
+    assert_array_equal(to_np(values[0]).ravel(), [nan, nan, nan, last_row])
+
+
+def test_masked_kth_value_fill_is_not_empty(device):
+    x = tensor([[1, 2, 3], [nan, nan, nan]], device)
+    mask = torch.tensor([[False] * 3, [True] * 3], device=device)
+    values, _ = parallel.masked_kth_value_1d(x, mask, [0.5], nan_policy=7.0)
+    # NaNs are filled in the universe, so only the row with an empty universe has no value
+    assert_array_equal(to_np(values[0]).ravel(), [nan, 7])
 
 
 def test_clamp_1d():

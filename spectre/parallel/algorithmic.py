@@ -161,13 +161,14 @@ def unmasked_var(data: torch.Tensor, mask, dim=1, ddof=0) -> torch.Tensor:
     n = (~mask).sum(dim=dim)
     mean.div_(n)
     n.sub_(ddof)
+    too_few = n <= 0
     if dim == len(data.shape) - 1:
         mean.unsqueeze_(-1)
         n.unsqueeze_(-1)
 
     var = (data - mean) ** 2 / n
     var.masked_fill_(mask, 0)
-    return var.sum(dim=dim)
+    return var.sum(dim=dim).masked_fill_(too_few, np.nan)
 
 
 def nanvar(data: torch.Tensor, dim=1, ddof=0) -> torch.Tensor:
@@ -183,14 +184,14 @@ def nanmax(data: torch.Tensor, dim=1) -> torch.Tensor:
     data = data.clone()
     isnan = torch.isnan(data)
     data.masked_fill_(isnan, -np.inf)
-    return data.max(dim=dim)[0]
+    return data.max(dim=dim)[0].masked_fill_(isnan.all(dim=dim), np.nan)
 
 
 def nanmin(data: torch.Tensor, dim=1) -> torch.Tensor:
     data = data.clone()
     isnan = torch.isnan(data)
     data.masked_fill_(isnan, np.inf)
-    return data.min(dim=dim)[0]
+    return data.min(dim=dim)[0].masked_fill_(isnan.all(dim=dim), np.nan)
 
 
 def masked_last(data: torch.Tensor, mask: torch.Tensor, dim=1, reverse=False) -> torch.Tensor:
@@ -276,8 +277,8 @@ def unmasked_covariance(x, y, mask, dim=1, ddof=0):
     y = y - unmasked_mean(y, dim=dim, mask=mask).unsqueeze(-1)
     xy = x * y
     xy = unmasked_sum(xy, mask, dim, inplace=True)
-    xy.div_((~mask).sum(dim=dim).sub_(ddof))
-    return xy
+    n = (~mask).sum(dim=dim).sub_(ddof)
+    return xy.div_(n).masked_fill_(n <= 0, np.nan)
 
 
 def covariance(x, y, dim=1, ddof=0):
@@ -382,6 +383,7 @@ def masked_kth_value_1d(
     # sort
     sorted_data, _ = data.sort(dim=dim)
     # gather kth
+    empty = (universe_count == 0).unsqueeze(-1)
     rtn = []
     kth = []
     for k in k_percents:
@@ -406,7 +408,7 @@ def masked_kth_value_1d(
             kth_even.clamp_(0, data.shape[dim])
             even_value = sorted_data.gather(dim=dim, index=kth_even)
             kth_value = (kth_value + even_value) / 2
-        rtn.append(kth_value)
+        rtn.append(kth_value.masked_fill_(empty, np.nan))
         kth.append([kth_odd, kth_even])
 
     return rtn, kth
