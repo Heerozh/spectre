@@ -471,6 +471,46 @@ def test_one_hot_of_filter(dirty_engine, selected, cast):
     assert_array_equal(result, values == values.min())
 
 
+@pytest.mark.parametrize(
+    "fill, values_of",
+    [
+        (0.5, lambda panel: 0.5),
+        (2, lambda panel: 2),
+        (lambda: close, lambda panel: panel.close),
+    ],
+    ids=["float", "int", "factor"],
+)
+def test_masked_fill_of_filter_with_number(
+    dirty_engine, dirty_panel, selected, cast, fill, values_of
+):
+    factor, values = selected
+    high_volume = dirty_panel.volume > 1500
+    fill = fill() if callable(fill) else fill
+    result = run_dirty(dirty_engine, cast(factor).masked_fill(volume > 1500, fill))
+    assert_values(result, values.mask(high_volume, values_of(dirty_panel)))
+    assert result.dtype in ("float32", "float64")
+
+
+@pytest.mark.parametrize(
+    "fill, values_of",
+    [
+        (True, lambda panel: True),
+        (False, lambda panel: False),
+        (lambda: close > 150, lambda panel: panel.close > 150),
+    ],
+    ids=["true", "false", "filter"],
+)
+def test_masked_fill_of_filter_with_bool_stays_bool(
+    dirty_engine, dirty_panel, selected, fill, values_of
+):
+    factor, values = selected
+    high_volume = dirty_panel.volume > 1500
+    fill = fill() if callable(fill) else fill
+    result = run_dirty(dirty_engine, factor.masked_fill(volume > 1500, fill))
+    assert_array_equal(result, values.astype(bool).mask(high_volume, values_of(dirty_panel)))
+    assert result.dtype == "bool"
+
+
 # ------------------------------------ newly listed asset ------------------------------------
 # B is listed on the first day of the results, so its rolling windows have no data at first.
 

@@ -49,6 +49,12 @@ class FilterFactor(CustomFactor, ABC):
         """Return True if Rolling window all are True"""
         return AllFilter(win, inputs=(self,))
 
+    def masked_fill(self, mask, fill):
+        # a bool tensor keeps only a bool, any other value would become True
+        if isinstance(fill, (bool, FilterFactor)):
+            return super().masked_fill(mask, fill)
+        return self._numeric().masked_fill(mask, fill)
+
 
 class FilterMultiRetSelector(MultiRetSelector, FilterFactor):
     """MultiRetSelector returns CustomFactor, we're override here as FilterFactor"""
