@@ -1,11 +1,18 @@
 import numpy as np
 import pandas as pd
 import pytest
-from numpy.testing import assert_almost_equal, assert_array_equal
+from numpy.testing import assert_allclose, assert_almost_equal, assert_array_equal
 
 from spectre import factors
+from tests.conftest import DIRTY_DATES, DIVIDEND_ON, NAN_BAR, SPLIT_ON
 from tests.factors import reference as ref
-from tests.factors.helpers import assert_factor, delete, run_factor, run_late_listed
+from tests.factors.helpers import (
+    assert_factor,
+    delete,
+    run_dirty,
+    run_factor,
+    run_late_listed,
+)
 
 nan = np.nan
 SOLO = 6  # MSFT has no data on 2019-01-10
@@ -170,3 +177,70 @@ def test_forward_signal_data_of_new_listed_asset(late_listing_engine):
     result = run_late_listed(late_listing_engine, factors.ForwardSignalData(3, close, close > 15))
     # closes: [10, 20, 11, 30, 12, 13, 14]
     assert_almost_equal(result, [nan, nan, 30, 30, nan, nan, nan])
+
+
+FORWARD_WIN = 4
+# Bars 36 and 46, the bars after the split and the dividend, so rows before them cross them.
+FORWARD_SIGNAL = factors.WEEKDAY == 3
+
+
+def forward_signal_values(values):
+    """Value of the first signal in bars t to t + 3. The first 3 bars are unknown, as above."""
+    signal = pd.Series(values.index.day_of_week == 3, index=values.index)
+    window = pd.concat([values.shift(-i) for i in range(FORWARD_WIN)], axis=1)
+    masks = pd.concat([signal.shift(-i, fill_value=False) for i in range(FORWARD_WIN)], axis=1)
+    first = window.where(masks.values).bfill(axis=1).iloc[:, 0]
+    first.iloc[: FORWARD_WIN - 1] = nan
+    return first
+
+
+@pytest.mark.filterwarnings("ignore:Warning!! delay_factor is set to False")
+def test_forward_signal_data_across_split(dirty_engine, dirty_panel):
+    """It is compared with the close of its row, so it must be in the scale of that row."""
+    close = factors.OHLCV.close
+    split = dirty_panel.xs("SPLIT", level="asset")
+    scale = split.close / split.clean_close
+    first = forward_signal_values(split.clean_close)
+
+    factor = factors.ForwardSignalData(FORWARD_WIN, close, FORWARD_SIGNAL)
+    result = run_dirty(dirty_engine, factor).xs("SPLIT", level="asset")
+    assert_allclose(result.values, (first * scale).values, rtol=1e-6)
+
+    result = run_dirty(dirty_engine, factor / close - 1).xs("SPLIT", level="asset")
+    assert_allclose(result.values, (first / split.clean_close - 1).values, rtol=0, atol=1e-6)
+    # rows that cross the split and the dividend, both ex-dates are days before the signal
+    for bar in (SPLIT_ON - 2, SPLIT_ON - 1, DIVIDEND_ON - 2, DIVIDEND_ON - 1):
+        assert abs(result.iloc[bar]) < 0.1
+
+
+@pytest.mark.filterwarnings("ignore:Warning!! delay_factor is set to False")
+def test_forward_signal_data_of_volume_across_split(dirty_engine, dirty_panel):
+    """Volume has its own multipliers, more shares after a split are not more volume."""
+    split = dirty_panel.xs("SPLIT", level="asset")
+    shares = pd.Series(np.where(split.index < DIRTY_DATES[SPLIT_ON], 1, 2.0), index=split.index)
+    first = forward_signal_values(split.volume / shares)
+
+    factor = factors.ForwardSignalData(FORWARD_WIN, factors.OHLCV.volume, FORWARD_SIGNAL)
+    result = run_dirty(dirty_engine, factor).xs("SPLIT", level="asset")
+    assert_allclose(result.values, (first * shares).values, rtol=1e-6)
+
+
+@pytest.mark.filterwarnings("ignore:Warning!! delay_factor is set to False")
+def test_forward_signal_data_on_bar_without_price(dirty_engine, dirty_panel):
+    """A bar with no close has no multiplier, the data of the bars after it is still there."""
+    close = factors.OHLCV.close
+    factor = factors.ForwardSignalData(FORWARD_WIN, close, FORWARD_SIGNAL)
+    result = run_dirty(dirty_engine, factor).xs("NANBAR", level="asset")
+    expected = forward_signal_values(dirty_panel.xs("NANBAR", level="asset").close)
+    assert not np.isnan(expected.iloc[NAN_BAR])
+    assert_allclose(result.values, expected.values, rtol=1e-6)
+
+
+@pytest.mark.filterwarnings("ignore:Warning!! delay_factor is set to False")
+def test_forward_signal_data_of_other_data_is_not_adjusted(dirty_engine, dirty_panel):
+    """The rule for factors without multipliers is unchanged, they are only shifted."""
+    closes = factors.OHLCV.close * 1
+    factor = factors.ForwardSignalData(FORWARD_WIN, closes, FORWARD_SIGNAL)
+    result = run_dirty(dirty_engine, factor).xs("SPLIT", level="asset")
+    expected = forward_signal_values(dirty_panel.xs("SPLIT", level="asset").close)
+    assert_allclose(result.values, expected.values, rtol=1e-6)

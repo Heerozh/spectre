@@ -5,7 +5,7 @@
 @email: heeroz@gmail.com
 """
 
-from ..parallel import masked_first
+from ..parallel import Rolling, masked_first, pad_2d
 from .factor import CustomFactor
 
 
@@ -25,7 +25,24 @@ class RollingFirst(CustomFactor):
 
 
 class ForwardSignalData(RollingFirst):
-    """Data in future window periods where signal = True. Lookahead biased."""
+    """
+    Data in future window periods where signal = True, in the scale of the current bar, so it
+    can be compared with the data of that bar. Lookahead biased.
+    """
 
     def __init__(self, win, data, signal):
         super().__init__(win, data.shift(-win + 1), signal.shift(-win + 1))
+        self.data = data
+
+    def compute(self, data, mask):
+        multi = self.data.adjustments
+        if multi is None:
+            return super().compute(data, mask)
+
+        # a bar with no price has no multiplier, the scale of the next bar is the closest one
+        multi = self.inputs[0].compute(pad_2d(multi.flip(1)).flip(1)).to(data.device)
+
+        def _first_filter(_data, _mask, _multi):
+            return masked_first(_data * _multi, _mask, dim=2) / _multi[:, :, 0]
+
+        return data.agg(_first_filter, mask, Rolling(multi, self.win))
