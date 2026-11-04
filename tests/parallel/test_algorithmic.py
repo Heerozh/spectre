@@ -328,6 +328,64 @@ def test_rankdata_normalize_tied_row(device):
     assert_array_equal(to_np(parallel.rankdata(x, normalize=True)), [[2.5 / 4] * 4])
 
 
+@pytest.mark.parametrize("ascending", [True, False])
+@pytest.mark.parametrize("method", ["average", "dense", "ordinal"])
+@pytest.mark.parametrize("width", [3, 8, 40, 300])
+def test_rankdata_nan_does_not_tie_with_inf(device, width, method, ascending):
+    rng = np.random.default_rng(width)
+    x = rng.integers(0, 4, (200, width)).astype(np.float32)
+    x[rng.random(x.shape) < 0.2] = np.inf
+    x[rng.random(x.shape) < 0.2] = -np.inf
+    x[rng.random(x.shape) < 0.3] = nan
+    expected = scipy.stats.rankdata(x if ascending else -x, method, axis=1, nan_policy="omit")
+    result = parallel.rankdata(tensor(x, device), ascending=ascending, method=method)
+    assert_array_equal(to_np(result), expected)
+
+
+@pytest.mark.parametrize("method", ["average", "dense", "ordinal"])
+def test_rankdata_nan_does_not_tie_with_inf_along_last_dim(device, method):
+    rng = np.random.default_rng(0)
+    x = rng.integers(0, 3, (4, 30, 40)).astype(np.float64)
+    x[rng.random(x.shape) < 0.2] = -np.inf
+    x[rng.random(x.shape) < 0.2] = np.inf
+    x[rng.random(x.shape) < 0.3] = nan
+    data = tensor(x, device, torch.float64)
+    for ascending in (True, False):
+        expected = scipy.stats.rankdata(x if ascending else -x, method, axis=2, nan_policy="omit")
+        result = parallel.rankdata(data, dim=2, ascending=ascending, method=method)
+        assert_array_equal(to_np(result), expected)
+
+
+@pytest.mark.parametrize(
+    "row, ascending, method, expected",
+    [
+        ([1, -np.inf, nan], False, "average", [1, 2, nan]),
+        ([nan, -np.inf, 1], False, "average", [nan, 2, 1]),
+        ([nan, -np.inf, 1], False, "ordinal", [nan, 2, 1]),
+        ([nan, nan, -np.inf, 1], False, "ordinal", [nan, nan, 2, 1]),
+        ([nan, -np.inf, 1, -np.inf], False, "average", [nan, 2.5, 1, 2.5]),
+        ([nan, -np.inf, 1, -np.inf], False, "ordinal", [nan, 2, 1, 3]),
+        ([1, np.inf, nan], True, "average", [1, 2, nan]),
+        ([nan, np.inf, 1], True, "ordinal", [nan, 2, 1]),
+        ([np.inf, nan, np.inf, 1], True, "average", [2.5, nan, 2.5, 1]),
+        ([np.inf, nan, np.inf, 1], True, "ordinal", [2, nan, 3, 1]),
+    ],
+)
+def test_rankdata_inf_next_to_nan(device, row, ascending, method, expected):
+    result = parallel.rankdata(tensor([row], device), ascending=ascending, method=method)
+    assert_array_equal(to_np(result)[0], expected)
+
+
+@pytest.mark.parametrize("ascending", [True, False])
+@pytest.mark.parametrize("method", ["average", "dense", "ordinal"])
+def test_rankdata_bool(device, method, ascending):
+    x = np.random.default_rng(0).random((50, 7)) < 0.5
+    values = x.astype(np.float64)
+    expected = scipy.stats.rankdata(values if ascending else -values, method, axis=1)
+    result = parallel.rankdata(torch.tensor(x, device=device), ascending=ascending, method=method)
+    assert_array_equal(to_np(result), expected)
+
+
 # ------------------------------------ statistics ------------------------------------
 
 X = [[1., 2, 3, 4, 5], [10, 12, 13, 14, 16], [2, 2, 2, 2, 2, ]]  # fmt: skip

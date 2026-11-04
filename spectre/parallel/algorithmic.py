@@ -236,12 +236,16 @@ def pad_2d(data: torch.Tensor, including_inf=False, including_nan=True) -> torch
 
 def rankdata(data: torch.Tensor, dim=1, ascending=True, method="average", normalize=False):
     nans = torch.isnan(data)
-    if not ascending:
-        filled = data.masked_fill(nans, -np.inf)
+    # Ascending sort of the negated data keeps NaNs last. A descending sort puts them first, and
+    # a fill value to move them would tie with a real inf.
+    if ascending:
+        keys = data
+    elif data.dtype == torch.bool:
+        keys = ~data
     else:
-        filled = data
+        keys = -data
     # ordinal gives ties ranks in the order they appear, torch.sort only keeps it with stable=True
-    arr, sorter = torch.sort(filled, dim=dim, descending=not ascending, stable=method == "ordinal")
+    arr, sorter = torch.sort(keys, dim=dim, stable=method == "ordinal")
     rank, inv = torch.sort(sorter.to(torch.int32), dim=dim)
     del sorter
 
