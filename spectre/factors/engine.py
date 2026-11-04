@@ -8,6 +8,7 @@
 import uuid
 import warnings
 from collections.abc import Iterable
+from contextlib import contextmanager
 
 import numpy as np
 import pandas as pd
@@ -17,7 +18,7 @@ from ..data import DataLoader
 from ..parallel import DummyParallelGroupBy, ParallelGroupBy
 from ..plotting import plot_chart, plot_quantile_and_cumulative_returns
 from .datafactor import AdjustedColumnDataFactor, ColumnDataFactor
-from .factor import BaseFactor
+from .factor import BaseFactor, CustomFactor
 from .filter import FilterFactor, StaticAssets
 
 
@@ -371,6 +372,22 @@ class FactorEngine:
             raise RuntimeError("A look-ahead bias was detected, please check your factors code")
         return "No assertion raised."
 
+    @contextmanager
+    def _masks_know_the_filter(self):
+        """
+        mask='universe' reaches the filter through the engine, which `pre_compute_` binds. Lets
+        `should_delay` and `get_total_backwards_` of the factors use it before that. The values
+        are read here, a filter can't use itself as a mask, `compute_` refuses that.
+        """
+        if self._filter is not None:
+            CustomFactor._universe_delay = self._filter.should_delay()
+            CustomFactor._universe_backwards = self._filter.get_total_backwards_()
+        try:
+            yield
+        finally:
+            CustomFactor._universe_delay = False
+            CustomFactor._universe_backwards = 0
+
     def _run(self, start, end, delay_factor):
         if len(self._factors) == 0:
             raise ValueError("Please add at least one factor to engine, then run again.")
@@ -378,7 +395,8 @@ class FactorEngine:
         if delay_factor == "all":
             delays = self._factors
         else:
-            delays = {col for col, fct in self._factors.items() if fct.should_delay()}
+            with self._masks_know_the_filter():
+                delays = {col for col, fct in self._factors.items() if fct.should_delay()}
         if delay_factor is False and len(delays) > 0:
             warnings.warn(
                 "Warning!! delay_factor is set to False, "
@@ -404,9 +422,10 @@ class FactorEngine:
         delayed = len(delays) > 0 or filter_ is not self._filter
 
         # calculate how much historical data is needed
-        max_backwards = max([f.get_total_backwards_() for f in factors.values()])
-        if filter_:
-            max_backwards = max(max_backwards, filter_.get_total_backwards_())
+        with self._masks_know_the_filter():
+            max_backwards = max([f.get_total_backwards_() for f in factors.values()])
+            if filter_:
+                max_backwards = max(max_backwards, filter_.get_total_backwards_())
 
         # copy data to tensor, if any data copied, return True
         force_cleanup = self._prepare_tensor(start, end, max_backwards, delayed)

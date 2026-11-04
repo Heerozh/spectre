@@ -134,32 +134,6 @@ def test_shift_of_data_matches_pandas(dirty_engine, dirty_panel):
     assert_almost_equal(result.values, expected.values)
 
 
-def test_mask_under_a_window_matches_pandas(device):
-    """Every bar of the window is masked, so the first one needs the whole look-back of the mask."""
-    dates = pd.date_range("2020-01-01", periods=40, freq="B", tz="UTC")
-    start = 24
-    # the spike is in the MA(10) of bar start - 4 only, and out of the data of a shorter look-back
-    prices = np.full(len(dates), 100.0)
-    prices[start - 13 : start - 9] = 1000
-    # every bar has a different open, so MA(5) tells which ones are masked
-    df = pd.DataFrame({"close": prices, "open": prices + np.arange(len(dates))}, index=dates)
-    df["high"], df["low"], df["volume"] = prices, prices, 1.0
-    panel = pd.concat({"A": df, "B": df}, names=["asset", "date"]).swaplevel().sort_index()
-    ohlcv = ("open", "high", "low", "close", "volume")
-    engine = factors.FactorEngine(spectre.data.MemoryLoader(panel[list(ohlcv)], ohlcv=ohlcv))
-    if device == "cuda":
-        engine.to_cuda()
-
-    factor = factors.MA(5, inputs=[factors.OHLCV.open]).set_mask(factors.MA(10) > 150)
-    engine.add(factor, "f")
-    result = engine.run(dates[start], dates[-1]).f.xs("A", level=1)
-
-    universe = df.close.rolling(10).mean() > 150
-    masked = df.open.where(universe)
-    expected = masked.rolling(5, min_periods=1).mean().shift(1).loc[dates[start + 1] :]
-    assert_almost_equal(result.values, expected.values)
-
-
 def test_month_start_on_a_start_in_the_middle_of_a_month(dirty_engine):
     start = pd.Timestamp("2020-02-11", tz="UTC")
     dirty_engine.add(factors.IS_MONTH_START, "month_start")
@@ -182,6 +156,180 @@ def test_filter_delays_a_run_on_its_own(dirty_engine, dirty_panel):
     kept = (full.close.rolling(10).mean() > level).shift(1, fill_value=False)
     expected = full.open[kept].loc[DIRTY_DATES[41] :]
     assert_almost_equal(result.xs("FULL", level=1).values, expected.values)
+
+
+# ------------------------------------ mask='universe' ------------------------------------
+
+
+OHLCV_COLUMNS = ("open", "high", "low", "close", "volume")
+UNIVERSE_DATES = pd.date_range("2020-01-01", periods=30, freq="B", tz="UTC")
+UNIVERSE_BAR = 20
+SPIKE_START = 26
+open_price = factors.OHLCV.open
+
+
+def universe_panel():
+    """
+    The closes of A > B > C > D, so `close.top(3)` is {A, B, C}. D has the highest open.
+    Opens rise a little on every bar, so a window can tell which of its bars are masked.
+    """
+    rise = 0.01 * np.arange(len(UNIVERSE_DATES))
+    frames = {
+        asset: pd.DataFrame({"open": o + rise, "close": c}, index=UNIVERSE_DATES)
+        for asset, o, c in [("A", 3.0, 40.0), ("B", 2.0, 30.0), ("C", 1.0, 20.0), ("D", 7.0, 10.0)]
+    }
+    df = pd.concat(frames, names=["asset", "date"]).swaplevel().sort_index()
+    df["high"], df["low"], df["volume"] = df.close, df.close, 1.0
+    return df[list(OHLCV_COLUMNS)]
+
+
+def universe_engine(panel, device, universe):
+    engine = factors.FactorEngine(spectre.data.MemoryLoader(panel, ohlcv=OHLCV_COLUMNS))
+    if device == "cuda":
+        engine.to_cuda()
+    engine.set_filter(universe)
+    return engine
+
+
+def changed_panel():
+    """C falls out of the universe on `UNIVERSE_BAR`, by its close of that bar and nothing else."""
+    panel = universe_panel()
+    panel.loc[(UNIVERSE_DATES[UNIVERSE_BAR], "C"), "close"] = 1.0
+    return panel
+
+
+MASKED_FORMS = {
+    "rank": lambda mask: open_price.rank(mask=mask),
+    "zscore": lambda mask: open_price.zscore(mask=mask),
+    "demean": lambda mask: open_price.demean(mask=mask),
+    "mean": lambda mask: open_price.mean(mask=mask),
+    "median": lambda mask: open_price.median(mask=mask),
+    "std": lambda mask: open_price.std(mask=mask),
+    "quantile": lambda mask: open_price.quantile(2, mask=mask),
+    "to_weight": lambda mask: open_price.to_weight(mask=mask),
+    "filter": lambda mask: open_price.filter(mask),
+    "weekday": lambda mask: factors.WEEKDAY.rank(mask=mask),
+    "window": lambda mask: factors.MA(3, inputs=[open_price]).set_mask(mask),
+    "nested": lambda mask: open_price.rank(mask=mask) + 1,
+}
+
+
+@pytest.mark.parametrize("make_factor", MASKED_FORMS.values(), ids=MASKED_FORMS.keys())
+def test_universe_mask_delays_like_the_filter_object(device, make_factor):
+    bar = UNIVERSE_DATES[UNIVERSE_BAR]
+    start, end = UNIVERSE_DATES[5], UNIVERSE_DATES[-1]
+
+    def run(panel, mask=None):
+        universe = factors.OHLCV.close.top(3)
+        engine = universe_engine(panel, device, universe)
+        engine.add(make_factor(mask or universe), "f")
+        return engine.run(start, end).f
+
+    result = run(changed_panel(), "universe")
+    pd.testing.assert_series_equal(result, run(changed_panel()))
+    # the close of `bar` is known after the close, so nothing on `bar` can depend on it
+    pd.testing.assert_series_equal(result.loc[:bar], run(universe_panel(), "universe").loc[:bar])
+
+
+def test_universe_mask_rank_by_hand(device):
+    bar = UNIVERSE_DATES[UNIVERSE_BAR]
+    universe = factors.OHLCV.close.top(3)
+    engine = universe_engine(changed_panel(), device, universe)
+    engine.add(open_price.rank(mask="universe"), "f")
+    result = engine.run(UNIVERSE_DATES[5], UNIVERSE_DATES[-1]).f
+    # bar is the last row with the old universe, opens of A, B, C are 3, 2, 1
+    assert result.loc[bar].to_dict() == {"A": 3, "B": 2, "C": 1}
+    # the next row knows the close of bar: opens of A, B, D are 3, 2, 7
+    next_bar = UNIVERSE_DATES[UNIVERSE_BAR + 1]
+    assert result.loc[next_bar].to_dict() == {"A": 2, "B": 1, "D": 3}
+
+
+def test_universe_mask_of_a_filter_on_open_is_not_delayed(device):
+    engine = universe_engine(universe_panel(), device, open_price.top(3))
+    engine.add(open_price.rank(mask="universe"), "f")
+    start = UNIVERSE_DATES[5]
+    result = engine.run(start, UNIVERSE_DATES[-1]).f
+    assert result.index.get_level_values(0).min() == start
+
+
+def test_universe_mask_warns_when_delay_is_off(device):
+    engine = universe_engine(universe_panel(), device, factors.OHLCV.close.top(3))
+    engine.add(open_price.rank(mask="universe"), "f")
+    with pytest.warns(RuntimeWarning, match="delay_factor is set to False"):
+        engine.run(UNIVERSE_DATES[5], UNIVERSE_DATES[-1], delay_factor=False)
+
+
+def test_universe_mask_follows_the_filter_of_each_run(device):
+    factor = open_price.rank(mask="universe") + 1
+    start, end = UNIVERSE_DATES[5], UNIVERSE_DATES[-1]
+    with_filter = universe_engine(universe_panel(), device, factors.OHLCV.close.top(3))
+    with_filter.add(factor, "f")
+    no_filter = universe_engine(universe_panel(), device, None)
+    no_filter.add(factor, "f")
+
+    assert with_filter.run(start, end).index.get_level_values(0).min() == UNIVERSE_DATES[6]
+    assert no_filter.run(start, end).index.get_level_values(0).min() == start
+    # nothing is left behind for the next run, or outside of a run
+    assert with_filter.run(start, end).index.get_level_values(0).min() == UNIVERSE_DATES[6]
+    assert not factor.should_delay()
+
+
+def spike_panel():
+    """
+    Prices of `SPIKE_START - 13` to `- 11` are out of reach of a look-back that is too short, and
+    they decide MA(10) > 150 and MA(20) > 250 on the first bars of the last window of `MA(5)`.
+    The last two bars keep the filters True on the rows of the results.
+    """
+    start = SPIKE_START
+    prices = np.full(len(UNIVERSE_DATES), 100.0)
+    prices[start - 13 : start - 10] = 1000
+    prices[start - 1 : start + 1] = 1000
+    # every bar has a different open, so MA(5) tells which ones are masked
+    df = pd.DataFrame(
+        {"close": prices, "open": prices + np.arange(len(prices))}, index=UNIVERSE_DATES
+    )
+    df["high"], df["low"], df["volume"] = prices, prices, 1.0
+    panel = pd.concat({"A": df, "B": df}, names=["asset", "date"]).swaplevel().sort_index()
+    return df, panel[list(OHLCV_COLUMNS)]
+
+
+def masked_ma5(df, win, level):
+    """MA(5) of open masked by MA(win) > level, on the rows of the delayed run."""
+    universe = df.close.rolling(win).mean() > level
+    ma5 = df.open.where(universe).rolling(5, min_periods=1).mean()
+    return ma5.shift(1).loc[UNIVERSE_DATES[SPIKE_START + 1] :]
+
+
+def test_mask_under_a_window_matches_pandas(device):
+    """Every bar of the window is masked, so the first one needs the whole look-back of the mask."""
+    df, panel = spike_panel()
+    engine = universe_engine(panel, device, None)
+    factor = factors.MA(5, inputs=[open_price]).set_mask(factors.MA(10) > 150)
+    engine.add(factor, "f")
+    result = engine.run(UNIVERSE_DATES[SPIKE_START], UNIVERSE_DATES[-1]).f.xs("A", level=1)
+    assert_almost_equal(result.values, masked_ma5(df, 10, 150).values)
+
+
+def test_universe_mask_loads_the_history_of_the_filter_under_a_window(device):
+    df, panel = spike_panel()
+    engine = universe_engine(panel, device, factors.MA(10) > 150)
+    factor = factors.MA(5, inputs=[open_price]).set_mask("universe") + 0
+    engine.add(factor, "f")
+    result = engine.run(UNIVERSE_DATES[SPIKE_START], UNIVERSE_DATES[-1]).f.xs("A", level=1)
+    assert_almost_equal(result.values, masked_ma5(df, 10, 150).values)
+
+    # the history of a factor with this mask changes with the filter
+    engine.set_filter(factors.MA(20) > 250)
+    result = engine.run(UNIVERSE_DATES[SPIKE_START], UNIVERSE_DATES[-1]).f.xs("A", level=1)
+    assert_almost_equal(result.values, masked_ma5(df, 20, 250).values)
+
+
+def test_universe_mask_of_the_filter_itself_is_refused(device):
+    universe = factors.OHLCV.close.top(3, mask="universe")
+    engine = universe_engine(universe_panel(), device, universe)
+    engine.add(open_price, "f")
+    with pytest.raises(ValueError, match="possible circular reference"):
+        engine.run(UNIVERSE_DATES[5], UNIVERSE_DATES[-1])
 
 
 def test_lookahead_bias(engine):

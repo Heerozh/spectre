@@ -512,6 +512,11 @@ class CustomFactor(BaseFactor):
     def get_mask(self):
         return self._mask
 
+    # What mask='universe' takes from the filter. The engine decides the delay and the history of
+    # a run before `pre_compute_` binds it to the factors, so it leaves them here while it does.
+    _universe_delay = False
+    _universe_backwards = 0
+
     def _get_mask_factor(self):
         # todo add a placeholder factor for universe
         if type(self._mask) is str and (self._mask == "universe") is True:
@@ -528,7 +533,9 @@ class CustomFactor(BaseFactor):
         return mask.cpu() if self._computing_on_cpu else mask
 
     def get_total_backwards_(self) -> int:
-        if self._total_backwards is not None:
+        # mask='universe' anywhere upstream makes the result depend on the filter of the run
+        universe = self._universe_backwards
+        if self._total_backwards is not None and self._backwards_universe == universe:
             return self._total_backwards
 
         from .filter import FilterRawShiftFactor
@@ -540,16 +547,17 @@ class CustomFactor(BaseFactor):
                 or (0,)
             )
 
+        # the mask applies to the inputs, so it is rolled and shifted with them
         if isinstance(self._mask, BaseFactor):
-            # 'universe' str mask backward already calculated in engine
-            # the mask applies to the inputs, so it is rolled and shifted with them
-            mask_backward = self._get_mask_factor().get_total_backwards_()
-            backwards = max(mask_backward, backwards)
+            backwards = max(self._mask.get_total_backwards_(), backwards)
+        elif self._mask is not None:
+            backwards = max(universe, backwards)
 
         backwards = backwards + self.win - 1
         if isinstance(self, (RawShiftFactor, FilterRawShiftFactor)):
             backwards += max(self.periods, 0)
         self._total_backwards = backwards
+        self._backwards_universe = universe
         return self._total_backwards
 
     def should_delay(self) -> bool:
@@ -565,6 +573,8 @@ class CustomFactor(BaseFactor):
                         return True
         if isinstance(self._mask, BaseFactor):
             ret = max(ret, self._mask.should_delay())
+        elif self._mask is not None:
+            ret = max(ret, self._universe_delay)
         return ret
 
     def set_delay(self, delay):
