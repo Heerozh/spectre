@@ -540,6 +540,42 @@ def test_ex_date_timezones(tmp_path, bar_time, split_time, price_multi):
     assert list(df.price_multi) == price_multi
 
 
+@pytest.mark.parametrize(
+    "bar_time, price_multi_a, price_multi_b",
+    [
+        # without a timezone on the bars it's the time as written, so on the bar of that day
+        ("00:00:00", [0.5, 0.5, 1, 1], [0.5, 1, 1, 1]),
+        # 00:00-04:00 is 23:00-05:00 of the day before, the bar after it is the bar of DAYS[1]
+        ("00:00:00-05:00", [0.5, 0.5, 1, 1], [0.5, 1, 1, 1]),
+        # 04:00 and 05:00 UTC, after the bar of that day
+        ("00:00:00+00:00", [0.5, 0.5, 0.5, 1], [0.5, 0.5, 1, 1]),
+    ],
+)
+def test_ex_date_files_in_different_utc_offsets(tmp_path, bar_time, price_multi_a, price_multi_b):
+    closes = {f"{day} {bar_time}": 100.0 for day in DAYS[:4]}
+    prices = {"A": closes, "B": closes}
+    # the two files are on both sides of a change of the daylight saving time
+    loader = events_loader(tmp_path, prices, {}, {f"{DAYS[2]} 00:00:00-05:00": 0.5})
+    write_events(tmp_path / "splits", "B", "ratio", {f"{DAYS[1]} 00:00:00-04:00": 0.5})
+    df = loader.test_load()
+    assert list(df.price_multi.xs("A", level=1)) == price_multi_a
+    assert list(df.price_multi.xs("B", level=1)) == price_multi_b
+
+
+def test_ex_date_files_with_and_without_a_timezone(tmp_path):
+    closes = {f"{day} 00:00:00-05:00": 100.0 for day in DAYS[:4]}
+    prices = {"A": closes, "B": closes}
+    dividends = {f"{DAYS[1]} 00:00:00-05:00": 1.0}
+    loader = events_loader(tmp_path, prices, dividends, {f"{DAYS[1]} 00:00:00-05:00": 0.5})
+    write_events(tmp_path / "dividends", "B", "amount", {DAYS[2]: 1.0})
+    write_events(tmp_path / "splits", "B", "ratio", {DAYS[2]: 0.5})
+    df = loader.test_load()
+    assert list(df["split_ratio"].xs("A", level=1)) == [0.5, 1, 1, 1]
+    assert list(df["split_ratio"].xs("B", level=1)) == [1, 0.5, 1, 1]
+    assert list(df["ex-dividend"].xs("A", level=1)) == [1, 0, 0, 0]
+    assert list(df["ex-dividend"].xs("B", level=1)) == [0, 1, 0, 0]
+
+
 def test_daily_ex_date_of_intraday_bars(tmp_path, device):
     closes = {f"{DAYS[0]} {time}": 100.0 for time in ("09:30:00", "09:35:00", "09:40:00")}
     closes |= {f"{DAYS[1]} {time}": 50.0 for time in ("09:30:00", "09:35:00", "09:40:00")}

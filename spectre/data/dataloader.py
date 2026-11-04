@@ -50,25 +50,18 @@ class DataLoader:
     @staticmethod
     def _attach_events(events: pd.Series, bars: pd.MultiIndex, how: str) -> pd.Series:
         """
-        Reindex `events`, indexed by (asset, ex-date), to `bars`, indexed by (date, asset). An
-        ex-date has no bar on a halt, or when the bars are intraday and the ex-dates are days, so
-        an event goes to the first bar of its asset on or after the ex-date, moving it to an earlier
-        bar would be look-ahead. Events sharing a bar are merged by `how`, a name of a groupby
-        aggregation. An event after the last bar of its asset is dropped, no bars are after it.
+        Reindex `events`, indexed by (asset, ex-date), to `bars`, indexed by (date, asset) in the
+        same timezone. An ex-date has no bar on a halt, or when the bars are intraday and the
+        ex-dates are days, so an event goes to the first bar of its asset on or after the ex-date,
+        moving it to an earlier bar would be look-ahead. Events sharing a bar are merged by `how`,
+        a name of a groupby aggregation. An event after the last bar of its asset is dropped, no
+        bars are after it.
         """
         dates = bars.get_level_values(0)
-        ex_dates = events.index.get_level_values(1)
-        if dates.tz is None or ex_dates.tz is None:
-            # an ex-date is a local date, so without a timezone use the time as written on both
-            # sides
-            ex_dates = ex_dates.tz_localize(None).tz_localize(dates.tz)
-        else:
-            ex_dates = ex_dates.tz_convert(dates.tz)
-        ex_dates = ex_dates.as_unit(dates.unit)
         left = pd.DataFrame(
             {
                 "asset": events.index.get_level_values(0),
-                "ex_date": ex_dates,
+                "ex_date": events.index.get_level_values(1).as_unit(dates.unit),
                 "value": events.to_numpy(),
             }
         )

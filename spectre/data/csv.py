@@ -38,11 +38,23 @@ def _ffill_zeros(df: pd.DataFrame, groups) -> pd.DataFrame:
     return df
 
 
-def _concat_events(events: dict) -> pd.Series:
-    """Join {asset: events by ex-date, or None}, to a series indexed by (asset, ex-date)."""
-    events = {asset: series for asset, series in events.items() if series is not None}
+def _concat_events(events: dict, tz) -> pd.Series:
+    """
+    Join {asset: events by ex-date, or None}, to a series indexed by (asset, ex-date). The ex-dates
+    of each asset are converted to `tz`, the timezone of the prices, because the files can be in
+    different UTC offsets, or have no timezone.
+    """
+
+    def in_tz(series):
+        ex_dates = series.index
+        if tz is None or ex_dates.tz is None:
+            # an ex-date is a local date, so if one side has no timezone, keep the time as written
+            return series.set_axis(ex_dates.tz_localize(None).tz_localize(tz))
+        return series.set_axis(ex_dates.tz_convert(tz))
+
+    events = {asset: in_tz(series) for asset, series in events.items() if series is not None}
     if not events:
-        index = pd.MultiIndex.from_arrays([pd.Index([], dtype=str), pd.DatetimeIndex([])])
+        index = pd.MultiIndex.from_arrays([pd.Index([], dtype=str), pd.DatetimeIndex([], tz=tz)])
         return pd.Series(index=index, dtype=np.float64)
     return pd.concat(events, sort=False)
 
@@ -249,7 +261,8 @@ class CsvDirLoader(DataLoader):
                 return _df.groupby(level=0).agg("sum")
 
             dfs = {k: _agg_duplicated(v) for k, v in dfs.items()}
-            div = self._attach_events(_concat_events(dfs), df.index, "sum")
+            div = _concat_events(dfs, df.index.levels[0].tz)
+            div = self._attach_events(div, df.index, "sum")
             div = div.fillna(0)
             div.name = self._adjustments[0]
             # div = df.rename_axis(['asset', 'date'])
@@ -266,7 +279,7 @@ class CsvDirLoader(DataLoader):
                 return _df[~_df.index.duplicated(keep="last")]
 
             dfs = {k: _drop_na_and_duplicated(v) for k, v in dfs.items()}
-            splits = _concat_events(dfs)
+            splits = _concat_events(dfs, df.index.levels[0].tz)
             if self._split_ratio_is_fraction:
                 from fractions import Fraction
 
