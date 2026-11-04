@@ -188,6 +188,10 @@ rows into padded 2D tensors, using NaN or `False` for padding:
   `alg.run_engine` with a stub returning the rows up to the current bar, and replays those bars by
   firing `EveryBarData`, `MarketOpen` and `MarketClose`. In simulation only the sign of an event's
   offset matters: negative fires before the open or close, otherwise after.
+- A simulation has the whole of the current bar, so `alg._bar_closed` says how much of it has
+  happened. Until it is True, `get_price_matrix` ends prices that are only known after a close at
+  the bar before, and delays a filter that reads such data. `MarketClose` sees the close also with
+  a negative offset, because the blotter fills there.
 - Blotter prices are raw. `SimulationBlotter.market_close` pushes dividends and splits to the
   portfolio, separately from the factor-side adjustments. A long receives the net dividend and a
   short pays the gross one.

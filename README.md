@@ -977,13 +977,20 @@ Help method for calling `engine.get_price_matrix`, `name` specifies which engine
 Returns the historical asset prices, adjusted and filtered by the current time.
 **Slow**
 
+In a backtest, before the current bar closes, prices that are only known after the close end at the
+bar before it, and a filter that reads such data decides on the bars before it. So at `MarketOpen`
+the matrix of `OHLCV.close` ends at the previous bar, and the one of `OHLCV.open` keeps the open of
+the current bar. At `MarketClose` it has the close of the current bar, also with a negative offset,
+because the blotter fills on that price.
+
 
 ### CustomAlgorithm.record
 
 `self.record(**kwargs)`
 **context:** *rebalance*
 
-Record the data and pass all when calling `terminate`, use `column = value` format.
+Record the data and pass all when calling `terminate`, use `column = value` format. The records
+are of the current run, the next run starts empty.
 
 
 ### SimulationBlotter.set_commission
@@ -1151,10 +1158,10 @@ return.
 class Position:
     shares = None
     average_price = None  # break-even price, it can reach zero or go negative after selling
-    cost_basis = None     # average cost of the shares still held
+    cost_basis = None  # average cost of the shares still held
     last_price = None
-    unrealized = None     # P&L of the shares still held, realized + unrealized is the total P&L
-    realized = None       # including the cash paid for what a split leaves over
+    unrealized = None  # P&L of the shares still held, realized + unrealized is the total P&L
+    realized = None  # including the cash paid for what a split leaves over
 ```
 
 `self.blotter.portfolio.value` Current portfolio value
