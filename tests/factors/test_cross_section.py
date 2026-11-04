@@ -153,15 +153,15 @@ def test_median(engine):
 def test_median_groupby_asset(engine):
     """groupby='asset' calculates the median of the whole loaded data of each asset."""
     factor = factors.Returns().round(3).median(groupby="asset")
-    # closes from 2018-12-31 to 2019-01-15 are loaded, so returns are from 2019-01-02
+    # closes from 2018-12-28 to 2019-01-15 are loaded, so returns are from 2018-12-31
     returns = {
-        a: ref.returns(ref.daily_prices(a).close).loc["2019-01-02" : ref.END].round(3)
+        a: ref.returns(ref.daily_prices(a).close).loc["2018-12-31" : ref.END].round(3)
         for a in ref.ASSETS
     }
     aapl, msft = run_factor(engine, factor, check_bias=False)
     assert_almost_equal(aapl, [np.median(returns["AAPL"])] * 9)
     assert_almost_equal(msft, [np.median(returns["MSFT"])] * 8)
-    assert_almost_equal([np.median(returns["AAPL"]), np.median(returns["MSFT"])], [0.0085, 0.007])
+    assert_almost_equal([np.median(returns["AAPL"]), np.median(returns["MSFT"])], [0.0, 0.0045])
 
 
 def test_xs_sum_of_a_date_without_values(dirty_engine, dirty_panel):
@@ -270,8 +270,9 @@ def test_weighted_zscore_of_constant_rows(device, dtype):
 def test_zscore_shift_with_filter(engine):
     """mask bug of zscore and shift"""
     engine.set_filter(factors.OHLCV.open.top(2))
-    expected_aapl = [nan, 1, 1, 1, 1, 1, 1, nan, 1, 1]
-    expected_msft = [nan] + [-1.0] * 8
+    # the bar before the range is loaded, so the first row has a value too
+    expected_aapl = [1, 1, 1, 1, 1, 1, 1, nan, 1, 1]
+    expected_msft = [-1.0] * 9
     assert_factor(
         engine, factors.OHLCV.open.zscore().shift(1), expected_aapl, expected_msft, delay=False
     )
@@ -473,8 +474,10 @@ def test_mad_clamp_groupby_asset(engine):
 
 @pytest.mark.parametrize("mean", [False, True])
 def test_mad_clamp_close(engine, mean):
-    # MAD of the closes from 2019-01-02 to 2019-01-15 (lookahead biased), then delayed
-    expected = [ref.mad_clamp(ref.loaded_closes(a), 2, mean)[:-1] for a in ref.ASSETS]
+    # MAD of the closes from 2018-12-31 to 2019-01-15 (lookahead biased), then delayed
+    expected = [
+        ref.mad_clamp(ref.loaded_closes(a, "2018-12-31"), 2, mean)[1:-1] for a in ref.ASSETS
+    ]
     assert_factor(
         engine, close.mad_clamp(2, groupby="asset", mean=mean), *expected, check_bias=False
     )
@@ -574,7 +577,8 @@ def test_winsorizing_close(engine):
     factor = close.winsorizing(0.2)
     factor.groupby = "asset"
     expected = [
-        scipy.stats.mstats.winsorize(ref.loaded_closes(a), [0.2, 0.2])[:-1] for a in ref.ASSETS
+        scipy.stats.mstats.winsorize(ref.loaded_closes(a, "2018-12-31"), [0.2, 0.2])[1:-1]
+        for a in ref.ASSETS
     ]
     assert_factor(engine, factor, *expected, check_bias=False)
 

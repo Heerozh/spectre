@@ -90,8 +90,8 @@ def one_engine_results(adjusted_daily_loader):
             self.blotter.set_slippage(0, 0)
 
         def rebalance(self, data, history):
-            # don't buy MSFT on the first day
-            if 103.98 <= data.loc["MSFT", "ma5"] <= 103.99:
+            # don't buy MSFT on the first day, MA5 of 01-04 to 01-11 is 103.9516
+            if 103.95 <= data.loc["MSFT", "ma5"] <= 103.96:
                 data = data.drop("MSFT", axis=0)
             if "MSFT" in data.index:
                 self.msft_ma5.append(data.loc["MSFT", "ma5"])

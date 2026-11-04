@@ -531,20 +531,25 @@ class CustomFactor(BaseFactor):
         if self._total_backwards is not None:
             return self._total_backwards
 
+        from .filter import FilterRawShiftFactor
+
         backwards = 0
         if self.inputs:
             backwards = max(
                 [up.get_total_backwards_() for up in self.inputs if isinstance(up, BaseFactor)]
                 or (0,)
             )
-        backwards = backwards + self.win - 1
 
         if isinstance(self._mask, BaseFactor):
             # 'universe' str mask backward already calculated in engine
+            # the mask applies to the inputs, so it is rolled and shifted with them
             mask_backward = self._get_mask_factor().get_total_backwards_()
-            self._total_backwards = max(mask_backward, backwards)
-        else:
-            self._total_backwards = backwards
+            backwards = max(mask_backward, backwards)
+
+        backwards = backwards + self.win - 1
+        if isinstance(self, (RawShiftFactor, FilterRawShiftFactor)):
+            backwards += max(self.periods, 0)
+        self._total_backwards = backwards
         return self._total_backwards
 
     def should_delay(self) -> bool:

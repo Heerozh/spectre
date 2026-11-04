@@ -136,7 +136,7 @@ class FactorEngine:
 
     # private:
 
-    def _prepare_tensor(self, start, end, backwards):
+    def _prepare_tensor(self, start, end, backwards, delayed=False):
         # Check cache, just in case, if use some ML techniques, engine may be called repeatedly
         # with same date range.
         backwards = min(backwards, self.max_backwards)
@@ -165,10 +165,12 @@ class FactorEngine:
         # check history data is insufficient
         df.index = df.index.remove_unused_levels()
         history_win = df.index.levels[0].get_indexer([start], method="bfill")[0]
-        if history_win < backwards:
+        # a delayed run drops its first bar, which needs only `backwards - 1` of them
+        required = backwards - 1 if delayed else backwards
+        if history_win < required:
             warnings.warn(
                 "Historical data seems insufficient. "
-                f"{backwards} rows of historical data are required, "
+                f"{required} rows of historical data are required, "
                 f"but only {history_win} rows are obtained. "
                 "It is also possible that `calender_asset` of the loader is not set, "
                 "some out of trading hours data will cause indexing problems.",
@@ -399,6 +401,7 @@ class FactorEngine:
         if filter_ and delay_factor and (filter_.should_delay() or delay_factor == "all"):
             filter_ = filter_.shift(1)
         factors = {col: col in delays and fct.shift(1) or fct for col, fct in self._factors.items()}
+        delayed = len(delays) > 0 or filter_ is not self._filter
 
         # calculate how much historical data is needed
         max_backwards = max([f.get_total_backwards_() for f in factors.values()])
@@ -406,7 +409,7 @@ class FactorEngine:
             max_backwards = max(max_backwards, filter_.get_total_backwards_())
 
         # copy data to tensor, if any data copied, return True
-        force_cleanup = self._prepare_tensor(start, end, max_backwards)
+        force_cleanup = self._prepare_tensor(start, end, max_backwards, delayed)
 
         # clean up before start, and if _prepare_tensor returns new data,
         # then force clean up any caches in sub factors
@@ -445,7 +448,7 @@ class FactorEngine:
         for f in factors.values():
             f.clean_up_()
 
-        return results, shifted_mask, len(delays) > 0
+        return results, shifted_mask, delayed
 
     def run(
         self, start: str | pd.Timestamp, end: str | pd.Timestamp, delay_factor=True

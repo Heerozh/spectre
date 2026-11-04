@@ -1,3 +1,5 @@
+import warnings
+
 import numpy as np
 import pandas as pd
 import pytest
@@ -69,6 +71,117 @@ def test_insufficient_history_warning(engine):
     engine.add(factors.SMA(20), "test")
     with pytest.warns(RuntimeWarning, match="Historical data seems insufficient"):
         engine.run("2014-10-27", "2014-11-30")
+
+
+def test_delayed_run_needs_no_bar_before_the_data(dirty_engine):
+    """The first bar of a delayed run is dropped, so it can start on the first bar of the data."""
+    dirty_engine.add(close, "close")
+    with warnings.catch_warnings():
+        warnings.simplefilter("error")
+        result = dirty_engine.run(DIRTY_DATES[0], DIRTY_DATES[5])
+    assert result.index.get_level_values(0).min() == DIRTY_DATES[1]
+
+
+# ------------------------------------ history ------------------------------------
+
+
+def run_on(engine, start, *others, delay_factor=True):
+    """Run the factor in column `f`, with `others` next to it, each of them may load more data."""
+    for i, other in enumerate(others):
+        engine.add(other, f"other{i}", replace=True)
+    return engine.run(start, DIRTY_DATES[-1], delay_factor=delay_factor).f
+
+
+def assert_same_rows(result, expected):
+    """Same values on the rows of both, the first bar is dropped if only one run is delayed."""
+    common = result.index.intersection(expected.index)
+    assert len(common.get_level_values(0).unique()) >= len(DIRTY_DATES) - 41
+    common = common.drop("HALTED", level=1)
+    pd.testing.assert_series_equal(result.loc[common], expected.loc[common], check_exact=False)
+
+
+@pytest.mark.parametrize(
+    "make_factor",
+    [
+        lambda: factors.MA(5, inputs=[close.shift(3)]),
+        lambda: factors.RSI(14).shift(1),
+        lambda: factors.MA(5).shift(4),
+        lambda: factors.MA(5, inputs=[(close > 100).float().shift(3)]),
+        lambda: factors.OHLCV.open.shift(2),
+    ],
+    ids=["ma_of_shift", "shift_of_rsi", "shift_of_ma", "bool_shift", "open"],
+)
+def test_result_does_not_depend_on_start(dirty_engine, make_factor):
+    start = DIRTY_DATES[40]
+    dirty_engine.add(make_factor(), "f")
+    result = run_on(dirty_engine, start)
+    assert result.notna().any()
+    # all of the data
+    from_the_beginning = run_on(dirty_engine, DIRTY_DATES[0])
+    assert_same_rows(result, from_the_beginning)
+    # MA(30) loads more history than the factor
+    with_other_factors = run_on(dirty_engine, start, factors.MA(30))
+    assert_same_rows(result, with_other_factors)
+
+
+def test_shift_of_data_matches_pandas(dirty_engine, dirty_panel):
+    start = DIRTY_DATES[40]
+    full = dirty_panel.xs("FULL", level="asset")
+    dirty_engine.add(factors.MA(5, inputs=[close.shift(3)]), "f")
+    result = dirty_engine.run(start, DIRTY_DATES[-1]).f.xs("FULL", level=1)
+    # delayed by one more bar, and the delay drops the first bar
+    expected = full.close.shift(3).rolling(5).mean().shift(1).loc[DIRTY_DATES[41] :]
+    assert_almost_equal(result.values, expected.values)
+
+
+def test_mask_under_a_window_matches_pandas(device):
+    """Every bar of the window is masked, so the first one needs the whole look-back of the mask."""
+    dates = pd.date_range("2020-01-01", periods=40, freq="B", tz="UTC")
+    start = 24
+    # the spike is in the MA(10) of bar start - 4 only, and out of the data of a shorter look-back
+    prices = np.full(len(dates), 100.0)
+    prices[start - 13 : start - 9] = 1000
+    # every bar has a different open, so MA(5) tells which ones are masked
+    df = pd.DataFrame({"close": prices, "open": prices + np.arange(len(dates))}, index=dates)
+    df["high"], df["low"], df["volume"] = prices, prices, 1.0
+    panel = pd.concat({"A": df, "B": df}, names=["asset", "date"]).swaplevel().sort_index()
+    ohlcv = ("open", "high", "low", "close", "volume")
+    engine = factors.FactorEngine(spectre.data.MemoryLoader(panel[list(ohlcv)], ohlcv=ohlcv))
+    if device == "cuda":
+        engine.to_cuda()
+
+    factor = factors.MA(5, inputs=[factors.OHLCV.open]).set_mask(factors.MA(10) > 150)
+    engine.add(factor, "f")
+    result = engine.run(dates[start], dates[-1]).f.xs("A", level=1)
+
+    universe = df.close.rolling(10).mean() > 150
+    masked = df.open.where(universe)
+    expected = masked.rolling(5, min_periods=1).mean().shift(1).loc[dates[start + 1] :]
+    assert_almost_equal(result.values, expected.values)
+
+
+def test_month_start_on_a_start_in_the_middle_of_a_month(dirty_engine):
+    start = pd.Timestamp("2020-02-11", tz="UTC")
+    dirty_engine.add(factors.IS_MONTH_START, "month_start")
+    result = dirty_engine.run(start, DIRTY_DATES[-1]).month_start.xs("FULL", level=1)
+    dates = result.index[result]
+    assert list(dates) == [pd.Timestamp("2020-03-02", tz="UTC")]
+
+
+def test_filter_delays_a_run_on_its_own(dirty_engine, dirty_panel):
+    """Open needs no delay, but the filter does, and that delays the run."""
+    start = DIRTY_DATES[40]
+    full = dirty_panel.xs("FULL", level="asset")
+    level = full.close.rolling(10).mean().iloc[40] - 1
+    dirty_engine.set_filter(factors.MA(10) > level)
+    dirty_engine.add(factors.OHLCV.open, "open")
+    result = dirty_engine.run(start, DIRTY_DATES[-1]).open
+    # the rule of a delayed run: its first bar is dropped
+    assert result.index.get_level_values(0).min() == DIRTY_DATES[41]
+
+    kept = (full.close.rolling(10).mean() > level).shift(1, fill_value=False)
+    expected = full.open[kept].loc[DIRTY_DATES[41] :]
+    assert_almost_equal(result.xs("FULL", level=1).values, expected.values)
 
 
 def test_lookahead_bias(engine):
@@ -198,7 +311,7 @@ def test_keep_cache(engine_no_calendar):
     engine.run("2019-01-01", "2019-01-05")
     assert ma5._cache.shape[0] == shape1[0]
     assert ma5._cache.shape[1] > shape1[1]
-    assert tuple(ma5._cache.shape) == (2, 13)
+    assert tuple(ma5._cache.shape) == (2, 14)
 
 
 def test_device(engine_no_calendar, device):

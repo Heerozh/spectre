@@ -27,10 +27,8 @@ def weekday(df):
 
 
 def test_shift(engine):
-    # shift doesn't load more history data, so the first 2 rows of loaded data are nan
+    # shift loads the history it needs, so there are no nans at the head
     aapl, msft = ref.expected(lambda df: df.close.shift(2))
-    aapl[0:2] = nan
-    msft[0:2] = nan
     assert_factor(engine, close.shift(2), aapl, msft)
 
 
@@ -52,8 +50,6 @@ def test_filter_shift(engine):
     # FilterFactor.shift supports bool
     aapl, msft = run_factor(engine, (close > 150).shift(1))
     expected = ref.expected(lambda df: (df.close > 150).shift(1, fill_value=False))
-    # the first loaded row is filled with False
-    expected[0][0] = False
     assert_array_equal(aapl, expected[0])
     assert_array_equal(msft, [False] * 8)
 
