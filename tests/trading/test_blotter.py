@@ -434,6 +434,63 @@ def test_interest_of_daily_bars():
     assert blotter.portfolio.cash == pytest.approx(100000 + 100 * 100 - 3 * 10)
 
 
+@pytest.mark.parametrize(
+    "day_2, dividends, split_ratios",
+    [
+        # limits of 99 to 121, around the last close of day 1
+        ([100, 112, 120, 122], None, None),
+        ([100, 112, 120, 122], {}, {}),
+        # ex-date on day 2: the last close of day 1 is worth (110 - 1) * 0.5 = 54.5 today,
+        # limits of 49.05 to 59.95
+        ([50, 56, 59, 60], {8: 1}, {8: 0.5}),
+    ],
+    ids=["no_adjustments", "no_events", "dividend_and_split"],
+)
+def test_daily_curb_of_intraday_bars(day_2, dividends, split_ratios):
+    days = pd.bdate_range("2020-01-06", periods=3, tz="UTC")
+    hours = pd.timedelta_range("14:30:00", periods=4, freq="h")
+    stamps = pd.DatetimeIndex([day + hour for day in days for hour in hours])
+    day_0 = [90, 100, 120, 100]  # there is no previous day to compare with, so no limits
+    day_1 = [105, 109, 110, 110]  # limits of 90 to 110, around the last close of day 0
+    loader = asset_a_loader(stamps, day_0 + day_1 + day_2, dividends, split_ratios)
+    blotter = trading.SimulationBlotter(loader, daily_curb=0.1)
+
+    filled = []
+    for stamp in stamps:
+        blotter.set_datetime(stamp)
+        blotter.market_open(None)
+        blotter.set_price("close")
+        filled.append(blotter.order("A", 1))
+    assert filled == [True] * 4 + [True, True, False, False] + [True, True, True, False]
+
+
+def test_daily_curb_of_intraday_bars_with_missing_data():
+    days = pd.bdate_range("2020-01-06", periods=3, tz="UTC")
+    stamps = pd.DatetimeIndex([day + pd.Timedelta(hours=h) for day in days for h in (14, 15)])
+    rows = [
+        # the last close before day 2 is on bar 2, limits of 94.5 to 115.5
+        ("A", 0, 100), ("A", 1, 100), ("A", 2, 105), ("A", 3, nan), ("A", 4, 115), ("A", 5, 116),
+        # no bars on day 1, the last close before day 2 is on day 0, limits of 180 to 220
+        ("B", 0, 200), ("B", 1, 200), ("B", 4, 219), ("B", 5, 221),
+    ]  # fmt: skip
+    df = pd.DataFrame(rows, columns=["asset", "bar", "close"])
+    df["date"] = stamps[df.bar]
+    df = df.set_index(["date", "asset"]).sort_index().drop(columns="bar")
+    ohlcv = ("close",) * 4 + ("volume",)
+    df["volume"] = 1e6
+    blotter = trading.SimulationBlotter(spectre.data.MemoryLoader(df, ohlcv), daily_curb=0.1)
+
+    blotter.set_datetime(stamps[4])
+    blotter.market_open(None)
+    blotter.set_price("close")
+    assert blotter.order("A", 1) is True
+    assert blotter.order("B", 1) is True
+    blotter.set_datetime(stamps[5])
+    blotter.set_price("close")
+    assert blotter.order("A", 1) is False
+    assert blotter.order("B", 1) is False
+
+
 def test_intraday(intraday_loader):
     blotter = trading.SimulationBlotter(intraday_loader, capital_base=200000)
     blotter.set_commission(0, 0.005, 1)

@@ -271,6 +271,15 @@ class BaseBlotter:
         raise NotImplementedError("abstractmethod")
 
 
+def _last_of_previous_day(rows):
+    """
+    `rows` are the bars of one asset. Returns, for every bar, the last valid values before the day
+    of that bar, which on daily bars is the previous bar.
+    """
+    days = rows.index.get_level_values(0).normalize()
+    return rows.ffill().shift(1).iloc[days.searchsorted(days)].set_axis(rows.index)
+
+
 class SimulationBlotter(BaseBlotter, EventReceiver):
     Order = namedtuple(
         "Order", ["date", "asset", "amount", "price", "fill_price", "commission", "realized"]
@@ -304,7 +313,7 @@ class SimulationBlotter(BaseBlotter, EventReceiver):
             lasts = (
                 df[sel_cols]
                 .groupby(level=1, group_keys=False, observed=False)
-                .apply(lambda x: x.ffill().shift(1))
+                .apply(_last_of_previous_day)
             )
             df["__last_close"] = lasts[sel_cols[0]]
             df["__last_div"] = lasts[sel_cols[1]]
@@ -314,7 +323,7 @@ class SimulationBlotter(BaseBlotter, EventReceiver):
             df["__last_close"] = (
                 df[ohlcv[3]]
                 .groupby(level=1, group_keys=False, observed=False)
-                .apply(lambda x: x.ffill().shift(1))
+                .apply(_last_of_previous_day)
             )
             curb_cols = ["__last_close"]
         self._data = df
