@@ -323,6 +323,45 @@ def test_factor_wise_kth_value(kth):
     assert_almost_equal(result.numpy(), np.repeat(expected[:, None], 5, axis=1), decimal=6)
 
 
+@pytest.mark.parametrize("kth", [1, 2, 3])
+def test_factor_wise_kth_value_of_missing_inputs(device, kth):
+    """NaN is not one of the values, and there is no kth value if fewer inputs have one."""
+    xs = [x.to(device=device, dtype=torch.float64).repeat(2, 1) for x in FACTOR_VALUES]
+    xs[1][0] = nan  # one input is out on date 0
+    xs[1][1] = xs[2][1] = nan  # two inputs on date 1
+    for x in xs:
+        x[2] = nan  # all on date 2
+    xs[0][3] = np.inf  # a real value, not the same as a missing one
+    result = factors.FactorWiseKthValue(kth, []).compute(*xs).cpu().numpy()
+
+    expected = []
+    for date in range(result.shape[0]):
+        means = [x[date].cpu().numpy().mean() for x in xs]
+        valid = np.sort([m for m in means if not np.isnan(m)])
+        expected.append(valid[kth - 1] if kth <= len(valid) else nan)
+    assert_allclose(result, np.repeat(np.array(expected)[:, None], 5, axis=1), rtol=1e-12)
+
+
+@pytest.mark.filterwarnings("ignore:Warning!! delay_factor is set to False")
+@pytest.mark.filterwarnings("ignore:Historical data seems insufficient")
+def test_factor_wise_kth_value_on_engine(dirty_engine):
+    """An input with no value on the first dates, like a long rolling window at the start."""
+    inputs = [factors.Returns(win=20), factors.Returns(win=5), factors.Returns(win=2)]
+    for kth in (1, 2, 3):
+        dirty_engine.add(factors.FactorWiseKthValue(kth, inputs=inputs), f"k{kth}")
+    for i, x in enumerate(inputs):
+        dirty_engine.add(x, f"x{i}")
+    result = dirty_engine.run(DIRTY_DATES[5], DIRTY_DATES[-1], delay_factor=False)
+
+    means = result[["x0", "x1", "x2"]].groupby(level="date").mean().values
+    for date, values in enumerate(means):
+        valid = np.sort(values[~np.isnan(values)])
+        row = result.loc[DIRTY_DATES[5 + date], ["k1", "k2", "k3"]].iloc[0].values
+        expected = [valid[k] if k < len(valid) else nan for k in range(3)]
+        assert_allclose(row, expected, rtol=1e-6, err_msg=str(DIRTY_DATES[5 + date]))
+    assert np.isnan(means[:, 0]).any()
+
+
 def test_factor_wise_zscore():
     result = factors.FactorWiseZScore().compute(*FACTOR_VALUES)
     means = np.stack([x.numpy().mean(axis=1) for x in FACTOR_VALUES], axis=1)

@@ -379,7 +379,10 @@ class CrossSectionR2(CrossSectionFactor):
 
 
 class FactorWiseKthValue(CrossSectionFactor):
-    """The kth value of all factors sorted in ascending order, grouped by each datetime"""
+    """
+    The kth value of all factors sorted in ascending order, grouped by each datetime.
+    Factors with no value on a datetime are left out, it is NaN if less than k factors remain.
+    """
 
     def __init__(self, kth, inputs=None):
         super().__init__(1, inputs)
@@ -388,8 +391,9 @@ class FactorWiseKthValue(CrossSectionFactor):
     def compute(self, *data):
         mx = torch.stack([nanmean(x, dim=1) for x in data], dim=-1)
         nans = torch.isnan(mx)
-        mx.masked_fill_(nans, -np.inf)
+        mx.masked_fill_(nans, np.inf)
         ret = torch.kthvalue(mx, self.kth, dim=1, keepdim=True).values
+        ret.masked_fill_((~nans).sum(dim=1, keepdim=True) < self.kth, np.nan)
         return ret.expand(ret.shape[0], data[0].shape[1])
 
 
