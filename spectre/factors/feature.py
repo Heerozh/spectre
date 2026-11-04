@@ -6,15 +6,17 @@
 """
 
 import warnings
+from collections.abc import Sequence
 
+import numpy as np
 import pandas as pd
 import torch
 
 from ..config import Global
-from ..parallel import nanmean, nanstd, nansum
+from ..parallel import Rolling, nanlast, nanmean, nanstd, nansum
 from .basic import Returns
 from .datafactor import DatetimeDataFactor
-from .factor import CrossSectionFactor, CustomFactor
+from .factor import BaseFactor, CrossSectionFactor, CustomFactor, RawShiftFactor
 from .filter import FilterFactor
 
 # ----------- Common Market Features -----------
@@ -42,15 +44,51 @@ class MarketReturn(CrossSectionFactor):
         return ret.expand(ret.shape[0], returns.shape[1])
 
 
-class MarketVolatility(CustomFactor):
-    """MarketReturn Rolling standard deviation."""
+class MarketShift(RawShiftFactor):
+    """Shift a factor with one value per date by dates, the bars of an asset can skip some."""
+
+    groupby = "date"
+
+    def compute(self, data: torch.Tensor) -> torch.Tensor:
+        shift = data[:, :1].roll(self.periods, dims=0)
+        if self.periods > 0:
+            shift[: self.periods] = np.nan
+        else:
+            shift[self.periods :] = np.nan
+        return shift.expand(data.shape)
+
+
+class MarketVolatility(CrossSectionFactor):
+    """
+    MarketReturn Rolling standard deviation. `win` counts the dates of the market and `shift` moves
+    by them, so it is one number for a date, the same for all assets. The engine delays a factor
+    with `shift`, so a new listing and an asset back from a halt read it on their first bars too.
+    """
 
     inputs = (MarketReturn(), 252)
     win = 252
-    _min_win = 2
+
+    def __init__(
+        self,
+        win: int | None = None,
+        inputs: Sequence[BaseFactor] | None = None,
+        mask: BaseFactor | None = None,
+    ):
+        self.rolling_win = win or self.win
+        if self.rolling_win < 2:
+            raise ValueError(f"factor({self!s}) win ({self.rolling_win}) must >= 2")
+        super().__init__(1, inputs, mask)
+
+    def get_total_backwards_(self) -> int:
+        return super().get_total_backwards_() + self.rolling_win - 1
+
+    def shift(self, periods=1):
+        return MarketShift(self, periods) if periods != 0 else self
 
     def compute(self, returns, annualization_factor):
-        return (returns.nanvar() * annualization_factor) ** 0.5
+        market = nanlast(returns, dim=1).unsqueeze(0)
+        variance = Rolling(market, self.rolling_win).nanvar().T
+        return ((variance * annualization_factor) ** 0.5).expand(returns.shape)
 
 
 class AdvanceDeclineRatio(CrossSectionFactor):
