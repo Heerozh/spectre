@@ -839,3 +839,15 @@ def test_records_of_an_interrupted_run_reach_terminate(rerun):
     evt_mgr.run(start, end)
 
     assert list(alg.records.index) == reference.seen[:5]
+
+
+def test_run_after_a_stop_is_complete(rerun):
+    loader, start, end, reference = rerun
+    alg, evt_mgr = new_rerun_alg(loader)
+    alg.trip = lambda algorithm: algorithm.stop_event_manager()
+    evt_mgr.run(start, end)
+    # it ends the bar it stopped on, so one more close
+    assert alg.seen == reference.seen[:6]
+
+    evt_mgr.run(start, end)
+    assert_same_run(alg, reference)

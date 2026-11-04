@@ -409,6 +409,7 @@ class SimulationEventManager(EventManager):
         if not self._subscribers:
             raise ValueError("At least one subscriber.")
 
+        self._stop = False
         for r, events in self._subscribers.items():
             # clear scheduled events
             events.clear()

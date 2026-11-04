@@ -66,6 +66,32 @@ def test_fire_event():
     assert rcv.fired == 2
 
 
+def test_run_again_after_a_stop():
+    rcv = Receiver()
+    evt_mgr = trading.EventManager()
+    evt_mgr.subscribe(rcv)
+    evt_mgr.subscribe(BarDataFirer())
+    evt_mgr.run()
+
+    rcv.fired = 0
+    evt_mgr.run()
+    assert rcv.fired == 2
+
+
+def test_stop_while_a_run_starts():
+    class StopsAtOnce(trading.EventReceiver):
+        def on_run(self):
+            self.stop_event_manager()
+            self.schedule(trading.event.Always(self.on_always))
+
+        def on_always(self, _):
+            raise AssertionError("the loop should not have started")
+
+    evt_mgr = trading.EventManager()
+    evt_mgr.subscribe(StopsAtOnce())
+    evt_mgr.run()
+
+
 # ---------------------------------- live events, on a fake clock ----------------------------------
 
 MILLISECOND = 1_000_000
