@@ -12,17 +12,9 @@ import numpy as np
 import torch
 
 from ..config import Global
-from ..parallel import nanmax, nanmean, nanmin, unmasked_sum
+from ..parallel import nanaverage, nanmax, nanmean, nanmin
 from .engine import OHLCV
 from .factor import BaseFactor, CustomFactor
-
-
-def _weighted_mean(data, weight):
-    """Mean of the last dim of `data`, using only the samples valid in both inputs."""
-    weighted = data * weight
-    mask = torch.isnan(weighted)
-    total_weight = weight.masked_fill(mask, 0).sum(dim=-1, dtype=weighted.dtype)
-    return unmasked_sum(weighted, mask, dim=-1, inplace=True) / total_weight
 
 
 class Returns(CustomFactor):
@@ -58,7 +50,7 @@ class WeightedAverageValue(CustomFactor):
     _min_win = 2
 
     def compute(self, base, weight):
-        return base.agg(_weighted_mean, weight)
+        return base.agg(lambda _base, _weight: nanaverage(_base, _weight, dim=2), weight)
 
 
 class LinearWeightedAverage(CustomFactor):
@@ -75,7 +67,7 @@ class LinearWeightedAverage(CustomFactor):
 
     def compute(self, base):
         self.weight = self.weight.to(device=base.device)
-        return base.agg(lambda x: _weighted_mean(x, self.weight))
+        return base.agg(lambda x: nanaverage(x, self.weight, dim=2))
 
 
 class VWAP(WeightedAverageValue):
@@ -131,10 +123,10 @@ class ExponentialWeightedMovingAverage(CustomFactor):
         share = share.masked_fill(previous == 0, 1).masked_fill(~valid, 0)
         later = (1 - share).flip(-1).cumprod(dim=-1).flip(-1).roll(-1, dims=-1)
         later[..., -1] = 1
-        return _weighted_mean(data, share * later)
+        return nanaverage(data, share * later, dim=-1)
 
     def _recursive_mean(self, data):
-        ret = _weighted_mean(data, self.weight)
+        ret = nanaverage(data, self.weight, dim=2)
         nans = torch.isnan(data)
         partial = nans.any(dim=2) & ~nans.all(dim=2)
         if partial.any():
@@ -146,7 +138,7 @@ class ExponentialWeightedMovingAverage(CustomFactor):
         # with alpha = 1 the weights of the older bars are 0, and a NaN last bar would leave nothing
         if not self.adjust or self.alpha == 1:
             return data.agg(self._recursive_mean)
-        return data.agg(lambda x: _weighted_mean(x, self.weight))
+        return data.agg(lambda x: nanaverage(x, self.weight, dim=2))
 
 
 class AverageDollarVolume(CustomFactor):

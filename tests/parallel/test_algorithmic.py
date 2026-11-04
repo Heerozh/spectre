@@ -156,6 +156,21 @@ def test_nanmean_nanstd(device, ddof):
     assert_almost_equal(to_np(parallel.nansum(data)), np.nansum(DATA_2D, axis=1), decimal=6)
 
 
+def test_nanaverage(device):
+    data = tensor([[1, nan, 3], [4, nan, 8], [nan, nan, nan], [2, 4, 6]], device, torch.float64)
+    # float32 weights on float64 data, a NaN weight leaves out a valid value
+    weight = tensor([[1, 1, 1], [1, 8, 1], [1, 1, 1], [1, nan, 3]], device)
+    expected = [2, 6, nan, 5]
+    assert_almost_equal(to_np(parallel.nanaverage(data, weight)), expected)
+    assert_almost_equal(to_np(parallel.nanaverage(data.T, weight.T, dim=0)), expected)
+    # one weight for all rows, on the last dim
+    result = parallel.nanaverage(data, tensor([1, 2, 1], device), dim=-1)
+    assert_almost_equal(to_np(result), [2, 6, nan, 4])
+    # the sum of the weights can be given
+    result = parallel.nanaverage(data, weight, weight_sum=tensor([4, 4, 4, 4], device))
+    assert_almost_equal(to_np(result), [1, 3, nan, 5])
+
+
 def test_nanmean_nanstd_3d(device):
     data = tensor(DATA_3D, device)
     assert_almost_equal(

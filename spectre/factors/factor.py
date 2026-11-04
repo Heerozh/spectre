@@ -19,6 +19,7 @@ from ..parallel import (
     Rolling,
     clamp_1d_,
     masked_kth_value_1d,
+    nanaverage,
     nanmax,
     nanmean,
     nanmin,
@@ -27,7 +28,6 @@ from ..parallel import (
     pad_2d,
     quantile,
     rankdata,
-    unmasked_sum,
 )
 from ..parallel.algorithmic import nanprod
 from ..plotting import plot_factor_diagram
@@ -1119,23 +1119,13 @@ class DemedianFactor(CrossSectionFactor):
         return data - median[0].expand(data.shape[0], data.shape[1])
 
 
-def _weighted_mean(data, weight, weight_sum=None) -> torch.Tensor:
-    """Mean of each row, over the values valid in both. `weight_sum` replaces their weight sum."""
-    weighted = data * weight
-    mask = torch.isnan(weighted)
-    if weight_sum is None:
-        weight_sum = unmasked_sum(weight, mask)
-    mean = unmasked_sum(weighted, mask, inplace=True) / weight_sum
-    return mean.masked_fill_(mask.all(dim=1), np.nan).to(Global.float_type)
-
-
 class MeanFactor(CrossSectionFactor):
     def compute(self, data: torch.Tensor, weight=None, weight_sum=None) -> torch.Tensor:
         if weight is None:
             return nanmean(data).unsqueeze(-1).expand(data.shape[0], data.shape[1])
         else:
-            mean = _weighted_mean(data, weight, weight_sum).unsqueeze(-1)
-            return mean.expand(data.shape[0], data.shape[1])
+            mean = nanaverage(data, weight, weight_sum=weight_sum).to(Global.float_type)
+            return mean.unsqueeze(-1).expand(data.shape[0], data.shape[1])
 
 
 class MedianFactor(CrossSectionFactor):
@@ -1171,7 +1161,7 @@ class ZScoreFactor(CrossSectionFactor):
         # from the lowest value, so rounding doesn't give equal values a spread
         lowest = nanmin(samples).unsqueeze(-1)
         samples = samples - lowest
-        mean = nanmean(samples) if weight is None else _weighted_mean(samples, weight)
+        mean = nanmean(samples) if weight is None else nanaverage(samples, weight)
         std = nanstd(samples).unsqueeze(-1)
         std = std.masked_fill(std == 0, np.nan)  # a value off the mean would be inf
         return (data - lowest - mean.unsqueeze(-1)) / std

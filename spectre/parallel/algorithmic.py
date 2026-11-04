@@ -156,6 +156,16 @@ def nanmean(data: torch.Tensor, dim=1, inplace=False) -> torch.Tensor:
     return unmasked_mean(data, mask, dim, inplace=inplace)
 
 
+def nanaverage(data: torch.Tensor, weight, dim=1, weight_sum=None) -> torch.Tensor:
+    """Weighted mean of the samples valid in both. `weight_sum` replaces the sum of weights."""
+    weighted = data * weight
+    mask = torch.isnan(weighted)
+    if weight_sum is None:
+        weight_sum = weight.masked_fill(mask, 0).sum(dim=dim, dtype=weighted.dtype)
+    mean = unmasked_sum(weighted, mask, dim=dim, inplace=True) / weight_sum
+    return mean.masked_fill_(mask.all(dim=dim), np.nan)
+
+
 def unmasked_var(data: torch.Tensor, mask, dim=1, ddof=0) -> torch.Tensor:
     mean = unmasked_sum(data, mask, dim)
     n = (~mask).sum(dim=dim)
