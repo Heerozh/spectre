@@ -38,6 +38,17 @@ def test_run_raw_index_without_filter(engine):
     assert_array_equal(df.index.get_level_values(0), index)
 
 
+def test_run_up_to_the_last_bar(dirty_engine):
+    start, last = DIRTY_DATES[30], DIRTY_DATES[-1]
+    dirty_engine.add(factors.SMA(5), "ma5")
+    expected = dirty_engine.run(start, last)
+    pd.testing.assert_frame_equal(dirty_engine.run(start, None), expected)
+
+    raw = dirty_engine.run_raw(start, None)
+    assert_almost_equal(raw["ma5"].cpu().numpy(), dirty_engine.run_raw(start, last)["ma5"].cpu())
+    assert dirty_engine.test_lookahead_bias(start, None) == "No assertion raised."
+
+
 def test_no_trading_day(engine):
     engine.add(factors.SMA(2), "test")
     with pytest.raises(AssertionError, match="There is no data between.*"):

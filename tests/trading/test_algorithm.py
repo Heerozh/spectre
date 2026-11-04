@@ -70,6 +70,20 @@ def test_market_open_earns_the_returns_of_full_run():
     assert by_hand > 2 * one_bar_later
 
 
+def test_live_bar_reads_up_to_the_last_bar(daily_loader):
+    """A live bar asks for the data from now on, it doesn't know the end of it."""
+
+    class Alg(trading.CustomAlgorithm):
+        def initialize(self):
+            self.get_factor_engine().add(factors.MA(5), "ma5")
+
+    alg = Alg(trading.SimulationBlotter(daily_loader), main=daily_loader)
+    alg.initialize()
+    alg.set_datetime(ts("2019-01-11"))
+    alg._data_updated()
+    assert alg._data.index.get_level_values(0)[-1] == daily_loader.load().index.levels[0][-1]
+
+
 def test_simulation_event_manager(daily_loader_no_calendar):
     loader = daily_loader_no_calendar
 

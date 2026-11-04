@@ -363,9 +363,14 @@ class FactorEngine:
         self._device = torch.device("cpu")
         self.empty_cache()
 
+    @staticmethod
+    def _to_utc(time):
+        # to_datetime makes None a NaT, and None means the last bar of the data to the loader
+        return None if time is None else pd.to_datetime(time, utc=True)
+
     def test_lookahead_bias(self, start, end):
         """Check all factors, if there are look-ahead bias"""
-        start, end = pd.to_datetime(start, utc=True), pd.to_datetime(end, utc=True)
+        start, end = self._to_utc(start), self._to_utc(end)
         # get results
         df_expected = self.run(start, end)
         # modify future data
@@ -495,12 +500,13 @@ class FactorEngine:
         return results, shifted_mask, delayed
 
     def run(
-        self, start: str | pd.Timestamp, end: str | pd.Timestamp, delay_factor=True
+        self, start: str | pd.Timestamp, end: str | pd.Timestamp | None, delay_factor=True
     ) -> pd.DataFrame:
         """
         Compute factors and filters, return a df contains all.
+        If `end` is None, up to the last bar of the data.
         """
-        start, end = pd.to_datetime(start, utc=True), pd.to_datetime(end, utc=True)
+        start, end = self._to_utc(start), self._to_utc(end)
 
         results, shifted_mask, delayed = self._run(start, end, delay_factor)
         # do cpu work and synchronize will automatically done by torch
@@ -525,14 +531,15 @@ class FactorEngine:
     def run_raw(
         self,
         start: str | pd.Timestamp,
-        end: str | pd.Timestamp,
+        end: str | pd.Timestamp | None,
         delay_factor=True,
         return_index=False,
     ) -> dict[str, torch.Tensor] | tuple:
         """
         Compute factors and filters, return a dict contains factor_name = torch.Tensor
+        If `end` is None, up to the last bar of the data.
         """
-        start, end = pd.to_datetime(start, utc=True), pd.to_datetime(end, utc=True)
+        start, end = self._to_utc(start), self._to_utc(end)
 
         results, shifted_mask, delayed = self._run(start, end, delay_factor)
 
