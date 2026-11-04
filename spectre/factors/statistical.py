@@ -5,6 +5,7 @@
 @email: heeroz@gmail.com
 """
 
+import itertools
 import math
 
 import numpy as np
@@ -15,6 +16,7 @@ from ..parallel import (
     DeviceConstant,
     covariance,
     linear_regression_1d,
+    nanmax,
     nanmean,
     nanstd,
     nanvar,
@@ -178,19 +180,18 @@ class XSMaxCorrCoef(CrossSectionFactor):
     """
 
     def compute(self, *xs):
-        x = torch.stack(xs, dim=1)
-        x_bar = nanmean(x, dim=2).unsqueeze(-1)
-        demean = x - x_bar
-        demean.masked_fill_(torch.isnan(demean), 0)
-        cov = demean @ demean.transpose(-2, -1)
-        cov = cov / (x.shape[-1] - 1)
-        diag = cov[:, range(len(xs)), range(len(xs)), None]
-        std = diag**0.5
-        corr = cov / std / std.transpose(-2, -1)
-        # set auto corr to zero
-        corr[:, range(len(xs)), range(len(xs))] = 0
-        max_corr = corr.max(dim=2).values.unsqueeze(-2)
-        return max_corr.expand(x.shape[0], x.shape[2], x.shape[1])
+        dates, assets = xs[0].shape
+        # the diagonal stays NaN, a factor is not one of the others
+        corr = xs[0].new_full((dates, len(xs), len(xs)), np.nan)
+        for i, j in itertools.combinations(range(len(xs)), 2):
+            mask = torch.isnan(xs[i] * xs[j])
+            # pearsonr rounds the mean, which leaves a constant with a tiny variance, and the noise
+            # from that would pass as a correlation. From its lowest value a constant is exactly 0.
+            x = xs[i] - xs[i].masked_fill(mask, np.inf).amin(dim=1, keepdim=True)
+            y = xs[j] - xs[j].masked_fill(mask, np.inf).amin(dim=1, keepdim=True)
+            corr[:, i, j] = corr[:, j, i] = pearsonr(x, y, dim=1, ddof=1)
+        max_corr = nanmax(corr, dim=2).unsqueeze(-2)
+        return max_corr.expand(dates, assets, len(xs))
 
 
 class InformationCoefficient(CrossSectionFactor):

@@ -142,6 +142,92 @@ def test_xs_max_corr_coef():
         assert_almost_equal(corr[date].numpy(), np.full((5, 2), expected), decimal=6)
 
 
+def xs_max_corr(*columns):
+    """Max correlation of each column with the others, on the rows both of them have."""
+    corr = pd.DataFrame(np.stack(columns, axis=1)).corr().to_numpy(copy=True)
+    np.fill_diagonal(corr, nan)
+    return pd.DataFrame(corr).max(axis=1).values
+
+
+def assert_max_corr_same_as_pandas(device, *xs, dtype=torch.float64, rtol=1e-9):
+    tensors = [torch.tensor(x, device=device, dtype=dtype) for x in xs]
+    result = factors.XSMaxCorrCoef().compute(*tensors).cpu().numpy()
+    dates, assets = xs[0].shape
+    assert result.shape == (dates, assets, len(xs))
+    for date in range(dates):
+        expected = np.tile(xs_max_corr(*[x[date] for x in xs]), (assets, 1))
+        assert_allclose(result[date], expected, rtol=rtol, atol=rtol, err_msg=f"date {date}")
+
+
+def test_xs_max_corr_coef_uses_the_samples_of_each_pair(device):
+    a = np.array([[1.0, 2, 3, 4, nan, nan], [nan, 5, 3, 8, 1, 2]])
+    b = np.array([[2.0, 4, 6, 8, 100, -100], [3, 1, nan, 7, 2, 2]])
+    assert_max_corr_same_as_pandas(device, a, b)
+    assert_almost_equal(xs_max_corr(a[0], b[0]), [1, 1])
+
+
+def test_xs_max_corr_coef_of_pairs_without_samples(device):
+    a = np.array([[1.0, 2, 3, nan, nan, nan]])
+    b = np.array([[nan, nan, nan, 1.0, 2, 4]])
+    c = np.array([[1.0, 3, 2, 5, 4, 7]])
+    assert_max_corr_same_as_pandas(device, a, b, c)
+    assert_max_corr_same_as_pandas(device, a, b)
+
+
+def test_xs_max_corr_coef_of_negative_correlation(device):
+    """The correlation of a factor with itself is not one of the others, even if it's the max."""
+    rng = np.random.default_rng(0)
+    a = rng.normal(size=(3, 200))
+    b = -a + rng.normal(size=a.shape) * 0.3
+    assert_max_corr_same_as_pandas(device, a, b)
+    assert xs_max_corr(a[0], b[0])[0] < -0.9
+
+
+@pytest.mark.parametrize("dtype, rtol", [(torch.float64, 1e-9), (torch.float32, 1e-4)])
+def test_xs_max_corr_coef_of_constant_factor(device, dtype, rtol):
+    rng = np.random.default_rng(0)
+    a = rng.normal(size=(100, 30))
+    b = -a + rng.normal(size=a.shape) * 0.3
+    # a different constant on each date, the rounding of the mean depends on the value
+    constant = np.repeat(rng.uniform(1, 300, (100, 1)), 30, axis=1)
+    assert_max_corr_same_as_pandas(device, a, b, constant, dtype=dtype, rtol=rtol)
+    assert np.isnan(xs_max_corr(a[0], b[0], constant[0])[2])
+
+
+@pytest.mark.parametrize("dtype, rtol", [(torch.float64, 1e-9), (torch.float32, 1e-4)])
+def test_xs_max_corr_coef_of_constant_samples_of_a_pair(device, dtype, rtol):
+    """A factor can be constant only on the samples it shares with another one."""
+    rng = np.random.default_rng(0)
+    b = rng.normal(size=(100, 9))
+    c = -b + rng.normal(size=b.shape) * 0.3
+    b[:, 7:] = nan
+    a = np.repeat(rng.uniform(1, 300, (100, 1)), 9, axis=1)
+    a[:, 7] -= rng.uniform(1, 3, 100)
+    a[:, 8] += rng.uniform(1, 3, 100)
+    assert_max_corr_same_as_pandas(device, a, b, c, dtype=dtype, rtol=rtol)
+    assert xs_max_corr(a[0], b[0], c[0])[1] < -0.8
+
+
+def test_xs_max_corr_coef_of_one_factor_has_no_others(device):
+    x = torch.tensor([[1.0, 2, 3]], device=device)
+    assert_allclose(factors.XSMaxCorrCoef().compute(x).cpu(), np.full((1, 3, 1), nan))
+
+
+@pytest.mark.filterwarnings("ignore:Warning!! delay_factor is set to False")
+def test_xs_max_corr_coef_on_dirty_data(dirty_engine, dirty_panel):
+    columns = ["open", "close", "volume"]
+    max_corr = factors.XSMaxCorrCoef(inputs=[getattr(factors.OHLCV, c) for c in columns])
+    for i, column in enumerate(columns):
+        dirty_engine.add(max_corr[i], column)
+    result = dirty_engine.run(DIRTY_DATES[0], DIRTY_DATES[-1], delay_factor=False)
+
+    # NANBAR has a volume but no prices, so the 3 pairs don't have the same samples
+    for date in DIRTY_DATES:
+        raw = dirty_panel.loc[date, columns].values
+        expected = np.tile(xs_max_corr(*raw.T), (raw.shape[0], 1))
+        assert_allclose(result.loc[date, columns].values, expected, rtol=1e-6, err_msg=str(date))
+
+
 FACTOR_VALUES = [
     torch.tensor([[1.0, 2, 2, 4, 5], [1.0, 3, 3, 4, 5]]),
     torch.tensor([[1.0, 3, 3, 3, 4], [2.0, 1, 0, 5, 5]]),
