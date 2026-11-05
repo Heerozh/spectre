@@ -934,6 +934,53 @@ def test_daily_curb_of_intraday_bars(day_2, dividends, split_ratios):
     assert filled == [True] * 4 + [True, True, False, False] + [True, True, True, False]
 
 
+@pytest.mark.parametrize("adjusted", [False, True], ids=["no_adjustments", "adjustments"])
+def test_daily_curb_in_the_timezone_of_the_market(adjusted):
+    # a session of 22:00 to 01:00 UTC is one day in Tokyo, 07:00 to 10:00, but crosses UTC midnight
+    sessions = [pd.Timestamp(day, tz="UTC") for day in ("2021-01-04 22:00", "2021-01-05 22:00")]
+    stamps = pd.DatetimeIndex([s + pd.Timedelta(hours=h) for s in sessions for h in range(4)])
+    # the first session closes at 100, the limits of the second are 90 to 110
+    close = [100, 100, 100, 100, 100, 104, 108, 112]
+    loader = asset_a_loader(
+        stamps, close, *([{}, {}] if adjusted else [None, None]), flag=[1.0] * 8
+    )
+    filled = {}
+
+    class Alg(trading.CustomAlgorithm):
+        def initialize(self):
+            engine = self.get_factor_engine()
+            engine.timezone = "Asia/Tokyo"
+            engine.add(factors.OHLCV.open, "open")
+            self.blotter.daily_curb = trading.DailyCurbModel(0.1)
+            self.schedule(trading.event.EveryBarData(self.on_bar))
+
+        def on_bar(self, _):
+            filled[self.current] = self.blotter.order("A", 1)
+
+    trading.run_backtest(loader, Alg, stamps[0], stamps[-1])
+    assert list(filled.values())[4:] == [True, True, True, False]
+
+
+def test_daily_curb_follows_the_timezone_of_each_run():
+    # the same data read as 2 market days in one timezone, and as 1 day in the other
+    stamps = pd.DatetimeIndex(["2021-01-04 23:00", "2021-01-05 01:00"], tz="UTC")
+    loader = asset_a_loader(stamps, [100, 120])
+    blotter = trading.SimulationBlotter(loader, daily_curb=0.1)
+
+    def order_on_last_bar(tz):
+        blotter.clear()
+        blotter.set_datetime(stamps[1].tz_convert(tz))
+        blotter.market_open(None)
+        blotter.set_price("close")
+        return blotter.order("A", 1)
+
+    # 2 days in UTC, +20% on the day before is over the limit
+    assert order_on_last_bar("UTC") is False
+    # 1 day in Tokyo, which has no day before it in the data
+    assert order_on_last_bar("Asia/Tokyo") is True
+    assert order_on_last_bar("UTC") is False
+
+
 def test_daily_curb_of_intraday_bars_with_missing_data():
     days = pd.bdate_range("2020-01-06", periods=3, tz="UTC")
     stamps = pd.DatetimeIndex([day + pd.Timedelta(hours=h) for day in days for h in (14, 15)])

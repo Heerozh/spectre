@@ -271,12 +271,12 @@ class BaseBlotter:
         raise NotImplementedError("abstractmethod")
 
 
-def _last_of_previous_day(rows):
+def _last_of_previous_day(rows, tz):
     """
     `rows` are the bars of one asset. Returns, for every bar, the last valid values before the day
-    of that bar, which on daily bars is the previous bar.
+    of that bar in the timezone `tz`, which on daily bars is the previous bar.
     """
-    days = rows.index.get_level_values(0).normalize()
+    days = rows.index.get_level_values(0).tz_convert(tz).normalize()
     return rows.ffill().shift(1).iloc[days.searchsorted(days)].set_axis(rows.index)
 
 
@@ -314,27 +314,13 @@ class SimulationBlotter(BaseBlotter, EventReceiver):
             volume = volume / df[dataloader.adjustments[1]]
         volume = volume.groupby(level=1, observed=False).ffill()
         df["__last_volume"] = volume.groupby(level=1, observed=False).shift(1)
-        # add previous day close price for daily curb
-        if dataloader.adjustments is not None:
-            sel_cols = [ohlcv[3], dataloader.adjustments[0], dataloader.adjustments[1]]
-            lasts = (
-                df[sel_cols]
-                .groupby(level=1, group_keys=False, observed=False)
-                .apply(_last_of_previous_day)
-            )
-            df["__last_close"] = lasts[sel_cols[0]]
-            df["__last_div"] = lasts[sel_cols[1]]
-            df["__last_sp"] = lasts[sel_cols[2]]
-            curb_cols = ["__last_close", "__last_div", "__last_sp"]
-        else:
-            df["__last_close"] = (
-                df[ohlcv[3]]
-                .groupby(level=1, group_keys=False, observed=False)
-                .apply(_last_of_previous_day)
-            )
-            curb_cols = ["__last_close"]
         self._data = df
-        self._prices = DataLoaderFastGetter(df[list(ohlcv) + ["__last_volume"] + curb_cols])
+        self._curb_cols = [ohlcv[3]]
+        if dataloader.adjustments is not None:
+            self._curb_cols += list(dataloader.adjustments[:2])
+        self._previous_day = None
+        self._previous_day_tz = None
+        self._prices = DataLoaderFastGetter(df[list(ohlcv) + ["__last_volume"]])
         self._current_prices_col = None
         self._current_prices = None
         if dataloader.adjustments is not None:
@@ -408,6 +394,21 @@ class SimulationBlotter(BaseBlotter, EventReceiver):
             self._current_prices_col = 3  # ohlcv[3] = c
         self._current_prices = None
 
+    def _get_previous_day(self):
+        """
+        Close, dividend and split ratio of the day before each bar, for the daily curb. Only the
+        datetimes the blotter is given tell the timezone of the market, which decides what a day
+        is, so this is built on the first use.
+        """
+        tz = self._current_dt.tz
+        if self._previous_day is None or self._previous_day_tz != tz:
+            df = self._data[self._curb_cols]
+            grouped = df.groupby(level=1, group_keys=False, observed=False)
+            lasts = grouped.apply(_last_of_previous_day, tz).reindex(df.index)
+            self._previous_day = DataLoaderFastGetter(lasts)
+            self._previous_day_tz = tz
+        return self._previous_day
+
     def _get_current_prices(self):
         if self._current_prices_col is None:
             raise ValueError("_current_prices is None, maybe set_price was not called.")
@@ -457,14 +458,14 @@ class SimulationBlotter(BaseBlotter, EventReceiver):
             curr_prices = self._get_current_prices()
             curr_high = self._prices.get_as_dict(curr_prices.row_slice, column_id=1)
             curr_low = self._prices.get_as_dict(curr_prices.row_slice, column_id=2)
+            previous_day = self._get_previous_day()
+            last_close = previous_day.get_as_dict(curr_prices.row_slice, column_id=0)
             if self._adjustments is None:
-                last_close = self._prices.get_as_dict(curr_prices.row_slice, column_id=-1)
                 last_div = defaultdict(float)
                 last_sp = defaultdict(lambda: 1.0)
             else:
-                last_close = self._prices.get_as_dict(curr_prices.row_slice, column_id=-3)
-                last_div = self._prices.get_as_dict(curr_prices.row_slice, column_id=-2)
-                last_sp = self._prices.get_as_dict(curr_prices.row_slice, column_id=-1)
+                last_div = previous_day.get_as_dict(curr_prices.row_slice, column_id=1)
+                last_sp = previous_day.get_as_dict(curr_prices.row_slice, column_id=2)
             # Detecting whether transactions are possible
             price, amount = self.daily_curb.calculate(
                 asset,
