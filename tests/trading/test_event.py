@@ -228,6 +228,18 @@ def test_calendar_event_starting_inside_its_lead_waits_for_the_next_event(monkey
     assert fired[-10 * MINUTE] == [ts("2020-01-07 14:50")]
 
 
+def test_holiday_on_a_passed_event_does_not_fire():
+    calendar = trading.Calendar()
+    calendar.hr_now = lambda: ts("2020-01-06 10:00")
+    calendar.build("2020-01-06", "2020-01-10", {"Open": "9:00:00"}, tz=ts("2020-01-06").tz)
+    calendar.set_as_holiday(ts("2020-01-06").normalize())
+    event = trading.event.MarketOpen(lambda _: None, offset_ns=2 * 60 * MINUTE)
+
+    event.on_schedule(SimpleNamespace(calendar=calendar))
+
+    assert event.trigger_time == ts("2020-01-07 11:00")
+
+
 def test_calendar_event_scheduled_between_its_event_and_its_offset_fires_today(monkeypatch):
     """The event has passed, and it is popped from the calendar, but its time is still to come."""
     days = ("06", "07", "08", "09", "10")

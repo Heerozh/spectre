@@ -65,6 +65,9 @@ class Calendar:
             event: [dt for dt in dts if dt.normalize() not in dates]
             for event, dts in self.events.items()
         }
+        # an event with a long offset can still fire for a passed one
+        for event, dts in self._passed.items():
+            self._passed[event] = [dt for dt in dts if dt.normalize() not in dates]
 
     def set_as_holiday(self, *dates: pd.Timestamp):
         return self.remove_events(*dates)
