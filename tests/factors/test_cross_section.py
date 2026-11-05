@@ -7,7 +7,14 @@ from numpy.testing import assert_allclose, assert_almost_equal, assert_array_equ
 
 import spectre
 from spectre import factors, parallel
-from tests.conftest import DATA_DIR, DIRTY_ADJUSTMENTS, DIRTY_DATES, DIRTY_OHLCV, LISTED_ON
+from tests.conftest import (
+    DATA_DIR,
+    DIRTY_ADJUSTMENTS,
+    DIRTY_DATES,
+    DIRTY_OHLCV,
+    DIRTY_SECTORS,
+    LISTED_ON,
+)
 from tests.factors import reference as ref
 from tests.factors.helpers import assert_factor, delete, run_dirty, run_factor
 
@@ -497,6 +504,68 @@ def test_group_keys_do_not_overflow(device):
     result = engine.run(GROUP_DATES[0], GROUP_DATES[-1]).test
     # every asset is a group of its own on each date
     assert_allclose(result.values, panel.open.loc[result.index].values, rtol=1e-6)
+
+
+def aligned_to_all_dates(panel):
+    """What align_by_time gives the factors: a row for each asset on each date."""
+    all_rows = pd.MultiIndex.from_product(panel.index.levels, names=panel.index.names)
+    return panel.reindex(all_rows)
+
+
+def demean_by_group(values, groups):
+    """`groups` is the group of each asset, it doesn't depend on the row having data."""
+    dates, assets = values.index.get_level_values("date"), values.index.get_level_values("asset")
+    return values - values.groupby([dates, assets.map(groups)]).transform("mean")
+
+
+def test_demean_by_sector_with_align_by_time(dirty_engine, dirty_panel):
+    """A halt, a listing and a delisting all add rows, which have no sector."""
+    dirty_engine.align_by_time = True
+    dirty_engine.add(close.demean(groupby="sector"), "test")
+    result = dirty_engine.run(DIRTY_DATES[5], DIRTY_DATES[-1]).test
+    prices = aligned_to_all_dates(dirty_panel).close
+    expected = demean_by_group(prices, DIRTY_SECTORS).groupby(level="asset").shift(1)
+    assert result.isna().any()
+    assert_allclose(result.values, expected.loc[result.index].values, rtol=1e-6)
+
+
+def test_demean_by_sector_of_rows_filled_after_align_by_time(dirty_engine, dirty_panel):
+    """A filled row has a value, so it matters that it stays in the sector of its asset."""
+    dirty_engine.align_by_time = True
+    dirty_engine.add(close.fill_na(ffill=True).demean(groupby="sector"), "test")
+    result = dirty_engine.run(DIRTY_DATES[0], DIRTY_DATES[-1]).test
+    filled = aligned_to_all_dates(dirty_panel).close.groupby(level="asset").ffill()
+    expected = demean_by_group(filled, DIRTY_SECTORS).groupby(level="asset").shift(1)
+    assert_allclose(result.values, expected.loc[result.index].values, rtol=1e-6)
+
+
+@pytest.mark.parametrize("column", GROUP_COLUMNS)
+def test_group_column_of_any_type_with_align_by_time(device, column):
+    panel = group_panel()
+    panel = panel.drop(index=[(date, "A") for date in GROUP_DATES[10:20]])
+    groups = panel.groupby(level="asset", observed=True)[column].first()
+    engine = factors.FactorEngine(spectre.data.MemoryLoader(panel, ohlcv=DIRTY_OHLCV))
+    if device == "cuda":
+        engine.to_cuda()
+    engine.align_by_time = True
+    engine.add(open_price.demean(groupby=column), "test")
+    result = engine.run(GROUP_DATES[0], GROUP_DATES[-1]).test
+    expected = demean_by_group(aligned_to_all_dates(panel).open, groups.to_dict())
+    assert_allclose(result.values, expected.loc[result.index].values, rtol=1e-6, atol=1e-9)
+
+
+@pytest.mark.parametrize("align_by_time", [False, True], ids=["as_loaded", "aligned"])
+def test_a_real_nan_in_a_group_column_raises(dirty_panel, device, align_by_time):
+    """It would pool the assets of that row. An added row has none, this one has data."""
+    panel = dirty_panel.astype({"sector": float})
+    panel.loc[(DIRTY_DATES[10], "FULL"), "sector"] = nan
+    engine = factors.FactorEngine(spectre.data.MemoryLoader(panel, DIRTY_OHLCV, DIRTY_ADJUSTMENTS))
+    if device == "cuda":
+        engine.to_cuda()
+    engine.align_by_time = align_by_time
+    engine.add(close.demean(groupby="sector"), "test")
+    with pytest.raises(AssertionError, match="sector"):
+        engine.run(DIRTY_DATES[5], DIRTY_DATES[-1])
 
 
 def test_demean_by_a_text_column(device):

@@ -68,6 +68,11 @@ class FactorEngine:
     def _column_to_group_codes(self, column: str) -> np.ndarray:
         """Integer codes of a column of any type, in the order of its values."""
         series = self._dataframe[column]
+        if self._added_rows is not None and column != self._loader.time_category:
+            # A row added by align_by_time has no value here, but it has an asset. Not its own
+            # group: a factor can fill the row, and it would be read against unrelated assets.
+            by_asset = series.groupby(level=1, observed=True)
+            series = series.where(~self._added_rows, by_asset.ffill().fillna(by_asset.bfill()))
         assert not series.isna().any(), column
         if column == self._loader.time_category:
             # already ids, and every run comes here
@@ -237,6 +242,7 @@ class FactorEngine:
             first_complete = df.index.levels[0].searchsorted(first_date)
             self._first_complete_date = max(self._first_complete_date, first_complete)
         self._incomplete_rows = {}
+        self._added_rows = None
         if self._align_by_time:
             # every asset gets a row on every date, so a bar is a date, and the older bars the
             # loader gives to an asset with gaps would only add empty rows to all the others
@@ -246,6 +252,7 @@ class FactorEngine:
             # but still very slow.
             # df = df.reindex(pd.MultiIndex.from_product(df.index.levels))
             df = df.unstack(level=1).stack()
+            self._added_rows = df[self._loader.time_category].isna().to_numpy()
             df[self._loader.time_category] = (
                 df[self._loader.time_category]
                 .groupby(level=0)
@@ -307,6 +314,7 @@ class FactorEngine:
         self._cache_hash = uuid.uuid4()
         self._first_complete_date = 0
         self._incomplete_rows = {}
+        self._added_rows = None
         self._history_cut = False
         self.max_backwards = np.inf
 
@@ -396,6 +404,7 @@ class FactorEngine:
         self._cache_hash = uuid.uuid4()
         self._first_complete_date = 0
         self._incomplete_rows = {}
+        self._added_rows = None
 
     def remove_all_factors(self) -> None:
         self._factors = {}
