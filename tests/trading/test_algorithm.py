@@ -1321,6 +1321,50 @@ def test_later_data_of_the_day_does_not_change_a_rebalance_on_a_second_source(de
     assert not seen[next_bar].equals(other_seen[next_bar])
 
 
+def main_matrices_at(event, intraday, longer, start, end):
+    """What `get_price_matrix` of the main source returns inside `event`, by the time of it."""
+    seen = {}
+
+    class Alg(trading.CustomAlgorithm):
+        def initialize(self):
+            for name in ("main", "longer"):
+                self.get_factor_engine(name).add(factors.OHLCV.open, "open")
+            self.schedule(event(self.look))
+
+        def look(self, _):
+            seen[self.current] = self.get_price_matrix(pd.DateOffset(days=4))
+
+    _, evt_mgr = two_sources(Alg, intraday, longer)
+    evt_mgr.run(start, end)
+    return seen
+
+
+@pytest.mark.parametrize("event", [before_close, trading.event.EveryBarData], ids=["close", "bar"])
+def test_second_source_does_not_hide_a_closed_bar_of_the_main_source(event):
+    days = pd.bdate_range("2021-01-04", periods=9, tz="UTC")
+    intraday = make_panel(sessions(days))
+    daily = longer_bars(intraday, daily_stamps)
+
+    seen = main_matrices_at(event, intraday, daily, days[4], days[-1])
+
+    closes = intraday["close"].unstack()
+    assert len(seen) > 0
+    for time, matrix in seen.items():
+        assert matrix.index[-1] == time
+        assert_almost_equal(matrix.iloc[-1].values, closes.loc[time].values, decimal=3)
+
+
+def test_second_source_stamped_later_in_the_day_leaves_the_close_visible():
+    days = pd.bdate_range("2021-03-01", periods=10, tz="UTC")
+    main, later = make_panel(days), make_panel(days + pd.Timedelta(hours=15), seed=1)
+
+    seen = main_matrices_at(before_close, main, later, days[5], days[-1])
+
+    assert len(seen) > 0
+    for time, matrix in seen.items():
+        assert matrix.index[-1] == time.normalize()
+
+
 def test_second_source_at_the_open_ends_at_the_day_before():
     days = pd.bdate_range("2021-01-04", periods=9, tz="UTC")
     intraday = make_panel(sessions(days))

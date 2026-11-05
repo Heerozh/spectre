@@ -100,36 +100,40 @@ class CustomAlgorithm(EventReceiver, ABC):
             self._bars[name] = dates.unique()
         return self._bars[name]
 
+    def _bar_end(self, name, following):
+        """The end of the bar before position `following` of the bars of data source `name`."""
+        bars = self._bars_of(name)
+        if following < len(bars):
+            return bars[following]
+        return bars[-1] + (bars[1:] - bars[:-1]).min()
+
     def _open_bar(self, name):
         """
         The stamp of the current bar of data source `name`, if that bar has not closed yet. A stamp
         is the start of a bar, which ends at the next stamp of its source, or for the last one
         after the bar size of its source. So data that is added up over a longer time than the
         bars of the simulation stays open while they go on. Before the bar of the simulation has
-        closed time has reached its stamp, after that the next stamp of any data source.
+        closed time has reached its stamp, after that the end of the shortest bar that started at
+        that stamp, the simulation's own, which no stamp of another source can move.
         """
         if self._bar_closed is None:
             return None
         now = self._current_dt
         reached = now
         if self._bar_closed:
-            sources = [self._bars_of(source) for source in self._engines]
-            later = [bars[bars > now] for bars in sources]
-            later = [bars[0] for bars in later if len(bars) > 0]
-            if len(later) == 0:
-                return None
-            reached = min(later)
+            ends = []
+            for source in self._engines:
+                bars = self._bars_of(source)
+                following = bars.searchsorted(now, side="right")
+                if following > 0 and bars[following - 1] == now:
+                    ends.append(self._bar_end(source, following))
+            reached = min(ends, default=now)
 
-        bars = self._bars_of(name)
-        following = bars.searchsorted(now, side="right")
+        following = self._bars_of(name).searchsorted(now, side="right")
         if following == 0:
             return None
-        current = bars[following - 1]
-        if following < len(bars):
-            ends = bars[following]
-        else:
-            ends = current + (bars[1:] - bars[:-1]).min()
-        return None if ends <= reached else current
+        ends = self._bar_end(name, following)
+        return None if ends <= reached else self._bars_of(name)[following - 1]
 
     def get_price_matrix(self, length: pd.DateOffset, name: str | None = None, prices=OHLCV.close):
         """
