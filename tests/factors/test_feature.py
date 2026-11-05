@@ -969,12 +969,13 @@ def test_forward_signal_data_on_cpu_with_multipliers_on_cuda():
     """When CUDA runs out of memory `compute` runs again on cpu, the column stays on cuda."""
     close = factors.OHLCV.close
     factor = factors.ForwardSignalData(2, close, close > 0)
-    factor.data = SimpleNamespace(adjustments=torch.tensor([[0.5, 0.5, 1, 1]], device="cuda"))
+    shifted_multipliers = torch.tensor([[0.5, 1, 1, nan]], device="cuda")
+    factor.inputs[0] = SimpleNamespace(adjustments=shifted_multipliers)
     # raw closes [100, 110, 60, 70] with a 2:1 split on the third bar, and the signal on it
     shifted_data = torch.tensor([[110, 60, 70, nan]])
     shifted_signal = torch.tensor([[False, True, False, False]])
-    rolling = parallel.Rolling(shifted_data, 2), parallel.Rolling(shifted_signal, 2)
-    result = factor.compute(*rolling)
+    data = parallel.Rolling(shifted_data, 2, shifted_multipliers.cpu())
+    result = factor.compute(data, parallel.Rolling(shifted_signal, 2))
     assert result.device.type == "cpu"
     assert_almost_equal(result[0].numpy(), [nan, 120, 60, nan])
 
@@ -982,8 +983,14 @@ def test_forward_signal_data_on_cpu_with_multipliers_on_cuda():
 @pytest.mark.filterwarnings("ignore:Warning!! delay_factor is set to False")
 def test_forward_signal_data_of_other_data_is_not_adjusted(dirty_engine, dirty_panel):
     """The rule for factors without multipliers is unchanged, they are only shifted."""
-    closes = factors.OHLCV.close * 1
-    factor = factors.ForwardSignalData(FORWARD_WIN, closes, FORWARD_SIGNAL)
+
+    class RawClose(factors.CustomFactor):
+        inputs = [factors.OHLCV.close]
+
+        def compute(self, data):
+            return data
+
+    factor = factors.ForwardSignalData(FORWARD_WIN, RawClose(), FORWARD_SIGNAL)
     result = run_dirty(dirty_engine, factor).xs("SPLIT", level="asset")
     expected = forward_signal_values(dirty_panel.xs("SPLIT", level="asset").close)
     assert_allclose(result.values, expected.values, rtol=1e-6)

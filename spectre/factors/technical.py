@@ -10,7 +10,7 @@ from collections.abc import Sequence
 import numpy as np
 import torch
 
-from ..parallel import nanmean, pad_2d
+from ..parallel import nanmean
 from .basic import EMA, MA
 from .engine import OHLCV
 from .factor import BaseFactor, CustomFactor, RollingZScoreFactor
@@ -23,6 +23,7 @@ class BollingerBands(CustomFactor):
     inputs = (OHLCV.close, 2)
     win = 20
     _min_win = 2
+    _own_bar_scale = True
 
     def __init__(self, win: int | None = None, inputs: Sequence[BaseFactor] | None = None):
         super().__init__(win, inputs)
@@ -55,16 +56,10 @@ class BollingerBands(CustomFactor):
 class _MACDLine(CustomFactor):
     """EMA(fast) - EMA(slow). It is a price, so a rolling window over it needs adjusting."""
 
+    _own_bar_scale = True
+
     def __init__(self, fast, slow, inputs, adjust):
         super().__init__(inputs=[EMA(span, inputs, adjust) for span in (fast, slow)])
-        self.price = inputs[0]
-
-    @property
-    def adjustments(self):
-        multi = self.price.adjustments
-        # The rows added by engine.align_by_time have no multiplier, but EMA keeps its value on
-        # them, in the scale of the bar before them.
-        return None if multi is None else pad_2d(multi)
 
     def compute(self, fast, slow):
         return fast - slow
@@ -100,11 +95,7 @@ class TrueRange(CustomFactor):
     inputs = (OHLCV.high, OHLCV.low, OHLCV.close)
     win = 2
     _min_win = 2
-
-    @property
-    def adjustments(self):
-        # it is a price in the scale of its own bar, so a rolling window over it needs adjusting
-        return self.inputs[2].adjustments
+    _own_bar_scale = True
 
     def compute(self, highs, lows, closes):
         high_to_low = highs.last() - lows.last()

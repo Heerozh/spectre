@@ -30,12 +30,13 @@ from ..parallel import (
 )
 from .basic import MA
 from .engine import OHLCV
-from .factor import CrossSectionFactor, CustomFactor
+from .factor import CrossSectionFactor, CustomFactor, _scale_of
 
 
 class StandardDeviation(CustomFactor):
     inputs = [OHLCV.close]
     _min_win = 2
+    _own_bar_scale = True
     ddof = 0
 
     def compute(self, data):
@@ -54,6 +55,7 @@ class RollingHigh(CustomFactor):
     inputs = (OHLCV.close,)
     win = 5
     _min_win = 2
+    _own_bar_scale = True
 
     def compute(self, data):
         return data.nanmax()
@@ -63,6 +65,7 @@ class RollingLow(CustomFactor):
     inputs = (OHLCV.close,)
     win = 5
     _min_win = 2
+    _own_bar_scale = True
 
     def compute(self, data):
         return data.nanmin()
@@ -73,6 +76,10 @@ class RollingLinearRegression(CustomFactor):
 
     def __init__(self, win, x, y):
         super().__init__(win=win, inputs=[x, y])
+
+    def _find_scale(self) -> tuple | None:
+        # over the bars both outputs are linear in y, over an `x` the slope is not
+        return _scale_of(self.inputs[1]) if self.inputs[0] is None else None
 
     def compute(self, x, y):
         def lin_reg(_y, _x=None):
@@ -100,6 +107,7 @@ class RollingMomentum(CustomFactor):
     inputs = (OHLCV.close,)
     win = 20
     _min_win = 2
+    _own_bar_scale = True  # all coefficients are linear in the price
 
     def compute(self, prices):
         def polynomial_reg(_y):
@@ -155,15 +163,11 @@ class RollingQuantile(CustomFactor):
 class _OwnBarScale(CustomFactor):
     """
     A price in the scale of its own bar, made from the window [t-1, t] of `data`, which Rolling
-    has adjusted to the scale of bar t. With the multipliers of `data`, a Rolling over this factor
-    adjusts its windows in the same way.
+    has adjusted to the scale of bar t.
     """
 
     win = 2
-
-    @property
-    def adjustments(self):
-        return self.inputs[0].adjustments
+    _own_bar_scale = True
 
 
 class _LagSpread(_OwnBarScale):

@@ -163,10 +163,11 @@ def test_ts_prod_of_partial_and_empty_windows(dirty_engine, dirty_panel):
 
 
 def test_ts_sum_of_masked_windows(dirty_engine, dirty_panel):
-    expected = rolling_sum(dirty_panel.close.where(dirty_panel.volume > 1950), 3)
+    logs = np.log(dirty_panel.close)
+    expected = rolling_sum(logs.where(dirty_panel.volume > 1950), 3)
     assert expected.isna().any()
-    result = run_dirty(dirty_engine, (close * 1).ts_sum(3, mask=factors.OHLCV.volume > 1950))
-    assert_allclose(result, expected)
+    result = run_dirty(dirty_engine, close.log().ts_sum(3, mask=factors.OHLCV.volume > 1950))
+    assert_allclose(result, expected, rtol=1e-5)
 
 
 def test_ts_sum_of_masked_filter(dirty_engine, dirty_panel):

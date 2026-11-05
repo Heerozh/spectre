@@ -14,7 +14,7 @@ import torch
 from ..config import Global
 from ..parallel import nanaverage, nanmax, nanmean, nanmin
 from .engine import OHLCV
-from .factor import BaseFactor, CustomFactor
+from .factor import BaseFactor, CustomFactor, _same_scale
 
 
 class Returns(CustomFactor):
@@ -41,6 +41,7 @@ class LogReturns(CustomFactor):
 class SimpleMovingAverage(CustomFactor):
     inputs = [OHLCV.close]
     _min_win = 2
+    _own_bar_scale = True
 
     def compute(self, data):
         return data.nanmean()
@@ -48,6 +49,7 @@ class SimpleMovingAverage(CustomFactor):
 
 class WeightedAverageValue(CustomFactor):
     _min_win = 2
+    _own_bar_scale = True
 
     def compute(self, base, weight):
         return base.agg(lambda _base, _weight: nanaverage(_base, _weight, dim=2), weight)
@@ -55,6 +57,7 @@ class WeightedAverageValue(CustomFactor):
 
 class LinearWeightedAverage(CustomFactor):
     _min_win = 2
+    _own_bar_scale = True
 
     def __init__(self, win=None, inputs=None):
         super().__init__(win, inputs)
@@ -78,6 +81,7 @@ class ExponentialWeightedMovingAverage(CustomFactor):
     inputs = [OHLCV.close]
     win = 2
     _min_win = 2
+    _own_bar_scale = True
 
     def __init__(
         self,
@@ -167,6 +171,9 @@ class ElementWiseMax(CustomFactor):
         super().__init__(win, inputs)
         assert self.win == 1
 
+    def _find_scale(self) -> tuple | None:
+        return _same_scale(*self.inputs)
+
     @classmethod
     def binary_fill_na(cls, a, b, value):
         a = a.clone()
@@ -191,6 +198,9 @@ class ElementWiseMin(CustomFactor):
     def __init__(self, win=None, inputs=None):
         super().__init__(win, inputs)
         assert self.win == 1
+
+    def _find_scale(self) -> tuple | None:
+        return _same_scale(*self.inputs)
 
     def compute(self, a, b):
         ret = torch.min(*ElementWiseMax.binary_fill_na(a, b, np.inf))

@@ -28,6 +28,7 @@ from ..parallel import (
     pad_2d,
     quantile,
     rankdata,
+    rescale,
 )
 from ..parallel.algorithmic import nanprod
 from ..plotting import plot_factor_diagram
@@ -412,10 +413,18 @@ class BaseFactor:
         return factor
 
     # --------------- main methods ---------------
+    # A price is in a scale: the multipliers of a column, and the bars they are shifted by. Found on
+    # the way up in `pre_compute_`, because a graph can be hundreds of levels deep. None is anything
+    # else, and anything that can't be told, which stays raw: a wrong scale is worse than none.
+    _scale = None
+
     @property
     def adjustments(self):
-        """Returning adjustments multipliers"""
-        return None
+        """The multipliers of this factor, grouped by asset, or None if it has no known scale."""
+        if self._scale is None:
+            return None
+        multipliers, bars = self._scale
+        return _shifted(multipliers, bars)
 
     def _numeric(self):
         """This factor as the input of a helper that calculates with numbers."""
@@ -469,6 +478,9 @@ class CustomFactor(BaseFactor):
     inputs = None  # any values in `inputs` list will pass to `compute` function by order
     _min_win = None  # assert when `win` less than `_min_win`, prevent user error.
     _rolling_fill = np.nan  # value of the rolling window before the first data
+    # Set if the output is a price in the scale of its own bar, like a mean of prices. It then has
+    # the scale of its first input, which a window over it and the delay rescale it with.
+    _own_bar_scale = False
     # Set if `compute` reads across the slots of a group, like a mean of each date. Then the padding
     # slots of an input in the same group are cleared. Not by default, because `shift(-n)` needs
     # them: they hold the returns up to the last close of a delisted asset. It also clears the
@@ -538,6 +550,9 @@ class CustomFactor(BaseFactor):
 
     def get_mask(self):
         return self._mask
+
+    def _find_scale(self) -> tuple | None:
+        return _scale_of(self.inputs[0]) if self._own_bar_scale else None
 
     # What mask='universe' takes from the filter. The engine decides the delay and the history of
     # a run before `pre_compute_` binds it to the factors, so it leaves them here while it does.
@@ -663,6 +678,7 @@ class CustomFactor(BaseFactor):
             self._cache = None
             self._cache_stream = None
         self._ref_count = 0
+        self._scale = None
 
         if self.inputs:
             for upstream in self.inputs:
@@ -722,6 +738,8 @@ class CustomFactor(BaseFactor):
         if mask_factor is not None:
             mask_factor.pre_compute_(engine, start, end)
 
+        self._scale = self._find_scale()
+
         if self._keep_cache:
             # ref count +1 so this factor's cache will not clean up
             self._ref_count += 1
@@ -761,10 +779,9 @@ class CustomFactor(BaseFactor):
                     "use slice to select a value before using it, for example: "
                     "`factor[0]`."
                 )
-            # todo: If the indirect children is a column factor, also need to adjust.
-            #  for now, only adjust direct children.
-            #  refactor: if any shift occurs, adjust them.
-            ret = Rolling(ret, self.win, upstream.adjustments, self._rolling_fill)
+            # a window over another group is not a series of bars, there is no scale to follow
+            multipliers = upstream.adjustments if self.groupby == "asset" else None
+            ret = Rolling(ret, self.win, multipliers, self._rolling_fill)
         return ret
 
     def compute_(self, down_stream: torch.cuda.Stream | None) -> torch.Tensor:
@@ -920,6 +937,8 @@ class CrossSectionFactor(CustomFactor, ABC):
 
 
 class MultiRetSelector(CustomFactor):
+    _own_bar_scale = True
+
     def pre_compute_(self, engine, start, end):
         super().pre_compute_(engine, start, end)
         # consistent with upstream groupby, otherwise it will regroup before compute
@@ -942,14 +961,30 @@ class MultiRetSelectorXS(MultiRetSelector, CrossSectionFactor):
     pass
 
 
+def _shifted(data: torch.Tensor, periods: int) -> torch.Tensor:
+    if periods == 0:
+        return data
+    shift = data.roll(periods, dims=1)
+    if periods > 0:
+        shift[:, 0:periods] = np.nan
+    else:
+        shift[:, periods:] = np.nan
+    return shift
+
+
 class RawShiftFactor(CustomFactor):
     """
-    Shift the input data directly, note that this method will not process adjustment.
+    Shift the input data directly, note that this method will not process adjustment: a row reads
+    a price in the scale of the bar it comes from. So the multipliers shift with it.
     """
 
     def __init__(self, data, periods=1):
         super().__init__(inputs=[data])
         self.periods = periods
+
+    def _find_scale(self) -> tuple | None:
+        scale = _scale_of(self.inputs[0])
+        return None if scale is None else (scale[0], scale[1] + self.periods)
 
     def compute(self, data: torch.Tensor) -> torch.Tensor:
         if data.dtype in {torch.bool, torch.int8, torch.int16, torch.int32, torch.int64}:
@@ -957,18 +992,14 @@ class RawShiftFactor(CustomFactor):
                 "RawShiftFactor does not support `int` or `bool` type, "
                 f"please convert to float by using `factor.float()`, upstreams: {self.inputs}"
             )
-
-        shift = data.roll(self.periods, dims=1)
-        if self.periods > 0:
-            shift[:, 0 : self.periods] = np.nan
-        elif self.periods < 0:
-            shift[:, self.periods :] = np.nan
-        else:
+        if self.periods == 0:
             raise ValueError("Cannot shift with 0")
-        return shift
+        return _shifted(data, self.periods)
 
 
 class AbsFactor(CustomFactor):
+    _own_bar_scale = True
+
     def compute(self, data: torch.Tensor) -> torch.Tensor:
         return data.abs()
 
@@ -980,6 +1011,7 @@ def _nan_if_empty(kernel, data: torch.Tensor, dim: int) -> torch.Tensor:
 
 class SumFactor(CustomFactor):
     _min_win = 2
+    _own_bar_scale = True
 
     def compute(self, data: Rolling) -> torch.Tensor:
         return data.agg(lambda x: _nan_if_empty(nansum, x, dim=2))
@@ -987,6 +1019,7 @@ class SumFactor(CustomFactor):
 
 class UniqueTSSumFactor(CustomFactor):
     _min_win = 2
+    _own_bar_scale = True
 
     def compute(self, data: Rolling) -> torch.Tensor:
         def _uni_sum(x):
@@ -1022,6 +1055,8 @@ class SignFactor(CustomFactor):
 
 
 class RoundFactor(CustomFactor):
+    _own_bar_scale = True
+
     def compute(self, data: torch.Tensor, decimal) -> torch.Tensor:
         digits = 10**decimal
         return (data * digits).round() / digits
@@ -1044,6 +1079,7 @@ class NonNaNCountFactor(CustomFactor):
 
 class TypeCastFactor(CustomFactor):
     _min_win = 1
+    _own_bar_scale = True
     dtype = None
 
     def compute(self, data: torch.Tensor) -> torch.Tensor:
@@ -1051,14 +1087,22 @@ class TypeCastFactor(CustomFactor):
 
 
 class PadFactor(CustomFactor):
+    _own_bar_scale = True
     inf = False
     nan = True
 
     def compute(self, data: torch.Tensor) -> torch.Tensor:
-        return pad_2d(data, including_inf=self.inf, including_nan=self.nan)
+        ret = pad_2d(data, including_inf=self.inf, including_nan=self.nan)
+        multipliers = self.adjustments
+        if multipliers is None:
+            return ret
+        # a filled row holds a price of the bar it is filled from, which can be before an event
+        multipliers = multipliers.to(data.device)
+        return rescale(ret, pad_2d(multipliers.masked_fill(ret != data, np.nan)), multipliers)
 
 
 class FillNANFactor(CustomFactor):
+    _own_bar_scale = True
     inf = False
     nan = True
 
@@ -1076,6 +1120,8 @@ class FillNANFactor(CustomFactor):
 
 
 class MaskedFillFactor(CustomFactor):
+    _own_bar_scale = True
+
     def compute(self, data, mask, fill) -> torch.Tensor:
         if isinstance(fill, (int, float, bool)):
             return data.masked_fill(mask, fill)
@@ -1085,6 +1131,8 @@ class MaskedFillFactor(CustomFactor):
 
 
 class DoNothingFactor(CustomFactor):
+    _own_bar_scale = True
+
     def compute(self, data: torch.Tensor) -> torch.Tensor:
         return data
 
@@ -1341,9 +1389,32 @@ class IQRNormalityFactor(CrossSectionFactor):
 
 
 # --------------- op factors ---------------
+# The scale follows the units, only where they are certain: a sum of prices in one scale is a
+# price, and so is a price times or over a number. A factor without a scale is not a number, it can
+# be anything: in `close / (MA(20) + 1e-6)` the sum has none, and the result is not a price.
+
+
+def _scale_of(value) -> tuple | None:
+    return value._scale if isinstance(value, BaseFactor) else None
+
+
+def _same_scale(*values) -> tuple | None:
+    """The scale of `values`, if all of them are in one. Columns share their multipliers."""
+    first, *others = [_scale_of(value) for value in values]
+    for other in others:
+        if first is None or other is None or other[0] is not first[0] or other[1] != first[1]:
+            return None
+    return first
+
+
+def _scale_by_number(price, number) -> tuple | None:
+    return None if isinstance(number, BaseFactor) else _scale_of(price)
 
 
 class SubFactor(CustomFactor):
+    def _find_scale(self) -> tuple | None:
+        return _same_scale(*self.inputs)
+
     def compute(self, left, right) -> torch.Tensor:
         if type(right) is torch.Tensor and right.dtype is torch.bool:
             return left - right.float()
@@ -1352,16 +1423,26 @@ class SubFactor(CustomFactor):
 
 
 class AddFactor(CustomFactor):
+    def _find_scale(self) -> tuple | None:
+        return _same_scale(*self.inputs)
+
     def compute(self, left, right) -> torch.Tensor:
         return left + right
 
 
 class MulFactor(CustomFactor):
+    def _find_scale(self) -> tuple | None:
+        left, right = self.inputs
+        return _scale_by_number(left, right) or _scale_by_number(right, left)
+
     def compute(self, left, right) -> torch.Tensor:
         return left * right
 
 
 class DivFactor(CustomFactor):
+    def _find_scale(self) -> tuple | None:
+        return _scale_by_number(*self.inputs)
+
     def compute(self, left, right) -> torch.Tensor:
         return left / right
 
@@ -1377,5 +1458,7 @@ class PowFactor(CustomFactor):
 
 
 class NegFactor(CustomFactor):
+    _own_bar_scale = True
+
     def compute(self, left) -> torch.Tensor:
         return -left

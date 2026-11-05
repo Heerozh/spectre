@@ -16,7 +16,7 @@ from ..config import Global
 from ..parallel import Rolling, nanlast, nanmean, nanstd, nansum
 from .basic import Returns
 from .datafactor import DatetimeDataFactor
-from .factor import BaseFactor, CrossSectionFactor, CustomFactor, RawShiftFactor
+from .factor import BaseFactor, CrossSectionFactor, CustomFactor, RawShiftFactor, _scale_of
 from .filter import FilterFactor
 
 # ----------- Common Market Features -----------
@@ -135,6 +135,11 @@ class AssetData(CustomFactor):
                 "It may not exist in that range, or StaticAssets screened it out."
             )
         self.asset_ind = assets.get_loc(self.asset)
+        scale = _scale_of(self.inputs[0])
+        if scale is not None:
+            # all rows read that asset, so they are in its scale
+            multipliers, bars = scale
+            self._scale = (multipliers[self.asset_ind].expand(multipliers.shape), bars)
 
     def compute(self, data):
         ret = data[self.asset_ind]

@@ -205,7 +205,8 @@ rows into padded 2D tensors, using NaN or `False` for padding:
   and `split_ratio` up one row so they apply to bars before the ex-date. A dividend divides by the
   last valid close, brought to the scale of the ex-date, so multipliers are never NaN inside an
   asset, and `test_load()`, which asserts the contract, refuses NaN multipliers. Rows added later by
-  `engine.align_by_time` do have NaN multipliers, `_MACDLine` and `ForwardSignalData` fill them.
+  `engine.align_by_time` do have NaN multipliers, `column_to_multipliers_` fills them from the bar
+  before, or from the first bar of the asset.
 - An event must never move to an earlier bar, that is look-ahead. `_attach_events` puts one on the
   first bar of its asset on or after the ex-date, for event files, and in `_align_to` for rows the
   calendar drops. `CsvDirLoader` attaches events after the calendar step.
