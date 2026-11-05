@@ -29,6 +29,9 @@ class FilterFactor(CustomFactor, ABC):
         factor.periods = periods
         return factor
 
+    def delay_(self):
+        return self.shift(1)
+
     def sum(self, win):
         raise ValueError(
             "FilterFactor does not support `.sum()` method, "

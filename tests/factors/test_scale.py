@@ -7,7 +7,7 @@ a calculation on them is known too, and so is that value in the scale of any bar
 import numpy as np
 import pytest
 import torch
-from numpy.testing import assert_allclose
+from numpy.testing import assert_allclose, assert_array_equal
 
 import spectre
 from spectre import factors
@@ -15,6 +15,7 @@ from tests.conftest import (
     DIRTY_ADJUSTMENTS,
     DIRTY_DATES,
     DIRTY_OHLCV,
+    DIVIDEND_ON,
     LISTED_ON,
     SPLIT_ON,
 )
@@ -247,6 +248,85 @@ def test_full_run_at_a_factor_price_goes_across_an_event(dirty_engine, dirty_pan
         got = data[("Returns", column)].xs("SPLIT", level="asset")
         expected = mid.shift(-bars) / mid - 1
         assert_allclose(got, expected.loc[got.index], rtol=1e-3, atol=1e-5)
+
+
+# ------------------------------------ the delay ------------------------------------
+
+
+@each_price
+def test_delay_brings_a_price_to_the_scale_of_its_row(dirty_engine, dirty_panel, name):
+    """So an ex-date reads it with the open of that bar, which is in the new scale."""
+    make, reference = PRICES[name]
+    _, clean, scale = split_bars(dirty_panel)
+    got = run_delayed(dirty_engine, make()).xs("SPLIT", level="asset")
+    expected = reference(clean).shift(1) * scale
+    assert_allclose(got, expected.loc[got.index], rtol=1e-4, atol=1e-4)
+
+
+def test_delayed_moving_average_meets_the_open_of_an_ex_date(dirty_engine, dirty_panel):
+    bars, _, _ = split_bars(dirty_panel)
+    got = run_delayed(dirty_engine, factors.MA(20)).xs("SPLIT", level="asset")
+    split_date = DIRTY_DATES[SPLIT_ON]
+    assert got[split_date] / bars.open[split_date] == pytest.approx(1, abs=0.15)
+
+
+def test_delay_only_moves_the_rows_of_ex_dates(dirty_engine, dirty_panel):
+    bars, _, _ = split_bars(dirty_panel)
+    got = run_delayed(dirty_engine, close).xs("SPLIT", level="asset")
+    expected = bars.close.shift(1).loc[got.index]
+    ex_dates = DIRTY_DATES[[SPLIT_ON, DIVIDEND_ON]]
+    assert_array_equal(got.drop(ex_dates), expected.drop(ex_dates))
+    assert (got[ex_dates] != expected[ex_dates]).all()
+    assert got[ex_dates[0]] == pytest.approx(expected[ex_dates[0]] / 2)
+
+
+def test_delay_of_a_volume_uses_its_own_multipliers(dirty_engine, dirty_panel):
+    bars, _, _ = split_bars(dirty_panel)
+    got = run_delayed(dirty_engine, volume).xs("SPLIT", level="asset")
+    expected = bars.volume.shift(1).loc[got.index]
+    split_date, dividend_date = DIRTY_DATES[[SPLIT_ON, DIVIDEND_ON]]
+    assert got[split_date] == pytest.approx(expected[split_date] * 2)
+    assert got[dividend_date] == pytest.approx(expected[dividend_date])
+
+
+@each_not_price
+def test_delay_leaves_what_is_not_a_price(dirty_engine, dirty_panel, name):
+    make, reference = NOT_PRICES[name]
+    bars, _, _ = split_bars(dirty_panel)
+    got = run_delayed(dirty_engine, make()).xs("SPLIT", level="asset")
+    assert_allclose(got, reference(bars).shift(1).loc[got.index], rtol=1e-5)
+
+
+@pytest.mark.parametrize("periods", [1, 2, -1, -2])
+def test_delay_of_a_shift_is_in_the_scale_of_its_row(dirty_engine, dirty_panel, periods):
+    """The row is what meets the open, whatever bar the value comes from."""
+    _, clean, scale = split_bars(dirty_panel)
+    got = run_delayed(dirty_engine, close.shift(periods)).xs("SPLIT", level="asset")
+    expected = clean.close.shift(periods + 1) * scale
+    assert_allclose(got, expected.loc[got.index], rtol=1e-5)
+
+
+@pytest.mark.parametrize("dtype", ["float32", "float64"])
+def test_delay_keeps_the_type_of_the_data(dirty_panel, device, dtype):
+    panel = dirty_panel.astype(dict.fromkeys(DIRTY_OHLCV, dtype))
+    engine = factors.FactorEngine(spectre.data.MemoryLoader(panel, DIRTY_OHLCV, DIRTY_ADJUSTMENTS))
+    if device == "cuda":
+        engine.to_cuda()
+    assert run_delayed(engine, close).dtype == dtype
+
+
+def test_delay_of_a_factor_with_multiple_outputs_asks_for_a_selection(dirty_engine):
+    with pytest.raises(ValueError, match="multiple return values"):
+        run_delayed(dirty_engine, factors.BBANDS(3))
+
+
+@pytest.mark.cuda
+def test_delay_on_cpu_with_multipliers_on_cuda():
+    """When CUDA runs out of memory `compute` runs again on cpu, the column stays on cuda."""
+    column = column_with(torch.tensor([[0.5, 0.5, 1, 1]], device="cuda"))
+    result = column.delay_().compute(torch.tensor([[100, 110, 60, 70.0]]))
+    assert result.device.type == "cpu"
+    assert_allclose(result.numpy(), [[nan, 100, 55, 60]])
 
 
 # ------------------------------------ the multipliers ------------------------------------

@@ -281,10 +281,14 @@ pf.create_full_tear_sheet(
   will be different from the stock chart software which only adjusted according to last day.
   If you want adjusted by last day, use like 'AdjustedColumnDataFactor(OHLCV.close)' as input data.
   This will speeds up a lot because it only needs to be adjusted once, but brings Look-Ahead Bias.
-* Adjustment only happens inside rolling windows, on the price and volume columns directly.
+* Adjustment only happens inside rolling windows and in the delay, on prices and volumes. That
+  includes the built-in factors made from them, like `MA(5, inputs=[MA(20)])`, a sum of prices and a
+  price times or over a number, like `(high + low) / 2`. Anything else, like `close * open / high`,
+  is left as it is. A custom factor that returns a price has to set `_own_bar_scale = True`.
   `close / close.shift(1)` compares raw prices and drops on a split day, without any error. Use
   `Returns(win=n + 1)` for the return of n bars.
-* Factors that uses the close data will be delayed by 1 bar.
+* Factors that uses the close data will be delayed by 1 bar. A delayed price is in the scale of the
+  bar that reads it, so on an ex-date it can be compared with the open of that bar.
 * spectre's `EMA` matches `Dataframe.ewm(span=...)`, also on missing bars: a NaN keeps the average,
   and a window with no valid bar is NaN. The window is finite, `int(4.5 * (span + 1))` bars, which
   leaves a small error at any `span`. With `adjust=False` at `span=3` or `half_life=1`, spectre

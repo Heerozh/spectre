@@ -527,7 +527,7 @@ class FactorEngine:
         filter_ = self._filter
         if filter_ and delay_factor and (filter_.should_delay() or delay_factor == "all"):
             filter_ = filter_.shift(1)
-        factors = {col: col in delays and fct.shift(1) or fct for col, fct in self._factors.items()}
+        factors = {col: col in delays and fct.delay_() or fct for col, fct in self._factors.items()}
         delayed = len(delays) > 0 or filter_ is not self._filter
 
         # calculate how much historical data is needed

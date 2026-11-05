@@ -302,6 +302,10 @@ class BaseFactor:
             return self
         return RawShiftFactor(self, periods)
 
+    def delay_(self):
+        """What the engine runs in place of this factor, if it has to wait for the bar to close."""
+        return AdjustedShiftFactor(self, 1)
+
     def abs(self):
         return AbsFactor(inputs=(self._numeric(),))
 
@@ -995,6 +999,29 @@ class RawShiftFactor(CustomFactor):
         if self.periods == 0:
             raise ValueError("Cannot shift with 0")
         return _shifted(data, self.periods)
+
+
+class AdjustedShiftFactor(RawShiftFactor):
+    """
+    Shift a price to the scale of the row it lands on, the delay of the engine does this. That row
+    is read with the open of its bar, and on an ex-date that open is already in the new scale. The
+    event is known by then, a split is announced, and a dividend is divided by the last close.
+    """
+
+    def _find_scale(self) -> tuple | None:
+        scale = _scale_of(self.inputs[0])
+        return None if scale is None else (scale[0], 0)
+
+    def compute(self, data: torch.Tensor) -> torch.Tensor:
+        shift = super().compute(data)
+        scale = _scale_of(self.inputs[0])
+        if scale is None:
+            return shift
+        multipliers = scale[0].to(shift.device)  # `compute` can run again on cpu
+        before = _shifted(multipliers, scale[1] + self.periods)
+        if shift.ndim > multipliers.ndim:  # multiple outputs
+            before, multipliers = before.unsqueeze(-1), multipliers.unsqueeze(-1)
+        return rescale(shift, before, multipliers)
 
 
 class AbsFactor(CustomFactor):

@@ -48,6 +48,9 @@ class MarketFactor(CrossSectionFactor):
             return super().shift(periods)
         return MarketShift(self, periods)
 
+    def delay_(self):
+        return self.shift(1)
+
 
 class MarketDispersion(MarketFactor):
     """Cross-section standard deviation of universe stocks returns."""
