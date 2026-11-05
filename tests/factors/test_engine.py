@@ -153,6 +153,37 @@ def test_delayed_run_on_the_last_bar_has_no_data(dirty_engine, method):
         getattr(dirty_engine, method)(DIRTY_DATES[-1], DIRTY_DATES[-1])
 
 
+def no_data_run(engine, method, gone):
+    """A run from a date with no bar on it or after it, for the assets of the engine."""
+    if gone:
+        engine.set_filter(factors.StaticAssets({"DELISTED"}))
+        return getattr(engine, method)(DIRTY_DATES[DELISTED_ON + 2], DIRTY_DATES[-1])
+    return getattr(engine, method)(DIRTY_DATES[-1] + pd.Timedelta(days=1), None)
+
+
+@pytest.mark.parametrize("method", ["run", "run_raw"])
+@pytest.mark.parametrize("gone", [True, False], ids=["asset_gone", "after_the_last_bar"])
+def test_delayed_run_from_after_the_last_bar_has_no_data(dirty_engine, method, gone):
+    dirty_engine.add(factors.MA(3), "f")
+    with pytest.raises(ValueError, match="There is no data between start and end"):
+        no_data_run(dirty_engine, method, gone)
+
+
+def test_run_from_after_the_last_bar_that_is_not_delayed(dirty_engine):
+    dirty_engine.add(factors.OHLCV.open * 1, "f")
+    assert len(no_data_run(dirty_engine, "run", gone=False)) == 0
+    with pytest.raises(ValueError, match="There is no data between start and end"):
+        no_data_run(dirty_engine, "run_raw", gone=False)
+
+
+@pytest.mark.parametrize("method", ["run", "run_raw"])
+def test_run_of_a_gone_asset_that_is_not_delayed(dirty_engine, method):
+    """It loads no history, so the only asset has no rows at all."""
+    dirty_engine.add(factors.OHLCV.open * 1, "f")
+    with pytest.raises(ValueError, match="was not found in DataLoader"):
+        no_data_run(dirty_engine, method, gone=True)
+
+
 def test_no_trading_day(engine):
     engine.add(factors.SMA(2), "test")
     with pytest.raises(AssertionError, match="There is no data between.*"):

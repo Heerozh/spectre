@@ -555,6 +555,14 @@ class FactorEngine:
 
         return results, shifted_mask, delayed
 
+    @staticmethod
+    def _first_bar_of_delayed_run(dates: pd.DatetimeIndex, start: pd.Timestamp) -> pd.Timestamp:
+        """A delayed run drops the first bar from `start` on. It needs one more after that."""
+        first = dates.get_indexer([start], method="bfill")[0]
+        if first == -1 or first + 1 >= len(dates):
+            raise ValueError("There is no data between start and end.")
+        return dates[first + 1]
+
     def run(
         self, start: str | pd.Timestamp, end: str | pd.Timestamp | None, delay_factor=True
     ) -> pd.DataFrame:
@@ -576,11 +584,7 @@ class FactorEngine:
 
         # if any factors delayed, return df also should be delayed
         if delayed:
-            index = ret.index.levels[0]
-            start_ind = index.get_indexer([start], method="bfill")[0]
-            if (start_ind + 1) >= len(index):
-                raise ValueError("There is no data between start and end.")
-            start = index[start_ind + 1]
+            start = self._first_bar_of_delayed_run(ret.index.levels[0], start)
         ret = ret.sort_index()
         return ret.loc[start:]
 
@@ -599,14 +603,8 @@ class FactorEngine:
 
         results, shifted_mask, delayed = self._run(start, end, delay_factor)
 
-        index = self._dataframe.index.levels[0]
-        start_ind = index.get_indexer([start], method="bfill")[0]
         if delayed:  # if any factors delayed, return df also should be delayed
-            unique_date_index = self._dataframe.index.levels[0]
-            start_unique_ind = unique_date_index.get_indexer([start], "bfill")[0]
-            if (start_unique_ind + 1) >= len(unique_date_index):
-                raise ValueError("There is no data between start and end.")
-            start = unique_date_index[start_unique_ind + 1]
+            start = self._first_bar_of_delayed_run(self._dataframe.index.levels[0], start)
 
         index = self._dataframe_index[0]
         start_ind = index.searchsorted(start)
