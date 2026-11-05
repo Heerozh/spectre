@@ -4,6 +4,31 @@ import pytest
 from spectre import trading
 
 
+@pytest.mark.parametrize(
+    "stop_model",
+    [
+        None,
+        trading.TrailingStopModel(-0.1),
+        trading.PnLDecayTrailingStopModel(-0.1, 0.1, None),
+    ],
+    ids=["no_stop", "trailing", "pnl_decay"],
+)
+def test_dividend_on_a_position_with_no_price(stop_model):
+    dt = pd.Timestamp("2019-01-02", tz="UTC")
+    pos = trading.Position(10, 5.0, 0.0, dt, stop_model=stop_model)
+    pos.last_price = 0.0
+    assert pos.process_dividend(1.0, 0.0) == 10.0
+
+
+def test_dividend_of_the_whole_price_with_a_pnl_stop():
+    dt = pd.Timestamp("2019-01-02", tz="UTC")
+    stop_model = trading.PnLDecayTrailingStopModel(-0.1, 0.1, None)
+    pos = trading.Position(10, 5.0, 0.0, dt, stop_model=stop_model)
+    assert pos.process_dividend(5.0, 0.0) == 50.0
+    assert pos.last_price == 0
+    pos.check_stop_trigger()  # it computes the PnL% from a basis of 0
+
+
 def test_open_position():
     dt = pd.Timestamp("2019-01-02", tz="UTC")
     pos = trading.Position(10, 9, 10, dt)
