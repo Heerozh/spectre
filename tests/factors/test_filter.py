@@ -1,3 +1,5 @@
+from fractions import Fraction
+
 import numpy as np
 import pandas as pd
 import pytest
@@ -5,6 +7,7 @@ import scipy.stats
 import torch
 from numpy.testing import assert_allclose, assert_almost_equal, assert_array_equal
 
+import spectre
 from spectre import factors
 from tests.factors import reference as ref
 from tests.factors.helpers import run_dirty, run_late_listed
@@ -85,6 +88,61 @@ def test_top_bottom(engine, method, n, top_aapl, solo):
     expected_aapl[6] = solo
     assert_array_equal(result.xs("AAPL", level=1).test.values, expected_aapl)
     assert_array_equal(result.xs("MSFT", level=1).test.values, [not top_aapl] * 8)
+
+
+def engine_of_counts(counts, device):
+    """One date for each count, with that many assets."""
+    dates = pd.date_range("2020-01-01", periods=len(counts), freq="D", tz="UTC")
+    rows = [(date, f"A{i:04d}") for date, count in zip(dates, counts) for i in range(count)]
+    index = pd.MultiIndex.from_tuples(rows, names=["date", "asset"])
+    ohlcv = ("open", "high", "low", "close", "volume")
+    df = pd.DataFrame({column: np.arange(1.0, len(rows) + 1) for column in ohlcv}, index=index)
+    engine = factors.FactorEngine(spectre.data.MemoryLoader(df, ohlcv=ohlcv))
+    if device == "cuda":
+        engine.to_cuda()
+    return engine, dates
+
+
+@pytest.mark.filterwarnings("ignore:Warning!! delay_factor is set to False")
+@pytest.mark.parametrize("method", ["top", "bottom"])
+def test_top_bottom_of_every_count_and_fraction(device, method):
+    """A fraction floors, and the rounding of the float type must not lose an asset."""
+    counts = list(range(1, 301))
+    engine, dates = engine_of_counts(counts, device)
+    percents = list(range(1, 100))
+    for percent in percents:
+        engine.add(getattr(close, method)(percent / 100), str(percent))
+    selected = engine.run(dates[0], dates[-1], delay_factor=False).groupby(level="date").sum()
+    for percent in percents:
+        expected = [count * percent // 100 for count in counts]
+        assert_array_equal(selected[str(percent)], expected, err_msg=f"{percent}%")
+
+
+@pytest.mark.filterwarnings("ignore:Warning!! delay_factor is set to False")
+@pytest.mark.parametrize("method", ["top", "bottom"])
+@pytest.mark.parametrize(
+    "n, fraction",
+    [
+        # 100 * 0.53 is 52.999996 in float32
+        (0.53, Fraction(53, 100)),
+        # 100 * 0.29 is 28.999999999999996 in float64
+        (0.29, Fraction(29, 100)),
+        (1 / 3, Fraction(1, 3)),
+        (2 / 3, Fraction(2, 3)),
+        (3 / 11, Fraction(3, 11)),
+        (0.009, Fraction(9, 1000)),
+        (np.float64(0.29), Fraction(29, 100)),
+        (np.float32(0.29), Fraction(29, 100)),
+        (np.float32(0.53), Fraction(53, 100)),
+    ],
+)
+def test_top_bottom_of_a_fraction_that_rounds(device, method, n, fraction):
+    counts = [1, 2, 3, 6, 9, 11, 22, 55, 99, 100, 300, 1000, 3000]
+    engine, dates = engine_of_counts(counts, device)
+    engine.add(getattr(close, method)(n), "test")
+    selected = engine.run(dates[0], dates[-1], delay_factor=False).groupby(level="date").sum()
+    expected = [count * fraction.numerator // fraction.denominator for count in counts]
+    assert_array_equal(selected.test, expected)
 
 
 def test_static_assets(engine):

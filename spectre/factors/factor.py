@@ -153,12 +153,22 @@ class BaseFactor:
 
     # --------------- helper functions ---------------
 
+    @staticmethod
+    def _rank_of_fraction(rank_data, n):
+        """
+        The rank where the fraction `n` of each date ends. Ranks are whole, so it floors: 50% of 1
+        asset is no asset. A product that should be whole can round to just under it in any float
+        type, 100 * 0.29 is 28.999999999999996 in float64, so it goes up by a few rounding errors.
+        """
+        rounding = 2 * float(np.finfo(type(n)).eps)
+        return XSMax(inputs=[rank_data]).double() * (float(n) * (1 + rounding))
+
     def top(self, n: float, mask: BaseFactor = None):
         """Cross-section top values"""
         rank_data = self.rank(ascending=False, mask=mask, method="ordinal")
         if isinstance(n, (float, np.floating)):
             assert 0 < n < 1
-            return rank_data <= (XSMax(inputs=[rank_data]) * n)
+            return rank_data <= self._rank_of_fraction(rank_data, n)
         else:
             return rank_data <= n
 
@@ -166,7 +176,7 @@ class BaseFactor:
         rank_data = self.rank(ascending=True, mask=mask, method="ordinal")
         if isinstance(n, (float, np.floating)):
             assert 0 < n < 1
-            return rank_data <= (XSMax(inputs=[rank_data]) * n)
+            return rank_data <= self._rank_of_fraction(rank_data, n)
         else:
             return rank_data <= n
 
