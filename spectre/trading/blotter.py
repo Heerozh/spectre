@@ -305,9 +305,16 @@ class SimulationBlotter(BaseBlotter, EventReceiver):
         else:
             self.daily_curb = daily_curb
 
-        df = dataloader.load(start, None, 0).copy()
-        # add previous day close price for daily curb
+        # 1 bar before `start`, the first bar has to know what came before it
+        df = dataloader.load(start, None, 1).copy()
         ohlcv = ohlcv or dataloader.ohlcv
+        # add the last known volume for slippage at the open, in the shares of the bar reading it
+        volume = df[ohlcv[4]]
+        if dataloader.adjustments is not None:
+            volume = volume / df[dataloader.adjustments[1]]
+        volume = volume.groupby(level=1, observed=False).ffill()
+        df["__last_volume"] = volume.groupby(level=1, observed=False).shift(1)
+        # add previous day close price for daily curb
         if dataloader.adjustments is not None:
             sel_cols = [ohlcv[3], dataloader.adjustments[0], dataloader.adjustments[1]]
             lasts = (
@@ -327,7 +334,7 @@ class SimulationBlotter(BaseBlotter, EventReceiver):
             )
             curb_cols = ["__last_close"]
         self._data = df
-        self._prices = DataLoaderFastGetter(df[list(ohlcv) + curb_cols])
+        self._prices = DataLoaderFastGetter(df[list(ohlcv) + ["__last_volume"] + curb_cols])
         self._current_prices_col = None
         self._current_prices = None
         if dataloader.adjustments is not None:
@@ -471,8 +478,12 @@ class SimulationBlotter(BaseBlotter, EventReceiver):
         # commission, slippage
         fill_price = price
         if not self.slippage.is_empty():
-            bar_volume = self._prices.get_as_dict(self._current_dt, column_id=4)  # ohlcv=01234
-            fill_price = self.slippage.calculate(asset, price, amount / bar_volume[asset])
+            # the volume of a bar is only known after it closed. ohlcv=01234, 5 is the last known
+            volume_col = 5 if self._current_prices_col == 0 else 4
+            volume = self._prices.get_as_dict(self._current_dt, column_id=volume_col)[asset]
+            # a volume nobody knows is treated as no volume, which is the full slippage
+            ratio = amount / volume if volume > 0 else np.copysign(np.inf, amount)
+            fill_price = self.slippage.calculate(asset, price, ratio)
         commission = self.commission.calculate(asset, fill_price, amount)
         if amount < 0:
             commission += self.short_fee.calculate(asset, fill_price, amount)

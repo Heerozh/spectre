@@ -8,6 +8,7 @@ from spectre import factors, trading
 
 # AAPL and MSFT daily prices (uOpen, uClose, uVolume) used in the tests
 AAPL_0102 = dict(open=155.92, close=158.61, volume=37932561)
+AAPL_1231_VOLUME = 36471914
 MSFT_0109_CLOSE = 106.0
 MSFT_DIVIDEND = 0.46 + 0.11  # ex-date 2019-01-11, paid at the close of 2019-01-09
 AAPL_0110_CLOSE, AAPL_0109_CLOSE = 161.0, 156.03
@@ -205,9 +206,12 @@ def test_slippage(blotter):
     blotter.order("AAPL", -385)
     blotter.market_close(None)
 
-    slippage = 0.005 / (1 + 200 ** (0.5 - 385 / AAPL_0102["volume"] / 0.4))
-    buy_price = AAPL_0102["open"] * (1 + slippage)
-    sell_price = AAPL_0102["close"] * (1 - slippage)
+    def slippage(volume):
+        return 0.005 / (1 + 200 ** (0.5 - 385 / volume / 0.4))
+
+    # at the open the last known volume is the one of the bar before, at the close its own
+    buy_price = AAPL_0102["open"] * (1 + slippage(AAPL_1231_VOLUME))
+    sell_price = AAPL_0102["close"] * (1 - slippage(AAPL_0102["volume"]))
     txn = blotter.get_transactions()
     # `price` is the market price, `fill_price` includes the slippage
     assert list(txn.price) == [AAPL_0102["open"], AAPL_0102["close"]]
@@ -218,6 +222,74 @@ def test_slippage(blotter):
     assert blotter.portfolio.cash == pytest.approx(
         200000 - 385 * buy_price + 385 * sell_price - commission * 2
     )
+
+
+def fill_price_of_100_shares(close, volume, bar, price_name, start=None, **kwargs):
+    days = pd.bdate_range("2021-01-04", periods=len(close), tz="UTC")
+    loader = asset_a_loader(days, close, volume=np.array(volume, dtype=float), **kwargs)
+    blotter = trading.SimulationBlotter(loader, start=None if start is None else days[start])
+    blotter.set_slippage(0.01, 1e-3)
+    blotter.set_datetime(days[bar])
+    blotter.market_open(None)
+    blotter.set_price(price_name)
+    blotter.order("A", 100)
+    return blotter.orders["A"][-1].fill_price
+
+
+def slipped(price, ratio):
+    """The price of a buy order with `set_slippage(0.01, 1e-3)`."""
+    return price * (1 + 0.01 / (1 + 200 ** (0.5 - ratio / 1e-3)))
+
+
+@pytest.mark.parametrize("bar_volume", [1e6, 1e5, 1e7])
+def test_fill_at_the_open_does_not_know_the_volume_of_its_bar(bar_volume):
+    # the 100 shares are 1e-4 of the 1e6 traded by the bar before, whatever this bar trades
+    fill = fill_price_of_100_shares([100, 100, 100], [1e6, bar_volume, 1e6], 1, "open")
+    assert fill == pytest.approx(slipped(100, 1e-4))
+    assert fill == pytest.approx(100.107, abs=1e-3)
+
+
+def test_fill_at_the_close_knows_the_volume_of_its_bar():
+    fill = fill_price_of_100_shares([100, 100, 100], [1e6, 1e5, 1e6], 1, "close")
+    assert fill == pytest.approx(slipped(100, 1e-3))
+
+
+def test_fill_at_the_open_on_the_first_bar_of_the_blotter():
+    # `start` is where the blotter begins, the bar before it is still known
+    fill = fill_price_of_100_shares([100, 100, 100], [1e6, 1e5, 1e6], 1, "open", start=1)
+    assert fill == pytest.approx(slipped(100, 1e-4))
+
+
+@pytest.mark.parametrize(
+    "split_ratio, new_shares",
+    [(0.5, 2e6), (2, 5e5)],
+    ids=["2-for-1", "1-for-2"],
+)
+def test_fill_at_the_open_of_an_ex_date(split_ratio, new_shares):
+    # the 1e6 shares traded before the split are `new_shares` shares of the ex-date
+    close = [100, 100, 100 * split_ratio]
+    fill = fill_price_of_100_shares(
+        close, [1e6, 1e6, 1e6], 2, "open", split_ratios={2: split_ratio}
+    )
+    assert fill == pytest.approx(slipped(100 * split_ratio, 100 / new_shares))
+
+
+def test_fill_at_the_open_of_a_bar_without_a_volume():
+    # the bar before had none, so the volume before it is the last known one
+    fill = fill_price_of_100_shares([100, 100, 100], [1e6, nan, 5e5], 2, "open")
+    assert fill == pytest.approx(slipped(100, 1e-4))
+
+
+@pytest.mark.parametrize(
+    "bar, volume",
+    [(0, [1e6, 1e6]), (1, [1e6, nan])],
+    ids=["open_of_a_listing", "close_without_a_volume"],
+)
+def test_fill_without_any_known_volume_is_the_full_slippage(bar, volume):
+    # nothing says how much of the market the order is, so it costs all of the 1%
+    price_name = "open" if bar == 0 else "close"
+    fill = fill_price_of_100_shares([100, 100], volume, bar, price_name)
+    assert fill == pytest.approx(100 * 1.01)
 
 
 def test_dividend_curb_and_split(blotter):
