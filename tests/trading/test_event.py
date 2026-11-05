@@ -215,16 +215,96 @@ def test_calendar_event_skips_what_passed_between_polls(monkeypatch, offset):
     assert fired[offset] == [polls[1], polls[4]]
 
 
-def test_calendar_event_starting_inside_its_lead_fires_once(monkeypatch):
+def test_calendar_event_starting_inside_its_lead_waits_for_the_next_event(monkeypatch):
     start = ts("2020-01-06 14:55")
     polls = [start + delta(i * MINUTE) for i in range(1, 8)]
+    polls += [ts("2020-01-07 14:49"), ts("2020-01-07 14:50"), ts("2020-01-07 14:51")]
 
     fired = run_live(
         monkeypatch, trading.event.MarketClose, [-10 * MINUTE], polls, start="2020-01-06 14:55"
     )
 
-    # late, the first poll is past its time
-    assert fired[-10 * MINUTE] == [polls[0]]
+    # its time today had passed when it was scheduled
+    assert fired[-10 * MINUTE] == [ts("2020-01-07 14:50")]
+
+
+def test_calendar_event_scheduled_between_its_event_and_its_offset_fires_today(monkeypatch):
+    """The event has passed, and it is popped from the calendar, but its time is still to come."""
+    days = ("06", "07", "08", "09", "10")
+    events = [ts(f"2020-01-{day} 09:00") for day in days]
+    polls = polls_around(events, [MINUTE])
+
+    fired = run_live(
+        monkeypatch,
+        trading.event.MarketOpen,
+        [MINUTE],
+        [poll for poll in polls if poll > ts("2020-01-06 09:00:30")],
+        start="2020-01-06 09:00:30",
+    )
+
+    assert fired[MINUTE] == [event + delta(MINUTE) for event in events]
+
+
+def test_second_run_on_a_calendar_does_not_fire_an_event_again(monkeypatch):
+    offset = -5 * 1000 * MILLISECOND
+    clock = SimpleNamespace(now=ts("2020-01-06 08:59:50"))
+    calendar = trading.Calendar()
+    calendar.hr_now = lambda: clock.now
+    calendar.build("2020-01-06", "2020-01-08", {"Open": "9:00:00"}, tz="UTC")
+    evt_mgr = trading.MarketEventManager(calendar)
+    log = FireLog(trading.event.MarketOpen, [offset], calendar)
+    evt_mgr.subscribe(log)
+
+    def run_until(stop):
+        def sleep(_):
+            clock.now += delta(SECOND)
+            if clock.now >= stop:
+                evt_mgr.stop()
+
+        monkeypatch.setattr(trading.event, "time", SimpleNamespace(sleep=sleep))
+        evt_mgr.run()
+
+    # stops inside the lead, after it fired
+    run_until(ts("2020-01-06 08:59:57"))
+    assert log.fired[offset] == [ts("2020-01-06 08:59:55")]
+    run_until(ts("2020-01-06 09:00:05"))
+    assert log.fired[offset] == [ts("2020-01-06 08:59:55")]
+
+
+def test_calendar_event_with_nothing_left_is_an_error_at_the_start_of_a_run():
+    calendar = trading.Calendar()
+    calendar.hr_now = lambda: ts("2020-02-03 12:00")
+    calendar.build("2020-01-06", "2020-01-10", {"Close": "15:00:00"}, tz="UTC")
+    evt_mgr = trading.MarketEventManager(calendar)
+    evt_mgr.subscribe(FireLog(trading.event.MarketClose, [0], calendar))
+
+    with pytest.raises(ValueError, match="no Close events left"):
+        evt_mgr.run()
+
+
+def test_calendar_event_fires_for_the_last_event_if_it_is_scheduled_inside_its_offset(monkeypatch):
+    """The last event of the calendar has passed, its time with the offset has not."""
+    clock = SimpleNamespace(now=ts("2020-01-10 15:00:30"))
+    calendar = trading.Calendar()
+    calendar.hr_now = lambda: clock.now
+    calendar.build("2020-01-06", "2020-01-10", {"Close": "15:00:00"}, tz="UTC")
+    assert calendar.events["Close"] == []
+    evt_mgr = trading.MarketEventManager(calendar)
+    log = FireLog(trading.event.MarketClose, [MINUTE], calendar)
+    evt_mgr.subscribe(log)
+    polls = iter([ts("2020-01-10 15:00:59"), ts("2020-01-10 15:01:00"), ts("2020-01-10 15:01:01")])
+
+    def sleep(_):
+        try:
+            clock.now = next(polls)
+        except StopIteration:
+            evt_mgr.stop()
+
+    monkeypatch.setattr(trading.event, "time", SimpleNamespace(sleep=sleep))
+    with pytest.warns(RuntimeWarning, match="no Close events left"):
+        evt_mgr.run()
+
+    assert log.fired[MINUTE] == [ts("2020-01-10 15:01:00")]
 
 
 @pytest.mark.parametrize("offset", [0, -SECOND, SECOND])
