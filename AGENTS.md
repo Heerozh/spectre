@@ -164,11 +164,13 @@ rows into padded 2D tensors, using NaN or `False` for padding:
 - **The calendar flags are a property of the date.** `IS_MONTH_END` and the others read the dates of
   the frame in `engine.timezone`, not the bars of an asset, and all bars of a date get the flag. The
   first and last date of the frame go by business days, so a holiday there isn't seen.
-- **Market factors are one number per date.** `win` of `MarketVolatility` counts the dates of the
-  market, and `shift` moves by them through `MarketShift`, so the engine's delay does too. A factor
-  built on one gets the normal delay by the bars of each asset. `mean()`, `std()` and the IC factors
-  are the same case, but they can be grouped by other columns, so they also delay by asset bars: an
-  asset back from a halt reads the value of its own last bar, and a new listing reads NaN.
+- **Market factors are one number per date.** `MarketFactor`, the base of `MarketReturn`,
+  `MarketDispersion`, `AdvanceDeclineRatio` and `MarketVolatility`, shifts by dates through
+  `MarketShift`, so the engine's delay does too, and `win` of `MarketVolatility` counts dates. A
+  factor built on one, such as `MarketReturn() * 1`, gets the normal delay by the bars of each asset.
+  `mean()`, `std()` and the IC factors are the same case, but they can be grouped by other columns,
+  so they delay by asset bars too: an asset back from a halt reads the value of its own last bar,
+  and a new listing reads NaN.
 - **`SeriesDataFactor` is not a column of the frame**, so it can't be a `groupby`. It keeps what it
   read for the rows of the frame, keyed by `engine.cache_hash`. `fill_na` reads the whole series,
   so it doesn't depend on `start`.
