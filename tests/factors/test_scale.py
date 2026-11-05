@@ -315,6 +315,15 @@ def test_delay_keeps_the_type_of_the_data(dirty_panel, device, dtype):
     assert run_delayed(engine, close).dtype == dtype
 
 
+def test_a_delayed_price_is_in_the_scale_of_its_row(dirty_engine, dirty_panel):
+    """So a window over it ends in that scale, and not in the one of the bar it comes from."""
+    _, clean, scale = split_bars(dirty_panel)
+    result = run_dirty(dirty_engine, factors.MA(WIN, inputs=[close.delay_()]), START)
+    got = result.xs("SPLIT", level="asset")
+    expected = clean.close.shift(1).rolling(WIN).mean() * scale
+    assert_allclose(got, expected.loc[got.index], rtol=1e-4)
+
+
 def test_delay_of_a_factor_with_multiple_outputs_asks_for_a_selection(dirty_engine):
     with pytest.raises(ValueError, match="multiple return values"):
         run_delayed(dirty_engine, factors.BBANDS(3))
