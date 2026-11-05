@@ -23,6 +23,7 @@ from ..parallel import (
     nanvar,
     pearsonr,
     quantile,
+    rankdata,
     unmasked_mean,
     unmasked_sum,
 )
@@ -296,10 +297,13 @@ class RollingInformationCoefficient(RollingCorrelation):
 
 class RankWeightedInformationCoefficient(InformationCoefficient):
     def __init__(self, x, y, half_life, mask=None):
-        alpha = np.exp(np.log(0.5) / half_life)
-        y_rank = y.rank(ascending=False, mask=mask) - 1
-        weight = alpha**y_rank
-        super().__init__(x, y, mask=mask, weight=weight)
+        super().__init__(x, y, mask=mask)
+        self.alpha = np.exp(np.log(0.5) / half_life)
+
+    def compute(self, x, y, weight):
+        rank = rankdata(y.masked_fill(torch.isnan(x), np.nan), ascending=False)
+        # ranks are float32, and pow rounds them differently on cpu and cuda
+        return super().compute(x, y, self.alpha ** (rank - 1).to(y.dtype))
 
 
 class TTest1Samp(CustomFactor):

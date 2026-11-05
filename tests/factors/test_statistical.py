@@ -623,6 +623,76 @@ def centered_weighted_corr(x, y, w):
     return cov[0, 1] / np.sqrt(cov[0, 0] * cov[1, 1])
 
 
+def rank_ic_engine(columns, dates, device):
+    """An engine on `columns`, a dict of arrays of [date, asset]."""
+    assets = [f"S{i}" for i in range(columns["x"].shape[1])]
+    index = pd.MultiIndex.from_product([dates, assets], names=("date", "asset"))
+    df = pd.DataFrame({name: values.ravel() for name, values in columns.items()}, index=index)
+    engine = spectre.factors.FactorEngine(spectre.data.MemoryLoader(df))
+    if device == "cuda":
+        engine.to_cuda()
+    return engine
+
+
+@pytest.mark.filterwarnings("ignore:Warning!! delay_factor is set to False")
+@pytest.mark.parametrize(
+    "x, y, half_life, expected_ic",
+    [
+        # x is missing on a middle rank
+        ([2.0, 1, nan, 4, 3, 6, 5, 8], [9.0, 8, 7, 6, 5, 3, 2, 1], 1.0, -0.8016),
+        # on the first rank, all the others move by 1, so the weights keep their ratios
+        ([nan, 1.0, 3, 2, 5, 4], [9.0, 5, 4, 3, 2, 1], 2.0, None),
+        ([nan, 2.0, 1, 4, nan, 3, 5, 7], [8.0, 7, 6, 5, 4, 3, 2, 1], 3.0, None),
+        # y is missing, which never was a problem
+        ([2.0, 1, 3, 4, 3, 6], [9.0, nan, 7, 6, 5, 3], 2.0, None),
+    ],
+)
+def test_rank_weighted_ic_ranks_the_samples_x_has_too(device, x, y, half_life, expected_ic):
+    x, y = np.array(x), np.array(y)
+    engine = rank_ic_engine({"x": x[None], "y": y[None]}, [IC_DATE], device)
+    a, b = [factors.ColumnDataFactor(inputs=[col]) for col in "xy"]
+    engine.add(factors.RankWeightedInformationCoefficient(a, b, half_life), "ic")
+    result = engine.run(IC_DATE, IC_DATE, delay_factor=False).ic.iloc[0]
+
+    valid = ~np.isnan(x * y)
+    pairs = x[valid], y[valid]
+    expected = centered_weighted_corr(*pairs, rank_weight(pairs[1], half_life))
+    assert result == pytest.approx(expected, rel=1e-6)
+    if expected_ic is not None:
+        assert expected == pytest.approx(expected_ic, abs=1e-4)
+
+
+@pytest.mark.filterwarnings("ignore:Warning!! delay_factor is set to False")
+def test_rank_weighted_ic_with_mask_ranks_the_samples_x_has_too(device):
+    x = np.array([2.0, 1, nan, 4, 3, 6, 5, 8])
+    y = np.array([9.0, 8, 7, 6, 5, 3, 2, 1])
+    engine = rank_ic_engine({"x": x[None], "y": y[None]}, [IC_DATE], device)
+    a, b = [factors.ColumnDataFactor(inputs=[col]) for col in "xy"]
+    mask = b < 9
+    engine.add(factors.RankWeightedInformationCoefficient(a, b, 2.0, mask=mask), "ic")
+    result = engine.run(IC_DATE, IC_DATE, delay_factor=False).ic.iloc[0]
+
+    valid = ~np.isnan(x) & (y < 9)
+    expected = centered_weighted_corr(x[valid], y[valid], rank_weight(y[valid], 2.0))
+    assert result == pytest.approx(expected, rel=1e-6)
+
+
+@pytest.mark.cuda
+@pytest.mark.filterwarnings("ignore:Warning!! delay_factor is set to False")
+def test_rank_weighted_ic_of_float64_data_is_the_same_on_cuda():
+    rng = np.random.default_rng(0)
+    dates = pd.date_range("2020-01-01", periods=100, freq="D", tz="UTC")
+    columns = {"x": rng.normal(60, 30, (100, 9)), "y": rng.uniform(1000, 1e5, (100, 9))}
+
+    def run(device):
+        engine = rank_ic_engine(columns, dates, device)
+        a, b = [factors.ColumnDataFactor(inputs=[col]) for col in "xy"]
+        engine.add(factors.RankWeightedInformationCoefficient(a, b, 3.0), "ic")
+        return engine.run(dates[0], dates[-1], delay_factor=False).ic.values
+
+    assert_allclose(run("cuda"), run("cpu"), rtol=1e-12, atol=1e-12)
+
+
 def weighted_ic(device, dtype, *inputs):
     tensors = [torch.tensor(v, device=device, dtype=dtype) for v in inputs]
     return factors.InformationCoefficient(None, None).compute(*tensors)[:, 0].cpu().numpy()
