@@ -263,15 +263,27 @@ def test_weighted_zscore_without_spread(device, data, weight):
     assert torch.isnan(result).all()
 
 
+def constant_rows(rng, dtype, device):
+    """Rows of different lengths, the values of a row are equal."""
+    data = np.full((200, 40), nan)
+    for row, value in enumerate(rng.uniform(0.01, 500, 200)):
+        data[row, : 3 + row % 37] = value
+    return torch.tensor(data, dtype=dtype, device=device)
+
+
+def smallest_spread(dtype, device):
+    """Equal values and one that is a step of the float type above them."""
+    value = torch.tensor(123.456, dtype=dtype)
+    next_value = torch.nextafter(value, torch.tensor(np.inf, dtype=dtype))
+    return torch.stack([value, value, value, next_value]).view(1, 4).to(device)
+
+
 @pytest.mark.parametrize("weighted", [False, True], ids=["unweighted", "weighted"])
 @pytest.mark.parametrize("dtype", [torch.float32, torch.float64])
 def test_zscore_of_constant_rows(device, dtype, weighted):
     """The rounding of the mean must not give scores to equal values."""
     rng = np.random.default_rng(0)
-    data = np.full((200, 40), nan)
-    for row, value in enumerate(rng.uniform(0.01, 500, 200)):
-        data[row, : 3 + row % 37] = value
-    data = torch.tensor(data, dtype=dtype, device=device)
+    data = constant_rows(rng, dtype, device)
     weight = torch.tensor(rng.uniform(1, 1000, data.shape), dtype=dtype, device=device)
     result = factors.factor.ZScoreFactor(close).compute(data, weight if weighted else None)
     assert torch.isnan(result).all()
@@ -280,10 +292,7 @@ def test_zscore_of_constant_rows(device, dtype, weighted):
 @pytest.mark.parametrize("dtype", [torch.float32, torch.float64])
 def test_zscore_of_the_smallest_spread(device, dtype):
     """Rounding must not hide a spread either, one step of the float type is still a spread."""
-    value = torch.tensor(123.456, dtype=dtype)
-    next_value = torch.nextafter(value, torch.tensor(np.inf, dtype=dtype))
-    data = torch.stack([value, value, value, next_value]).view(1, 4).to(device)
-    result = factors.factor.ZScoreFactor(close).compute(data)
+    result = factors.factor.ZScoreFactor(close).compute(smallest_spread(dtype, device))
     expected = np.array([-1, -1, -1, 3]) / 3**0.5
     assert_allclose(result.cpu().numpy()[0], expected, rtol=1e-6)
 
@@ -301,13 +310,19 @@ def test_zscore_of_random_rows(device, dtype, atol):
     assert_allclose(result.cpu().numpy(), (exact - mean) / std, rtol=0, atol=atol)
 
 
-@pytest.mark.parametrize("groupby", ["date", "asset"])
-@pytest.mark.parametrize("dtype", ["float32", "float64"])
-def test_zscore_agrees_with_pandas(dirty_panel, device, dtype, groupby):
+def typed_engine(dirty_panel, dtype, device):
+    """The dirty panel with its prices in a float type, and an engine on it."""
     panel = dirty_panel.astype(dict.fromkeys(DIRTY_OHLCV, dtype))
     engine = factors.FactorEngine(spectre.data.MemoryLoader(panel, DIRTY_OHLCV, DIRTY_ADJUSTMENTS))
     if device == "cuda":
         engine.to_cuda()
+    return panel, engine
+
+
+@pytest.mark.parametrize("groupby", ["date", "asset"])
+@pytest.mark.parametrize("dtype", ["float32", "float64"])
+def test_zscore_agrees_with_pandas(dirty_panel, device, dtype, groupby):
+    panel, engine = typed_engine(dirty_panel, dtype, device)
     closes = panel.close.astype("float64")
     expected = closes.groupby(level=groupby).transform(lambda x: (x - x.mean()) / x.std(ddof=0))
     result = run_dirty(engine, close.zscore(groupby=groupby))
@@ -317,10 +332,7 @@ def test_zscore_agrees_with_pandas(dirty_panel, device, dtype, groupby):
 
 @pytest.mark.parametrize("dtype", ["float32", "float64"])
 def test_weighted_zscore_agrees_with_pandas(dirty_panel, device, dtype):
-    panel = dirty_panel.astype(dict.fromkeys(DIRTY_OHLCV, dtype))
-    engine = factors.FactorEngine(spectre.data.MemoryLoader(panel, DIRTY_OHLCV, DIRTY_ADJUSTMENTS))
-    if device == "cuda":
-        engine.to_cuda()
+    panel, engine = typed_engine(dirty_panel, dtype, device)
     closes, volumes = panel.close.astype("float64"), panel.volume.astype("float64")
     std = closes.groupby(level="date").transform("std", ddof=0)
     expected = (closes - xs_weighted_mean(closes, volumes)) / std
@@ -982,6 +994,42 @@ def test_to_weight(engine):
         close.to_weight(demean=False),
         *ref.expected_xs(lambda df: df.div(df.abs().sum(axis=1), axis=0)),
     )
+
+
+def test_to_weight_of_equal_values(dirty_engine):
+    """With demean, no asset is above or below the others, so there are no weights to give."""
+    # every close is above 0.3, so each date is a single value
+    assert run_dirty(dirty_engine, close.clamp(0, 0.3).to_weight()).isna().all()
+
+
+def test_to_weight_of_equal_values_without_demean(dirty_engine, dirty_panel):
+    clamped = dirty_panel.close.clip(0, 0.3)
+    expected = clamped / clamped.groupby(level="date").transform("sum")
+    assert_allclose(run_dirty(dirty_engine, close.clamp(0, 0.3).to_weight(demean=False)), expected)
+
+
+@pytest.mark.parametrize("dtype", [torch.float32, torch.float64])
+def test_to_weight_of_constant_rows(device, dtype):
+    data = constant_rows(np.random.default_rng(0), dtype, device)
+    assert torch.isnan(factors.factor.ToWeightFactor().compute(data)).all()
+
+
+@pytest.mark.parametrize("dtype", [torch.float32, torch.float64])
+def test_to_weight_of_the_smallest_spread(device, dtype):
+    result = factors.factor.ToWeightFactor().compute(smallest_spread(dtype, device))
+    # from their mean the values are -1/4 of a step three times, and 3/4 of a step
+    assert_allclose(result.cpu().numpy()[0], [-1 / 6, -1 / 6, -1 / 6, 1 / 2], rtol=1e-6)
+
+
+@pytest.mark.parametrize("dtype", ["float32", "float64"])
+def test_to_weight_agrees_with_pandas(dirty_panel, device, dtype):
+    panel, engine = typed_engine(dirty_panel, dtype, device)
+    closes = panel.close.astype("float64")
+    demeaned_ = closes - closes.groupby(level="date").transform("mean")
+    expected = demeaned_ / demeaned_.abs().groupby(level="date").transform("sum")
+    result = run_dirty(engine, close.to_weight())
+    assert_allclose(result, expected, rtol=1e-5, atol=1e-6)
+    assert result.dtype == dtype
 
 
 def test_demean_of_to_weight(dirty_engine, dirty_panel):

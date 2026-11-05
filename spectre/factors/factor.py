@@ -1214,6 +1214,8 @@ class ToWeightFactor(CrossSectionFactor):
 
     def compute(self, data: torch.Tensor) -> torch.Tensor:
         if self.demean_weight:
+            # from the lowest value, so rounding doesn't give equal values a spread
+            data = data - nanmin(data).unsqueeze(-1)
             data = data - nanmean(data).unsqueeze(-1)
         return data / nansum(data.abs(), dim=1).unsqueeze(-1)
 
