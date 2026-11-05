@@ -617,6 +617,67 @@ def test_weighted_ic_leaves_out_samples_without_a_weight(device):
     assert np.isnan(result[1]).all()
 
 
+def centered_weighted_corr(x, y, w):
+    """Unlike `weighted_corr`, this has no raw moments that cancel out on a high level."""
+    cov = np.cov(x, y, aweights=w, ddof=0)
+    return cov[0, 1] / np.sqrt(cov[0, 0] * cov[1, 1])
+
+
+def weighted_ic(device, dtype, *inputs):
+    tensors = [torch.tensor(v, device=device, dtype=dtype) for v in inputs]
+    return factors.InformationCoefficient(None, None).compute(*tensors)[:, 0].cpu().numpy()
+
+
+@pytest.mark.parametrize(
+    "level, spread, dtype, tol",
+    [
+        (100.0, 0.5, torch.float32, 1e-5),
+        (1000.0, 1.0, torch.float32, 1e-5),
+        (1e6, 1.0, torch.float64, 1e-13),
+        (1e7, 1.0, torch.float64, 1e-13),
+    ],
+)
+def test_weighted_ic_of_a_small_spread_on_a_high_level(device, level, spread, dtype, tol):
+    rng = np.random.default_rng(0)
+    x = level + rng.normal(0, spread, (50, 30))
+    y = 0.6 * (x - level) / spread + rng.normal(0, 1, x.shape)
+    w = rng.uniform(0.2, 2, x.shape)
+    result = weighted_ic(device, dtype, x, y, w)
+    # on the values the data has after the cast
+    x, y, w = [torch.tensor(v, dtype=dtype).numpy().astype(np.float64) for v in (x, y, w)]
+    expected = [centered_weighted_corr(*row) for row in zip(x, y, w)]
+    assert_allclose(result, expected, rtol=tol, atol=tol)
+
+
+@pytest.mark.parametrize("assets", [3, 7, 30])
+@pytest.mark.parametrize("dtype", [torch.float32, torch.float64])
+def test_weighted_ic_of_constant_is_nan(device, dtype, assets):
+    rng = np.random.default_rng(0)
+    constant = np.repeat(rng.uniform(1, 300, (500, 1)), assets, axis=1)
+    other = rng.normal(size=constant.shape)
+    w = rng.uniform(0.2, 2, constant.shape)
+    for x, y in ((constant, other), (other, constant), (constant, constant)):
+        assert np.isnan(weighted_ic(device, dtype, x, y, w)).all()
+
+
+@pytest.mark.parametrize("dtype", [torch.float32, torch.float64])
+def test_weighted_ic_of_constant_on_the_common_samples(device, dtype):
+    """x varies, but only on samples where y or the weight is missing."""
+    rng = np.random.default_rng(0)
+    x = np.repeat(rng.uniform(1, 300, (500, 1)), 30, axis=1)
+    x[:, -2:] += rng.uniform(1, 3, (500, 2))
+    y = rng.normal(size=x.shape)
+    y[:, -1] = nan
+    w = rng.uniform(0.2, 2, x.shape)
+    w[:, -2] = nan
+    assert np.isnan(weighted_ic(device, dtype, x, y, w)).all()
+
+
+def test_weighted_ic_of_one_sample_is_nan(device):
+    x, y, w = [1.0, nan, 3.0], [2.0, 5.0, nan], [1.0, 1.0, 1.0]
+    assert np.isnan(weighted_ic(device, torch.float64, [x], [y], [w])).all()
+
+
 def test_ic_to_ir():
     ir = factors.InformationCoefficient(None, None).to_ir(3)
     ic = torch.tensor([1, 2, nan, 3, 1]).unsqueeze(-1).repeat(1, 5)

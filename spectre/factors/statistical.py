@@ -242,14 +242,17 @@ class InformationCoefficient(CrossSectionFactor):
         if weight is None:
             ic = pearsonr(x, y, dim=1, ddof=1)
         else:
-            xy = x * y
-            mask = torch.isnan(xy) | torch.isnan(weight)
+            mask = torch.isnan(x * y) | torch.isnan(weight)
             w = weight / unmasked_sum(weight, mask=mask, dim=1).unsqueeze(-1)
-            x_bar = unmasked_sum(w * x, mask=mask, dim=1)
-            y_bar = unmasked_sum(w * y, mask=mask, dim=1)
-            cov_xy = unmasked_sum(w * xy, mask=mask, dim=1) - x_bar * y_bar
-            var_x = unmasked_sum(w * x**2, mask=mask, dim=1) - x_bar**2
-            var_y = unmasked_sum(w * y**2, mask=mask, dim=1) - y_bar**2
+            # From its lowest value a constant is exactly 0. The means come out of the samples and
+            # not out of the moments, on a high level those would cancel most digits of a spread.
+            x = x - x.masked_fill(mask, np.inf).amin(dim=1, keepdim=True)
+            y = y - y.masked_fill(mask, np.inf).amin(dim=1, keepdim=True)
+            x = x - unmasked_sum(w * x, mask=mask, dim=1).unsqueeze(-1)
+            y = y - unmasked_sum(w * y, mask=mask, dim=1).unsqueeze(-1)
+            cov_xy = unmasked_sum(w * x * y, mask=mask, dim=1)
+            var_x = unmasked_sum(w * x**2, mask=mask, dim=1)
+            var_y = unmasked_sum(w * y**2, mask=mask, dim=1)
             ic = cov_xy / (var_x * var_y) ** 0.5
         return ic.unsqueeze(-1).expand(ic.shape[0], y.shape[1])
 
