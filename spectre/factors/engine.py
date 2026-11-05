@@ -186,7 +186,8 @@ class FactorEngine:
                 RuntimeWarning,
             )
         backwards = min(backwards, self.max_backwards)
-        if start == self._last_loaded[0] and end == self._last_loaded[1]:
+        # An `end` of None is the last bar of the data, that isn't the same range after a new bar.
+        if end is not None and start == self._last_loaded[0] and end == self._last_loaded[1]:
             if backwards <= self._last_loaded[2]:
                 return False
             else:
@@ -439,7 +440,8 @@ class FactorEngine:
                     random = np.abs(random) * 1000
                 self._dataframe.loc[mid_right:, col] = random.astype(dtype)
             self._column_cache = {}
-            # hack to disable reload _dataframe
+            # hack to disable reload _dataframe, `end` can't be None for that
+            end = dt_index[-1]
             self._last_loaded = [start, end, np.inf]
             # check if results are consistent
             df = self.run(start, end)

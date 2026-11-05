@@ -49,6 +49,70 @@ def test_run_up_to_the_last_bar(dirty_engine):
     assert dirty_engine.test_lookahead_bias(start, None) == "No assertion raised."
 
 
+class GrowingLoader(spectre.data.MemoryLoader):
+    """Has the bars up to `last_bar`, which moves on as a live loader gets new bars."""
+
+    last_bar = DIRTY_DATES[-1]
+
+    def _load(self):
+        df = self.df.loc[: self.last_bar].copy()
+        df.index = df.index.remove_unused_levels()
+        return df
+
+
+def growing_engine(panel, device):
+    loader = GrowingLoader(panel, DIRTY_OHLCV, DIRTY_ADJUSTMENTS)
+    loader.last_bar = DIRTY_DATES[50]
+    engine = factors.FactorEngine(loader)
+    if device == "cuda":
+        engine.to_cuda()
+    return loader, engine
+
+
+def test_run_up_to_the_last_bar_reads_the_new_bars(dirty_panel, device):
+    start = DIRTY_DATES[30]
+    loader, engine = growing_engine(dirty_panel, device)
+    engine.add(factors.MA(3), "f")
+    assert engine.run(start, None).index.get_level_values(0).max() == DIRTY_DATES[50]
+
+    loader.last_bar = DIRTY_DATES[55]
+    result = engine.run(start, None)
+    assert result.index.get_level_values(0).max() == DIRTY_DATES[55]
+    fresh = factors.FactorEngine(loader)
+    fresh.add(factors.MA(3), "f")
+    pd.testing.assert_frame_equal(result, fresh.run(start, None))
+
+    raw = engine.run_raw(start, None)["f"]
+    assert len(raw) == len(result)
+
+
+def test_run_up_to_the_last_bar_reads_a_changed_bar(dirty_panel, device):
+    """A live bar changes until it closes, the range of the data stays the same."""
+    start, last = DIRTY_DATES[30], DIRTY_DATES[50]
+    loader, engine = growing_engine(dirty_panel, device)
+    engine.add(factors.OHLCV.open, "open")
+    assert engine.run(start, None).open[(last, "FULL")] != 1234.5
+    loader.df.loc[(last, "FULL"), "open"] = 1234.5
+    assert engine.run(start, None).open[(last, "FULL")] == 1234.5
+
+
+def test_run_with_an_end_still_reads_the_cache(dirty_panel, device):
+    start, end = DIRTY_DATES[30], DIRTY_DATES[50]
+    _, engine = growing_engine(dirty_panel, device)
+    engine.add(factors.MA(3), "f")
+    engine.run(start, end)
+    loaded = engine.cache_hash
+    engine.run(start, end)
+    assert engine.cache_hash == loaded
+
+
+def test_lookahead_bias_up_to_the_last_bar_still_sees_a_leak(dirty_engine):
+    """It needs the cached data it has changed, a reload would give the same results twice."""
+    dirty_engine.add(close.shift(-2), "biased")
+    with pytest.raises(RuntimeError, match="look-ahead bias"):
+        dirty_engine.test_lookahead_bias(DIRTY_DATES[30], None)
+
+
 @pytest.mark.parametrize("method", ["run", "run_raw"])
 def test_delayed_run_on_the_last_bar_has_no_data(dirty_engine, method):
     """The only bar of the range is dropped by the delay."""
