@@ -170,7 +170,8 @@ class _LagSpread(_OwnBarScale):
     """`data` of the previous bar minus `mean`, which has to be in the scale of its own bar."""
 
     def compute(self, data, mean):
-        return data.first() - (mean.last() if isinstance(mean, Rolling) else mean)
+        # A number has no scale to adjust it by, and only moves the intercept of the regression.
+        return data.first() - (mean.last() if isinstance(mean, Rolling) else 0)
 
 
 class _BarDiff(_OwnBarScale):
@@ -179,6 +180,14 @@ class _BarDiff(_OwnBarScale):
 
 
 class HalfLifeMeanReversion(CustomFactor):
+    """
+    Half-life of `data` reverting to `mean`, from a regression on the last `win` bars.
+
+    `mean` must be a price in the scale of its own bar, such as MA(win, inputs=[close]). It can
+    also be a number, but that has no effect: a level that doesn't move is only the intercept of
+    the regression, so any number gives the same result.
+    """
+
     _min_win = 2
 
     def __init__(self, win, data, mean, mask=None):

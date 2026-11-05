@@ -262,14 +262,16 @@ def test_half_life_mean_reversion(dirty_engine, dirty_panel, asset):
 
 
 @pytest.mark.filterwarnings("ignore:Warning!! delay_factor is set to False")
+@pytest.mark.parametrize("mean", [0.0, 100.0, 7000.0])
 @pytest.mark.parametrize("asset", ["SPLIT", "FULL"])
-def test_half_life_mean_reversion_of_a_number(dirty_engine, dirty_panel, asset):
+def test_half_life_mean_reversion_of_a_number(dirty_engine, dirty_panel, asset, mean):
+    """A number only moves the intercept, so it makes no difference, with or without a split."""
     win, start = 10, DIRTY_DATES[15]
-    dirty_engine.add(factors.HalfLifeMeanReversion(win, close, 0.0), "half_life")
+    dirty_engine.add(factors.HalfLifeMeanReversion(win, close, mean), "half_life")
     result = dirty_engine.run(start, DIRTY_DATES[-1], delay_factor=False)
 
     clean = dirty_panel.xs(asset, level="asset").clean_close
-    expected = half_life(clean, 0.0, win).loc[start:]
+    expected = half_life(clean, mean, win).loc[start:]
     got = result.xs(asset, level="asset").half_life
     assert_allclose(got.values, expected.values, rtol=HALF_LIFE_RTOL)
 
@@ -938,6 +940,8 @@ def test_ttest_1samp_of_a_flat_series(device, dtype):
     assert np.isfinite(result.xs("VARY", level="asset").values).all()
 
 
+# scipy warns about float64 precision here, but these are float32 values
+@pytest.mark.filterwarnings("ignore:Precision loss occurred in moment calculation")
 @pytest.mark.parametrize("ulps", [1, 2, 16])
 def test_ttest_1samp_of_nearly_constant(device, ulps):
     """Values a few ulps apart, a mean that is rounded by that much isn't variance."""
