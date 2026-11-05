@@ -295,6 +295,35 @@ def test_rsi_of_missing_bars_and_splits(dirty_engine, dirty_panel, asset):
     assert_allclose(result.values, ref.rsi(clean, 5).values, rtol=1e-3, atol=1e-4)
 
 
+def test_cutler_rsi(engine):
+    expected = ref.expected(lambda df: ref.cutler_rsi(df.close))
+    assert_factor(engine, factors.CutlerRSI(), *expected)
+    # Cutler's RSI calculated by excel
+    assert_almost_equal(expected[0], [40.1814301, 33.36385487, 37.37511353, 36.31220413,
+                                      41.84100418, 39.19197118, 48.18441452, 44.30411404,
+                                      50.05167959])  # fmt: skip
+    assert_almost_equal(expected[1], [38.5647217, 42.0627596, 37.9693676, 43.8641553,
+                                      48.3458438, 47.095672, 46.7363662, 46.127465])  # fmt: skip
+
+
+def test_cutler_rsi_normalized(engine):
+    expected = ref.expected(lambda df: ref.cutler_rsi(df.close) / 50 - 1)
+    assert_factor(engine, factors.CutlerRSI().normalized(), *expected)
+
+
+@pytest.mark.filterwarnings("ignore:Warning!! delay_factor is set to False")
+@pytest.mark.parametrize("asset", ["FULL", "LISTED", "HALTED", "NANBAR", "SPLIT"])
+def test_cutler_rsi_of_missing_bars_and_splits(dirty_engine, dirty_panel, asset):
+    result = run_dirty(dirty_engine, factors.CutlerRSI(5)).xs(asset, level="asset")
+    clean = dirty_panel.xs(asset, level="asset").clean_close
+    assert_allclose(result.values, ref.cutler_rsi(clean, 5).values, rtol=1e-4, atol=1e-4)
+
+
+def test_cutler_rsi_reads_a_shorter_window_than_rsi():
+    assert factors.CutlerRSI(14).get_total_backwards_() == 14
+    assert factors.RSI(14).get_total_backwards_() == 9 * 14
+
+
 def test_atr_of_the_docstring_of_true_range_is_wilders(engine):
     def atr(df):
         return ref.true_range(df).ewm(alpha=1 / 14, adjust=False).mean()

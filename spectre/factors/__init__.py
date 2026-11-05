@@ -109,6 +109,7 @@ from .technical import (
     STOCHF,
     TRANGE,
     BollingerBands,
+    CutlerRSI,
     FastStochasticOscillator,
     MovingAverageConvergenceDivergenceSignal,
     TrueRange,

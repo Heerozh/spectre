@@ -124,6 +124,14 @@ def rsi(close, win=14):
     return 100 - 100 / (1 + up / down)
 
 
+def cutler_rsi(close, win=14):
+    """Cutler's RSI (simple moving average of gains and losses)."""
+    diff = close.diff()
+    up = diff.clip(lower=0).rolling(win, min_periods=1).mean()
+    down = (-diff.clip(upper=0)).rolling(win, min_periods=1).mean()
+    return 100 - 100 / (1 + up / down)
+
+
 def stochf(df, win=14):
     """Fast stochastic oscillator %K"""
     highest = df.high.rolling(win).max()
