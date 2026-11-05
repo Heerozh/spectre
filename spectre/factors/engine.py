@@ -732,9 +732,11 @@ class FactorEngine:
         :param str, pd.Timestamp start: Factor analysis start time
         :param str, pd.Timestamp end: Factor analysis end time
         :param trade_at: Which price for forward returns. 'open', or 'close.
-                         With 'open', a delayed factor enters at the open of its row, and a factor
-                         that isn't delayed at the open of the next row. All factors of a run share
-                         one return column, so if only some of them are delayed, all are delayed.
+                         All columns of a row are about one decision. If the factors and the filter
+                         are delayed, a row enters at that price of its own bar. If none of them is,
+                         a row has read the open of its bar, so 'close' enters at the close of that
+                         bar, and 'open' at the open of the next bar. If only some of them are, all
+                         are delayed, the filter too.
                          If is a factor, its values are the prices, and all factors are delayed.
                          If is 'current_close', same as run engine with delay_factor=False,
                          Be sure that no any high,low,close data is used in factor, otherwise will
@@ -771,9 +773,9 @@ class FactorEngine:
 
             # add the rolling returns of each period, use AdjustedColumnDataFactor for best
             # performance
-            # `shift` puts on row t the return of entering on t + 1, or on t if that row is
-            # delayed. The delay of the return columns is set here, or a universe would decide it
-            # by its mask.
+            # A `shift` of -1 puts on row t the return of entering on t + 1, or on t if that row is
+            # delayed, and 0 the return of entering on t. The delay of the return columns is set
+            # here, or a universe would decide it by its mask.
             shift = -1
             delay_factor = True
             delay_returns = True
@@ -783,21 +785,29 @@ class FactorEngine:
             if isinstance(trade_at, BaseFactor):
                 inputs = (trade_at,)
                 delay_factor = "all"
-            elif trade_at == "open":
-                inputs = (AdjustedColumnDataFactor(OHLCV.open),)
-                # On row t a delayed factor knows close[t - 1], so it can enter at open[t]. A factor
-                # that isn't delayed knows open[t], so it can only enter at open[t + 1].
-                with self._masks_know_the_filter():
-                    delays = [f.should_delay() for f in self._factors.values()]
-                delay_returns = any(delays)
-                if not delay_returns:
-                    extra_tail = 1
-                elif not all(delays):
-                    delay_factor = "all"
             elif trade_at == "current_close":
                 shift = 0
                 delay_factor = False
                 delay_returns = None
+            else:
+                if trade_at == "open":
+                    inputs = (AdjustedColumnDataFactor(OHLCV.open),)
+                # All columns of a row have to be about one decision, so they all are delayed or
+                # none is. That includes the filter, which picks the rows the masks have to match.
+                with self._masks_know_the_filter():
+                    delays = [f.should_delay() for f in self._factors.values()]
+                if universe is not None:
+                    delays.append(universe.should_delay())
+                delay_returns = any(delays)
+                if delay_returns and not all(delays):
+                    delay_factor = "all"
+                elif not delay_returns:
+                    # A row knows the open of its bar. The close of that bar is still to come, but
+                    # that open has gone, so 'open' has to enter on the next bar.
+                    if trade_at == "open":
+                        extra_tail = 1
+                    else:
+                        shift = 0
 
             from .basic import Returns
 

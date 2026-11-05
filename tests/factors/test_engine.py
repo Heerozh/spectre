@@ -1285,7 +1285,8 @@ def test_full_run_universe_mask_by_name(device):
 
 
 @pytest.mark.filterwarnings("ignore:quantile.. mask parameter not set")
-def test_full_run_mixed_factors_are_all_delayed(device):
+@pytest.mark.parametrize("trade_at", ["close", "open"])
+def test_full_run_mixed_factors_are_all_delayed(device, trade_at):
     """Factors of one run share one return column, so the ones that don't need it are delayed."""
     panel, opens, _ = forward_data()
     engine = forward_engine(panel, device)
@@ -1294,7 +1295,7 @@ def test_full_run_mixed_factors_are_all_delayed(device):
     factor_data, _ = engine.full_run(
         FORWARD_START,
         FORWARD_END,
-        trade_at="open",
+        trade_at=trade_at,
         periods=(1, 3),
         quantiles=2,
         preview=False,
@@ -1336,8 +1337,10 @@ def test_full_run_trade_at_a_factor(device, make_factor):
 
 
 @pytest.mark.filterwarnings("ignore:quantile.. mask parameter not set")
-@pytest.mark.parametrize("make_factor", [after_close, at_open], ids=["delayed", "not_delayed"])
-def test_full_run_trade_at_close(device, make_factor):
+@pytest.mark.parametrize(
+    "make_factor, first_bar", [(after_close, 6), (at_open, 5)], ids=["delayed", "not_delayed"]
+)
+def test_full_run_trade_at_close(device, make_factor, first_bar):
     panel, _, closes = forward_data()
     engine = forward_engine(panel, device)
     engine.add(make_factor(), "f")
@@ -1345,7 +1348,8 @@ def test_full_run_trade_at_close(device, make_factor):
         FORWARD_START, FORWARD_END, periods=(1, 3), quantiles=2, preview=False
     )
     assert_returns(factor_data, "Returns", closes, 0)
-    assert factor_data.index.get_level_values(0).min() == FORWARD_DATES[6]
+    # a run that isn't delayed keeps its first bar
+    assert factor_data.index.get_level_values(0).min() == FORWARD_DATES[first_bar]
     assert factor_data.index.get_level_values(0).max() == FORWARD_DATES[-1 - 3]
 
 
@@ -1375,9 +1379,129 @@ def test_full_run_trade_at_current_close(device):
     )
 
 
+def rows_by_hand(values, universe, prices, entry, delayed, n=3):
+    """
+    What the rows of full_run must hold, by hand, in wide frames with a column for each asset. A
+    delayed row decides on the bar before it, with the universe of that bar. Every column of the
+    row is about that decision, and the return is from `entry` bars after the row.
+    """
+    if delayed:
+        values, universe = values.shift(1), universe.shift(1, fill_value=False)
+    bars = FORWARD_DATES[6 if delayed else 5 : len(FORWARD_DATES) - n - entry]
+    universe = universe.loc[bars]
+    in_universe = values.loc[bars].where(universe)
+    centered = in_universe.sub(in_universe.mean(axis=1), axis=0)
+    returns = forward_return(prices, n, entry).loc[bars].where(universe)
+    return {
+        ("f", "factor"): in_universe,
+        ("f", "factor_quantile"): in_universe.apply(
+            lambda row: pd.qcut(row, 2, labels=False) if row.notna().any() else row, axis=1
+        ),
+        ("f", "factor_weight"): centered.div(centered.abs().sum(axis=1), axis=0),
+        ("Returns", f"{n}D"): returns,
+        ("Demeaned", f"{n}D"): returns.sub(returns.mean(axis=1), axis=0),
+    }
+
+
+def mondays():
+    return factors.WEEKDAY == 0
+
+
+def on_mondays(opens, closes):
+    return opens.apply(lambda bars: bars.index.day_of_week == 0)
+
+
+def everyone(opens, closes):
+    return opens.notna()
+
+
+def first_four(opens, closes):
+    return opens.notna() & opens.columns.isin(list("ABCD"))
+
+
+def opens_above(opens, closes):
+    return opens > 100
+
+
+def closes_above(opens, closes):
+    return closes > 100
+
+
+# the universe, the same by hand, the factor, and if the run is delayed
+ALIGNED_CASES = {
+    # mixed, the universe is delayed with the factor
+    "mondays_and_a_delayed_factor": (mondays, on_mondays, after_close, True),
+    "open_universe_and_a_delayed_factor": (
+        lambda: open_price > 100,
+        opens_above,
+        after_close,
+        True,
+    ),
+    "static_assets_and_a_delayed_factor": (
+        lambda: factors.StaticAssets(set("ABCD")),
+        first_four,
+        after_close,
+        True,
+    ),
+    # mixed, the factor is delayed with the universe, and with its quantile and weight columns
+    "close_universe_and_a_factor_on_the_open": (lambda: close > 100, closes_above, at_open, True),
+    # none is delayed
+    "mondays_and_a_factor_on_the_open": (mondays, on_mondays, at_open, False),
+    "open_universe_and_a_factor_on_the_open": (
+        lambda: open_price > 100,
+        opens_above,
+        at_open,
+        False,
+    ),
+    "no_universe_and_a_factor_on_the_open": (lambda: None, everyone, at_open, False),
+    # all are delayed
+    "close_universe_and_a_delayed_factor": (lambda: close > 100, closes_above, after_close, True),
+    "no_universe_and_a_delayed_factor": (lambda: None, everyone, after_close, True),
+}
+
+
+@pytest.mark.filterwarnings("ignore:quantile.. mask parameter not set")
+@pytest.mark.parametrize("filter_zscore", [None, 20])
+@pytest.mark.parametrize("trade_at", ["close", "open"])
+@pytest.mark.parametrize(
+    "universe, universe_by_hand, factor, delayed", ALIGNED_CASES.values(), ids=ALIGNED_CASES.keys()
+)
+def test_full_run_columns_of_a_row_are_about_one_decision(
+    device, universe, universe_by_hand, factor, delayed, trade_at, filter_zscore
+):
+    panel, opens, closes = forward_data()
+    engine = forward_engine(panel, device, universe())
+    engine.add(factor(), "f")
+    factor_data, mean_returns = engine.full_run(
+        FORWARD_START,
+        FORWARD_END,
+        trade_at=trade_at,
+        periods=(3,),
+        quantiles=2,
+        filter_zscore=filter_zscore,
+        preview=False,
+    )
+
+    prices = opens if trade_at == "open" else closes
+    # a delayed row knows a close, so it can enter on its own bar. One that isn't knows the open
+    # of its bar: the close of that bar is still to come, the open of that bar has gone.
+    entry = 1 if trade_at == "open" and not delayed else 0
+    values = panel["at_open" if factor is at_open else "after_close"].unstack()
+    expected = rows_by_hand(values, universe_by_hand(opens, closes), prices, entry, delayed)
+
+    rows = expected[("Returns", "3D")].stack().dropna().index
+    assert len(rows) > 0
+    assert sorted(factor_data.index) == sorted(rows)
+    assert factor_data.notna().all(axis=None)
+    for column, by_hand in expected.items():
+        values = by_hand.stack().reindex(factor_data.index)
+        assert_allclose(factor_data[column], values, rtol=1e-5, atol=1e-6, err_msg=str(column))
+    assert mean_returns.notna().all(axis=None)
+
+
 # trade_at, factor, prices, entry bar, first bar of the run, and if the filter is delayed in it
 FULL_RETURN_CASES = {
-    "close": ("close", at_open, "close", 0, 6, False),
+    "close": ("close", at_open, "close", 0, 5, False),
     "close_of_a_delayed_factor": ("close", after_close, "close", 0, 6, True),
     "open_of_a_delayed_factor": ("open", after_close, "open", 0, 6, True),
     "open_not_delayed": ("open", at_open, "open", 1, 5, False),
@@ -1432,9 +1556,7 @@ def test_full_run_keeps_the_rows_with_a_full_return(
 def test_full_run_labels_periods_in_bars_of_the_data(device):
     """A return counts the bars of the data, a filter that keeps mondays doesn't stretch it."""
     panel, _, _ = forward_data()
-    universe = factors.WEEKDAY == 0
-    universe.set_delay(True)  # like the factor, or their rows have no date in common
-    engine = forward_engine(panel, device, universe)
+    engine = forward_engine(panel, device, factors.WEEKDAY == 0)
     engine.add(factors.MA(2), "f")
     factor_data, _ = engine.full_run(
         FORWARD_START,
