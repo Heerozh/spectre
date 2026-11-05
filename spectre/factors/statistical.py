@@ -25,6 +25,7 @@ from ..parallel import (
     pearsonr,
     quantile,
     rankdata,
+    rescale,
     unmasked_mean,
     unmasked_sum,
 )
@@ -171,11 +172,17 @@ class _OwnBarScale(CustomFactor):
 
 
 class _LagSpread(_OwnBarScale):
-    """`data` of the previous bar minus `mean`, which has to be in the scale of its own bar."""
+    """`data` minus `mean`, both of the previous bar, so `mean` can't hold the bar it explains."""
 
     def compute(self, data, mean):
         # A number has no scale to adjust it by, and only moves the intercept of the regression.
-        return data.first() - (mean.last() if isinstance(mean, Rolling) else 0)
+        if not isinstance(mean, Rolling):
+            return data.first()
+        # raw, a bar and its mean are in one scale, any `mean` has that without multipliers
+        spread = data.values[:, :, 0] - mean.values[:, :, 0]
+        if data.adjustments is None:
+            return spread
+        return rescale(spread, data.adjustments[:, :, 0], data.adjustment_last[:, :, 0])
 
 
 class _BarDiff(_OwnBarScale):
@@ -185,7 +192,9 @@ class _BarDiff(_OwnBarScale):
 
 class HalfLifeMeanReversion(CustomFactor):
     """
-    Half-life of `data` reverting to `mean`, from a regression on the last `win` bars.
+    Half-life of `data` reverting to `mean`, from a regression on the last `win` bars of the
+    change of a bar on the distance to `mean` of the bar before. A series that doesn't revert has
+    no half-life, so it is NaN if the slope is not negative.
 
     `mean` must be a price in the scale of its own bar, such as MA(win, inputs=[close]). It can
     also be a number, but that has no effect: a level that doesn't move is only the intercept of
@@ -204,8 +213,7 @@ class HalfLifeMeanReversion(CustomFactor):
     def compute(self, lag, diff, ln2):
         def calc_h(_x, _y):
             _lambda, _ = linear_regression_1d(_x, _y, dim=2)
-            # a slope of 0 is no reversion at all, there is nothing to take a half-life of
-            return (-ln2 / _lambda).masked_fill(_lambda == 0, np.nan)
+            return (-ln2 / _lambda).masked_fill(_lambda >= 0, np.nan)
 
         return lag.agg(calc_h, diff)
 
