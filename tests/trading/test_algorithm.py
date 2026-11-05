@@ -13,24 +13,45 @@ def ts(date):
     return pd.Timestamp(date, tz="UTC")
 
 
-@pytest.mark.parametrize("delay_factor", [True, False])
-def test_run_engine_waits_for_the_next_bar(delay_factor):
-    """Live the clock runs ahead of the data, a bar that hasn't come yet is not an error."""
-    dates = pd.bdate_range("2019-01-01", periods=300, tz="UTC")
+def live_alg(periods, **sources):
+    dates = pd.bdate_range("2019-01-01", periods=periods, tz="UTC")
     index = pd.MultiIndex.from_product([dates, ["A", "B"]], names=["date", "asset"])
     ohlcv = ("open", "high", "low", "close", "volume")
     panel = pd.DataFrame(100.0, index=index, columns=ohlcv)
     loader = spectre.data.MemoryLoader(panel, ohlcv=ohlcv)
-
     alg = trading.CustomAlgorithm(trading.SimulationBlotter(loader), main=loader)
+    for name in sources:
+        alg.create_factor_engine(name, loader)
     alg.get_factor_engine().add(factors.OHLCV.close, "close")
+    for name in sources:
+        alg.get_factor_engine(name).add(factors.OHLCV.close, "close")
     alg.set_datetime(dates[-1] + pd.Timedelta(days=1))
+    return alg, dates
+
+
+@pytest.mark.parametrize("periods", [300, 100], ids=["over_a_year", "under_a_year"])
+@pytest.mark.parametrize("delay_factor", [True, False])
+def test_run_engine_waits_for_the_next_bar(delay_factor, periods):
+    """Live the clock runs ahead of the data, a bar that hasn't come yet is not an error."""
+    alg, dates = live_alg(periods)
 
     data, last_row = alg.run_engine(None, None, delay_factor=delay_factor)
 
     assert len(data) > 0
     assert data.index.get_level_values(0)[-1] == dates[-1]
     assert len(last_row) == 0
+
+
+@pytest.mark.parametrize("delay_factor", [True, False])
+def test_run_engine_waits_for_the_next_bar_of_every_source(delay_factor):
+    alg, dates = live_alg(100, other=True)
+
+    data, last_rows = alg.run_engine(None, None, delay_factor=delay_factor)
+
+    assert set(data) == {"main", "other"}
+    for name in data:
+        assert data[name].index.get_level_values(0)[-1] == dates[-1]
+        assert len(last_rows[name]) == 0
 
 
 @pytest.mark.filterwarnings("ignore:quantile.. mask parameter not set")

@@ -269,24 +269,23 @@ class CustomAlgorithm(EventReceiver, ABC):
             start = self._current_dt
         start = start - self._history_window
 
-        if len(self._engines) == 1:
-            name = next(iter(self._engines))
-            try:
-                df = self._engines[name].run(start, end, delay_factor)
-            except NoBarError:
-                df = None
-            if df is None or df.shape[0] == 0:
-                start = start - pd.DateOffset(years=1)
-                df = self._engines[name].run(start, end, delay_factor)
-                return df, df.head(0)
-            last_dt = df.index.get_level_values(0)[-1]
-            return df, df.loc[last_dt]
-        else:
-            dfs = {
-                name: engine.run(start, end, delay_factor) for name, engine in self._engines.items()
-            }
-            lasts = {k: v.loc[v.index.get_level_values(0)[-1]] for k, v in dfs.items()}
-            return dfs, lasts
+        runs = {name: self._run_or_wait(name, start, end, delay_factor) for name in self._engines}
+        if len(runs) == 1:
+            return next(iter(runs.values()))
+        return {k: v[0] for k, v in runs.items()}, {k: v[1] for k, v in runs.items()}
+
+    def _run_or_wait(self, name, start, end, delay_factor):
+        """Rows and the last row of an engine. If its next bar hasn't come yet, no last row."""
+        engine = self._engines[name]
+        try:
+            df = engine.run(start, end, delay_factor)
+        except NoBarError:
+            df = None
+        if df is None or df.shape[0] == 0:
+            start = max(start - pd.DateOffset(years=1), self._bars_of(name)[0])
+            df = engine.run(start, end, delay_factor)
+            return df, df.head(0)
+        return df, df.loc[df.index.get_level_values(0)[-1]]
 
     def _data_updated(self, event_source=None):
         # todo if in live, last row should return by inferred time
