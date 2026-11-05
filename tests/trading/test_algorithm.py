@@ -961,3 +961,386 @@ def test_run_engine_inside_market_close_ends_at_the_closing_bar_of_the_day(kwarg
 
     closes = days[1:] + pd.Timedelta(minutes=880)
     assert last_rows == {date: date for date in closes}
+
+
+# ------------------------------ a second data source of longer bars ------------------------------
+
+
+def sessions(days):
+    """Four bars of 30 minutes on each of `days`."""
+    return pd.DatetimeIndex(
+        [day + pd.Timedelta(minutes=870 + 30 * i) for day in days for i in range(4)]
+    )
+
+
+def longer_bars(intraday, stamps):
+    """The bars of `intraday` added up, by `stamps`, the stamp of the longer bar of each date."""
+    dates = intraday.index.get_level_values(0)
+    bars = intraday.groupby([stamps(dates), intraday.index.get_level_values(1)])
+    bars = bars.agg(
+        {"open": "first", "high": "max", "low": "min", "close": "last", "volume": "sum"}
+    )
+    return bars.rename_axis(["date", "asset"])
+
+
+def daily_stamps(dates):
+    return dates.normalize()
+
+
+def weekly_stamps(dates):
+    return dates.normalize() - pd.to_timedelta(dates.day_of_week, unit="D")
+
+
+def monthly_stamps(dates):
+    return pd.DatetimeIndex(dates.tz_localize(None).to_period("M").start_time).tz_localize("UTC")
+
+
+def two_sources(alg_type, intraday, longer):
+    main, second = make_loader(intraday), make_loader(longer)
+    blotter = trading.SimulationBlotter(main)
+    alg = alg_type(blotter, main=main, longer=second)
+    evt_mgr = trading.SimulationEventManager()
+    evt_mgr.subscribe(blotter)
+    evt_mgr.subscribe(alg)
+    return alg, evt_mgr
+
+
+def longer_matrices_at(
+    event, intraday, longer, start, end, prices=None, universe=None, length=None
+):
+    """What `get_price_matrix` of the second source returns inside `event`, by the time of it."""
+    seen = {}
+    prices = factors.OHLCV.close if prices is None else prices
+    length = pd.DateOffset(days=4) if length is None else length
+
+    class Alg(trading.CustomAlgorithm):
+        def initialize(self):
+            self.get_factor_engine("main").add(factors.OHLCV.open, "open")
+            engine = self.get_factor_engine("longer")
+            engine.add(factors.OHLCV.open, "open")
+            if universe is not None:
+                engine.set_filter(universe)
+            self.schedule(event(self.look))
+
+        def look(self, _):
+            seen[self.current] = self.get_price_matrix(length, name="longer", prices=prices)
+
+    _, evt_mgr = two_sources(Alg, intraday, longer)
+    evt_mgr.run(start, end)
+    return seen
+
+
+def last_rows_of(seen):
+    return {time: matrix.index[-1] for time, matrix in seen.items()}
+
+
+def before_close(callback):
+    return trading.event.MarketClose(callback, **BEFORE_CLOSE)
+
+
+def test_later_data_of_the_day_does_not_change_a_rebalance_on_a_second_source(device):
+    days = pd.bdate_range("2021-01-04", periods=14, tz="UTC")
+    intraday = make_panel(sessions(days))
+    daily = longer_bars(intraday, daily_stamps)
+    bar = 10
+    first_bar = days[bar] + pd.Timedelta(minutes=870)
+    columns = ["high", "low", "close", "volume"]
+    changed_daily, changed_intraday = daily.copy(), intraday.copy()
+    changed_daily.loc[(days[bar], "A"), columns] *= 1.5
+    # all that happens after the first open of the day
+    changed_intraday.loc[(first_bar, "A"), columns] *= 1.5
+    later = intraday.index.get_level_values(0) > first_bar
+    later = later & (intraday.index.get_level_values(1) == "A")
+    changed_intraday.loc[later] = changed_intraday.loc[later].to_numpy() * 1.5
+
+    def run(intraday, daily):
+        seen = {}
+
+        class Alg(trading.CustomAlgorithm):
+            def initialize(self):
+                for name in ("main", "longer"):
+                    engine = self.get_factor_engine(name)
+                    if device == "cuda":
+                        engine.to_cuda()
+                    engine.add(factors.OHLCV.open, "open")
+                self.blotter.set_commission(0, 0, 0)
+                self.blotter.set_slippage(0, 0)
+                self.schedule(trading.event.MarketOpen(self.look))
+
+            def look(self, _):
+                matrix = self.get_price_matrix(pd.DateOffset(days=7), name="longer")
+                seen[self.current] = matrix
+                assets = list(matrix.columns)
+                opens = pd.Series([self.blotter.get_price(asset) for asset in assets], assets)
+                # hold the asset that the last close in the matrix puts the highest over the open
+                best = (matrix.iloc[-1] / opens).idxmax()
+                weights = [float(asset == best) for asset in assets]
+                self.blotter.batch_order_target_percent(assets, weights)
+
+        alg, evt_mgr = two_sources(Alg, intraday, daily)
+        evt_mgr.run(days[8], days[-1])
+        return alg.results, seen
+
+    def orders_up_to_the_open(run_results):
+        orders = run_results.transactions[:first_bar].reset_index()
+        return orders.sort_values(["index", "symbol"]).reset_index(drop=True)
+
+    results, seen = run(intraday, daily)
+    other_results, other_seen = run(changed_intraday, changed_daily)
+
+    assert first_bar in seen
+    for time in seen:
+        if time <= first_bar:
+            pd.testing.assert_frame_equal(seen[time], other_seen[time])
+    pd.testing.assert_frame_equal(
+        orders_up_to_the_open(results), orders_up_to_the_open(other_results)
+    )
+    # the next open knows it, so the check above was able to fail
+    next_bar = first_bar + pd.Timedelta(days=1)
+    assert not seen[next_bar].equals(other_seen[next_bar])
+
+
+def test_second_source_at_the_open_ends_at_the_day_before():
+    days = pd.bdate_range("2021-01-04", periods=9, tz="UTC")
+    intraday = make_panel(sessions(days))
+    daily = longer_bars(intraday, daily_stamps)
+
+    seen = longer_matrices_at(trading.event.MarketOpen, intraday, daily, days[4], days[-1])
+
+    opens = days[4:-1] + pd.Timedelta(minutes=870)
+    assert last_rows_of(seen) == dict(zip(opens, days[3:-2]))
+    closes = daily["close"].unstack()
+    for time, matrix in seen.items():
+        expected = closes.loc[time - pd.DateOffset(days=4) : time].iloc[:-1]
+        assert_almost_equal(matrix.values, expected.values, decimal=3)
+
+
+def test_second_source_keeps_the_open_of_the_day():
+    days = pd.bdate_range("2021-01-04", periods=9, tz="UTC")
+    intraday = make_panel(sessions(days))
+    daily = longer_bars(intraday, daily_stamps)
+
+    seen = longer_matrices_at(
+        trading.event.MarketOpen, intraday, daily, days[4], days[-1], prices=factors.OHLCV.open
+    )
+
+    opens = days[4:-1] + pd.Timedelta(minutes=870)
+    assert last_rows_of(seen) == dict(zip(opens, days[4:-1]))
+
+
+@pytest.mark.parametrize("column", ["high", "low", "volume"])
+def test_second_source_hides_all_that_a_close_makes_known(column):
+    days = pd.bdate_range("2021-01-04", periods=9, tz="UTC")
+    intraday = make_panel(sessions(days))
+    daily = longer_bars(intraday, daily_stamps)
+
+    seen = longer_matrices_at(
+        trading.event.MarketOpen,
+        intraday,
+        daily,
+        days[4],
+        days[-1],
+        prices=getattr(factors.OHLCV, column),
+    )
+
+    opens = days[4:-1] + pd.Timedelta(minutes=870)
+    assert last_rows_of(seen) == dict(zip(opens, days[3:-2]))
+
+
+@pytest.mark.parametrize(
+    "event", [before_close, trading.event.MarketClose], ids=["before", "after"]
+)
+def test_second_source_at_the_market_close_has_the_close(event):
+    days = pd.bdate_range("2021-01-04", periods=9, tz="UTC")
+    intraday = make_panel(sessions(days))
+    daily = longer_bars(intraday, daily_stamps)
+
+    seen = longer_matrices_at(event, intraday, daily, days[4], days[-1])
+
+    closes = days[4:-1] + pd.Timedelta(minutes=960)
+    assert last_rows_of(seen) == dict(zip(closes, days[4:-1]))
+    for time, matrix in seen.items():
+        expected = daily["close"].unstack().loc[time.normalize()]
+        assert_almost_equal(matrix.iloc[-1].values, expected.values, decimal=3)
+
+
+def test_second_source_through_the_day():
+    """Each EveryBarData is at the end of its bar, and the last one ends the day."""
+    days = pd.bdate_range("2021-01-04", periods=7, tz="UTC")
+    intraday = make_panel(sessions(days))
+    daily = longer_bars(intraday, daily_stamps)
+
+    seen = longer_matrices_at(trading.event.EveryBarData, intraday, daily, days[4], days[-1])
+
+    expected = {}
+    for day, day_before in zip(days[4:-1], days[3:-2]):
+        for bar in sessions([day])[:-1]:
+            expected[bar] = day_before
+        expected[sessions([day])[-1]] = day
+    assert last_rows_of(seen) == expected
+
+
+def test_second_source_of_weekly_bars_closes_with_the_week():
+    days = pd.bdate_range("2021-01-04", periods=25, tz="UTC")
+    intraday = make_panel(sessions(days))
+    weekly = longer_bars(intraday, weekly_stamps)
+
+    seen = longer_matrices_at(
+        before_close, intraday, weekly, days[10], days[20], length=pd.DateOffset(days=14)
+    )
+
+    assert len(seen) == 10
+    for time, last_row in last_rows_of(seen).items():
+        this_week = weekly_stamps(pd.DatetimeIndex([time]))[0]
+        friday = time.day_of_week == 4
+        assert last_row == (this_week if friday else this_week - pd.Timedelta(days=7))
+
+
+def test_second_source_of_monthly_bars_closes_with_the_month():
+    """A month is longer than the smallest gap between months, so that can't be the bound."""
+    days = pd.bdate_range("2021-01-04", "2021-05-03", tz="UTC")
+    intraday = make_panel(sessions(days))
+    monthly = longer_bars(intraday, monthly_stamps)
+    stamps = monthly.index.levels[0]
+
+    seen = longer_matrices_at(
+        before_close,
+        intraday,
+        monthly,
+        pd.Timestamp("2021-03-15", tz="UTC"),
+        stamps[-1],
+        length=pd.DateOffset(days=70),
+    )
+
+    assert len(seen) == 35
+    for time, last_row in last_rows_of(seen).items():
+        started = stamps[stamps <= time]
+        is_last_day = time.normalize() == days[days.month == time.month][-1]
+        assert last_row == (started[-1] if is_last_day else started[-2])
+
+
+def test_second_source_has_no_next_bar_for_its_last_row():
+    """Its last row lasts for the bar size of the source, not for ever."""
+    days = pd.bdate_range("2021-01-04", periods=7, tz="UTC")
+    intraday = make_panel(sessions(days))
+    first_bars = longer_bars(intraday, lambda dates: dates.normalize() + pd.Timedelta(minutes=870))
+
+    last = sessions(days[-1:])[0]
+    seen = longer_matrices_at(trading.event.MarketOpen, intraday, first_bars, days[4], last)
+
+    assert seen[last].index[-1] == days[-2] + pd.Timedelta(minutes=870)
+
+
+def test_filter_of_a_second_source_does_not_read_a_close_of_today():
+    days = pd.bdate_range("2021-01-04", periods=12, tz="UTC")
+    intraday = make_panel(sessions(days), "AB")
+    daily = longer_bars(intraday, daily_stamps)
+    daily["close"] = 100.0
+    # B reaches the universe on the close of `bar` and stays there, A is in from the start
+    bar = 8
+    daily.loc[(days, "A"), "close"] = 300.0
+    daily.loc[(days[bar:], "B"), "close"] = 300.0
+
+    seen = longer_matrices_at(
+        trading.event.MarketOpen,
+        intraday,
+        daily,
+        days[6],
+        days[-1],
+        universe=factors.OHLCV.close >= 200,
+    )
+
+    for time, matrix in seen.items():
+        known = time.normalize() > days[bar]
+        assert list(matrix.columns) == (["A", "B"] if known else ["A"])
+
+
+def test_ticks_removed_by_a_filter_do_not_end_the_day_of_a_second_source():
+    """The bars left of the day are still to come, whatever the filter of the ticks does."""
+    days = pd.bdate_range("2021-01-04", periods=8, tz="UTC")
+    intraday = make_panel(sessions(days))
+    daily = longer_bars(intraday, daily_stamps)
+    morning = intraday.index.get_level_values(0).hour == 14
+    intraday = intraday.assign(morning=morning.astype(float))
+    seen = {}
+
+    class Alg(trading.CustomAlgorithm):
+        def initialize(self):
+            flag = factors.ColumnDataFactor(inputs=("morning",), should_delay=False)
+            engine = self.get_factor_engine("main")
+            engine.add(factors.OHLCV.open, "open")
+            engine.set_filter(flag > 0.5)
+            self.get_factor_engine("longer").add(factors.OHLCV.open, "open")
+            self.schedule(before_close(self.look))
+
+        def look(self, _):
+            seen[self.current] = self.get_price_matrix(pd.DateOffset(days=4), name="longer")
+
+    _, evt_mgr = two_sources(Alg, intraday, daily)
+    evt_mgr.run(days[4], days[-1])
+
+    # the last tick of each day is the first bar, and the close of that day is still far
+    assert len(seen) == 3
+    for time, matrix in seen.items():
+        assert time.hour == 14
+        assert matrix.index[-1] < time.normalize()
+
+
+def test_second_source_in_a_timezone():
+    days = pd.bdate_range("2021-01-04", periods=9, tz="UTC")
+    intraday = make_panel(sessions(days))
+    daily = longer_bars(intraday, daily_stamps)
+    seen = {}
+
+    class Alg(trading.CustomAlgorithm):
+        def initialize(self):
+            for name in ("main", "longer"):
+                engine = self.get_factor_engine(name)
+                engine.timezone = "America/New_York"
+                engine.add(factors.OHLCV.open, "open")
+            self.schedule(trading.event.MarketOpen(self.look))
+
+        def look(self, _):
+            seen[self.current] = self.get_price_matrix(pd.DateOffset(days=4), name="longer")
+
+    _, evt_mgr = two_sources(Alg, intraday, daily)
+    evt_mgr.run(days[4], days[-1])
+
+    assert len(seen) == 4
+    for time, matrix in seen.items():
+        assert matrix.index[-1] < time.tz_convert("UTC").normalize()
+
+
+def test_run_engine_and_history_of_a_second_source_are_delayed():
+    """They hold today's row at the open, of what was known at the close before."""
+    days = pd.bdate_range("2021-01-04", periods=12, tz="UTC")
+    intraday = make_panel(sessions(days))
+    daily = longer_bars(intraday, daily_stamps)
+    bar = 8
+    changed = daily.copy()
+    changed.loc[(days[bar], "A"), ["high", "low", "close", "volume"]] *= 1.5
+
+    def run(daily):
+        seen = {}
+
+        class Alg(trading.CustomAlgorithm):
+            def initialize(self):
+                self.get_factor_engine("main").add(factors.OHLCV.open, "open")
+                self.get_factor_engine("longer").add(factors.MA(2), "ma")
+                self.schedule(trading.event.MarketOpen(self.look))
+
+            def look(self, _):
+                frames, _ = self.run_engine(None, None)
+                seen[self.current] = frames["longer"]
+
+        _, evt_mgr = two_sources(Alg, intraday, daily)
+        evt_mgr.run(days[4], days[-1])
+        return seen
+
+    seen, other = run(daily), run(changed)
+
+    open_of_the_bar = days[bar] + pd.Timedelta(minutes=870)
+    assert seen[open_of_the_bar].index.get_level_values(0)[-1] == days[bar]
+    pd.testing.assert_frame_equal(seen[open_of_the_bar], other[open_of_the_bar])
+    next_open = days[bar + 1] + pd.Timedelta(minutes=870)
+    assert not seen[next_open].equals(other[next_open])

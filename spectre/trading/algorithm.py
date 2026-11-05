@@ -62,8 +62,10 @@ class CustomAlgorithm(EventReceiver, ABC):
         self.blotter = blotter
         self._recorder = Recorder()
         self._current_dt = None
-        # a simulation has the whole of the current bar, this says how much of it has happened
-        self._bar_closed = True
+        # a simulation has the whole of the current bar, this says how much of it has happened.
+        # None outside of a simulation, where the data only holds what has happened.
+        self._bar_closed = None
+        self._bars = {}
         self._results = CustomAlgorithm.Results(None, None, None)
         self._rebalance_callback = None
         self.delay_factor = True
@@ -91,11 +93,48 @@ class CustomAlgorithm(EventReceiver, ABC):
             )
         return self._engines[name]
 
+    def _bars_of(self, name):
+        if name not in self._bars:
+            dates = self._engines[name].loader_.load().index.get_level_values(0)
+            self._bars[name] = dates.unique()
+        return self._bars[name]
+
+    def _open_bar(self, name):
+        """
+        The stamp of the current bar of data source `name`, if that bar has not closed yet. A stamp
+        is the start of a bar, which ends at the next stamp of its source, or for the last one
+        after the bar size of its source. So data that is added up over a longer time than the
+        bars of the simulation stays open while they go on. Before the bar of the simulation has
+        closed time has reached its stamp, after that the next stamp of any data source.
+        """
+        if self._bar_closed is None:
+            return None
+        now = self._current_dt
+        reached = now
+        if self._bar_closed:
+            sources = [self._bars_of(source) for source in self._engines]
+            later = [bars[bars > now] for bars in sources]
+            later = [bars[0] for bars in later if len(bars) > 0]
+            if len(later) == 0:
+                return None
+            reached = min(later)
+
+        bars = self._bars_of(name)
+        following = bars.searchsorted(now, side="right")
+        if following == 0:
+            return None
+        current = bars[following - 1]
+        if following < len(bars):
+            ends = bars[following]
+        else:
+            ends = current + (bars[1:] - bars[:-1]).min()
+        return None if ends <= reached else current
+
     def get_price_matrix(self, length: pd.DateOffset, name: str | None = None, prices=OHLCV.close):
         """
-        Prices of the last `length`, adjusted to the current bar. Until the current bar closes,
-        `prices` that are only known after a close end at the bar before it, and a filter that
-        reads such data decides on the bars before it.
+        Prices of the last `length`, adjusted to the current bar. Until the current bar of the data
+        source closes, `prices` that are only known after a close end at the bar before it, and a
+        filter that reads such data decides on the bars before it.
         """
         if name is None:
             name = next(iter(self._engines))
@@ -107,7 +146,8 @@ class CustomAlgorithm(EventReceiver, ABC):
             )
         engine = self._engines[name]
         start, end = self._current_dt - length, self._current_dt
-        if self._bar_closed:
+        open_bar = self._open_bar(name)
+        if open_bar is None:
             return engine.get_price_matrix(start, end, prices=prices)
 
         universe = engine.get_filter()
@@ -120,7 +160,7 @@ class CustomAlgorithm(EventReceiver, ABC):
         finally:
             if delay_universe:
                 engine.set_filter(universe)
-        return matrix[matrix.index < end] if prices.should_delay() else matrix
+        return matrix[matrix.index < open_bar] if prices.should_delay() else matrix
 
     def set_datetime(self, dt: pd.Timestamp) -> None:
         self._current_dt = dt
@@ -250,6 +290,7 @@ class CustomAlgorithm(EventReceiver, ABC):
         # here and not at the end of a run, the records are read after it
         self._recorder = Recorder()
         self._data = self._last_row = None
+        self._bars = {}
         # schedule first, so it will run before rebalance
         self.schedule(EveryBarData(self._data_updated))
         self.initialize()
