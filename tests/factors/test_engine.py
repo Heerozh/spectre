@@ -1553,6 +1553,32 @@ def test_full_run_keeps_the_rows_with_a_full_return(
 
 
 @pytest.mark.filterwarnings("ignore:quantile.. mask parameter not set")
+@pytest.mark.parametrize("trade_at", ["close", "open"])
+def test_full_run_static_assets_have_nothing_to_delay(device, dirty_loader, dirty_panel, trade_at):
+    """A fixed set of assets is the same on every bar, so naming all of them changes no row."""
+
+    def run(universe):
+        engine = factors.FactorEngine(dirty_loader)
+        if device == "cuda":
+            engine.to_cuda()
+        if universe is not None:
+            engine.set_filter(universe)
+        engine.add(factors.MA(3), "f")
+        return engine.full_run(
+            DIRTY_DATES[5],
+            DIRTY_DATES[-1],
+            trade_at=trade_at,
+            periods=(2,),
+            quantiles=2,
+            filter_zscore=None,
+            preview=False,
+        )[0]
+
+    everyone = set(dirty_panel.index.get_level_values("asset"))
+    pd.testing.assert_frame_equal(run(None), run(factors.StaticAssets(everyone)))
+
+
+@pytest.mark.filterwarnings("ignore:quantile.. mask parameter not set")
 def test_full_run_labels_periods_in_bars_of_the_data(device):
     """A return counts the bars of the data, a filter that keeps mondays doesn't stretch it."""
     panel, _, _ = forward_data()

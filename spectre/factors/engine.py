@@ -796,7 +796,8 @@ class FactorEngine:
                 # none is. That includes the filter, which picks the rows the masks have to match.
                 with self._masks_know_the_filter():
                     delays = [f.should_delay() for f in self._factors.values()]
-                if universe is not None:
+                # A fixed set of assets is the same on every bar, it has nothing to delay.
+                if universe is not None and not isinstance(universe, StaticAssets):
                     delays.append(universe.should_delay())
                 delay_returns = any(delays)
                 if delay_returns and not all(delays):
