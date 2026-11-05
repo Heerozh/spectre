@@ -22,6 +22,10 @@ from .factor import BaseFactor, CustomFactor
 from .filter import FilterFactor, StaticAssets
 
 
+class NoBarError(ValueError):
+    """No bar in the range. Live the next one may just not have come yet."""
+
+
 class OHLCV:
     open = ColumnDataFactor(inputs=("",), should_delay=False)
     high = ColumnDataFactor(inputs=("",))
@@ -569,7 +573,7 @@ class FactorEngine:
         """A delayed run drops the first bar from `start` on. It needs one more after that."""
         first = dates.get_indexer([start], method="bfill")[0]
         if first == -1 or first + 1 >= len(dates):
-            raise ValueError("There is no data between start and end.")
+            raise NoBarError("There is no data between start and end.")
         return dates[first + 1]
 
     def run(
@@ -619,7 +623,7 @@ class FactorEngine:
         start_ind = index.searchsorted(start)
 
         if start_ind >= len(index):
-            raise ValueError("There is no data between start and end.")
+            raise NoBarError("There is no data between start and end.")
         if shifted_mask is not None:
             shifted_mask = shifted_mask[start_ind:]
             results = {k: v[start_ind:][shifted_mask] for k, v in results.items()}

@@ -15,7 +15,7 @@ import pandas as pd
 import torch
 
 from ..data import DataLoader, DataLoaderFastGetter
-from ..factors import OHLCV, FactorEngine, StaticAssets
+from ..factors import OHLCV, FactorEngine, NoBarError, StaticAssets
 from ..plotting import cumulative_returns_fig
 from .blotter import BaseBlotter, SimulationBlotter
 from .event import Event, EventManager, EventReceiver, EveryBarData, MarketClose, MarketOpen
@@ -271,8 +271,11 @@ class CustomAlgorithm(EventReceiver, ABC):
 
         if len(self._engines) == 1:
             name = next(iter(self._engines))
-            df = self._engines[name].run(start, end, delay_factor)
-            if df.shape[0] == 0:
+            try:
+                df = self._engines[name].run(start, end, delay_factor)
+            except NoBarError:
+                df = None
+            if df is None or df.shape[0] == 0:
                 start = start - pd.DateOffset(years=1)
                 df = self._engines[name].run(start, end, delay_factor)
                 return df, df.head(0)
