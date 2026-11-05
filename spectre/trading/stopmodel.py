@@ -29,7 +29,8 @@ class PriceTracker:
         self.recorded_price /= inverse_ratio
 
     def process_dividend(self, amount: float):
-        self.recorded_price -= amount
+        # by proportion, a stop is a percent of this price and has to keep its gap to the last one
+        self.recorded_price *= 1 - amount / self.last_price
 
 
 # -----------------------------------------------------------------------------
@@ -52,7 +53,7 @@ class StopTracker(PriceTracker):
 
     def process_dividend(self, amount: float):
         super().process_dividend(amount)
-        self._stop_price -= amount
+        self._stop_price *= 1 - amount / self.last_price
 
     def fire(self, *args):
         if callable(self.callback):
@@ -136,7 +137,7 @@ class PnLDecayTrailingStopTracker(DecayTrailingStopTracker):
     @property
     def current(self):
         pos = self.tracking_position
-        pnl = (self.recorded_price / pos.cost_basis - 1) * sign(pos.shares)
+        pnl = (self.recorded_price / pos.return_basis - 1) * sign(pos.shares)
         pnl = max(pnl, 0) if self.target > 0 else min(pnl, 0)
         return pnl
 

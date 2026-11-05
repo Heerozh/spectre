@@ -466,23 +466,95 @@ def test_dividend_adjusts_trailing_stop_of_short(amount, tax):
     pos.last_price = 100
     assert pos.stop_tracker.stop_price == pytest.approx(96 * 1.05)
 
-    # the fall to 94 is not a new low. The low moves with the price, 4 below it like before
+    # the fall to 94 is not a new low. The low falls 6% with the price, 4% below it like before
     pos.process_dividend(amount, tax=tax)
     assert pos.last_price == pytest.approx(94)
-    assert pos.stop_tracker.recorded_price == pytest.approx(90)
-    assert pos.stop_tracker.stop_price == pytest.approx(90 * 1.05)
+    assert pos.stop_tracker.recorded_price == pytest.approx(96 * 0.94)
+    assert pos.stop_tracker.stop_price == pytest.approx(96 * 0.94 * 1.05)
     assert not pos.check_stop_trigger()
 
 
 @TAX
 def test_dividend_adjusts_fixed_stop(amount, tax):
-    # stop loss at 90% of the open price, a dividend of 6 keeps it 10 below the price
+    # stop loss at 90% of the open price, it stays 10% below the price after a dividend of 6%
     pos = trading.Position(100, 100, 0, None, trading.StopModel(-0.1, callback=True))
     pos.process_dividend(amount, tax=tax)
-    assert pos.stop_tracker.stop_price == pytest.approx(84)
+    assert pos.stop_tracker.stop_price == pytest.approx(90 * 0.94)
     assert not pos.check_stop_trigger()
-    pos.last_price = 83.9
+    pos.last_price = 84.5
     assert pos.check_stop_trigger()
+
+
+# a dividend of 20 with and without tax
+TAX_20 = pytest.mark.parametrize("amount, tax", [(20, 0), (18, 2)], ids=["no_tax", "taxed"])
+
+
+@TAX_20
+def test_dividend_inside_the_gap_of_a_trailing_stop(amount, tax):
+    # long, high of 110 and stop at 99, the price of 100 is just above it
+    pos = trading.Position(100, 100, 0, None, trading.TrailingStopModel(-0.1, callback=True))
+    pos.last_price = 110
+    pos.last_price = 100
+    assert pos.stop_tracker.stop_price == pytest.approx(99)
+    assert not pos.check_stop_trigger()
+
+    # 100 to 80 is a total return of 0. The dividend is 20% of the price, all of it moves by 20%
+    pos.process_dividend(amount, tax=tax)
+    assert pos.last_price == pytest.approx(80)
+    assert pos.stop_tracker.recorded_price == pytest.approx(110 * 0.8)
+    assert pos.stop_tracker.stop_price == pytest.approx(99 * 0.8)
+    assert not pos.check_stop_trigger()
+
+    # a bar that really falls through it
+    pos.last_price = 79
+    assert pos.check_stop_trigger()
+
+
+@TAX_20
+def test_dividend_inside_the_gap_of_a_trailing_stop_of_short(amount, tax):
+    # short, low of 90 and stop at 99, the price of 98 is just below it
+    pos = trading.Position(-100, 100, 0, None, trading.TrailingStopModel(-0.1, callback=True))
+    pos.last_price = 90
+    pos.last_price = 98
+    assert pos.stop_tracker.stop_price == pytest.approx(99)
+    assert not pos.check_stop_trigger()
+
+    # 98 to 78, everything moves by that proportion and stays 1% from the stop
+    pos.process_dividend(amount, tax=tax)
+    assert pos.last_price == pytest.approx(78)
+    assert pos.stop_tracker.recorded_price == pytest.approx(90 * 78 / 98)
+    assert pos.stop_tracker.stop_price == pytest.approx(99 * 78 / 98)
+    assert not pos.check_stop_trigger()
+
+    pos.last_price = 79
+    assert pos.check_stop_trigger()
+
+
+def test_return_basis_follows_the_price_through_a_dividend():
+    # 100 at 50 and 100 at 60 is a cost of 55, the price is 110
+    pos = trading.Position(100, 50, 0, None)
+    pos.update(100, 60, 0, None)
+    assert pos.return_basis == pytest.approx(55)
+    pos.last_price = 110
+
+    # a dividend of 10% of the price takes 10% off, the cost basis loses the 11 that was paid
+    pos.process_dividend(11, tax=0)
+    assert pos.return_basis == pytest.approx(55 * 0.9)
+    assert pos.cost_basis == pytest.approx(55 - 11)
+
+    # sales don't touch it, and a split does what it does to the prices
+    pos.update(-100, 99, 0, None)
+    assert pos.return_basis == pytest.approx(55 * 0.9)
+    pos.process_split(2, 99)
+    assert pos.return_basis == pytest.approx(55 * 0.9 / 2)
+
+    # the split made 200 shares of them, 100 more at 40 averages in
+    pos.update(100, 40, 0, None)
+    assert pos.return_basis == pytest.approx((200 * 24.75 + 100 * 40) / 300)
+
+    # a reversal starts over
+    pos.update(-500, 30, 0, None)
+    assert pos.return_basis == 30
 
 
 def test_dividend_and_split_adjust_trailing_stop():

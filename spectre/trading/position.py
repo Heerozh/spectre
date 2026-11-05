@@ -21,6 +21,7 @@ class Position:
         self._shares = shares
         self._average_price = fill_price + commission / shares
         self._cost_basis = self._average_price
+        self._return_basis = self._average_price
         self._last_price = fill_price
         self._realized = 0
         self._open_dt = dt
@@ -58,6 +59,15 @@ class Position:
         it absorbs the proceeds of every sale, so it can reach zero or go negative.
         """
         return self._cost_basis
+
+    @property
+    def return_basis(self):
+        """
+        `cost_basis` for comparing with a price that a stop tracks. A dividend takes the same
+        proportion off both, so a total return of 0 stays a PnL% of 0 over an ex-date, where
+        `cost_basis` loses what was paid. It is not for accounting.
+        """
+        return self._return_basis
 
     @property
     def last_price(self):
@@ -118,6 +128,8 @@ class Position:
                     realized = 0
                     cost = self._cost_basis * before_shares + amount * fill_price + commission
                     self._cost_basis = cost / after_shares
+                    cost = self._return_basis * before_shares + amount * fill_price + commission
+                    self._return_basis = cost / after_shares
                 self._realized += realized
                 self.last_price = fill_price
                 return False, realized
@@ -141,6 +153,7 @@ class Position:
         self._realized += (last_price - self._cost_basis) * fraction / inverse_ratio
         self._average_price = self._average_price / inverse_ratio
         self._cost_basis = self._cost_basis / inverse_ratio
+        self._return_basis = self._return_basis / inverse_ratio
         if self.stop_tracker:
             # adjust the tracked prices first, then update it with the adjusted last price
             self.stop_tracker.process_split(inverse_ratio)
@@ -156,6 +169,7 @@ class Position:
             amount = gross
         self._average_price -= amount
         self._cost_basis -= amount
+        self._return_basis *= 1 - gross / self._last_price
         if self.stop_tracker:
             # adjust the tracked prices first, then update it with the adjusted last price
             self.stop_tracker.process_dividend(gross)

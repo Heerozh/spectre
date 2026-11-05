@@ -164,6 +164,48 @@ def test_pnl_decay_with_a_dividend():
     assert not pos.check_stop_trigger()
 
 
+@pytest.mark.parametrize("amount, tax", [(5, 0), (4.5, 0.5)], ids=["no_tax", "taxed"])
+def test_pnl_decay_in_profit_with_a_dividend(amount, tax):
+    # bought at 50, high of 104, and just above the stop, where a decayed stop tends to be
+    model = trading.PnLDecayTrailingStopModel(-0.1, 1.0, True)
+    pos = trading.Position(100, 50, 0, None, model)
+    pos.last_price = 104
+    pos.last_price = 103.7
+    stop_price = pos.stop_tracker.stop_price
+    assert stop_price == pytest.approx(104 * (1 - 0.1 * 0.05 ** (104 / 50 - 1)))
+    assert not pos.check_stop_trigger()
+
+    # 103.7 to 98.7 is a total return of 0, so the same PnL% and the same stop in the new prices
+    pos.process_dividend(amount, tax=tax)
+    assert pos.stop_tracker.current == pytest.approx(104 / 50 - 1)
+    assert pos.stop_tracker.stop_price == pytest.approx(stop_price * 98.7 / 103.7)
+    assert not pos.check_stop_trigger()
+
+    pos.last_price = 98
+    assert pos.check_stop_trigger()
+
+
+@pytest.mark.parametrize("amount, tax", [(5, 0), (4.5, 0.5)], ids=["no_tax", "taxed"])
+def test_pnl_decay_of_short_in_profit_with_a_dividend(amount, tax):
+    # sold at 150, low of 100
+    model = trading.PnLDecayTrailingStopModel(-0.1, 1.0, True)
+    pos = trading.Position(-100, 150, 0, None, model)
+    pos.last_price = 100
+    pos.last_price = 103
+    pnl = 1 - 100 / 150
+    stop_price = pos.stop_tracker.stop_price
+    assert stop_price == pytest.approx(100 * (1 + 0.1 * 0.05**pnl))
+    assert not pos.check_stop_trigger()
+
+    pos.process_dividend(amount, tax=tax)
+    assert pos.stop_tracker.current == pytest.approx(pnl)
+    assert pos.stop_tracker.stop_price == pytest.approx(stop_price * 98 / 103)
+    assert not pos.check_stop_trigger()
+
+    pos.last_price = 99
+    assert pos.check_stop_trigger()
+
+
 def test_time_decay_with_a_dividend():
     dt = pd.Timestamp("2014-01-02", tz="UTC")
     model = trading.TimeDecayTrailingStopModel(-0.05, pd.Timedelta(days=5), True)
