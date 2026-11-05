@@ -353,6 +353,10 @@ class SimulationBlotter(BaseBlotter, EventReceiver):
         self.orders = defaultdict(list)
         self._portfolio.clear()
         self._portfolio.update_cash(self.capital_base, is_funds=True)
+        self.market_opened = False
+        self._current_dt = None
+        self._current_prices_col = None
+        self._current_prices = None
 
     def _advance_to(self, dt: pd.Timestamp) -> None:
         """Move the datetime forward, and charge the interest of the time that passed."""

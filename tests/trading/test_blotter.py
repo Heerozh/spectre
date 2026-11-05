@@ -613,6 +613,64 @@ def open_at_first_bar(stamps, amount, capital_base):
     return blotter
 
 
+@pytest.mark.parametrize(
+    "first, second",
+    [((2, 6), (10, 16)), ((10, 16), (2, 6)), ((2, 6), (2, 6)), ((2, 10), (6, 14))],
+    ids=["later", "earlier", "same", "overlap"],
+)
+def test_rerun_on_another_window(first, second):
+    # up 1 a day, a dividend on bar 8 and a 2-for-1 split on bar 12
+    days = pd.bdate_range("2021-01-04", periods=18, tz="UTC")
+    close = [100.0 + i for i in range(18)]
+    close[8:] = [c - 1 for c in close[8:]]
+    close[12:] = [c / 2 for c in close[12:]]
+
+    class Alg(trading.CustomAlgorithm):
+        def initialize(self):
+            self.get_factor_engine().add(factors.OHLCV.open, "open")
+            self.schedule_rebalance(trading.event.MarketOpen(self.rebalance))
+
+        def rebalance(self, data, history):
+            if not self.blotter.positions:
+                self.blotter.order("A", -100)
+
+    def build():
+        loader = asset_a_loader(days, close, dividends={8: 1}, split_ratios={12: 0.5})
+        blotter = trading.SimulationBlotter(loader, capital_base=100000)
+        manager = trading.SimulationEventManager()
+        alg = Alg(blotter, main=loader)
+        manager.subscribe(blotter)
+        manager.subscribe(alg)
+        return alg, blotter, manager
+
+    alg, blotter, manager = build()
+    manager.run(days[first[0]], days[first[1]])
+    manager.run(days[second[0]], days[second[1]])
+
+    fresh, fresh_blotter, fresh_manager = build()
+    fresh_manager.run(days[second[0]], days[second[1]])
+    pd.testing.assert_frame_equal(fresh_blotter.get_transactions(), blotter.get_transactions())
+    pd.testing.assert_frame_equal(fresh.results.positions, alg.results.positions)
+    pd.testing.assert_series_equal(fresh.results.returns, alg.results.returns)
+    assert fresh_blotter.portfolio.cash == blotter.portfolio.cash
+
+
+def test_clear_forgets_the_market_state():
+    days = pd.bdate_range("2021-01-04", periods=3, tz="UTC")
+    blotter = trading.SimulationBlotter(asset_a_loader(days, [100, 101, 102]))
+    blotter.set_datetime(days[2])
+    blotter.market_open(None)
+    blotter.set_price("close")
+
+    blotter.clear()
+    assert not blotter.market_opened
+    # a run on earlier days doesn't start from the old datetime, or replay what's in between
+    blotter.set_datetime(days[0])
+    blotter.market_open(None)
+    with pytest.raises(ValueError, match="set_price"):
+        blotter.get_price("A")
+
+
 def test_short_interest_of_intraday_bars():
     # hourly bars of the US session, only the gap of the weekend is longer than a day
     days = pd.bdate_range("2020-01-06", "2020-01-16", tz="UTC")
