@@ -249,6 +249,14 @@ def test_fill_at_the_open_does_not_know_the_volume_of_its_bar(bar_volume):
     assert fill == pytest.approx(100.107, abs=1e-3)
 
 
+def test_fill_at_the_open_after_a_bar_without_volume_on_an_ex_date():
+    # the last known volume is 2 bars back, those 1e6 shares are 2e6 shares of the ex-date
+    close = [100, 100, np.nan, 50, 50]
+    volume = [1e6, 1e6, np.nan, 3e6, 3e6]
+    fill = fill_price_of_100_shares(close, volume, 3, "open", split_ratios={3: 0.5})
+    assert fill == pytest.approx(slipped(50, 100 / 2e6))
+
+
 def test_fill_at_the_close_knows_the_volume_of_its_bar():
     fill = fill_price_of_100_shares([100, 100, 100], [1e6, 1e5, 1e6], 1, "close")
     assert fill == pytest.approx(slipped(100, 1e-3))

@@ -309,11 +309,11 @@ class SimulationBlotter(BaseBlotter, EventReceiver):
         df = dataloader.load(start, None, 1).copy()
         ohlcv = ohlcv or dataloader.ohlcv
         # add the last known volume for slippage at the open, in the shares of the bar reading it
-        volume = df[ohlcv[4]]
+        scale = 1
         if dataloader.adjustments is not None:
-            volume = volume / df[dataloader.adjustments[1]]
-        volume = volume.groupby(level=1, observed=False).ffill()
-        df["__last_volume"] = volume.groupby(level=1, observed=False).shift(1)
+            scale = df[dataloader.adjustment_multipliers[1]]
+        volume = (df[ohlcv[4]] * scale).groupby(level=1, observed=False).ffill()
+        df["__last_volume"] = volume.groupby(level=1, observed=False).shift(1) / scale
         self._data = df
         self._curb_cols = [ohlcv[3]]
         if dataloader.adjustments is not None:
