@@ -1,5 +1,6 @@
 import numpy as np
 import pandas as pd
+import plotly.graph_objects as go
 import pytest
 from numpy import nan
 from numpy.testing import assert_almost_equal, assert_array_equal
@@ -1057,6 +1058,27 @@ class OpenAlg(trading.CustomAlgorithm):
         self.seen.append(self.current)
         self.last_rows.append(history.index.get_level_values(0)[-1])
         self.blotter.batch_order_target_percent(data.index, data.open / data.open.sum())
+
+
+@pytest.mark.parametrize("first_bar", [0, 5], ids=["first_bar_of_the_data", "later_bar"])
+def test_plot_with_an_asset_as_the_benchmark(monkeypatch, first_bar):
+    dates = pd.bdate_range("2020-01-01", periods=30, tz="UTC")
+    panel = make_panel(dates)
+    alg, evt_mgr = new_rerun_alg(make_loader(panel), OpenAlg)
+    evt_mgr.run(dates[first_bar], dates[-1])
+    shown = []
+    monkeypatch.setattr(go.Figure, "show", lambda self, *args, **kwargs: shown.append(self))
+
+    alg.plot(benchmark="A")
+
+    line = next(trace for trace in shown[0].data if trace.name == "benchmark")
+    # returns of the benchmark from the first bar the line has, so its first point has none
+    line_dates = pd.DatetimeIndex(line.x)
+    closes = panel["close"].unstack()["A"].loc[line_dates[0] :]
+    expected = (closes / closes.iloc[0] - 1).iloc[1:].to_numpy() * 100
+    assert np.asarray(line.y[1:], dtype=float) == pytest.approx(expected, rel=1e-3)
+    assert line_dates[-1] == dates[-1]
+    assert line_dates[0] <= dates[first_bar]
 
 
 def test_rerun_on_intraday_bars_does_not_see_the_end_of_the_last_run():

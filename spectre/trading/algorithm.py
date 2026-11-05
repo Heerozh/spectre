@@ -216,7 +216,9 @@ class CustomAlgorithm(EventReceiver, ABC):
             filter_ = engine.get_filter()
             engine.empty_cache()
             engine.set_filter(StaticAssets({benchmark}))
-            df = engine.get_price_matrix(returns.index[0], returns.index[-1])
+            # the returns start the day before the first bar, which can be before the data
+            first_bar = self._bars_of(next(iter(self._engines)))[0]
+            df = engine.get_price_matrix(max(returns.index[0], first_bar), returns.index[-1])
             engine.set_filter(filter_)
             bench = df[benchmark]
             bench = bench.resample("D").last().dropna()
