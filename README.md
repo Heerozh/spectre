@@ -386,7 +386,8 @@ Reading csv is very slow, so you also need to use [ArrowLoader](#arrowloader).
     For duplicate data, loader will first drop the exact same rows, and then for the same
     `dividends_index` but different 'dividend amount(`adjustments[0]`)' rows, loader will sum them up.
     A dividend goes to the first bar of the asset on or after `dividends_index`, and the ones sharing
-    a bar are summed up. A `dividends_index` without timezone is in the timezone of the prices.
+    a bar are summed up. A `dividends_index` without timezone is a local date of that asset, read in
+    the UTC offset of its prices around that date.
     If `dividends_path` not set, the `adjustments[0]` column is considered to be included
     in the prices csv.\
 **dividends_index:** `index_col`for csv in `dividends_path`.\
@@ -394,7 +395,8 @@ Reading csv is very slow, so you also need to use [ArrowLoader](#arrowloader).
     When encountering duplicate datetime in `splits_index`, Loader will use the last
     non-NaN 'split ratio', drop others.
     A split goes to the first bar of the asset on or after `splits_index`, and the ones sharing a
-    bar are multiplied. A `splits_index` without timezone is in the timezone of the prices.
+    bar are multiplied. A `splits_index` without timezone is a local date of that asset, read in the
+    UTC offset of its prices around that date.
     If `splits_path` not set, the `adjustments[1]` column is considered to be included
     in the prices csv.\
 **splits_index:** `index_col`for csv in `splits_path`.\
@@ -699,7 +701,10 @@ and the filter are delayed, a row knows the close of the bar before it, and ente
 the close of its own bar. If none of them is delayed, a row knows the open of its bar, so `'close'`
 enters at the close of that bar, and `'open'` at the open of the next bar, because the open of its
 bar has gone. If only some of them are delayed, all are, the filter too, so a filter on Mondays with
-a factor on close gives rows on Tuesdays.
+a factor on close gives rows on Tuesdays. `StaticAssets` doesn't count, it is the same on every bar.
+
+`xs_quantile=False` ranks each asset against all its loaded rows, including future ones, so it has
+a look-ahead bias by design.
 
 A `MarketOpen` backtest fills a factor that isn't delayed at the open it has just read, so it is
 more optimistic than `full_run` for those factors.
@@ -906,7 +911,7 @@ alg.schedule_rebalance(trading.event.MarketClose(self.any_function))
 
 The `Market*` events has `offset_ns` parameter `MarketClose(self.any_function, offset_ns=-1000)`,
 a negative value of `offset_ns` means 'before', in backtest mode, the magnitude of the value has no
-effect.
+effect. In live mode, a run started after the time of an event waits for the next one.
 
 
 ### CustomAlgorithm.schedule
@@ -984,7 +989,8 @@ In a backtest, before the current bar closes, prices that are only known after t
 bar before it, and a filter that reads such data decides on the bars before it. So at `MarketOpen`
 the matrix of `OHLCV.close` ends at the previous bar, and the one of `OHLCV.open` keeps the open of
 the current bar. At `MarketClose` it has the close of the current bar, also with a negative offset,
-because the blotter fills on that price.
+because the blotter fills on that price. A data source with longer bars than the backtest, such as
+daily bars in an intraday backtest, shows a bar only when it has closed.
 
 
 ### CustomAlgorithm.record
@@ -1013,7 +1019,8 @@ commission = max(percentage_part + per_share_part, minimum)
 `self.blotter.set_slippage(percentage=0, per_share=0.01)`
 **context:** *initialize, rebalance*
 
-Market impact add to the price.
+Market impact add to the price. The volume of a bar is only known after it closes, so at the open
+it uses the volume of the bar before.
 
 
 ### SimulationBlotter.set_short_fee
@@ -1162,6 +1169,7 @@ class Position:
     shares = None
     average_price = None  # break-even price, it can reach zero or go negative after selling
     cost_basis = None  # average cost of the shares still held
+    return_basis = None  # cost_basis for a PnL%, a dividend moves it by proportion, like a price
     last_price = None
     unrealized = None  # P&L of the shares still held, realized + unrealized is the total P&L
     realized = None  # including the cash paid for what a split leaves over

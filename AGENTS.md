@@ -159,12 +159,16 @@ rows into padded 2D tensors, using NaN or `False` for padding:
 - **Some results still depend on `start`.** `fill_na(ffill=True)` has an unbounded look-back, a
   group of `'asset'` pools the loaded rows, so it moves with the history other factors need, and a
   window over a cross-section on an asset with gaps averages as many bars as have complete dates.
+  `one_hot()[i]` numbers the classes in the loaded rows, so `i` can depend on a class in the future.
+  `full_run(xs_quantile=False)` pools the same way as `groupby='asset'`.
 - **The calendar flags are a property of the date.** `IS_MONTH_END` and the others read the dates of
   the frame in `engine.timezone`, not the bars of an asset, and all bars of a date get the flag. The
   first and last date of the frame go by business days, so a holiday there isn't seen.
-- **`MarketVolatility` is one number per date.** `win` counts the dates of the market, and its
-  `shift` moves by them through `MarketShift`, so the engine's delay does too. A factor built on it
-  gets the normal delay by the bars of each asset.
+- **Market factors are one number per date.** `win` of `MarketVolatility` counts the dates of the
+  market, and `shift` moves by them through `MarketShift`, so the engine's delay does too. A factor
+  built on one gets the normal delay by the bars of each asset. `mean()`, `std()` and the IC factors
+  are the same case, but they can be grouped by other columns, so they also delay by asset bars: an
+  asset back from a halt reads the value of its own last bar, and a new listing reads NaN.
 - **`SeriesDataFactor` is not a column of the frame**, so it can't be a `groupby`. It keeps what it
   read for the rows of the frame, keyed by `engine.cache_hash`. `fill_na` reads the whole series,
   so it doesn't depend on `start`.
@@ -204,16 +208,20 @@ rows into padded 2D tensors, using NaN or `False` for padding:
   firing `EveryBarData`, `MarketOpen` and `MarketClose`. In simulation only the sign of an event's
   offset matters: negative fires before the open or close, otherwise after.
 - A simulation has the whole of the current bar, so `alg._bar_closed` says how much of it has
-  happened. Until it is True, `get_price_matrix` ends prices that are only known after a close at
-  the bar before, and delays a filter that reads such data. `MarketClose` sees the close also with
-  a negative offset, because the blotter fills there.
+  happened. Until a bar closes, `get_price_matrix` ends prices that are only known after a close at
+  the bar before, and delays a filter that reads such data. A stamp is the start of a bar, which
+  ends at the next stamp of its source, so a daily source in an intraday backtest closes with the
+  day. `MarketClose` sees the close also with a negative offset, because the blotter fills there.
+  Slippage at the open uses the volume of the bar before.
 - Blotter prices are raw. `SimulationBlotter.market_close` pushes dividends and splits to the
   portfolio, separately from the factor-side adjustments. A long receives the net dividend and a
   short pays the gross one.
 - `Position.average_price` is a break-even price: sale proceeds go into it, so it can reach zero or
   go negative. It is only reported as `avg_px`. Ratios, `realized` and `unrealized` use `cost_basis`,
-  which sales don't touch. What a split leaves over is paid in cash and counts in `realized`, but
-  it's not an order, so it's not in the `realized` column of the transactions.
+  which sales don't touch, and it loses the cash of a dividend, so the books add up. A stop compares
+  with a tracked price, which a dividend moves by proportion, so it reads `return_basis`, which does
+  too. What a split leaves over is paid in cash and counts in `realized`, but it's not an order, so
+  it's not in the `realized` column of the transactions.
 - Yahoo's OHLCV and dividends are already split adjusted, so `YahooDownloader` rebuilds raw prices
   in `_to_raw_prices`. Giving `DataLoader` the real split ratio with adjusted prices adjusts them
   twice, and adjusted prices also break the blotter on old dates: a share count can exceed
