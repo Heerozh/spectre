@@ -19,6 +19,7 @@ from ..parallel import (
     linear_regression_1d,
     nanmax,
     nanmean,
+    nanmin,
     nanstd,
     nanvar,
     pearsonr,
@@ -311,8 +312,11 @@ class TTest1Samp(CustomFactor):
 
     def compute(self, a, pop_mean):
         def _ttest(_x):
-            d = nanmean(_x, dim=2) - pop_mean
-            v = nanvar(_x, dim=2, ddof=1)
+            # from the lowest value, so rounding doesn't give equal values a spread
+            lowest = nanmin(_x, dim=2)
+            samples = _x - lowest.unsqueeze(-1)
+            d = nanmean(samples, dim=2) + (lowest - pop_mean)
+            v = nanvar(samples, dim=2, ddof=1)
             n = (~torch.isnan(_x)).sum(dim=2)
             denom = torch.sqrt(v / n)
             t = d / denom
@@ -386,9 +390,11 @@ class CrossSectionR2(CrossSectionFactor):
             # 按市场总回报来算r2的话，用这个。不然就是相对回报。
             ss_tot = unmasked_sum(y**2, mask, dim=1)
         else:
+            # from the lowest value, so rounding doesn't give equal values a spread
+            y = y - y.masked_fill(mask, np.inf).amin(dim=1, keepdim=True)
             y_bar = unmasked_mean(y, mask, dim=1).unsqueeze(-1)
             ss_tot = unmasked_sum((y - y_bar) ** 2, mask, dim=1)
-        r2 = -ss_err / ss_tot + 1
+        r2 = -ss_err / ss_tot.masked_fill(ss_tot == 0, np.nan) + 1
         r2[(~mask).to(Global.float_type).sum(dim=1) < 2] = np.nan
         return r2.unsqueeze(-1).expand(r2.shape[0], y.shape[1])
 

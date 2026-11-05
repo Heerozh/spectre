@@ -121,6 +121,58 @@ def test_bbands_normalized(engine):
     assert_factor(engine, factor, *ref.expected(bbands_normalized(50, 3)))
 
 
+def bbands_score(closes, win, k):
+    """(last - mean) / (k * std) of the valid bars of each window, NaN if they are all equal."""
+    ret = np.full(len(closes), nan)
+    for i in range(len(closes)):
+        window = closes[max(0, i - win + 1) : i + 1]
+        valid = window[~np.isnan(window)]
+        if len(valid) and valid.max() > valid.min():
+            ret[i] = (window[-1] - valid.mean()) / (k * valid.std())
+    return ret
+
+
+@pytest.mark.filterwarnings("ignore:Warning!! delay_factor is set to False")
+@pytest.mark.filterwarnings("ignore:Historical data seems insufficient")
+@pytest.mark.parametrize("dtype", [np.float32, np.float64])
+def test_bbands_normalized_of_a_flat_run(device, dtype):
+    """Whether a mean of equal values rounds depends on them, so try a lot of constants."""
+    win, bars = 7, 30
+    dates = pd.date_range("2020-01-01", periods=bars, freq="B", tz="UTC")
+    rng = np.random.default_rng(0)
+    closes = {f"FLAT{i}": np.full(bars, price) for i, price in enumerate(rng.uniform(1, 300, 30))}
+    # a halted asset with carried prices
+    carried = 100 + rng.normal(0, 1, bars).cumsum()
+    carried[10:21] = carried[10]
+    closes["CARRIED"] = carried
+    df = pd.concat(
+        {asset: pd.DataFrame(dict.fromkeys(DIRTY_OHLCV, c), dates) for asset, c in closes.items()},
+        names=["asset", "date"],
+    ).swaplevel()
+    loader = spectre.data.MemoryLoader(df.sort_index().astype(dtype), DIRTY_OHLCV)
+    engine = factors.FactorEngine(loader)
+    if device == "cuda":
+        engine.to_cuda()
+    engine.add(factors.BBANDS(win).normalized(), "score")
+    result = engine.run(dates[0], dates[-1], delay_factor=False).score
+
+    expected = bbands_score(carried.astype(dtype).astype(np.float64), win, 2)
+    got = result.xs("CARRIED", level="asset").values
+    assert_allclose(got, expected, rtol=1e-5, atol=1e-5)
+    assert np.isnan(got[16:21]).all()
+    assert result.drop("CARRIED", level="asset").isna().all()
+
+
+@pytest.mark.filterwarnings("ignore:Historical data seems insufficient")
+@pytest.mark.parametrize("asset", ["FULL", "LISTED", "HALTED", "NANBAR", "SPLIT"])
+def test_bbands_normalized_of_dirty_assets(dirty_engine, dirty_panel, asset):
+    """The score doesn't depend on the scale, so a split makes no difference."""
+    result = run_dirty(dirty_engine, factors.BBANDS(5).normalized())
+    closes = dirty_panel.xs(asset, level="asset").clean_close.values
+    got = result.xs(asset, level="asset").values
+    assert_allclose(got, bbands_score(closes, 5, 2), rtol=1e-4, atol=1e-5)
+
+
 def test_bbands_needs_k():
     with pytest.raises(ValueError, match="needs 2 inputs"):
         factors.BBANDS(inputs=[factors.OHLCV.close])

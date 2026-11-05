@@ -13,7 +13,7 @@ import torch
 from ..parallel import nanmean, pad_2d
 from .basic import EMA, MA
 from .engine import OHLCV
-from .factor import BaseFactor, CustomFactor
+from .factor import BaseFactor, CustomFactor, RollingZScoreFactor
 from .statistical import STDDEV
 
 
@@ -48,12 +48,8 @@ class BollingerBands(CustomFactor):
         return torch.cat([up.unsqueeze(-1), ma.unsqueeze(-1), down.unsqueeze(-1)], dim=-1)
 
     def normalized(self):
-        return NormalizedBollingerBands(self.win, self.inputs)
-
-
-class NormalizedBollingerBands(CustomFactor):
-    def compute(self, closes, ma, std, k):
-        return (closes - ma) / (k * std)
+        closes, ma, _, k = self.inputs
+        return RollingZScoreFactor(ma.win, inputs=[closes]) / k
 
 
 class _MACDLine(CustomFactor):

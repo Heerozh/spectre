@@ -354,6 +354,41 @@ def test_cross_section_r2():
     assert np.isnan(result[1, 0].item())
 
 
+@pytest.mark.parametrize("dtype", [torch.float32, torch.float64])
+def test_cross_section_r2_of_constant_y_is_nan(device, dtype):
+    """Whether the mean rounds depends on the value, so try a lot of them."""
+    rng = np.random.default_rng(0)
+    y = np.repeat(rng.uniform(1, 300, (500, 1)), 30, axis=1)
+    y_hat = y + rng.normal(size=y.shape)
+    y, y_hat = [torch.tensor(v, device=device, dtype=dtype) for v in (y, y_hat)]
+    r2 = factors.CrossSectionR2(None, None, None)
+    assert torch.isnan(r2.compute(y, y_hat)).all()
+    assert torch.isnan(r2.compute(y, y)).all()
+
+
+def test_cross_section_r2_of_nearly_constant_y(device):
+    """y only varies by a few ulps, and a mean that is rounded by that much isn't variance."""
+    rng = np.random.default_rng(0)
+    level = rng.uniform(1, 300, (100, 1)).astype(np.float32)
+    ulp = np.nextafter(level, np.inf, dtype=np.float32) - level
+    y = level + (rng.integers(0, 5, (100, 30)) * ulp).astype(np.float32)
+    y_hat = y + (rng.integers(-2, 3, y.shape) * ulp).astype(np.float32)
+    tensors = [torch.tensor(v, device=device) for v in (y, y_hat)]
+    result = factors.CrossSectionR2(None, None, None).compute(*tensors)[:, 0].cpu().numpy()
+
+    y, y_hat = y.astype(np.float64), y_hat.astype(np.float64)
+    ss_tot = ((y - y.mean(axis=1, keepdims=True)) ** 2).sum(axis=1)
+    assert_allclose(result, 1 - ((y - y_hat) ** 2).sum(axis=1) / ss_tot, rtol=1e-5, atol=1e-5)
+
+
+def test_total_r2(device):
+    """Against 0 and not against the mean, so a constant y has a total to compare with."""
+    r2 = factors.CrossSectionR2(None, None, None, total_r2=True)
+    y = torch.tensor([[2.0, 2, 2, 2], [0.0, 0, 0, 0]], device=device, dtype=torch.float64)
+    y_hat = torch.tensor([[1.0, 2, 3, 4]] * 2, device=device, dtype=torch.float64)
+    assert_allclose(r2.compute(y, y_hat)[:, 0].cpu().numpy(), [1 - 6 / 16, nan])
+
+
 def test_xs_max_corr_coef():
     xs = [
         torch.tensor([[1.0, 2, 3, 4, 5], [1.0, 2, 3, 4, 5]]),
@@ -871,6 +906,52 @@ def test_ttest_1samp_same_as_scipy(dirty_engine, dirty_panel, win, pop_mean, ass
         closes = dirty_panel.xs(asset, level="asset").clean_close.values
         # the adjustment multipliers are float32, and t magnifies them by mean / std
         assert_allclose(got, rolling_ttest(closes, win, pop_mean), rtol=1e-5, err_msg=asset)
+
+
+@pytest.mark.parametrize("dtype", [torch.float32, torch.float64])
+def test_ttest_1samp_of_constant_on_the_mean_is_nan(device, dtype):
+    """Whether the mean rounds depends on the value, so try a lot of them."""
+    level = np.random.default_rng(0).uniform(1, 300, (200, 1))
+    level = torch.tensor(level, device=device, dtype=dtype)
+    values = parallel.Rolling(level.repeat(1, 30), 7)
+    assert torch.isnan(factors.TTest1Samp(win=7).compute(values, level)).all()
+    # scipy rounds the mean of most constants too, this one has an exact mean
+    assert np.isnan(scipy.stats.ttest_1samp(np.full(7, 32.0), 32.0).statistic)
+
+
+@pytest.mark.filterwarnings("ignore:Warning!! delay_factor is set to False")
+@pytest.mark.parametrize("dtype", [np.float32, np.float64])
+def test_ttest_1samp_of_a_flat_series(device, dtype):
+    """A mean that is not the constant is off by an amount that has no spread to compare with."""
+    win = 7
+    engine = flat_engine(device, dtype)
+    engine.add(factors.TTest1Samp(win, inputs=[close, 33.3]), "on_the_mean")
+    engine.add(factors.TTest1Samp(win, inputs=[close, 30.0]), "below")
+    engine.add(factors.TTest1Samp(win, inputs=[close, 40.0]), "above")
+    result = engine.run(FLAT_DATES[10], FLAT_DATES[-1], delay_factor=False)
+
+    flat = result.xs("FLAT", level="asset")
+    assert flat.on_the_mean.isna().all()
+    # scipy rounds the mean of 33.3 too, 32 has an exact mean
+    assert (flat.below == scipy.stats.ttest_1samp(np.full(win, 32.0), 30.0).statistic).all()
+    assert (flat.above == scipy.stats.ttest_1samp(np.full(win, 32.0), 40.0).statistic).all()
+    assert np.isfinite(result.xs("VARY", level="asset").values).all()
+
+
+@pytest.mark.parametrize("ulps", [1, 2, 16])
+def test_ttest_1samp_of_nearly_constant(device, ulps):
+    """Values a few ulps apart, a mean that is rounded by that much isn't variance."""
+    win = 7
+    rng = np.random.default_rng(0)
+    level = rng.uniform(1, 300, (50, 1)).astype(np.float32)
+    ulp = np.nextafter(level, np.inf, dtype=np.float32) - level
+    values = level + (rng.integers(0, ulps + 1, (50, 20)) * ulp).astype(np.float32)
+    pop_mean = float(level.mean())
+    rolling = parallel.Rolling(torch.tensor(values, device=device), win)
+    result = factors.TTest1Samp(win=win).compute(rolling, pop_mean).cpu().numpy()
+
+    expected = [rolling_ttest(row, win, pop_mean) for row in values.astype(np.float64)]
+    assert_allclose(result[:, win:], np.array(expected)[:, win:], rtol=1e-4)
 
 
 CDF_DOFS = [0.5, 1, 1.5, 2, 3, 5, 10, 30, 100, 341, 342, 343, 500, 1000]
