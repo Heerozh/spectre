@@ -670,7 +670,9 @@ def test_window_over_a_date_and_sector_group(dirty_panel, device, start):
 def test_groups_without_a_date_read_all_their_rows(dirty_panel, device, groupby):
     panel, start = plain_panel(dirty_panel), 25
     engine = plain_engine(panel, device)
-    engine.add(factors.OHLCV.open.mean(groupby=groupby), "f")
+    factor = factors.OHLCV.open.mean()
+    factor.groupby = groupby
+    engine.add(factor, "f")
     engine.add(factors.MA(10), "loads_history")
     result = engine.run(DIRTY_DATES[start], DIRTY_DATES[-1]).f
     assert engine.incomplete_rows_(groupby, close) is None

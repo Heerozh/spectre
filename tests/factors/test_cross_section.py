@@ -470,6 +470,65 @@ def test_demean_groupby(groupby, expected):
     assert close.demean(groupby=groupby).groupby == expected
 
 
+COLUMN_GROUP_HELPERS = {
+    "zscore": lambda f, g: f.zscore(groupby=g),
+    "demean": lambda f, g: f.demean(groupby=g),
+    "demedian": lambda f, g: f.demedian(groupby=g),
+    "mean": lambda f, g: f.mean(groupby=g),
+    "median": lambda f, g: f.median(groupby=g),
+    "max": lambda f, g: f.max(groupby=g),
+    "min": lambda f, g: f.min(groupby=g),
+    "std": lambda f, g: f.std(groupby=g),
+    "xs_sum": lambda f, g: f.xs_sum(groupby=g),
+    "quantile": lambda f, g: f.quantile(2, mask=f > 0, groupby=g),
+    "mad_clamp": lambda f, g: f.mad_clamp(3, groupby=g),
+}
+each_group_helper = pytest.mark.parametrize("helper", COLUMN_GROUP_HELPERS)
+
+
+@each_group_helper
+@pytest.mark.parametrize(
+    "groupby, expected",
+    [("sector", "date,sector"), ("date,sector", "date,sector"), ("asset", "asset")],
+)
+def test_group_of_helpers(helper, groupby, expected):
+    assert COLUMN_GROUP_HELPERS[helper](close, groupby).groupby == expected
+
+
+@each_group_helper
+def test_helpers_by_a_column_are_cross_sections(dirty_engine, helper):
+    """Pooling all dates would read the future, and take out nothing of the date."""
+    start, end = DIRTY_DATES[5], DIRTY_DATES[-1]
+    dirty_engine.add(COLUMN_GROUP_HELPERS[helper](close, "sector"), "test")
+    assert dirty_engine.test_lookahead_bias(start, end) == "No assertion raised."
+
+
+def test_zscore_by_sector_has_no_mean_in_a_sector(dirty_engine, dirty_panel):
+    result = run_dirty(dirty_engine, close.zscore(groupby="sector"))
+    dates = dirty_panel.index.get_level_values("date")
+    groups = dirty_panel.close.groupby([dates, dirty_panel.sector])
+    expected = (dirty_panel.close - groups.transform("mean")) / groups.transform("std", ddof=0)
+    assert_allclose(result, expected, rtol=1e-4, atol=1e-5)
+    assert result.groupby([dates, dirty_panel.sector]).mean().abs().max() < 1e-5
+
+
+@pytest.mark.parametrize(
+    "make",
+    [
+        lambda: factors.WinsorizingFactor(inputs=(close,)),
+        lambda: factors.MADClampFactor(inputs=(close, None)),
+        lambda: factors.ZScoreFactor(close),
+    ],
+    ids=["winsorizing", "mad_clamp", "zscore"],
+)
+def test_factors_of_helpers_are_cross_sections_by_default(make):
+    assert make().groupby == "date"
+
+
+def test_zscore_factor_adds_the_date_to_a_column():
+    assert factors.ZScoreFactor(close, groupby="sector").groupby == "date,sector"
+
+
 # more than 21 dates, a key of 8 digits doesn't fit in int32 after that
 GROUP_DATES = pd.date_range("2020-01-01", periods=60, freq="B", tz="UTC")
 GROUP_COLUMNS = ["gics", "decimal", "text", "category"]
@@ -507,10 +566,23 @@ def group_engine(device):
 
 @pytest.mark.parametrize("column", GROUP_COLUMNS)
 def test_group_by_a_column_of_any_type(device, column):
+    """Set on a factor, a column is all the rows of the group, of any date."""
+    panel, engine = group_engine(device)
+    factor = open_price.mean()
+    factor.groupby = column
+    engine.add(factor, "test")
+    result = engine.run(GROUP_DATES[0], GROUP_DATES[-1]).test
+    expected = panel.open.groupby(panel[column], observed=True).transform("mean")
+    assert_allclose(result.values, expected.loc[result.index].values, rtol=1e-6)
+
+
+@pytest.mark.parametrize("column", GROUP_COLUMNS)
+def test_helper_by_a_column_of_any_type(device, column):
     panel, engine = group_engine(device)
     engine.add(open_price.mean(groupby=column), "test")
     result = engine.run(GROUP_DATES[0], GROUP_DATES[-1]).test
-    expected = panel.open.groupby(panel[column], observed=True).transform("mean")
+    dates = panel.index.get_level_values("date")
+    expected = panel.open.groupby([dates, panel[column]], observed=True).transform("mean")
     assert_allclose(result.values, expected.loc[result.index].values, rtol=1e-6)
 
 

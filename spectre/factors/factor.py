@@ -180,6 +180,17 @@ class BaseFactor:
         else:
             return rank_data <= n
 
+    @staticmethod
+    def _cross_section(groupby):
+        """
+        The group of a helper. A group of a column is a cross-section too, each sector on each date,
+        so 'date' is added to it, unless it's there already, or `groupby` is 'asset', which is each
+        asset over all loaded dates, including the future ones.
+        """
+        if not isinstance(groupby, str) or groupby == "asset" or "date" in groupby.split(","):
+            return groupby
+        return "date," + groupby
+
     def rank(self, ascending=True, mask: BaseFactor = None, normalize=False, method="average"):
         """Cross-section rank"""
         factor = RankFactor(inputs=(self._numeric(),), mask=mask)
@@ -189,7 +200,7 @@ class BaseFactor:
         return factor
 
     def zscore(self, groupby: str = "date", mask: BaseFactor = None, weight: BaseFactor = None):
-        """Cross-section zscore"""
+        """Cross-section zscore, see `_cross_section` for `groupby`."""
         factor = ZScoreFactor(data=self._numeric(), mask=mask, groupby=groupby, weight=weight)
         return factor
 
@@ -201,17 +212,14 @@ class BaseFactor:
     ):
         """
         Cross-section demean.
-        Set `groupby` to the name of a column, like 'sector', to demean each sector on each date.
-        'date' is added to it, unless it's there already, or `groupby` is 'asset', which demeans
-        each asset over all loaded dates, including the future ones.
+        Set `groupby` to the name of a column, like 'sector', to demean each sector on each date,
+        see `_cross_section`.
         `groupby` also can be a dictionary like groupby={'name': group_id}, `group_id` must > 0.
         Group by dict is implemented by pandas, not in GPU.
         """
         factor = DemeanFactor(inputs=(self._numeric(), beta), mask=mask)
         if isinstance(groupby, str):
-            if groupby != "asset" and "date" not in groupby.split(","):
-                groupby = "date," + groupby
-            factor.groupby = groupby
+            factor.groupby = self._cross_section(groupby)
         elif isinstance(groupby, dict):
             factor.group_dict = groupby
         elif groupby is not None:
@@ -220,7 +228,7 @@ class BaseFactor:
 
     def demedian(self, groupby: str = "date", mask: BaseFactor = None):
         factor = DemedianFactor(inputs=(self._numeric(),), mask=mask)
-        factor.groupby = groupby
+        factor.groupby = self._cross_section(groupby)
         return factor
 
     def mean(
@@ -231,25 +239,25 @@ class BaseFactor:
         weight_sum: builtins.float | None = None,
     ):
         """
-        Cross-section mean.
+        Cross-section mean, see `_cross_section` for `groupby`.
         """
         factor = MeanFactor(inputs=(self._numeric(), weight, weight_sum), mask=mask)
-        factor.groupby = groupby
+        factor.groupby = self._cross_section(groupby)
         return factor
 
     def median(self, mask: BaseFactor = None, groupby: str = "date"):
         factor = MedianFactor(inputs=(self._numeric(),), mask=mask)
-        factor.groupby = groupby
+        factor.groupby = self._cross_section(groupby)
         return factor
 
     def max(self, mask: BaseFactor = None, groupby: str = "date"):
         factor = XSMax(inputs=(self._numeric(),), mask=mask)
-        factor.groupby = groupby
+        factor.groupby = self._cross_section(groupby)
         return factor
 
     def min(self, mask: BaseFactor = None, groupby: str = "date"):
         factor = XSMin(inputs=(self._numeric(),), mask=mask)
-        factor.groupby = groupby
+        factor.groupby = self._cross_section(groupby)
         return factor
 
     def ts_max(self, win=2):
@@ -271,7 +279,7 @@ class BaseFactor:
             )
         factor = QuantileClassifier(inputs=(self._numeric(),))
         factor.set_mask(mask)
-        factor.groupby = groupby
+        factor.groupby = self._cross_section(groupby)
         factor.bins = bins
         return factor
 
@@ -279,7 +287,7 @@ class BaseFactor:
         from .statistical import XSStandardDeviation
 
         factor = XSStandardDeviation(inputs=(self._numeric(),), mask=mask)
-        factor.groupby = groupby
+        factor.groupby = self._cross_section(groupby)
         return factor
 
     def to_weight(self, demean=True, mask: BaseFactor = None):
@@ -310,7 +318,7 @@ class BaseFactor:
     def xs_sum(self, mask: BaseFactor = None, groupby="date"):
         # todo future name will change to sum
         ret = XSSumFactor(inputs=(self._numeric(),), mask=mask)
-        ret.groupby = groupby
+        ret.groupby = self._cross_section(groupby)
         return ret
 
     def ts_prod(self, win: int):
@@ -374,7 +382,7 @@ class BaseFactor:
     def mad_clamp(self, z: float, mask: BaseFactor = None, groupby="date", fill=None, mean=False):
         """Cross-section MAD clamp"""
         factor = MADClampFactor(inputs=(self._numeric(), fill))
-        factor.groupby = groupby
+        factor.groupby = self._cross_section(groupby)
         factor.z = z
         factor.set_mask(mask)
         factor.m_is_mean = mean
@@ -383,7 +391,6 @@ class BaseFactor:
     def winsorizing(self, z: float = 0.05, mask: BaseFactor = None):
         """Cross-section winsorizing clamp"""
         factor = WinsorizingFactor(inputs=(self._numeric(),))
-        factor.groupby = CrossSectionFactor.groupby
         assert 0 < z < 1
         factor.z = z
         factor.set_mask(mask)
@@ -1175,7 +1182,7 @@ class XSMin(CrossSectionFactor):
 class ZScoreFactor(CrossSectionFactor):
     def __init__(self, data, mask=None, groupby: str = "date", weight=None):
         super().__init__(inputs=[data, weight], mask=mask)
-        self.groupby = groupby
+        self.groupby = self._cross_section(groupby)
 
     def compute(self, data: torch.Tensor, weight=None) -> torch.Tensor:
         if not isinstance(weight, torch.Tensor) and weight == 0:
@@ -1246,7 +1253,7 @@ class ClampFactor(CustomFactor):
             return data.masked_fill((data < left) | (data > right), fill)
 
 
-class MADClampFactor(CustomFactor):
+class MADClampFactor(CrossSectionFactor):
     """
     Median Absolute Deviation Clamping
     median of the absolute deviations from the data's median
@@ -1255,7 +1262,6 @@ class MADClampFactor(CustomFactor):
     z = 5
     nan_policy = "omit"
     m_is_mean = False  # switch to mean abs deviation
-    _reads_across_group = True
 
     def compute(self, data, fill):
         ret = data.clone()
@@ -1295,10 +1301,9 @@ class MADClampFactor(CustomFactor):
         return ret
 
 
-class WinsorizingFactor(CustomFactor):
+class WinsorizingFactor(CrossSectionFactor):
     z = 0.05
     nan_policy = "omit"
-    _reads_across_group = True
 
     def compute(self, data):
         universe_mask = self._get_computed_mask()

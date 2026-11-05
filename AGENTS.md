@@ -107,8 +107,9 @@ rows into padded 2D tensors, using NaN or `False` for padding:
 
 - `groupby = 'asset'` (the default) gives `[asset, bar]`.
 - `groupby = 'date'` (`CrossSectionFactor`) gives `[date, asset]`. `groupby` can also be any
-  DataFrame column of any type, or several joined by commas. Except for `demean`, which adds `date`
-  to a column, a group of a column pools all loaded rows, including future ones.
+  DataFrame column of any type, or several joined by commas. The helpers add `date` to a column, so
+  `zscore(groupby='sector')` is each sector on each date. A column set on `factor.groupby` by hand
+  pools all loaded rows, including future ones, and so does `'asset'`.
 - `win > 1` gives a `Rolling`, whose `.values` is `[asset, bar, win]`. Inputs that are not factors
   are passed through unchanged.
 - All shapes include the history loaded before `start`, not only the requested range.
