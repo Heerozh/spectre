@@ -1374,13 +1374,12 @@ def test_tz_aware_earliest_date_with_year_files_and_naive_ex_dates():
     assert (msft["ex-dividend"] != 0).sum() == 1
 
 
-def test_earliest_date_keeps_the_events_of_kept_rows(tmp_path):
-    """The year files are kept whole, so bars can be before `earliest_date`, and the event too."""
+def test_earliest_date_inside_a_year_file_with_events(tmp_path):
     closes = pd.Series({DAYS[0]: 100.0, DAYS[1]: 100.0, DAYS[2]: 50.0, DAYS[3]: 50.0})
     frame = pd.DataFrame({col: closes for col in MEMORY_OHLCV}).rename_axis("date")
     (tmp_path / "prices").mkdir()
     frame.to_csv(tmp_path / "prices" / "A_2020.csv")
-    write_events(tmp_path / "dividends", "A", "amount", {DAYS[2]: 1.0})
+    write_events(tmp_path / "dividends", "A", "amount", {DAYS[0]: 9.0, DAYS[2]: 1.0})
     write_events(tmp_path / "splits", "A", "ratio", {DAYS[2]: 0.5})
     df = spectre.data.CsvDirLoader(
         str(tmp_path / "prices"),
@@ -1390,8 +1389,58 @@ def test_earliest_date_keeps_the_events_of_kept_rows(tmp_path):
         splits_path=str(tmp_path / "splits"),
         adjustments=("amount", "ratio"),
         parse_dates=True,
-        earliest_date=pd.Timestamp(DAYS[3]),
+        earliest_date=pd.Timestamp(DAYS[1]),
     ).test_load()
-    assert list(df.close) == [100, 100, 50, 50]
-    assert list(df["ex-dividend"]) == [0, 1, 0, 0]
-    assert list(df["split_ratio"]) == [1, 0.5, 1, 1]
+    assert list(df.close) == [100, 50, 50]
+    assert list(df["ex-dividend"]) == [1, 0, 0]
+    assert list(df["split_ratio"]) == [0.5, 1, 1]
+
+
+def test_earliest_date_inside_a_year_file(tmp_path):
+    dates = pd.bdate_range("2019-11-01", periods=200)
+    rows = random_bars(dates)
+    for year in (2019, 2020):
+        rows[dates.year == year].to_csv(tmp_path / f"A_{year}.csv")
+    earliest_date = pd.Timestamp("2020-03-02")
+    df = spectre.data.CsvDirLoader(
+        str(tmp_path),
+        prices_by_year=True,
+        ohlcv=MEMORY_OHLCV,
+        parse_dates=True,
+        earliest_date=earliest_date,
+    ).test_load()
+    kept = dates[dates >= earliest_date]
+    assert list(df.index.get_level_values(0)) == list(kept.tz_localize("UTC"))
+
+
+@pytest.mark.parametrize(
+    "earliest_date",
+    [
+        pd.Timestamp("2019-01-03", tz="America/New_York"),
+        pd.Timestamp("2019-01-03 05:00", tz="UTC"),
+        pd.Timestamp("2019-01-03"),
+        "2019-01-03",
+    ],
+    ids=["same_timezone", "other_timezone", "naive", "text"],
+)
+def test_earliest_date_inside_a_year_file_with_a_timezone(earliest_date):
+    """A date without a timezone is on the clock of the prices of the test data."""
+    df = spectre.data.CsvDirLoader(
+        str(DATA_DIR / "5mins"),
+        prices_by_year=True,
+        prices_index="Date",
+        ohlcv=INTRADAY_OHLCV,
+        parse_dates=True,
+        earliest_date=earliest_date,
+    ).test_load()
+    first = pd.Timestamp("2019-01-03 09:30", tz="America/New_York")
+    assert df.index.get_level_values(0)[0] == first
+
+
+def test_earliest_date_on_the_clock_of_a_file_across_a_change_of_it(tmp_path):
+    bars = local_bars("Europe/Berlin", DAILY)
+    closes = dict.fromkeys((bar.isoformat() for bar in bars), 100.0)
+    earliest_date = pd.Timestamp("2019-04-01")
+    df = events_loader(tmp_path, {"A": closes}, {}, {}, earliest_date=earliest_date).test_load()
+    first = pd.Timestamp("2019-04-01", tz="Europe/Berlin")
+    assert list(df.index.get_level_values(0)) == list(bars[bars >= first].tz_convert("UTC"))

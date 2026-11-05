@@ -122,8 +122,8 @@ class CsvDirLoader(DataLoader):
             When encountering duplicate indexes data in `prices_index`, Loader will keep the last,
             drop others.
         :param prices_by_year: If price file name like 'spy_2017.csv', set this to True
-        :param earliest_date: Data before this date will not be saved to memory. Note: Use the
-            same time zone as in the prices csv files.
+        :param earliest_date: Data before this date will not be saved to memory. A date without
+            timezone is on the clock of the prices csv of each stock.
         :param dividends_path: dividends csv folder, structured as one csv per stock.
             For duplicate data, loader will first drop the exact same rows, and then for the same
             `dividends_index` but different 'dividend amount' rows, loader will sum them up.
@@ -234,9 +234,7 @@ class CsvDirLoader(DataLoader):
         dfs = {symbol: multi_read_csv(file_list) for symbol, file_list in assets.items()}
         return dfs
 
-    def _walk_dir(self, csv_path, index_col, earliest_date=None, as_written=False):
-        # Only prices use `earliest_date`. Ex-dates don't need it, an event before the first bar
-        # adjusts nothing, and they can have another timezone, or none.
+    def _walk_dir(self, csv_path, index_col, as_written=False):
         # `as_written` is for ex-dates on bars without a timezone, which have no instant to compare
         # with, so the index of each file becomes the local time written in it.
         pattern = os.path.join(csv_path, self._file_pattern)
@@ -252,15 +250,24 @@ class CsvDirLoader(DataLoader):
             if len(df.index.dropna()) == 0:
                 return None
             df = self._index_by_datetime(df)
-            if as_written:
-                df = df.set_axis(_local_times(df))
-            if earliest_date is None:
-                return df
-            # a mask, because the result of a slice depends on the order of the rows
-            return df[df.index >= earliest_date]
+            return df.set_axis(_local_times(df)) if as_written else df
 
         dfs = {symbol(fn): read_csv(fn) for fn in files}
         return dfs
+
+    def _from_earliest_date(self, df: pd.DataFrame) -> pd.DataFrame:
+        """
+        The rows of the prices of an asset from `earliest_date`, by a mask, because the result of a
+        slice depends on the order of the rows. Ex-dates don't need this, an event before the first
+        bar adjusts nothing, and they can have another timezone, or none.
+        """
+        if self._earliest_date is None:
+            return df
+        earliest_date = pd.Timestamp(self._earliest_date)
+        if earliest_date.tz is None or df.index.tz is None:
+            # one side has no instant, so it's the time as written, on the clock of the prices
+            return df[_local_times(df) >= earliest_date.tz_localize(None)]
+        return df[df.index >= earliest_date]
 
     def _clear_fills_over_events(self, df: pd.DataFrame, filled: pd.DataFrame) -> pd.DataFrame:
         """
@@ -293,8 +300,9 @@ class CsvDirLoader(DataLoader):
         if self._prices_by_year:
             dfs = self._walk_split_by_year_dir(self._path, self._prices_index)
         else:
-            dfs = self._walk_dir(self._path, self._prices_index, self._earliest_date)
-        dfs = {k: v[~v.index.duplicated(keep="last")] for k, v in dfs.items() if v is not None}
+            dfs = self._walk_dir(self._path, self._prices_index)
+        dfs = {k: self._from_earliest_date(v) for k, v in dfs.items() if v is not None}
+        dfs = {k: v[~v.index.duplicated(keep="last")] for k, v in dfs.items()}
         # the local time of the bars is gone after the join, and a naive ex-date needs it
         bar_offsets = {k: _bar_offsets(v) for k, v in dfs.items() if v.index.tz and len(v)}
         dfs = {k: v.drop(columns=_UTC_OFFSET, errors="ignore") for k, v in dfs.items()}
