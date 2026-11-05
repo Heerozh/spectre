@@ -1082,12 +1082,12 @@ def test_student_cdf_limits(device):
     assert result[0] == 0
 
 
-def test_student_cdf_uses_the_cross_section_mean(device):
-    t = torch.tensor([[1.0, 3, nan], [-5.0, nan, -1], [nan, nan, nan]], device=device)
-    result = factors.StudentCDF().compute(t, 5, factors.StudentCDF.DefaultPrecision).cpu()
-    assert result.dtype == t.dtype
-    expected = scipy.stats.t.cdf([[2.0], [-3], [nan]], 5).repeat(3, axis=1)
-    assert_allclose(result.numpy(), expected, rtol=1e-5)
+def test_student_cdf_of_each_value(device):
+    t = [[1.0, 3, nan], [-5.0, nan, -1], [nan, nan, nan]]
+    values = torch.tensor(t, device=device)
+    result = factors.StudentCDF().compute(values, 5, factors.StudentCDF.DefaultPrecision).cpu()
+    assert result.dtype == values.dtype
+    assert_allclose(result.numpy(), scipy.stats.t.cdf(t, 5), rtol=1e-5)
 
 
 def test_student_cdf_precision_sets_the_error(device):
@@ -1114,13 +1114,11 @@ def test_student_cdf_memory_does_not_depend_on_t(t):
 @pytest.mark.filterwarnings("ignore:Historical data seems insufficient")
 def test_student_cdf_of_ttest(dirty_engine):
     win = 5
-    # `* 1` leaves the prices raw, `close` itself would be adjusted
-    t = factors.TTest1Samp(win, inputs=[close * 1, 100.0])
+    t = factors.TTest1Samp(win, inputs=[close, 100.0])
     dirty_engine.add(t, "t")
     p = factors.StudentCDF(inputs=[t, win - 1, factors.StudentCDF.DefaultPrecision])
     dirty_engine.add(p, "p")
     result = dirty_engine.run(DIRTY_DATES[0], DIRTY_DATES[-1], delay_factor=False)
 
-    dates = result.index.get_level_values("date")
-    reduced_t = result.t.groupby(level="date").mean().reindex(dates)
-    assert_allclose(result.p.values, scipy.stats.t.cdf(reduced_t.values, win - 1), rtol=1e-6)
+    assert_allclose(result.p.values, scipy.stats.t.cdf(result.t.values, win - 1), rtol=1e-6)
+    assert result.p.groupby(level="date").nunique().max() > 1

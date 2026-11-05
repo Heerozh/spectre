@@ -370,7 +370,7 @@ def _beta_fraction(a, b, x, tol):
 
 class StudentCDF(CrossSectionFactor):
     """
-    Note!! For performance, This factor uses Cross-section mean of t-value.
+    P(T <= t) of each value of `t`, with `dof` degrees of freedom.
 
     `precision` works like the step of an integration grid, the error falls with its square:
     0.001 gives a relative error of about 1e-6, and 1e-7 reaches the limit of float64.
@@ -379,12 +379,12 @@ class StudentCDF(CrossSectionFactor):
     DefaultPrecision = 0.001
 
     def compute(self, t, dof, precision):
-        reduced_t = nanmean(t, dim=1).to(torch.float64)
+        values = t.to(torch.float64)
         dof = torch.tensor(dof, dtype=torch.float64, device=t.device)
         half = dof.new_tensor(0.5)
         # The lower tail is betainc(dof / 2, 1 / 2, x) / 2 with x = dof / (dof + t ** 2). Near t=0
         # x is too high for the fraction, there use betainc(a, b, x) = 1 - betainc(b, a, 1 - x).
-        ratio = reduced_t**2 / dof
+        ratio = values**2 / dof
         flip = ratio * (dof + 2) < 3
         a = torch.where(flip, half, dof / 2)
         b = torch.where(flip, dof / 2, half)
@@ -395,8 +395,7 @@ class StudentCDF(CrossSectionFactor):
         tol = max(precision**2, 1e-14)
         beta = torch.exp(log_front) / a * _beta_fraction(a, b, odds / (1 + odds), tol)
         tail = torch.where(flip, 1 - beta, beta) / 2
-        p = torch.where(reduced_t < 0, tail, 1 - tail)
-        return p.to(t.dtype).unsqueeze(-1).expand(t.shape)
+        return torch.where(values < 0, tail, 1 - tail).to(t.dtype)
 
 
 class CrossSectionR2(CrossSectionFactor):
