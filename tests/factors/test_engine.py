@@ -96,6 +96,38 @@ def test_run_up_to_the_last_bar_reads_a_changed_bar(dirty_panel, device):
     assert engine.run(start, None).open[(last, "FULL")] == 1234.5
 
 
+@pytest.mark.parametrize("method", ["run", "run_raw"])
+@pytest.mark.parametrize(
+    "failing",
+    [
+        (DIRTY_DATES[20], DIRTY_DATES[-1] + pd.Timedelta(days=9)),
+        (DIRTY_DATES[45], DIRTY_DATES[40]),
+    ],
+    ids=["end_after_the_data", "start_after_end"],
+)
+def test_range_after_a_load_that_failed(dirty_engine, method, failing):
+    start, end = DIRTY_DATES[20], DIRTY_DATES[40]
+    dirty_engine.add(factors.MA(3), "f")
+    expected = dirty_engine.run(start, end)
+    with pytest.raises((ValueError, AssertionError)):
+        getattr(dirty_engine, method)(*failing)
+    pd.testing.assert_frame_equal(dirty_engine.run(start, end), expected)
+
+
+def test_range_after_a_load_that_failed_on_its_data(dirty_engine):
+    start, end = DIRTY_DATES[5], DIRTY_DATES[40]
+    dirty_engine.add(factors.MA(3), "f")
+    expected = dirty_engine.run(start, end)
+    dirty_engine.add(factors.MA(30), "needs_more_history")
+    with warnings.catch_warnings():
+        warnings.simplefilter("error")
+        with pytest.raises(RuntimeWarning, match="insufficient"):
+            dirty_engine.run(start, end)
+    dirty_engine.remove_all_factors()
+    dirty_engine.add(factors.MA(3), "f")
+    pd.testing.assert_frame_equal(dirty_engine.run(start, end), expected)
+
+
 def test_run_with_an_end_still_reads_the_cache(dirty_panel, device):
     start, end = DIRTY_DATES[30], DIRTY_DATES[50]
     _, engine = growing_engine(dirty_panel, device)

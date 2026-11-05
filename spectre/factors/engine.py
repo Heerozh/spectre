@@ -196,7 +196,9 @@ class FactorEngine:
                     "in GPU memory, "
                     f"{self._last_loaded[2]} -> {backwards}"
                 )
+        # the groups are gone, so if this fails on the way, the cached range has to go with them
         self._groups = dict()
+        self._last_loaded = [None, None, None]
 
         # Get data
         df = self._loader.load(start, end, backwards).copy()
