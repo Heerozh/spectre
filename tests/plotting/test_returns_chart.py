@@ -5,7 +5,7 @@ import pytest
 
 import spectre
 from spectre import factors
-from spectre.plotting import plot_quantile_and_cumulative_returns
+from spectre.plotting import cumulative_returns_fig, plot_quantile_and_cumulative_returns
 
 OHLCV = ("open", "high", "low", "close", "volume")
 
@@ -374,3 +374,32 @@ def test_full_run_chart_of_the_5_minute_test_data(shown, intraday_loader):
     # one point for each bar of the 5 minutes line, the nights have no bars
     assert len(lines["5min"].y) == factor_data.index.get_level_values(0).nunique()
     assert all(np.isfinite(line.y).all() for line in lines.values())
+
+
+def backtest_figure(returns, start=0):
+    dates = pd.date_range("2020-01-01", periods=len(returns), tz="UTC")
+    no_trades = pd.DataFrame(columns=["amount", "fill_price"])
+    series = pd.Series(returns, index=dates)
+    return cumulative_returns_fig(series, None, no_trades, None, 0.0, start=start)
+
+
+@pytest.mark.parametrize(
+    "returns, start, drawdown",
+    [
+        ([np.nan, -0.5, -0.5, 0.1], 0, "75.00%"),
+        ([np.nan, -0.2, 0.0125], 0, "20.00%"),
+        ([np.nan, 0.5, -0.2, 0.1], 2, "20.00%"),
+        ([np.nan, 0.5, 0.1, -0.2, 0.1], 1, "20.00%"),
+        ([np.nan, -0.5, 0.1, -0.2, 0.1], -2, "20.00%"),
+    ],
+    ids=["from_the_first_loss", "recovered", "from_a_start", "after_a_high", "from_the_end"],
+)
+def test_max_drawdown_counts_a_loss_on_the_first_bar(returns, start, drawdown):
+    """The value before the first return is a high too, a portfolio starts from its capital."""
+    figure = backtest_figure(returns, start)
+    assert f"MaxDrawDown:  {drawdown}" in figure.layout.annotations[0].text
+
+
+def test_backtest_line_starts_from_the_value_before_the_first_return():
+    line = backtest_figure([np.nan, 0.5, -0.2, 0.1], start=2).data[0]
+    assert list(line.y) == pytest.approx([0, -20, -12])
