@@ -477,6 +477,7 @@ class FactorEngine:
         if len(self._factors) == 0:
             raise ValueError("Please add at least one factor to engine, then run again.")
 
+        CustomFactor._run_number += 1
         if delay_factor == "all":
             delays = self._factors
         else:

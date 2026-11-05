@@ -526,6 +526,10 @@ class CustomFactor(BaseFactor):
     # a run before `pre_compute_` binds it to the factors, so it leaves them here while it does.
     _universe_delay = False
     _universe_backwards = 0
+    # Counted by the engine. The memo of `get_total_backwards_` saves walking a large graph many
+    # times in one run. It can't last longer, the graph can change after a run in ways that a
+    # factor can't tell the ones downstream of it, like a `set_mask` on an input.
+    _run_number = 0
 
     def _get_mask_factor(self):
         # todo add a placeholder factor for universe
@@ -545,7 +549,11 @@ class CustomFactor(BaseFactor):
     def get_total_backwards_(self) -> int:
         # mask='universe' anywhere upstream makes the result depend on the filter of the run
         universe = self._universe_backwards
-        if self._total_backwards is not None and self._memo_universe == universe:
+        if (
+            self._total_backwards is not None
+            and self._memo_universe == universe
+            and self._memo_run == self._run_number
+        ):
             return self._total_backwards
 
         from .filter import FilterRawShiftFactor
@@ -568,6 +576,7 @@ class CustomFactor(BaseFactor):
             backwards += max(self.periods, 0)
         self._total_backwards = backwards
         self._memo_universe = universe
+        self._memo_run = self._run_number
         return self._total_backwards
 
     def should_delay(self) -> bool:

@@ -203,6 +203,73 @@ def test_max_backwards_is_silent_if_the_history_fits(dirty_engine):
         dirty_engine.run(DIRTY_DATES[40], DIRTY_DATES[-1])
 
 
+def test_mask_set_on_an_input_after_a_run(device):
+    """`outer` remembers its look-back, and it can't know the mask of its input changed."""
+    panel, opens, closes = forward_data()
+    start, end = FORWARD_DATES[34], FORWARD_DATES[-1]
+    inner = factors.OHLCV.open.rank()
+    outer = inner.ts_sum(3)
+    engine = forward_engine(panel, device)
+    engine.add(outer, "f")
+    engine.run(start, end)
+
+    inner.set_mask(factors.MA(30).top(4))
+    result = engine.run(start, end).f
+    assert outer.get_total_backwards_() == 29 + 2
+
+    universe = closes.rolling(30).mean().rank(axis=1, ascending=False, method="first") <= 4
+    ranks = opens.where(universe).rank(axis=1)
+    expected = ranks.rolling(3, min_periods=1).sum().shift(1).stack()
+    assert_allclose(result, expected.reindex(result.index), rtol=1e-6)
+
+
+def test_input_replaced_after_a_run(device):
+    panel, _, _ = forward_data()
+    start, end = FORWARD_DATES[34], FORWARD_DATES[-1]
+    window = factors.MA(3, inputs=[close])
+    above = window + 1
+    engine = forward_engine(panel, device)
+    engine.add(above, "f")
+    engine.run(start, end)
+    assert above.get_total_backwards_() == 2
+
+    window.inputs = [factors.MA(20)]
+    engine.run(start, end)
+    assert above.get_total_backwards_() == 19 + 2
+
+
+@pytest.mark.parametrize("ranked", [False, True], ids=["sums", "ranks"])
+def test_look_back_of_a_deep_shared_graph_stays_flat(dirty_engine, monkeypatch, ranked):
+    """
+    Each level reads the one before it twice, a walk of every path would never end. Bar 30 is in
+    the halt, so there are older rows, and each rank asks for the look-back of its input too.
+    """
+    levels = 30
+    factor = close
+    for _ in range(levels):
+        factor = (factor + factor).rank() if ranked else factor + factor
+    calls = 0
+    look_back = factors.CustomFactor.get_total_backwards_
+
+    def counted(self):
+        nonlocal calls
+        calls += 1
+        assert calls < 10 * levels, "walked the graph for each factor"
+        return look_back(self)
+
+    monkeypatch.setattr(factors.CustomFactor, "get_total_backwards_", counted)
+    dirty_engine.set_filter(factors.MA(3) > 0)
+    dirty_engine.add(factor, "f")
+    start, end = DIRTY_DATES[30], DIRTY_DATES[-1]
+    for _ in range(3):
+        calls = 0
+        result = dirty_engine.run(start, end).f
+        assert calls > 0
+    if not ranked:
+        full = dirty_engine.dataframe_.close.xs("FULL", level=1).iloc[-2]
+        assert_allclose(result.xs("FULL", level=1).values[-1], full * 2**levels, rtol=1e-5)
+
+
 def test_delayed_run_needs_no_bar_before_the_data(dirty_engine):
     """The first bar of a delayed run is dropped, so it can start on the first bar of the data."""
     dirty_engine.add(close, "close")
