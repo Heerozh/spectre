@@ -19,11 +19,16 @@ The test folders mirror the `spectre` packages:
 | `dataloader/` | `spectre.data`: csv/arrow loaders, `DataLoaderFastGetter`     |
 | `factors/`    | `spectre.factors`: engine and all factors                     |
 | `parallel/`   | `spectre.parallel`: group by, rolling, nan functions, ranking |
+| `plotting/`   | `spectre.plotting`: the numbers in the charts of `full_run`   |
 | `trading/`    | `spectre.trading`: portfolio, blotters, events, backtest      |
 | `data/`       | test data, see `conftest.py` for its quirks                   |
 
 Shared fixtures (loaders, engines, devices) are in `conftest.py`. Every test creates its own
 engine, so tests are independent and can run in any order.
+
+The csv data is nearly clean, so a factor's handling of missing data is tested on `dirty_panel`,
+which has one asset per defect: a new listing, a delisting, a halt, a NaN close and splits.
+`dirty_engine` runs on it, on cpu and cuda.
 
 Expected values of factors are computed by the independent pandas implementations in
 `factors/reference.py`, from the raw csv files, not by spectre itself. Use

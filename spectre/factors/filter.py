@@ -18,7 +18,13 @@ class FilterFactor(CustomFactor, ABC):
     def __getitem__(self, key):
         return FilterMultiRetSelector(inputs=(self, key))
 
+    def _numeric(self):
+        # a regroup pads a filter with False, as a float the missing rows stay NaN
+        return self.float()
+
     def shift(self, periods=1):
+        if periods == 0:
+            return self
         factor = FilterRawShiftFactor(inputs=(self,))
         factor.periods = periods
         return factor
@@ -42,6 +48,12 @@ class FilterFactor(CustomFactor, ABC):
     def ts_all(self, win):
         """Return True if Rolling window all are True"""
         return AllFilter(win, inputs=(self,))
+
+    def masked_fill(self, mask, fill):
+        # a bool tensor keeps only a bool, any other value would become True
+        if isinstance(fill, (bool, FilterFactor)):
+            return super().masked_fill(mask, fill)
+        return self._numeric().masked_fill(mask, fill)
 
 
 class FilterMultiRetSelector(MultiRetSelector, FilterFactor):
@@ -84,6 +96,8 @@ class StaticAssets(FilterFactor):
 
 
 class OneHotEncoder(FilterFactor):
+    _reads_across_group = True
+
     def __init__(self, input_: BaseFactor):
         super().__init__(1, [input_])
 

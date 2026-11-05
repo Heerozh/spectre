@@ -3,10 +3,12 @@ import pandas as pd
 import pytest
 from numpy import nan
 
-from spectre import trading
+import spectre
+from spectre import factors, trading
 
 # AAPL and MSFT daily prices (uOpen, uClose, uVolume) used in the tests
 AAPL_0102 = dict(open=155.92, close=158.61, volume=37932561)
+AAPL_1231_VOLUME = 36471914
 MSFT_0109_CLOSE = 106.0
 MSFT_DIVIDEND = 0.46 + 0.11  # ex-date 2019-01-11, paid at the close of 2019-01-09
 AAPL_0110_CLOSE, AAPL_0109_CLOSE = 161.0, 156.03
@@ -24,6 +26,36 @@ def per_share_commission(shares):
     rounded by numpy, 1.925 is rounded to 1.92 (python's round gives 1.93).
     """
     return float(np.round(max(np.float64(abs(shares)) * 0.005, 1), 2))
+
+
+def asset_a_loader(stamps, close, dividends=None, split_ratios=None, **columns):
+    """
+    Bars of a single asset `A`, with open = high = low = close. `dividends` and `split_ratios` are
+    {bar: value}, keyed by the bar of the ex-date. If both are None the loader has no adjustments.
+    `columns` are added to the data, for the factors of a test.
+    """
+    ohlcv = ("open", "high", "low", "close", "volume")
+    index = pd.MultiIndex.from_product([stamps, ["A"]], names=["date", "asset"])
+    df = pd.DataFrame({col: np.array(close, dtype=float) for col in ohlcv}, index=index)
+    df = df.assign(**columns)
+    if dividends is None and split_ratios is None:
+        return spectre.data.MemoryLoader(df, ohlcv=ohlcv)
+    bars = pd.RangeIndex(len(df))
+    df["ex-dividend"] = pd.Series(dividends, index=bars, dtype=float).fillna(0).values
+    df["split_ratio"] = pd.Series(split_ratios, index=bars, dtype=float).fillna(1).values
+    return spectre.data.MemoryLoader(df, ohlcv=ohlcv, adjustments=("ex-dividend", "split_ratio"))
+
+
+def trade_until_after_bar(blotter, stamps, last_bar, amount):
+    """Order `amount` at the close of the first bar, and run the daily closes up to `last_bar`."""
+    for bar, stamp in enumerate(stamps[: last_bar + 1]):
+        blotter.set_datetime(stamp)
+        blotter.market_open(None)
+        blotter.set_price("close")
+        blotter.update_portfolio_value()
+        if bar == 0:
+            blotter.order("A", amount)
+        blotter.market_close(None)
 
 
 # ------------------------------------ models ------------------------------------
@@ -174,9 +206,12 @@ def test_slippage(blotter):
     blotter.order("AAPL", -385)
     blotter.market_close(None)
 
-    slippage = 0.005 / (1 + 200 ** (0.5 - 385 / AAPL_0102["volume"] / 0.4))
-    buy_price = AAPL_0102["open"] * (1 + slippage)
-    sell_price = AAPL_0102["close"] * (1 - slippage)
+    def slippage(volume):
+        return 0.005 / (1 + 200 ** (0.5 - 385 / volume / 0.4))
+
+    # at the open the last known volume is the one of the bar before, at the close its own
+    buy_price = AAPL_0102["open"] * (1 + slippage(AAPL_1231_VOLUME))
+    sell_price = AAPL_0102["close"] * (1 - slippage(AAPL_0102["volume"]))
     txn = blotter.get_transactions()
     # `price` is the market price, `fill_price` includes the slippage
     assert list(txn.price) == [AAPL_0102["open"], AAPL_0102["close"]]
@@ -187,6 +222,82 @@ def test_slippage(blotter):
     assert blotter.portfolio.cash == pytest.approx(
         200000 - 385 * buy_price + 385 * sell_price - commission * 2
     )
+
+
+def fill_price_of_100_shares(close, volume, bar, price_name, start=None, **kwargs):
+    days = pd.bdate_range("2021-01-04", periods=len(close), tz="UTC")
+    loader = asset_a_loader(days, close, volume=np.array(volume, dtype=float), **kwargs)
+    blotter = trading.SimulationBlotter(loader, start=None if start is None else days[start])
+    blotter.set_slippage(0.01, 1e-3)
+    blotter.set_datetime(days[bar])
+    blotter.market_open(None)
+    blotter.set_price(price_name)
+    blotter.order("A", 100)
+    return blotter.orders["A"][-1].fill_price
+
+
+def slipped(price, ratio):
+    """The price of a buy order with `set_slippage(0.01, 1e-3)`."""
+    return price * (1 + 0.01 / (1 + 200 ** (0.5 - ratio / 1e-3)))
+
+
+@pytest.mark.parametrize("bar_volume", [1e6, 1e5, 1e7])
+def test_fill_at_the_open_does_not_know_the_volume_of_its_bar(bar_volume):
+    # the 100 shares are 1e-4 of the 1e6 traded by the bar before, whatever this bar trades
+    fill = fill_price_of_100_shares([100, 100, 100], [1e6, bar_volume, 1e6], 1, "open")
+    assert fill == pytest.approx(slipped(100, 1e-4))
+    assert fill == pytest.approx(100.107, abs=1e-3)
+
+
+def test_fill_at_the_open_after_a_bar_without_volume_on_an_ex_date():
+    # the last known volume is 2 bars back, those 1e6 shares are 2e6 shares of the ex-date
+    close = [100, 100, np.nan, 50, 50]
+    volume = [1e6, 1e6, np.nan, 3e6, 3e6]
+    fill = fill_price_of_100_shares(close, volume, 3, "open", split_ratios={3: 0.5})
+    assert fill == pytest.approx(slipped(50, 100 / 2e6))
+
+
+def test_fill_at_the_close_knows_the_volume_of_its_bar():
+    fill = fill_price_of_100_shares([100, 100, 100], [1e6, 1e5, 1e6], 1, "close")
+    assert fill == pytest.approx(slipped(100, 1e-3))
+
+
+def test_fill_at_the_open_on_the_first_bar_of_the_blotter():
+    # `start` is where the blotter begins, the bar before it is still known
+    fill = fill_price_of_100_shares([100, 100, 100], [1e6, 1e5, 1e6], 1, "open", start=1)
+    assert fill == pytest.approx(slipped(100, 1e-4))
+
+
+@pytest.mark.parametrize(
+    "split_ratio, new_shares",
+    [(0.5, 2e6), (2, 5e5)],
+    ids=["2-for-1", "1-for-2"],
+)
+def test_fill_at_the_open_of_an_ex_date(split_ratio, new_shares):
+    # the 1e6 shares traded before the split are `new_shares` shares of the ex-date
+    close = [100, 100, 100 * split_ratio]
+    fill = fill_price_of_100_shares(
+        close, [1e6, 1e6, 1e6], 2, "open", split_ratios={2: split_ratio}
+    )
+    assert fill == pytest.approx(slipped(100 * split_ratio, 100 / new_shares))
+
+
+def test_fill_at_the_open_of_a_bar_without_a_volume():
+    # the bar before had none, so the volume before it is the last known one
+    fill = fill_price_of_100_shares([100, 100, 100], [1e6, nan, 5e5], 2, "open")
+    assert fill == pytest.approx(slipped(100, 1e-4))
+
+
+@pytest.mark.parametrize(
+    "bar, volume",
+    [(0, [1e6, 1e6]), (1, [1e6, nan])],
+    ids=["open_of_a_listing", "close_without_a_volume"],
+)
+def test_fill_without_any_known_volume_is_the_full_slippage(bar, volume):
+    # nothing says how much of the market the order is, so it costs all of the 1%
+    price_name = "open" if bar == 0 else "close"
+    fill = fill_price_of_100_shares([100, 100], volume, bar, price_name)
+    assert fill == pytest.approx(100 * 1.01)
 
 
 def test_dividend_curb_and_split(blotter):
@@ -298,6 +409,619 @@ def test_dividend_curb_and_split(blotter):
     pd.testing.assert_series_equal(
         expected, blotter.get_historical_positions().iloc[-1], check_dtype=False
     )
+
+
+@pytest.mark.parametrize(
+    "amount, tax, cash, value",
+    [
+        # 100 shares bought at 100, the dividend of 2 is paid on all of them
+        (100, 0, 100000 - 10000 + 200, 200 * 49),
+        # the short received 10000, and pays the dividend
+        (-100, 0, 100000 + 10000 - 200, -200 * 49),
+        # 10% tax on the dividend, 0.2 per share is gone
+        (100, 0.1, 100000 - 10000 + 180, 200 * 49),
+        # the tax is on the receiver, the short still pays all of it
+        (-100, 0.1, 100000 + 10000 - 200, -200 * 49),
+    ],
+    ids=["long", "short", "long_taxed", "short_taxed"],
+)
+def test_dividend_and_split_on_the_same_ex_date(amount, tax, cash, value):
+    # the market prices the ex-date bar at (100 - 2) * 0.5 = 49, a holder has lost nothing
+    days = pd.bdate_range("2020-01-06", periods=4, tz="UTC")
+    loader = asset_a_loader(days, [100, 100, 49, 49], dividends={2: 2}, split_ratios={2: 0.5})
+    blotter = trading.SimulationBlotter(loader, capital_base=100000)
+    blotter.borrow_stock_interest_rate = 0
+    blotter.div_tax = trading.CommissionModel(tax, 0, 0)
+
+    # both events are pushed at the close of the bar before the ex-date
+    trade_until_after_bar(blotter, days, 1, amount)
+    pos = blotter.positions["A"]
+    assert pos.shares == 2 * amount
+    assert pos.last_price == pytest.approx(49)
+    assert blotter.portfolio.cash == pytest.approx(cash)
+    assert blotter.portfolio.value == pytest.approx(cash + value)
+
+    # the value of that day doesn't change when the next bar arrives at the same price
+    blotter.set_datetime(days[2])
+    blotter.set_price("close")
+    blotter.update_portfolio_value()
+    assert blotter.portfolio.value == pytest.approx(cash + value)
+    history = blotter.get_historical_positions()
+    assert history.value.sum(axis=1).loc[days[1]] == pytest.approx(cash + value)
+
+
+def test_dividend_and_reverse_split_on_the_same_ex_date():
+    # 1-for-15 reverse split and a dividend of 1, ex-date bar is at (10 - 1) * 15 = 135
+    days = pd.bdate_range("2020-01-06", periods=4, tz="UTC")
+    loader = asset_a_loader(days, [10, 10, 135, 135], dividends={2: 1}, split_ratios={2: 15})
+    blotter = trading.SimulationBlotter(loader, capital_base=100000)
+
+    # 970 = 64 * 15 + 10. All 970 get the dividend, then the 10 left over are sold ex-dividend
+    trade_until_after_bar(blotter, days, 1, 970)
+    assert blotter.positions["A"].shares == 64
+    assert blotter.portfolio.cash == pytest.approx(100000 - 970 * 10 + 970 * 1 + 10 * 9)
+    assert blotter.portfolio.cash == pytest.approx(91360)
+    assert blotter.portfolio.value == pytest.approx(91360 + 64 * 135)
+    assert blotter.portfolio.value == pytest.approx(100000)
+
+    blotter.set_datetime(days[2])
+    blotter.set_price("close")
+    blotter.update_portfolio_value()
+    assert blotter.portfolio.value == pytest.approx(100000)
+
+
+def test_reverse_split_cash_out_is_in_the_pnl_of_the_position():
+    # bought at 10, the 1-for-15 reverse split comes at 9, and the ex-date bar is 9 * 15
+    days = pd.bdate_range("2020-01-06", periods=4, tz="UTC")
+    loader = asset_a_loader(days, [10, 9, 135, 135], split_ratios={2: 15})
+    blotter = trading.SimulationBlotter(loader, capital_base=100000)
+
+    trade_until_after_bar(blotter, days, 1, 970)
+    pos = blotter.positions["A"]
+    assert pos.shares == 64
+    assert pos.realized == pytest.approx(10 * (9 - 10))
+    # the position lost 1 on each of its 970 shares, which is all the portfolio lost
+    assert blotter.portfolio.value == pytest.approx(100000 - 970)
+    assert pos.realized + pos.unrealized == pytest.approx(-970)
+
+
+@pytest.mark.parametrize(
+    "shares, split_ratio, kept",
+    [(49, 49, 1), (50, 49, 1), (2, 1.5, 1), (3, 2.5, 1), (15, 2 / 3, 22)],
+    ids=["1-for-49", "1-for-49_left_over", "2-for-3", "2-for-5", "3-for-2"],
+)
+@pytest.mark.parametrize("side", [1, -1], ids=["long", "short"])
+def test_split_keeps_the_value_of_the_portfolio(side, shares, split_ratio, kept):
+    # the ex-date bar is at the same value, for a split ratio of 49 the price is 490
+    days = pd.bdate_range("2020-01-06", periods=4, tz="UTC")
+    close = [10, 10, 10 * split_ratio, 10 * split_ratio]
+    loader = asset_a_loader(days, close, split_ratios={2: split_ratio})
+    blotter = trading.SimulationBlotter(loader, capital_base=100000)
+    blotter.borrow_stock_interest_rate = 0
+
+    trade_until_after_bar(blotter, days, 1, side * shares)
+    assert blotter.positions["A"].shares == side * kept
+    assert blotter.portfolio.value == pytest.approx(100000)
+
+    blotter.set_datetime(days[2])
+    blotter.set_price("close")
+    blotter.update_portfolio_value()
+    assert blotter.portfolio.value == pytest.approx(100000)
+
+
+def test_taxed_dividend_of_short():
+    # gross dividend of 2 and a 10% tax, the ex-date bar is 2 lower
+    days = pd.bdate_range("2020-01-06", periods=4, tz="UTC")
+    loader = asset_a_loader(days, [100, 100, 98, 98], dividends={2: 2})
+    blotter = trading.SimulationBlotter(loader, capital_base=100000)
+    blotter.borrow_stock_interest_rate = 0
+    blotter.div_tax = trading.CommissionModel(0.1, 0, 0)
+
+    trade_until_after_bar(blotter, days, 1, -100)
+    assert blotter.portfolio.cash == pytest.approx(100000 + 100 * 100 - 200)
+    assert blotter.positions["A"].value == pytest.approx(-100 * 98)
+    # what the short paid is what the shares it owes became cheaper by
+    assert blotter.portfolio.value == pytest.approx(100000)
+
+
+def test_trailing_stop_is_not_fired_by_a_dividend():
+    # a dividend of 6, the ex-date bar is at 94 and the total return is 0
+    days = pd.bdate_range("2020-01-06", periods=4, tz="UTC")
+    loader = asset_a_loader(days, [100, 100, 94, 94], dividends={2: 6})
+    blotter = trading.SimulationBlotter(loader, capital_base=100000)
+    blotter.portfolio.set_stop_model(trading.TrailingStopModel(-0.05, True))
+
+    trade_until_after_bar(blotter, days, 1, 100)
+    assert blotter.portfolio.check_stop_trigger() == [False]
+
+    blotter.set_datetime(days[2])
+    blotter.set_price("close")
+    blotter.update_portfolio_value()
+    assert blotter.portfolio.value == pytest.approx(100000)
+    assert blotter.portfolio.check_stop_trigger() == [False]
+
+
+NO_CLOSE = pytest.mark.parametrize("no_close", [nan, 0], ids=["nan", "zero"])
+
+
+@NO_CLOSE
+@pytest.mark.parametrize("amount", [100, -100], ids=["long", "short"])
+def test_split_on_a_bar_without_a_close(amount, no_close):
+    # the row that gets the split has no close, 2-for-1 of the last valid close of 100 is 50
+    days = pd.bdate_range("2020-01-06", periods=4, tz="UTC")
+    loader = asset_a_loader(days, [100, no_close, 50, 50], split_ratios={2: 0.5})
+    blotter = trading.SimulationBlotter(loader, capital_base=100000)
+    blotter.borrow_stock_interest_rate = 0
+
+    trade_until_after_bar(blotter, days, 1, amount)
+    pos = blotter.positions["A"]
+    assert pos.shares == 2 * amount
+    assert pos.last_price == 50
+    assert blotter.portfolio.value == pytest.approx(100000)
+
+    blotter.set_datetime(days[2])
+    assert blotter.get_historical_positions().value.loc[days[1], "A"] == 2 * amount * 50
+    assert blotter.get_historical_positions().value.sum(axis=1).loc[days[1]] == 100000
+
+
+@NO_CLOSE
+@pytest.mark.parametrize(
+    "amount, shares, cash",
+    [
+        # 970 = 64 * 15 + 10, the 10 left over are sold at the last valid close of 10
+        (970, 64, 100000 - 970 * 10 + 10 * 10),
+        # the short buys back the 10 left over
+        (-970, -64, 100000 + 970 * 10 - 10 * 10),
+    ],
+    ids=["long", "short"],
+)
+def test_reverse_split_on_a_bar_without_a_close(amount, shares, cash, no_close):
+    days = pd.bdate_range("2020-01-06", periods=4, tz="UTC")
+    loader = asset_a_loader(days, [10, no_close, 150, 150], split_ratios={2: 15})
+    blotter = trading.SimulationBlotter(loader, capital_base=100000)
+    blotter.borrow_stock_interest_rate = 0
+
+    trade_until_after_bar(blotter, days, 1, amount)
+    assert blotter.positions["A"].shares == shares
+    assert blotter.positions["A"].last_price == pytest.approx(150)
+    assert blotter.portfolio.cash == pytest.approx(cash)
+    assert blotter.portfolio.value == pytest.approx(100000)
+
+
+@NO_CLOSE
+def test_dividend_and_split_on_a_bar_without_a_close(no_close):
+    # the last valid close of 100 is ex-dividend at 98, and 2-for-1 is 49
+    days = pd.bdate_range("2020-01-06", periods=4, tz="UTC")
+    close = [100, no_close, 49, 49]
+    loader = asset_a_loader(days, close, dividends={2: 2}, split_ratios={2: 0.5})
+    blotter = trading.SimulationBlotter(loader, capital_base=100000)
+
+    trade_until_after_bar(blotter, days, 1, 100)
+    assert blotter.positions["A"].shares == 200
+    assert blotter.positions["A"].last_price == pytest.approx(49)
+    assert blotter.portfolio.cash == pytest.approx(100000 - 100 * 100 + 100 * 2)
+    assert blotter.portfolio.value == pytest.approx(100000)
+
+
+@NO_CLOSE
+def test_short_interest_after_a_split_on_a_bar_without_a_close(no_close):
+    days = pd.bdate_range("2020-01-07", periods=3, tz="UTC")
+    loader = asset_a_loader(days, [100, no_close, 50], split_ratios={2: 0.5})
+    blotter = trading.SimulationBlotter(loader, capital_base=100000)
+    blotter.borrow_stock_interest_rate = 0.365
+
+    trade_until_after_bar(blotter, days, 1, -100)
+    blotter.set_datetime(days[2])
+    # 0.1% a day of 10000 for both days, 100 shares at 100 and then 200 shares at 50
+    assert blotter.portfolio.cash == pytest.approx(100000 + 100 * 100 - 2 * 10)
+
+
+def open_at_first_bar(stamps, amount, capital_base):
+    """Blotter with a position in `A`, flat price of 100, interest rates of 0.1% a day."""
+    loader = asset_a_loader(stamps, [100] * len(stamps))
+    blotter = trading.SimulationBlotter(loader, capital_base=capital_base)
+    blotter.borrow_stock_interest_rate = 0.365
+    blotter.borrow_money_interest_rate = 0.365
+    blotter.set_datetime(stamps[0])
+    blotter.market_open(None)
+    blotter.set_price("close")
+    blotter.order("A", amount)
+    return blotter
+
+
+@pytest.mark.parametrize(
+    "first, second",
+    [((2, 6), (10, 16)), ((10, 16), (2, 6)), ((2, 6), (2, 6)), ((2, 10), (6, 14))],
+    ids=["later", "earlier", "same", "overlap"],
+)
+def test_rerun_on_another_window(first, second):
+    # up 1 a day, a dividend on bar 8 and a 2-for-1 split on bar 12
+    days = pd.bdate_range("2021-01-04", periods=18, tz="UTC")
+    close = [100.0 + i for i in range(18)]
+    close[8:] = [c - 1 for c in close[8:]]
+    close[12:] = [c / 2 for c in close[12:]]
+
+    class Alg(trading.CustomAlgorithm):
+        def initialize(self):
+            self.get_factor_engine().add(factors.OHLCV.open, "open")
+            self.schedule_rebalance(trading.event.MarketOpen(self.rebalance))
+
+        def rebalance(self, data, history):
+            if not self.blotter.positions:
+                self.blotter.order("A", -100)
+
+    def build():
+        loader = asset_a_loader(days, close, dividends={8: 1}, split_ratios={12: 0.5})
+        blotter = trading.SimulationBlotter(loader, capital_base=100000)
+        manager = trading.SimulationEventManager()
+        alg = Alg(blotter, main=loader)
+        manager.subscribe(blotter)
+        manager.subscribe(alg)
+        return alg, blotter, manager
+
+    alg, blotter, manager = build()
+    manager.run(days[first[0]], days[first[1]])
+    manager.run(days[second[0]], days[second[1]])
+
+    fresh, fresh_blotter, fresh_manager = build()
+    fresh_manager.run(days[second[0]], days[second[1]])
+    pd.testing.assert_frame_equal(fresh_blotter.get_transactions(), blotter.get_transactions())
+    pd.testing.assert_frame_equal(fresh.results.positions, alg.results.positions)
+    pd.testing.assert_series_equal(fresh.results.returns, alg.results.returns)
+    assert fresh_blotter.portfolio.cash == blotter.portfolio.cash
+
+
+def test_clear_forgets_the_market_state():
+    days = pd.bdate_range("2021-01-04", periods=3, tz="UTC")
+    blotter = trading.SimulationBlotter(asset_a_loader(days, [100, 101, 102]))
+    blotter.set_datetime(days[2])
+    blotter.market_open(None)
+    blotter.set_price("close")
+
+    blotter.clear()
+    assert not blotter.market_opened
+    # a run on earlier days doesn't start from the old datetime, or replay what's in between
+    blotter.set_datetime(days[0])
+    blotter.market_open(None)
+    with pytest.raises(ValueError, match="set_price"):
+        blotter.get_price("A")
+
+
+PLACE_ORDER = pytest.mark.parametrize(
+    "place",
+    [
+        lambda blotter: blotter.order("A", 10),
+        lambda blotter: blotter.order_target("A", 30),
+        lambda blotter: blotter.order_target_percent("A", 0.5),
+    ],
+    ids=["order", "order_target", "order_target_percent"],
+)
+
+
+@PLACE_ORDER
+def test_order_at_a_nan_price_is_refused(place):
+    days = pd.bdate_range("2021-01-04", periods=3, tz="UTC")
+    blotter = trading.SimulationBlotter(asset_a_loader(days, [100, nan, 100]))
+    blotter.set_datetime(days[1])
+    blotter.market_open(None)
+    blotter.set_price("close")
+
+    assert place(blotter) is False
+    assert not blotter.positions
+    assert blotter.portfolio.cash == 100000
+    assert len(blotter.get_transactions()) == 0
+
+
+@PLACE_ORDER
+def test_order_at_a_nan_price_keeps_the_position(place):
+    days = pd.bdate_range("2021-01-04", periods=3, tz="UTC")
+    blotter = trading.SimulationBlotter(asset_a_loader(days, [100, nan, 100]))
+    trade_until_after_bar(blotter, days, 0, 20)
+    cash = blotter.portfolio.cash
+
+    blotter.set_datetime(days[1])
+    blotter.market_open(None)
+    blotter.set_price("close")
+    assert place(blotter) is False
+    assert blotter.positions["A"].shares == 20
+    assert blotter.positions["A"].last_price == 100
+    assert blotter.portfolio.cash == cash
+    assert len(blotter.get_transactions()) == 1
+
+
+def test_batch_order_at_a_nan_price_is_skipped():
+    days = pd.bdate_range("2021-01-04", periods=3, tz="UTC")
+    blotter = trading.SimulationBlotter(asset_a_loader(days, [100, nan, 100]))
+    blotter.set_datetime(days[1])
+    blotter.market_open(None)
+    blotter.set_price("close")
+    assert blotter.batch_order_target(["A"], [10]) == [["A", 0]]
+    assert blotter.batch_order_target_percent(["A"], [0.5]) == [["A", 0]]
+    assert not blotter.positions
+
+
+def test_nan_price_and_no_price_yet_are_different():
+    days = pd.bdate_range("2021-01-04", periods=3, tz="UTC")
+    blotter = trading.SimulationBlotter(asset_a_loader(days, [100, nan, 100]))
+    blotter.set_datetime(days[1])
+    blotter.market_open(None)
+
+    # no price was picked, that's a mistake in the event order or the strategy
+    with pytest.raises(ValueError, match="set_price"):
+        blotter.order("A", 10)
+    # the bar has no close, that's the data, and the asset can't be traded now
+    blotter.set_price("close")
+    assert blotter.order("A", 10) is False
+
+
+def test_short_interest_of_intraday_bars():
+    # hourly bars of the US session, only the gap of the weekend is longer than a day
+    days = pd.bdate_range("2020-01-06", "2020-01-16", tz="UTC")
+    hours = pd.timedelta_range("14:30:00", periods=7, freq="h")
+    stamps = pd.DatetimeIndex([day + hour for day in days for hour in hours])
+    blotter = open_at_first_bar(stamps, -100, capital_base=100000)
+    cash = 100000 + 100 * 100
+    assert blotter.portfolio.cash == cash
+
+    for stamp in stamps[1:]:
+        blotter.set_datetime(stamp)
+    # 01-06 14:30 to 01-16 20:30 is 10.25 days, and 0.1% of a position of 10000 is 10 a day
+    assert stamps[-1] - stamps[0] == pd.Timedelta(days=10.25)
+    assert blotter.portfolio.cash == pytest.approx(cash - 10.25 * 10)
+
+
+def test_borrowed_money_interest_of_intraday_bars():
+    stamps = pd.DatetimeIndex(["2020-01-06 14:30", "2020-01-06 20:30"], tz="UTC")
+    # buy 20000 of shares with 10000, 0.1% of the -10000 cash is 10 a day
+    blotter = open_at_first_bar(stamps, 200, capital_base=10000)
+    assert blotter.portfolio.cash == -10000
+
+    blotter.set_datetime(stamps[1])
+    assert blotter.portfolio.cash == pytest.approx(-10000 - 6 / 24 * 10)
+
+
+def test_interest_of_daily_bars():
+    # Friday to Monday is 3 days, daily bars have always been charged whole days
+    stamps = pd.DatetimeIndex(["2020-01-10", "2020-01-13"], tz="UTC")
+    blotter = open_at_first_bar(stamps, -100, capital_base=100000)
+
+    blotter.set_datetime(stamps[1])
+    assert blotter.portfolio.cash == pytest.approx(100000 + 100 * 100 - 3 * 10)
+
+
+def test_interest_of_skipped_days():
+    days = pd.bdate_range("2020-01-06", "2020-01-20", tz="UTC")
+    blotter = open_at_first_bar(days, -100, capital_base=100000)
+
+    # jump over the bars in between, the blotter makes up their events
+    blotter.set_datetime(days[-1])
+    # 01-06 to 01-20 is 14 days, at 10 a day
+    assert blotter.portfolio.cash == pytest.approx(100000 + 100 * 100 - 14 * 10)
+
+
+@pytest.mark.parametrize("last_visited", [2, 0], ids=["no_skipped_days", "skipped_days"])
+def test_interest_of_each_day_uses_the_value_of_that_day(last_visited):
+    # Tuesday to Friday, short 100 at 100
+    days = pd.bdate_range("2020-01-07", periods=4, tz="UTC")
+    loader = asset_a_loader(days, [100, 110, 120, 130])
+    blotter = trading.SimulationBlotter(loader, capital_base=100000)
+    blotter.borrow_stock_interest_rate = 0.365
+    trade_until_after_bar(blotter, days, last_visited, -100)
+
+    blotter.set_datetime(days[3])
+    # 0.1% a day of the 10000, 11000 and 12000 the short is worth at the start of each day
+    assert blotter.portfolio.cash == pytest.approx(100000 + 100 * 100 - (10 + 11 + 12))
+
+
+def test_made_up_days_come_from_the_data():
+    # a market open every day, the ex-date of a 2-for-1 split is a Sunday, its row the Saturday
+    days = pd.date_range("2021-01-04", periods=8, freq="D", tz="UTC")
+    assert days[5].day_name() == "Saturday"
+    loader = asset_a_loader(days, [100] * 6 + [50] * 2, split_ratios={6: 0.5})
+    blotter = trading.SimulationBlotter(loader, capital_base=100000)
+
+    # visit up to the Friday, and jump to the Sunday
+    trade_until_after_bar(blotter, days, 4, 100)
+    blotter.set_datetime(days[6])
+    blotter.set_price("close")
+    blotter.update_portfolio_value()
+    assert blotter.positions["A"].shares == 200
+    assert blotter.portfolio.value == pytest.approx(100000)
+
+
+def test_made_up_days_of_an_intraday_market():
+    # 2 bars a day, the two days in between are left out, a dividend of 1 goes ex on the last day
+    days = pd.bdate_range("2021-01-04", periods=4, tz="UTC")
+    stamps = pd.DatetimeIndex([day + pd.Timedelta(hours=h) for day in days for h in (14, 20)])
+    close = [100.0] * 6 + [99.0] * 2
+    loader = asset_a_loader(stamps, close, dividends={6: 1})
+    blotter = trading.SimulationBlotter(loader, capital_base=100000)
+    blotter.borrow_stock_interest_rate = 0.365
+    blotter.set_datetime(stamps[0])
+    blotter.market_open(None)
+    blotter.set_price("close")
+    blotter.order("A", -100)
+    blotter.market_close(None)
+
+    blotter.set_datetime(stamps[6])
+    # the short paid the dividend at the close of the last day that was made up
+    assert blotter.positions["A"].last_price == 99
+    # 0.1% a day of 10000 up to that close, 2.25 days, and of 9900 for the 0.75 days after it
+    interest = 2.25 * 10 + 0.75 * 9.9
+    assert blotter.portfolio.cash == pytest.approx(110000 - 100 - interest, abs=1e-6)
+
+
+@pytest.mark.parametrize("tz", ["UTC", "Asia/Shanghai", "America/New_York"])
+def test_made_up_days_stay_in_the_timezone_of_the_market(tz):
+    # 2 days in a row and 1 more are left out by the filter
+    days = pd.bdate_range("2021-01-04", periods=8, tz="UTC")
+    flag = [1.0, 1.0, 0.0, 0.0, 1.0, 1.0, 0.0, 1.0]
+    loader = asset_a_loader(days, [100] * 8, flag=flag)
+
+    class Alg(trading.CustomAlgorithm):
+        def initialize(self):
+            engine = self.get_factor_engine()
+            engine.timezone = tz
+            engine.add(factors.OHLCV.open, "open")
+            engine.set_filter(factors.ColumnDataFactor(inputs=["flag"], should_delay=False) > 0.5)
+            self.blotter.borrow_stock_interest_rate = 0.365
+            self.schedule_rebalance(trading.event.MarketOpen(self.rebalance))
+
+        def rebalance(self, data, history):
+            if not self.blotter.positions:
+                self.blotter.order("A", -100)
+
+    results = trading.run_backtest(loader, Alg, days[0], days[-1])
+
+    # a row for the day before the first bar, then one for each of the 8 bars, on its local date
+    stamps = days.tz_convert(tz)
+    expected = pd.DatetimeIndex([stamps[0] - pd.Timedelta(days=1), *stamps]).normalize()
+    pd.testing.assert_index_equal(results.positions.index, expected, check_names=False, exact=False)
+    # 9 days from the first bar to the last, the short is worth 10000 and pays 0.1% a day
+    assert results.positions.value.sum(axis=1).iloc[-1] == pytest.approx(100000 - 9 * 10)
+
+
+@pytest.mark.parametrize("bar", [1, 2], ids=["next_bar", "after_a_made_up_day"])
+def test_no_price_before_the_open(bar):
+    days = pd.bdate_range("2021-01-04", periods=3, tz="UTC")
+    blotter = trading.SimulationBlotter(asset_a_loader(days, [100, 101, 102]))
+    trade_until_after_bar(blotter, days, 0, 0)
+
+    # the market is opening, and no price of this bar can be known yet
+    blotter.set_datetime(days[bar])
+    blotter.market_open(None)
+    with pytest.raises(ValueError, match="set_price"):
+        blotter.get_price("A")
+    with pytest.raises(ValueError, match="set_price"):
+        blotter.order("A", 1)
+    assert not blotter.positions
+
+
+def test_no_price_before_the_open_in_a_backtest():
+    # the filter leaves out the third day, the close of the fourth is much higher than its open
+    days = pd.bdate_range("2021-01-04", periods=5, tz="UTC")
+    loader = asset_a_loader(days, [100, 101, 102, 150, 103], flag=[1.0, 1.0, 0.0, 1.0, 1.0])
+    seen = []
+
+    class Alg(trading.CustomAlgorithm):
+        def initialize(self):
+            engine = self.get_factor_engine()
+            engine.add(factors.OHLCV.open, "open")
+            engine.set_filter(factors.ColumnDataFactor(inputs=["flag"], should_delay=False) > 0.5)
+            self.schedule(trading.event.MarketOpen(self.before_open, -1000))
+
+        def before_open(self, _):
+            try:
+                seen.append(self.blotter.get_price("A"))
+            except ValueError:
+                seen.append("no price")
+
+    trading.run_backtest(loader, Alg, days[0], days[-1])
+    assert seen == ["no price"] * 4
+
+
+@pytest.mark.parametrize(
+    "day_2, dividends, split_ratios",
+    [
+        # limits of 99 to 121, around the last close of day 1
+        ([100, 112, 120, 122], None, None),
+        ([100, 112, 120, 122], {}, {}),
+        # ex-date on day 2: the last close of day 1 is worth (110 - 1) * 0.5 = 54.5 today,
+        # limits of 49.05 to 59.95
+        ([50, 56, 59, 60], {8: 1}, {8: 0.5}),
+    ],
+    ids=["no_adjustments", "no_events", "dividend_and_split"],
+)
+def test_daily_curb_of_intraday_bars(day_2, dividends, split_ratios):
+    days = pd.bdate_range("2020-01-06", periods=3, tz="UTC")
+    hours = pd.timedelta_range("14:30:00", periods=4, freq="h")
+    stamps = pd.DatetimeIndex([day + hour for day in days for hour in hours])
+    day_0 = [90, 100, 120, 100]  # there is no previous day to compare with, so no limits
+    day_1 = [105, 109, 110, 110]  # limits of 90 to 110, around the last close of day 0
+    loader = asset_a_loader(stamps, day_0 + day_1 + day_2, dividends, split_ratios)
+    blotter = trading.SimulationBlotter(loader, daily_curb=0.1)
+
+    filled = []
+    for stamp in stamps:
+        blotter.set_datetime(stamp)
+        blotter.market_open(None)
+        blotter.set_price("close")
+        filled.append(blotter.order("A", 1))
+    assert filled == [True] * 4 + [True, True, False, False] + [True, True, True, False]
+
+
+@pytest.mark.parametrize("adjusted", [False, True], ids=["no_adjustments", "adjustments"])
+def test_daily_curb_in_the_timezone_of_the_market(adjusted):
+    # a session of 22:00 to 01:00 UTC is one day in Tokyo, 07:00 to 10:00, but crosses UTC midnight
+    sessions = [pd.Timestamp(day, tz="UTC") for day in ("2021-01-04 22:00", "2021-01-05 22:00")]
+    stamps = pd.DatetimeIndex([s + pd.Timedelta(hours=h) for s in sessions for h in range(4)])
+    # the first session closes at 100, the limits of the second are 90 to 110
+    close = [100, 100, 100, 100, 100, 104, 108, 112]
+    loader = asset_a_loader(
+        stamps, close, *([{}, {}] if adjusted else [None, None]), flag=[1.0] * 8
+    )
+    filled = {}
+
+    class Alg(trading.CustomAlgorithm):
+        def initialize(self):
+            engine = self.get_factor_engine()
+            engine.timezone = "Asia/Tokyo"
+            engine.add(factors.OHLCV.open, "open")
+            self.blotter.daily_curb = trading.DailyCurbModel(0.1)
+            self.schedule(trading.event.EveryBarData(self.on_bar))
+
+        def on_bar(self, _):
+            filled[self.current] = self.blotter.order("A", 1)
+
+    trading.run_backtest(loader, Alg, stamps[0], stamps[-1])
+    assert list(filled.values())[4:] == [True, True, True, False]
+
+
+def test_daily_curb_follows_the_timezone_of_each_run():
+    # the same data read as 2 market days in one timezone, and as 1 day in the other
+    stamps = pd.DatetimeIndex(["2021-01-04 23:00", "2021-01-05 01:00"], tz="UTC")
+    loader = asset_a_loader(stamps, [100, 120])
+    blotter = trading.SimulationBlotter(loader, daily_curb=0.1)
+
+    def order_on_last_bar(tz):
+        blotter.clear()
+        blotter.set_datetime(stamps[1].tz_convert(tz))
+        blotter.market_open(None)
+        blotter.set_price("close")
+        return blotter.order("A", 1)
+
+    # 2 days in UTC, +20% on the day before is over the limit
+    assert order_on_last_bar("UTC") is False
+    # 1 day in Tokyo, which has no day before it in the data
+    assert order_on_last_bar("Asia/Tokyo") is True
+    assert order_on_last_bar("UTC") is False
+
+
+def test_daily_curb_of_intraday_bars_with_missing_data():
+    days = pd.bdate_range("2020-01-06", periods=3, tz="UTC")
+    stamps = pd.DatetimeIndex([day + pd.Timedelta(hours=h) for day in days for h in (14, 15)])
+    rows = [
+        # the last close before day 2 is on bar 2, limits of 94.5 to 115.5
+        ("A", 0, 100), ("A", 1, 100), ("A", 2, 105), ("A", 3, nan), ("A", 4, 115), ("A", 5, 116),
+        # no bars on day 1, the last close before day 2 is on day 0, limits of 180 to 220
+        ("B", 0, 200), ("B", 1, 200), ("B", 4, 219), ("B", 5, 221),
+    ]  # fmt: skip
+    df = pd.DataFrame(rows, columns=["asset", "bar", "close"])
+    df["date"] = stamps[df.bar]
+    df = df.set_index(["date", "asset"]).sort_index().drop(columns="bar")
+    df = df.assign(open=df.close, high=df.close, low=df.close, volume=1e6)
+    loader = spectre.data.MemoryLoader(df, ohlcv=("open", "high", "low", "close", "volume"))
+    blotter = trading.SimulationBlotter(loader, daily_curb=0.1)
+
+    blotter.set_datetime(stamps[4])
+    blotter.market_open(None)
+    blotter.set_price("close")
+    assert blotter.order("A", 1) is True
+    assert blotter.order("B", 1) is True
+    blotter.set_datetime(stamps[5])
+    blotter.set_price("close")
+    assert blotter.order("A", 1) is False
+    assert blotter.order("B", 1) is False
 
 
 def test_intraday(intraday_loader):

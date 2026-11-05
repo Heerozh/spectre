@@ -4,11 +4,12 @@ import numpy as np
 import pandas as pd
 import pytest
 import torch
-from numpy.testing import assert_almost_equal, assert_array_equal
+from numpy.testing import assert_allclose, assert_almost_equal, assert_array_equal
 
 from spectre import factors, parallel
+from tests.conftest import DIRTY_DATES, LISTED_ON
 from tests.factors import reference as ref
-from tests.factors.helpers import assert_factor, delete, run_factor
+from tests.factors.helpers import assert_factor, delete, run_dirty, run_factor
 
 nan = np.nan
 close = factors.OHLCV.close
@@ -26,10 +27,8 @@ def weekday(df):
 
 
 def test_shift(engine):
-    # shift doesn't load more history data, so the first 2 rows of loaded data are nan
+    # shift loads the history it needs, so there are no nans at the head
     aapl, msft = ref.expected(lambda df: df.close.shift(2))
-    aapl[0:2] = nan
-    msft[0:2] = nan
     assert_factor(engine, close.shift(2), aapl, msft)
 
 
@@ -51,10 +50,14 @@ def test_filter_shift(engine):
     # FilterFactor.shift supports bool
     aapl, msft = run_factor(engine, (close > 150).shift(1))
     expected = ref.expected(lambda df: (df.close > 150).shift(1, fill_value=False))
-    # the first loaded row is filled with False
-    expected[0][0] = False
     assert_array_equal(aapl, expected[0])
     assert_array_equal(msft, [False] * 8)
+
+
+def test_filter_shift_zero(dirty_engine, dirty_panel):
+    result = run_dirty(dirty_engine, (close > 100).shift(0))
+    assert_array_equal(result, dirty_panel.close > 100)
+    assert result.any()
 
 
 # ------------------------------------ fill ------------------------------------
@@ -137,6 +140,48 @@ def test_ts_prod_log(engine):
     assert_factor(engine, close.ts_prod(2).log(), *expected)
 
 
+def rolling_sum(series, win):
+    """Sum of the valid bars of each window of each asset, NaN if the window has none."""
+    return series.groupby(level="asset").transform(lambda x: x.rolling(win, min_periods=1).sum())
+
+
+def test_ts_sum_of_partial_and_empty_windows(dirty_engine, dirty_panel):
+    returns = dirty_panel.clean_close.groupby(level="asset").pct_change(fill_method=None)
+    expected = rolling_sum(returns, 3)
+    assert np.isnan(expected.loc[(DIRTY_DATES[LISTED_ON], "LISTED")])
+    result = run_dirty(dirty_engine, factors.Returns().ts_sum(3))
+    assert_allclose(result, expected, rtol=1e-5, atol=1e-6)
+
+
+def test_ts_prod_of_partial_and_empty_windows(dirty_engine, dirty_panel):
+    gross = 1 + dirty_panel.clean_close.groupby(level="asset").pct_change(fill_method=None)
+    expected = gross.groupby(level="asset").transform(
+        lambda x: x.rolling(3, min_periods=1).apply(np.nanprod, raw=True)
+    )
+    assert np.isnan(expected.loc[(DIRTY_DATES[LISTED_ON], "LISTED")])
+    assert_allclose(run_dirty(dirty_engine, (factors.Returns() + 1).ts_prod(3)), expected)
+
+
+def test_ts_sum_of_masked_windows(dirty_engine, dirty_panel):
+    expected = rolling_sum(dirty_panel.close.where(dirty_panel.volume > 1950), 3)
+    assert expected.isna().any()
+    result = run_dirty(dirty_engine, (close * 1).ts_sum(3, mask=factors.OHLCV.volume > 1950))
+    assert_allclose(result, expected)
+
+
+def test_ts_sum_of_masked_filter(dirty_engine, dirty_panel):
+    selected = (dirty_panel.close > 100).astype(float)
+    expected = rolling_sum(selected.where(dirty_panel.volume > 1950), 3)
+    result = run_dirty(dirty_engine, (close > 100).ts_sum(3, mask=factors.OHLCV.volume > 1950))
+    assert_allclose(result, expected)
+
+
+def test_unique_ts_sum_of_empty_window(device):
+    data = torch.tensor([[nan, nan, nan, nan, 1, 1, 2, nan, nan, nan]], device=device)
+    result = factors.UniqueTSSumFactor(3).compute(parallel.Rolling(data, 3))
+    assert_array_equal(result.cpu().numpy(), [[nan, nan, nan, nan, 1, 1, 3, 3, 2, nan]])
+
+
 def test_ts_max_min(engine):
     assert_factor(engine, close.ts_max(3), *ref.expected(lambda df: df.close.rolling(3).max()))
     assert_factor(engine, close.ts_min(3), *ref.expected(lambda df: df.close.rolling(3).min()))
@@ -167,6 +212,14 @@ def test_rolling_rank(engine):
     assert_factor(engine, factors.RollingRankFactor(5, inputs=[WEEKDAY]), *expected)
 
 
+def test_rolling_rank_flat_window(device):
+    prices = [1.0, 2, 2, 2, 2, 5, 5]
+    rolling = parallel.Rolling(torch.tensor([prices], device=device), win=3)
+    result = factors.RollingRankFactor(3).compute(rolling).cpu().numpy()
+    expected = pd.Series(prices).rolling(3, min_periods=1).apply(lambda x: x.rank().iloc[-1] / 3)
+    assert_almost_equal(result[0], expected, decimal=6)
+
+
 def test_rolling_zscore(engine):
     def rolling_zscore(df):
         r = df.close.rolling(5)
@@ -175,6 +228,15 @@ def test_rolling_zscore(engine):
     assert_factor(
         engine, factors.RollingZScoreFactor(5, inputs=[close]), *ref.expected(rolling_zscore)
     )
+
+
+@pytest.mark.parametrize("dtype", [torch.float32, torch.float64])
+def test_rolling_zscore_of_flat_windows(device, dtype):
+    """The rounding of the mean must not give scores to a run of unchanged prices."""
+    prices = np.random.default_rng(0).uniform(0.01, 500, 200)
+    data = torch.tensor(prices, dtype=dtype, device=device).unsqueeze(-1).expand(200, 5)
+    result = factors.RollingZScoreFactor(5).compute(parallel.Rolling(data, 5))
+    assert torch.isnan(result).all()
 
 
 # ------------------------------------ math ------------------------------------
@@ -190,6 +252,12 @@ def test_log(engine):
 def test_math(engine, method, func):
     expected = ref.expected(lambda df: func(ref.returns(df.close)))
     assert_factor(engine, getattr(factors.Returns(), method)(), *expected, decimal=6)
+
+
+def test_sign_keeps_nan(dirty_engine, dirty_panel):
+    returns = dirty_panel.clean_close.groupby(level="asset").pct_change(fill_method=None)
+    result = run_dirty(dirty_engine, factors.Returns().sign())
+    assert_array_equal(result, np.sign(returns))
 
 
 def test_round(engine):

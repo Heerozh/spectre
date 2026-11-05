@@ -12,9 +12,9 @@ def test_total_backwards():
     c = factors.CustomFactor(win=3, inputs=(b,))
     # (2 - 1) + (3 - 1) + (3 - 1)
     assert c.get_total_backwards_() == 5
-    # mask has a longer window
+    # mask has a longer window, and it masks every bar of the window of c: (10 - 1) + (3 - 1)
     c.set_mask(factors.CustomFactor(win=10))
-    assert c.get_total_backwards_() == 9
+    assert c.get_total_backwards_() == 11
 
     a1 = factors.CustomFactor(win=10)
     a2 = factors.CustomFactor(win=5)
@@ -26,6 +26,22 @@ def test_total_backwards():
     assert b1.get_total_backwards_() == 28
     assert b2.get_total_backwards_() == 103
     assert c1.get_total_backwards_() == 127
+
+
+def test_total_backwards_of_shift():
+    close = factors.OHLCV.close
+    assert close.shift(3).get_total_backwards_() == 3
+    # looks forward, needs no history
+    assert close.shift(-3).get_total_backwards_() == 0
+    # (5 - 1) + 3, in both orders
+    assert factors.MA(5, inputs=[close.shift(3)]).get_total_backwards_() == 7
+    assert factors.MA(5).shift(3).get_total_backwards_() == 7
+    # FilterFactor has its own shift
+    assert (close > 1).shift(2).get_total_backwards_() == 2
+    assert factors.MA(5, inputs=[(close > 1).shift(2)]).get_total_backwards_() == 6
+    assert (close > 1).shift(-2).get_total_backwards_() == 0
+    # the mask is applied before the shift
+    assert close.shift(3).set_mask(factors.MA(10)).get_total_backwards_() == 12
 
 
 def test_invalid_win():

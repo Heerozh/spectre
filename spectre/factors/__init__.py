@@ -27,6 +27,7 @@ from .datafactor import (
 from .engine import (
     OHLCV,
     FactorEngine,
+    NoBarError,
 )
 from .factor import (
     BaseFactor,

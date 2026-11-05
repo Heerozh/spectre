@@ -42,7 +42,7 @@ def portfolio():
 def test_realized(portfolio):
     # (12 - 5) * 10 - 10 commission
     assert portfolio.positions["AAPL"].realized == 60
-    # Reversed position, the new position has no realized yet
+    # Reversed position, keeps what the closed side realized: (8 - 7) * 25 - 25 commission
     assert portfolio.positions["MSFT"].realized == 0
 
 
@@ -117,6 +117,44 @@ def test_set_datetime_backwards():
     pf.set_datetime("2019-01-03")
     with pytest.raises(ValueError, match="Cannot set a date less than the current date"):
         pf.set_datetime("2019-01-02")
+
+
+def test_cash_of_a_split():
+    pf = trading.Portfolio()
+    pf.set_datetime("2019-01-03")
+    pf.update_cash(1000, is_funds=True)
+    pf.update("AAPL", 15, 10, 0)
+    pf.update_cash(-150)
+
+    # 3-for-2 is 22.5 shares at 6.67, half a share is paid in cash
+    pf.process_split("AAPL", 1.5, 10)
+    assert pf.shares("AAPL") == 22
+    assert pf.cash == pytest.approx(850 + 0.5 * 10 / 1.5)
+    assert pf.value == pytest.approx(1000)
+    # that is not a transfer of funds, the deposit is the only one
+    assert len(pf.fund_history) == 1
+
+
+@pytest.mark.parametrize("amount", [5, -5], ids=["long", "short"])
+def test_split_down_to_no_shares_closes_the_position(amount):
+    pf = trading.Portfolio(trading.TrailingStopModel(-0.05, True))
+    pf.set_datetime("2019-01-03")
+    pf.update_cash(1000, is_funds=True)
+    pf.update("AAPL", amount, 10, 0)
+    pf.update_cash(-amount * 10)
+
+    # 1-for-10 is half a share at 100, which is paid in cash
+    pf.process_split("AAPL", 0.1, 10)
+    assert "AAPL" not in pf.positions
+    assert pf.shares("AAPL") == 0
+    assert pf.value == pytest.approx(1000)
+
+    # the next order opens a position that knows nothing of the old one
+    pf.set_datetime("2019-01-08")
+    pf.update("AAPL", 3, 90, 0)
+    pos = pf.positions["AAPL"]
+    assert pos.open_dt == pd.Timestamp("2019-01-08")
+    assert pos.stop_tracker.stop_price == pytest.approx(90 * 0.95)
 
 
 def test_update_returns_realized():

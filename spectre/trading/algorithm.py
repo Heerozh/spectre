@@ -15,7 +15,7 @@ import pandas as pd
 import torch
 
 from ..data import DataLoader, DataLoaderFastGetter
-from ..factors import OHLCV, FactorEngine, StaticAssets
+from ..factors import OHLCV, FactorEngine, NoBarError, StaticAssets
 from ..plotting import cumulative_returns_fig
 from .blotter import BaseBlotter, SimulationBlotter
 from .event import Event, EventManager, EventReceiver, EveryBarData, MarketClose, MarketOpen
@@ -59,9 +59,14 @@ class CustomAlgorithm(EventReceiver, ABC):
         self._data = None
         self._last_row = None
         self._engines = {name: FactorEngine(loader) for name, loader in data_sources.items()}
+        self._engines_of_initialize = set()
         self.blotter = blotter
         self._recorder = Recorder()
         self._current_dt = None
+        # a simulation has the whole of the current bar, this says how much of it has happened.
+        # None outside of a simulation, where the data only holds what has happened.
+        self._bar_closed = None
+        self._bars = {}
         self._results = CustomAlgorithm.Results(None, None, None)
         self._rebalance_callback = None
         self.delay_factor = True
@@ -89,7 +94,53 @@ class CustomAlgorithm(EventReceiver, ABC):
             )
         return self._engines[name]
 
+    def _bars_of(self, name):
+        if name not in self._bars:
+            dates = self._engines[name].loader_.load().index.get_level_values(0)
+            self._bars[name] = dates.unique()
+        return self._bars[name]
+
+    def _bar_end(self, name, following):
+        """The end of the bar before position `following` of the bars of data source `name`."""
+        bars = self._bars_of(name)
+        if following < len(bars):
+            return bars[following]
+        return bars[-1] + (bars[1:] - bars[:-1]).min()
+
+    def _open_bar(self, name):
+        """
+        The stamp of the current bar of data source `name`, if that bar has not closed yet. A stamp
+        is the start of a bar, which ends at the next stamp of its source, or for the last one
+        after the bar size of its source. So data that is added up over a longer time than the
+        bars of the simulation stays open while they go on. Before the bar of the simulation has
+        closed time has reached its stamp, after that the end of the shortest bar that started at
+        that stamp, the simulation's own, which no stamp of another source can move.
+        """
+        if self._bar_closed is None:
+            return None
+        now = self._current_dt
+        reached = now
+        if self._bar_closed:
+            ends = []
+            for source in self._engines:
+                bars = self._bars_of(source)
+                following = bars.searchsorted(now, side="right")
+                if following > 0 and bars[following - 1] == now:
+                    ends.append(self._bar_end(source, following))
+            reached = min(ends, default=now)
+
+        following = self._bars_of(name).searchsorted(now, side="right")
+        if following == 0:
+            return None
+        ends = self._bar_end(name, following)
+        return None if ends <= reached else self._bars_of(name)[following - 1]
+
     def get_price_matrix(self, length: pd.DateOffset, name: str | None = None, prices=OHLCV.close):
+        """
+        Prices of the last `length`, adjusted to the current bar. Until the current bar of the data
+        source closes, `prices` that are only known after a close end at the bar before it, and a
+        filter that reads such data decides on the bars before it.
+        """
         if name is None:
             name = next(iter(self._engines))
 
@@ -98,9 +149,23 @@ class CustomAlgorithm(EventReceiver, ABC):
                 f"Data source '{name}' not found, please pass in the algorithm "
                 f"initialization: `YourAlgorithm({name}=DataLoader())`"
             )
-        return self._engines[name].get_price_matrix(
-            self._current_dt - length, self._current_dt, prices=prices
-        )
+        engine = self._engines[name]
+        start, end = self._current_dt - length, self._current_dt
+        open_bar = self._open_bar(name)
+        if open_bar is None:
+            return engine.get_price_matrix(start, end, prices=prices)
+
+        universe = engine.get_filter()
+        delay_universe = universe is not None and universe.should_delay()
+        if delay_universe:
+            engine.set_filter(universe.shift(1))
+        try:
+            # up to `end` even if that row is dropped, a split on the current bar is known already
+            matrix = engine.get_price_matrix(start, end, prices=prices)
+        finally:
+            if delay_universe:
+                engine.set_filter(universe)
+        return matrix[matrix.index < open_bar] if prices.should_delay() else matrix
 
     def set_datetime(self, dt: pd.Timestamp) -> None:
         self._current_dt = dt
@@ -155,7 +220,9 @@ class CustomAlgorithm(EventReceiver, ABC):
             filter_ = engine.get_filter()
             engine.empty_cache()
             engine.set_filter(StaticAssets({benchmark}))
-            df = engine.get_price_matrix(returns.index[0], returns.index[-1])
+            # the returns start the day before the first bar, which can be before the data
+            first_bar = self._bars_of(next(iter(self._engines)))[0]
+            df = engine.get_price_matrix(max(returns.index[0], first_bar), returns.index[-1])
             engine.set_filter(filter_)
             bench = df[benchmark]
             bench = bench.resample("D").last().dropna()
@@ -206,32 +273,49 @@ class CustomAlgorithm(EventReceiver, ABC):
             start = self._current_dt
         start = start - self._history_window
 
-        if len(self._engines) == 1:
-            name = next(iter(self._engines))
-            df = self._engines[name].run(start, end, delay_factor)
-            if df.shape[0] == 0:
-                start = start - pd.DateOffset(years=1)
-                df = self._engines[name].run(start, end, delay_factor)
-                return df, df.head(0)
-            last_dt = df.index.get_level_values(0)[-1]
-            return df, df.loc[last_dt]
-        else:
-            dfs = {
-                name: engine.run(start, end, delay_factor) for name, engine in self._engines.items()
-            }
-            lasts = {k: v.loc[v.index.get_level_values(0)[-1]] for k, v in dfs.items()}
-            return dfs, lasts
+        runs = {name: self._run_or_wait(name, start, end, delay_factor) for name in self._engines}
+        if len(runs) == 1:
+            return next(iter(runs.values()))
+        return {k: v[0] for k, v in runs.items()}, {k: v[1] for k, v in runs.items()}
+
+    def _run_or_wait(self, name, start, end, delay_factor):
+        """Rows and the last row of an engine. If its next bar hasn't come yet, no last row."""
+        engine = self._engines[name]
+        try:
+            df = engine.run(start, end, delay_factor)
+        except NoBarError:
+            df = None
+        if df is None or df.shape[0] == 0:
+            start = max(start - pd.DateOffset(years=1), self._bars_of(name)[0])
+            df = engine.run(start, end, delay_factor)
+            return df, df.head(0)
+        return df, df.loc[df.index.get_level_values(0)[-1]]
 
     def _data_updated(self, event_source=None):
         # todo if in live, last row should return by inferred time
         self._data, self._last_row = self.run_engine(None, None, delay_factor=self.delay_factor)
 
     def on_run(self):
+        # here and not at the end of a run, the records are read after it
+        self._recorder = Recorder()
+        self._data = self._last_row = None
+        self._bars = {}
+        # `initialize` makes these again
+        for name in self._engines_of_initialize:
+            del self._engines[name]
+        engines = set(self._engines)
         # schedule first, so it will run before rebalance
         self.schedule(EveryBarData(self._data_updated))
-        self.initialize()
+        try:
+            self.initialize()
+        finally:
+            self._engines_of_initialize = self._engines.keys() - engines
 
     def on_end_of_run(self):
+        if self.blotter.portfolio.current_dt is None:
+            # stopped before the first bar, there are no results to read
+            self._results = CustomAlgorithm.Results(None, None, None)
+            return
         self._results = CustomAlgorithm.Results(
             returns=self.blotter.get_returns(),
             positions=self.blotter.get_historical_positions(),
@@ -295,6 +379,7 @@ class SimulationEventManager(EventManager):
     def fire_market_close(self, alg):
         alg.blotter.set_price("close")
         alg.blotter.update_portfolio_value()
+        alg._bar_closed = True
         self.fire_before_event(MarketClose)
         self.fire_after_event(MarketClose)
 
@@ -334,48 +419,54 @@ class SimulationEventManager(EventManager):
         data = self.wrap_data(data, DataLoaderFastGetter)
         # mock CustomAlgorithm
         alg.run_engine = lambda *args, **kwargs: (self._mocked_data, self._mocked_last)
-        if "empty_cache_after_run" in alg.__dict__:
-            for eng in alg._engines.values():
-                eng.empty_cache()
-            gc.collect()
-            torch.cuda.empty_cache()
+        try:
+            if "empty_cache_after_run" in alg.__dict__:
+                for eng in alg._engines.values():
+                    eng.empty_cache()
+                gc.collect()
+                torch.cuda.empty_cache()
 
-        # infer freq
-        delta = min(ticks[1:] - ticks[:-1])
-        data_freq = delta.resolution_string
+            # infer freq
+            delta = min(ticks[1:] - ticks[:-1])
+            data_freq = delta.resolution_string
 
-        # for portfolio recoding cash history
-        alg.blotter.portfolio.set_datetime(ticks[0] - pd.DateOffset(days=1))
+            # for portfolio recoding cash history
+            alg.blotter.portfolio.set_datetime(ticks[0] - pd.DateOffset(days=1))
 
-        # loop factor data
-        last_day = None
-        for dt in tqdm(ticks):
-            if self._stop:
-                break
-            # prepare data
-            self.mock_data(data, dt)
+            # loop factor data
+            last_day = None
+            for dt in tqdm(ticks):
+                if self._stop:
+                    break
 
-            # if date changed
-            if dt.day != last_day and last_day is not None:
-                self.fire_market_close(alg)
-            alg.set_datetime(dt)
+                # if date changed
+                day = dt.normalize()
+                if day != last_day and last_day is not None:
+                    self.fire_market_close(alg)
 
-            # fire daily data event
-            if data_freq == "D":
-                self.fire_event(self, EveryBarData)
+                # prepare data
+                self.mock_data(data, dt)
+                alg.set_datetime(dt)
+                alg._bar_closed = False
 
-            # fire open event
-            if dt.day != last_day:
-                self.fire_market_open(alg)
-                last_day = dt.day
+                # fire daily data event
+                if data_freq == "D":
+                    self.fire_event(self, EveryBarData)
 
-            # fire intraday data event
-            if data_freq != "D":
-                alg.blotter.set_price("close")
-                self.fire_event(self, EveryBarData)
+                # fire open event
+                if day != last_day:
+                    self.fire_market_open(alg)
+                    last_day = day
 
-        self.fire_market_close(alg)
-        alg.run_engine = run_engine
+                # fire intraday data event
+                if data_freq != "D":
+                    alg.blotter.set_price("close")
+                    alg._bar_closed = True
+                    self.fire_event(self, EveryBarData)
+
+            self.fire_market_close(alg)
+        finally:
+            alg.run_engine = run_engine
 
     def run(self, start, end, delay_factor=True):
         start, end = pd.to_datetime(start, utc=True), pd.to_datetime(end, utc=True)
@@ -383,6 +474,7 @@ class SimulationEventManager(EventManager):
         if not self._subscribers:
             raise ValueError("At least one subscriber.")
 
+        self._stop = False
         for r, events in self._subscribers.items():
             # clear scheduled events
             events.clear()

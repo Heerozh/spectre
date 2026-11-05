@@ -20,6 +20,8 @@ class Position:
     ):
         self._shares = shares
         self._average_price = fill_price + commission / shares
+        self._cost_basis = self._average_price
+        self._return_basis = self._average_price
         self._last_price = fill_price
         self._realized = 0
         self._open_dt = dt
@@ -51,6 +53,23 @@ class Position:
         return self._average_price
 
     @property
+    def cost_basis(self):
+        """
+        Average cost of the shares still held. `average_price` is the break-even price instead:
+        it absorbs the proceeds of every sale, so it can reach zero or go negative.
+        """
+        return self._cost_basis
+
+    @property
+    def return_basis(self):
+        """
+        `cost_basis` for comparing with a price that a stop tracks. A dividend takes the same
+        proportion off both, so a total return of 0 stays a PnL% of 0 over an ex-date, where
+        `cost_basis` loses what was paid. It is not for accounting.
+        """
+        return self._return_basis
+
+    @property
     def last_price(self):
         return self._last_price
 
@@ -66,11 +85,11 @@ class Position:
 
     @property
     def unrealized(self):
-        return (self._last_price - self._average_price) * self._shares
+        return (self._last_price - self._cost_basis) * self._shares
 
     @property
     def unrealized_percent(self):
-        return (self._last_price / self._average_price - 1) * sign(self._shares)
+        return (self._last_price / self._cost_basis - 1) * sign(self._shares)
 
     def update(self, amount: int, fill_price: float, commission: float, dt) -> tuple[bool, float]:
         """
@@ -78,7 +97,6 @@ class Position:
         return (True, realized) when position is empty.
         """
         before_shares = self._shares
-        before_avg_px = self._average_price
         after_shares = before_shares + amount
 
         # If the position is reversed, it will be filled in 2 steps
@@ -88,39 +106,54 @@ class Position:
             per_comm = commission / amount
             # close position
             _, realized = self.update(fill_1, fill_price, per_comm * fill_1, dt)
-            # open a new position
+            # open a new position, which keeps what the closed side realized
+            total_realized = self._realized
             self.__init__(fill_2, fill_price, per_comm * fill_2, dt, stop_model=self.stop_model)
+            self._realized = total_realized
             return False, realized
         else:
             cum_cost = self._average_price * before_shares + amount * fill_price + commission
             self._shares = after_shares
             if after_shares == 0:
                 self._average_price = 0
-                realized = -cum_cost - self._realized
-                self._realized = -cum_cost
+                realized = (self._cost_basis - fill_price) * amount - commission
+                self._realized += realized
                 self.last_price = fill_price
                 return True, realized
             else:
                 self._average_price = cum_cost / after_shares
-                if after_shares < before_shares:
-                    realized = (before_avg_px - self._average_price) * abs(after_shares)
+                if abs(after_shares) < abs(before_shares):
+                    realized = (self._cost_basis - fill_price) * amount - commission
                 else:
                     realized = 0
+                    cost = self._cost_basis * before_shares + amount * fill_price + commission
+                    self._cost_basis = cost / after_shares
+                    cost = self._return_basis * before_shares + amount * fill_price + commission
+                    self._return_basis = cost / after_shares
                 self._realized += realized
                 self.last_price = fill_price
                 return False, realized
 
     def process_split(self, inverse_ratio: float, last_price: float) -> float:
+        """
+        Keeps the whole shares, and returns the cash for the fraction of a share left over, at the
+        price after the split.
+        """
         if inverse_ratio != inverse_ratio or inverse_ratio == 1:
             return 0
+        if not last_price > 0:  # no price on this bar, the check is true for NaN too
+            last_price = self._last_price
         sp = self._shares * inverse_ratio
-        cash = 0
-        if inverse_ratio < 1:  # reverse split remaining to cash
-            remaining = int(self._shares - int(sp) / inverse_ratio)  # for more precise
-            if remaining != 0:
-                cash = remaining * last_price
-        self._shares = int(round(sp, 5))
+        # rounding removes float noise: 49 * (1 / 49) is 0.9999999999999999, which is 1 share
+        rounded = round(sp, 5)
+        self._shares = int(rounded)
+        # only the unrounded product keeps the value: 64.66667 shares of 970 / 15 would pay too much
+        fraction = sp - self._shares if rounded != self._shares else 0
+        cash = fraction * last_price / inverse_ratio
+        self._realized += (last_price - self._cost_basis) * fraction / inverse_ratio
         self._average_price = self._average_price / inverse_ratio
+        self._cost_basis = self._cost_basis / inverse_ratio
+        self._return_basis = self._return_basis / inverse_ratio
         if self.stop_tracker:
             # adjust the tracked prices first, then update it with the adjusted last price
             self.stop_tracker.process_split(inverse_ratio)
@@ -128,10 +161,20 @@ class Position:
         return cash
 
     def process_dividend(self, amount: float, tax: float) -> float:
-        if amount != amount or amount == 0:
+        """`amount` is net of `tax`. A short pays both, the tax only comes off what a long gets."""
+        gross = amount + tax
+        if gross != gross or gross == 0:
             return 0
+        if self._shares < 0:
+            amount = gross
         self._average_price -= amount
-        self.last_price -= amount + tax
+        self._cost_basis -= amount
+        if self._last_price != 0:  # without a price there is no proportion
+            self._return_basis *= 1 - gross / self._last_price
+        if self.stop_tracker:
+            # adjust the tracked prices first, then update it with the adjusted last price
+            self.stop_tracker.process_dividend(gross)
+        self.last_price -= gross
         cash = self._shares * amount
         return cash
 

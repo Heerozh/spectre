@@ -8,6 +8,7 @@ from .algorithmic import (
     masked_first,
     masked_kth_value_1d,
     masked_last,
+    nanaverage,
     nanlast,
     nanmax,
     nanmean,

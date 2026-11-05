@@ -5,6 +5,7 @@
 @email: heeroz@gmail.com
 """
 
+import itertools
 import math
 
 import numpy as np
@@ -13,16 +14,21 @@ import torch
 from ..config import Global
 from ..parallel import (
     DeviceConstant,
+    Rolling,
     covariance,
     linear_regression_1d,
+    nanmax,
     nanmean,
+    nanmin,
     nanstd,
     nanvar,
     pearsonr,
     quantile,
+    rankdata,
     unmasked_mean,
     unmasked_sum,
 )
+from .basic import MA
 from .engine import OHLCV
 from .factor import CrossSectionFactor, CustomFactor
 
@@ -97,16 +103,28 @@ class RollingMomentum(CustomFactor):
 
     def compute(self, prices):
         def polynomial_reg(_y):
-            x = DeviceConstant.get(_y.device).arange(_y.shape[2], dtype=_y.dtype)
+            x = DeviceConstant.get(_y.device).arange(_y.shape[-1], dtype=_y.dtype)
             ones = torch.ones(x.shape[0], device=_y.device, dtype=_y.dtype)
             x = torch.stack([ones, x, x**2]).T
-            x = x.expand(_y.shape[0], _y.shape[1], x.shape[0], x.shape[1])
+            x = x.expand(*_y.shape, x.shape[1])
 
-            xt = x.transpose(-2, -1)
-            ret = (xt @ x).inverse() @ xt @ _y.unsqueeze(-1)
-            return ret.squeeze(-1)
+            # a missing bar has no row in the regression
+            nans = torch.isnan(_y)
+            xt = x.transpose(-2, -1).masked_fill(nans.unsqueeze(-2), 0)
+            inverse, info = torch.linalg.inv_ex(xt @ x)
+            ret = inverse @ xt @ _y.masked_fill(nans, 0).unsqueeze(-1)
+            singular = (info != 0) | ((~nans).sum(dim=-1) < 3)
+            return ret.squeeze(-1).masked_fill(singular.unsqueeze(-1), np.nan)
 
-        return prices.agg(polynomial_reg)
+        def valid_bars_reg(_y):
+            ret = polynomial_reg(_y)
+            partial = torch.isnan(_y).any(dim=2)
+            if _y.dtype != torch.float64 and partial.any():
+                # a few bars far from x=0 give a matrix that float32 can't invert
+                ret[partial] = polynomial_reg(_y[partial].double()).to(ret.dtype)
+            return ret
+
+        return prices.agg(valid_bars_reg)
 
     @property
     def gain(self):
@@ -134,20 +152,56 @@ class RollingQuantile(CustomFactor):
         return data.agg(_quantile)
 
 
+class _OwnBarScale(CustomFactor):
+    """
+    A price in the scale of its own bar, made from the window [t-1, t] of `data`, which Rolling
+    has adjusted to the scale of bar t. With the multipliers of `data`, a Rolling over this factor
+    adjusts its windows in the same way.
+    """
+
+    win = 2
+
+    @property
+    def adjustments(self):
+        return self.inputs[0].adjustments
+
+
+class _LagSpread(_OwnBarScale):
+    """`data` of the previous bar minus `mean`, which has to be in the scale of its own bar."""
+
+    def compute(self, data, mean):
+        # A number has no scale to adjust it by, and only moves the intercept of the regression.
+        return data.first() - (mean.last() if isinstance(mean, Rolling) else 0)
+
+
+class _BarDiff(_OwnBarScale):
+    def compute(self, data):
+        return data.last() - data.first()
+
+
 class HalfLifeMeanReversion(CustomFactor):
+    """
+    Half-life of `data` reverting to `mean`, from a regression on the last `win` bars.
+
+    `mean` must be a price in the scale of its own bar, such as MA(win, inputs=[close]). It can
+    also be a number, but that has no effect: a level that doesn't move is only the intercept of
+    the regression, so any number gives the same result.
+    """
+
     _min_win = 2
 
     def __init__(self, win, data, mean, mask=None):
-        lag = data.shift(1) - mean
-        diff = data - data.shift(1)
-        lag.set_mask(mask)
-        diff.set_mask(mask)
+        lag = _LagSpread(inputs=[data, mean])
+        diff = _BarDiff(inputs=[data])
         super().__init__(win=win, inputs=[lag, diff, math.log(2)])
+        # not on `lag` and `diff`, that would also hide the previous bar of their windows
+        self.set_mask(mask)
 
     def compute(self, lag, diff, ln2):
         def calc_h(_x, _y):
             _lambda, _ = linear_regression_1d(_x, _y, dim=2)
-            return -ln2 / _lambda
+            # a slope of 0 is no reversion at all, there is nothing to take a half-life of
+            return (-ln2 / _lambda).masked_fill(_lambda == 0, np.nan)
 
         return lag.agg(calc_h, diff)
 
@@ -178,19 +232,13 @@ class XSMaxCorrCoef(CrossSectionFactor):
     """
 
     def compute(self, *xs):
-        x = torch.stack(xs, dim=1)
-        x_bar = nanmean(x, dim=2).unsqueeze(-1)
-        demean = x - x_bar
-        demean.masked_fill_(torch.isnan(demean), 0)
-        cov = demean @ demean.transpose(-2, -1)
-        cov = cov / (x.shape[-1] - 1)
-        diag = cov[:, range(len(xs)), range(len(xs)), None]
-        std = diag**0.5
-        corr = cov / std / std.transpose(-2, -1)
-        # set auto corr to zero
-        corr[:, range(len(xs)), range(len(xs))] = 0
-        max_corr = corr.max(dim=2).values.unsqueeze(-2)
-        return max_corr.expand(x.shape[0], x.shape[2], x.shape[1])
+        dates, assets = xs[0].shape
+        # the diagonal stays NaN, a factor is not one of the others
+        corr = xs[0].new_full((dates, len(xs), len(xs)), np.nan)
+        for i, j in itertools.combinations(range(len(xs)), 2):
+            corr[:, i, j] = corr[:, j, i] = pearsonr(xs[i], xs[j], dim=1, ddof=1)
+        max_corr = nanmax(corr, dim=2).unsqueeze(-2)
+        return max_corr.expand(dates, assets, len(xs))
 
 
 class InformationCoefficient(CrossSectionFactor):
@@ -205,14 +253,17 @@ class InformationCoefficient(CrossSectionFactor):
         if weight is None:
             ic = pearsonr(x, y, dim=1, ddof=1)
         else:
-            xy = x * y
-            mask = torch.isnan(x * y)
+            mask = torch.isnan(x * y) | torch.isnan(weight)
             w = weight / unmasked_sum(weight, mask=mask, dim=1).unsqueeze(-1)
-            x_bar = unmasked_sum(w * x, mask=mask, dim=1)
-            y_bar = unmasked_sum(w * y, mask=mask, dim=1)
-            cov_xy = unmasked_sum(w * xy, mask=mask, dim=1) - x_bar * y_bar
-            var_x = unmasked_sum(w * x**2, mask=mask, dim=1) - x_bar**2
-            var_y = unmasked_sum(w * y**2, mask=mask, dim=1) - y_bar**2
+            # From its lowest value a constant is exactly 0. The means come out of the samples and
+            # not out of the moments, on a high level those would cancel most digits of a spread.
+            x = x - x.masked_fill(mask, np.inf).amin(dim=1, keepdim=True)
+            y = y - y.masked_fill(mask, np.inf).amin(dim=1, keepdim=True)
+            x = x - unmasked_sum(w * x, mask=mask, dim=1).unsqueeze(-1)
+            y = y - unmasked_sum(w * y, mask=mask, dim=1).unsqueeze(-1)
+            cov_xy = unmasked_sum(w * x * y, mask=mask, dim=1)
+            var_x = unmasked_sum(w * x**2, mask=mask, dim=1)
+            var_y = unmasked_sum(w * y**2, mask=mask, dim=1)
             ic = cov_xy / (var_x * var_y) ** 0.5
         return ic.unsqueeze(-1).expand(ic.shape[0], y.shape[1])
 
@@ -224,6 +275,9 @@ class InformationCoefficient(CrossSectionFactor):
             def __init__(self, win_, inputs):
                 super().__init__(1, inputs)
                 self.rolling_win = win_
+
+            def get_total_backwards_(self) -> int:
+                return super().get_total_backwards_() + self.rolling_win - 1
 
             def compute(self, ic):
                 x = ic[:, 0]
@@ -246,17 +300,20 @@ class RollingInformationCoefficient(RollingCorrelation):
     def to_ir(self, win):
         std = StandardDeviation(win=win, inputs=(self,))
         std.ddof = 1
-        mean = self.sum(win) / win
+        mean = MA(win=win, inputs=(self,))
 
         return mean / std
 
 
 class RankWeightedInformationCoefficient(InformationCoefficient):
     def __init__(self, x, y, half_life, mask=None):
-        alpha = np.exp(np.log(0.5) / half_life)
-        y_rank = y.rank(ascending=False, mask=mask) - 1
-        weight = alpha**y_rank
-        super().__init__(x, y, mask=mask, weight=weight)
+        super().__init__(x, y, mask=mask)
+        self.alpha = np.exp(np.log(0.5) / half_life)
+
+    def compute(self, x, y, weight):
+        rank = rankdata(y.masked_fill(torch.isnan(x), np.nan), ascending=False)
+        # ranks are float32, and pow rounds them differently on cpu and cuda
+        return super().compute(x, y, self.alpha ** (rank - 1).to(y.dtype))
 
 
 class TTest1Samp(CustomFactor):
@@ -264,41 +321,70 @@ class TTest1Samp(CustomFactor):
 
     def compute(self, a, pop_mean):
         def _ttest(_x):
-            d = nanmean(_x, dim=2) - pop_mean
-            v = nanvar(_x, dim=2, ddof=1)
-            denom = torch.sqrt(v / self._min_win)
+            # from the lowest value, so rounding doesn't give equal values a spread
+            lowest = nanmin(_x, dim=2)
+            samples = _x - lowest.unsqueeze(-1)
+            d = nanmean(samples, dim=2) + (lowest - pop_mean)
+            v = nanvar(samples, dim=2, ddof=1)
+            n = (~torch.isnan(_x)).sum(dim=2)
+            denom = torch.sqrt(v / n)
             t = d / denom
             return t
 
         return a.agg(_ttest)
 
 
+def _beta_fraction(a, b, x, tol):
+    """
+    Continued fraction of the regularized incomplete beta function, by the modified Lentz method.
+    It needs `x` below (a + 1) / (a + b + 2). The denominators stay positive for the `a` and `b`
+    of a t distribution, so the guards against 0 of that method are left out.
+    """
+    c = torch.ones_like(x)
+    d = 1 / (1 - (a + b) * x / (a + 1))
+    fraction = d
+    for m in range(1, 10000):
+        even = m * (b - m) * x / ((a + 2 * m - 1) * (a + 2 * m))
+        odd = -(a + m) * (a + b + m) * x / ((a + 2 * m) * (a + 2 * m + 1))
+        for term in (even, odd):
+            d = 1 / (1 + term * d)
+            c = 1 + term / c
+            step = c * d
+            fraction = fraction * step
+        if not ((step - 1).abs() > tol).any():
+            break
+    return fraction
+
+
 class StudentCDF(CrossSectionFactor):
     """
     Note!! For performance, This factor uses Cross-section mean of t-value.
+
+    `precision` works like the step of an integration grid, the error falls with its square:
+    0.001 gives a relative error of about 1e-6, and 1e-7 reaches the limit of float64.
     """
 
     DefaultPrecision = 0.001
 
     def compute(self, t, dof, precision):
-        reduced_t = nanmean(t, dim=1)
-        p = torch.zeros_like(reduced_t)
+        reduced_t = nanmean(t, dim=1).to(torch.float64)
         dof = torch.tensor(dof, dtype=torch.float64, device=t.device)
-        for i, v in enumerate(reduced_t.cpu()):
-            if np.isnan(v):
-                p[i] = torch.nan
-            elif np.isinf(v):
-                p[i] = 1
-            elif v < -9:
-                p[i] = 0
-            else:
-                x = torch.arange(-9, v, precision, device=t.device)
-                p[i] = (
-                    torch.e ** torch.lgamma((dof + 1) / 2)
-                    / (torch.sqrt(dof * torch.pi) * torch.e ** torch.lgamma(dof / 2))
-                    * (torch.trapezoid((1 + x**2 / dof) ** (-dof / 2 - 1 / 2), x))
-                )
-        return p.unsqueeze(-1).expand(t.shape)
+        half = dof.new_tensor(0.5)
+        # The lower tail is betainc(dof / 2, 1 / 2, x) / 2 with x = dof / (dof + t ** 2). Near t=0
+        # x is too high for the fraction, there use betainc(a, b, x) = 1 - betainc(b, a, 1 - x).
+        ratio = reduced_t**2 / dof
+        flip = ratio * (dof + 2) < 3
+        a = torch.where(flip, half, dof / 2)
+        b = torch.where(flip, dof / 2, half)
+        odds = torch.where(flip, ratio, 1 / ratio)
+        log_front = -a * torch.log1p(1 / odds) - b * torch.log1p(odds)
+        log_front = log_front + torch.lgamma(a + b) - torch.lgamma(a) - torch.lgamma(b)
+        # rounding keeps the steps of the fraction from getting closer to 1 than this
+        tol = max(precision**2, 1e-14)
+        beta = torch.exp(log_front) / a * _beta_fraction(a, b, odds / (1 + odds), tol)
+        tail = torch.where(flip, 1 - beta, beta) / 2
+        p = torch.where(reduced_t < 0, tail, 1 - tail)
+        return p.to(t.dtype).unsqueeze(-1).expand(t.shape)
 
 
 class CrossSectionR2(CrossSectionFactor):
@@ -313,15 +399,20 @@ class CrossSectionR2(CrossSectionFactor):
             # 按市场总回报来算r2的话，用这个。不然就是相对回报。
             ss_tot = unmasked_sum(y**2, mask, dim=1)
         else:
+            # from the lowest value, so rounding doesn't give equal values a spread
+            y = y - y.masked_fill(mask, np.inf).amin(dim=1, keepdim=True)
             y_bar = unmasked_mean(y, mask, dim=1).unsqueeze(-1)
             ss_tot = unmasked_sum((y - y_bar) ** 2, mask, dim=1)
-        r2 = -ss_err / ss_tot + 1
+        r2 = -ss_err / ss_tot.masked_fill(ss_tot == 0, np.nan) + 1
         r2[(~mask).to(Global.float_type).sum(dim=1) < 2] = np.nan
         return r2.unsqueeze(-1).expand(r2.shape[0], y.shape[1])
 
 
 class FactorWiseKthValue(CrossSectionFactor):
-    """The kth value of all factors sorted in ascending order, grouped by each datetime"""
+    """
+    The kth value of all factors sorted in ascending order, grouped by each datetime.
+    Factors with no value on a datetime are left out, it is NaN if less than k factors remain.
+    """
 
     def __init__(self, kth, inputs=None):
         super().__init__(1, inputs)
@@ -330,8 +421,9 @@ class FactorWiseKthValue(CrossSectionFactor):
     def compute(self, *data):
         mx = torch.stack([nanmean(x, dim=1) for x in data], dim=-1)
         nans = torch.isnan(mx)
-        mx.masked_fill_(nans, -np.inf)
+        mx.masked_fill_(nans, np.inf)
         ret = torch.kthvalue(mx, self.kth, dim=1, keepdim=True).values
+        ret.masked_fill_((~nans).sum(dim=1, keepdim=True) < self.kth, np.nan)
         return ret.expand(ret.shape[0], data[0].shape[1])
 
 

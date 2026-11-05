@@ -223,7 +223,7 @@ class BaseBlotter:
             raise ValueError("Long only blotter, `pct` must greater than 0.")
 
         price = self.get_price(asset)
-        if price is None:
+        if price is None or price != price:
             return False
         target = (self._portfolio.value * pct) / price
         target = int(round(target / self.order_multiplier)) * self.order_multiplier
@@ -271,6 +271,15 @@ class BaseBlotter:
         raise NotImplementedError("abstractmethod")
 
 
+def _last_of_previous_day(rows, tz):
+    """
+    `rows` are the bars of one asset. Returns, for every bar, the last valid values before the day
+    of that bar in the timezone `tz`, which on daily bars is the previous bar.
+    """
+    days = rows.index.get_level_values(0).tz_convert(tz).normalize()
+    return rows.ffill().shift(1).iloc[days.searchsorted(days)].set_axis(rows.index)
+
+
 class SimulationBlotter(BaseBlotter, EventReceiver):
     Order = namedtuple(
         "Order", ["date", "asset", "amount", "price", "fill_price", "commission", "realized"]
@@ -296,29 +305,22 @@ class SimulationBlotter(BaseBlotter, EventReceiver):
         else:
             self.daily_curb = daily_curb
 
-        df = dataloader.load(start, None, 0).copy()
-        # add previous day close price for daily curb
+        # 1 bar before `start`, the first bar has to know what came before it
+        df = dataloader.load(start, None, 1).copy()
         ohlcv = ohlcv or dataloader.ohlcv
+        # add the last known volume for slippage at the open, in the shares of the bar reading it
+        scale = 1
         if dataloader.adjustments is not None:
-            sel_cols = [ohlcv[3], dataloader.adjustments[0], dataloader.adjustments[1]]
-            lasts = (
-                df[sel_cols]
-                .groupby(level=1, group_keys=False, observed=False)
-                .apply(lambda x: x.ffill().shift(1))
-            )
-            df["__last_close"] = lasts[sel_cols[0]]
-            df["__last_div"] = lasts[sel_cols[1]]
-            df["__last_sp"] = lasts[sel_cols[2]]
-            curb_cols = ["__last_close", "__last_div", "__last_sp"]
-        else:
-            df["__last_close"] = (
-                df[ohlcv[3]]
-                .groupby(level=1, group_keys=False, observed=False)
-                .apply(lambda x: x.ffill().shift(1))
-            )
-            curb_cols = ["__last_close"]
+            scale = df[dataloader.adjustment_multipliers[1]]
+        volume = (df[ohlcv[4]] * scale).groupby(level=1, observed=False).ffill()
+        df["__last_volume"] = volume.groupby(level=1, observed=False).shift(1) / scale
         self._data = df
-        self._prices = DataLoaderFastGetter(df[list(ohlcv) + curb_cols])
+        self._curb_cols = [ohlcv[3]]
+        if dataloader.adjustments is not None:
+            self._curb_cols += list(dataloader.adjustments[:2])
+        self._previous_day = None
+        self._previous_day_tz = None
+        self._prices = DataLoaderFastGetter(df[list(ohlcv) + ["__last_volume"]])
         self._current_prices_col = None
         self._current_prices = None
         if dataloader.adjustments is not None:
@@ -337,44 +339,53 @@ class SimulationBlotter(BaseBlotter, EventReceiver):
         self.orders = defaultdict(list)
         self._portfolio.clear()
         self._portfolio.update_cash(self.capital_base, is_funds=True)
-
-    def set_datetime(self, dt: pd.Timestamp) -> None:
+        self.market_opened = False
+        self._current_dt = None
         self._current_prices_col = None
         self._current_prices = None
+
+    def _advance_to(self, dt: pd.Timestamp) -> None:
+        """Move the datetime forward, and charge the interest of the time that passed."""
+        # no price of the new datetime is known until `set_price` picks one
+        self._current_prices_col = None
+        self._current_prices = None
+        # get last datetime before portfolio datetime change
+        last_dt = self._portfolio.current_dt
+        if last_dt:
+            self._portfolio.process_borrow_interest(
+                (dt - last_dt) / pd.Timedelta(days=1),
+                self.borrow_money_interest_rate,
+                self.borrow_stock_interest_rate,
+            )
+        super().set_datetime(dt)
+
+    def set_datetime(self, dt: pd.Timestamp) -> None:
         if self._current_dt is not None:
             # make up events for skipped days for update splits and divs.
             current_date = self._current_dt.normalize()
             target_date = dt.normalize()
             if current_date != target_date:
-                for date in pd.bdate_range(current_date, target_date):
-                    if date == current_date or date == target_date:
+                dates = self._prices.indexes[0]
+                rows = slice(dates.searchsorted(self._current_dt), dates.searchsorted(target_date))
+                # `dt` is in the timezone of the market, the data is in UTC
+                bar_times = dates[rows].unique().tz_convert(dt.tz)
+                bar_dates = bar_times.normalize()
+                for date in bar_dates.unique():
+                    if date == current_date:
                         continue
 
-                    stop = date + pd.DateOffset(days=1, seconds=-1)
-                    table = self._prices.get_as_dict(date, stop)
-                    bar_times = table.get_datetime_index()
-                    if len(bar_times) == 0:
-                        continue
-
-                    open_time = bar_times[0]
-                    super().set_datetime(open_time)
+                    day_times = bar_times[bar_dates == date]
+                    open_time = day_times[0]
+                    self._advance_to(open_time)
                     self.set_price("open")
                     self.market_open(self)
 
-                    close_time = bar_times[-1]
-                    super().set_datetime(close_time)
+                    close_time = day_times[-1]
+                    self._advance_to(close_time)
                     self.set_price("close")
                     self.update_portfolio_value()
                     self.market_close(self)
-        # get last datetime before portfolio datetime change
-        last_dt = self._portfolio.current_dt
-        if last_dt:
-            self._portfolio.process_borrow_interest(
-                (dt - last_dt).days,
-                self.borrow_money_interest_rate,
-                self.borrow_stock_interest_rate,
-            )
-        super().set_datetime(dt)
+        self._advance_to(dt)
 
     def set_price(self, name: str):
         if name == "open":
@@ -382,6 +393,21 @@ class SimulationBlotter(BaseBlotter, EventReceiver):
         else:
             self._current_prices_col = 3  # ohlcv[3] = c
         self._current_prices = None
+
+    def _get_previous_day(self):
+        """
+        Close, dividend and split ratio of the day before each bar, for the daily curb. Only the
+        datetimes the blotter is given tell the timezone of the market, which decides what a day
+        is, so this is built on the first use.
+        """
+        tz = self._current_dt.tz
+        if self._previous_day is None or self._previous_day_tz != tz:
+            df = self._data[self._curb_cols]
+            grouped = df.groupby(level=1, group_keys=False, observed=False)
+            lasts = grouped.apply(_last_of_previous_day, tz).reindex(df.index)
+            self._previous_day = DataLoaderFastGetter(lasts)
+            self._previous_day_tz = tz
+        return self._previous_day
 
     def _get_current_prices(self):
         if self._current_prices_col is None:
@@ -424,7 +450,7 @@ class SimulationBlotter(BaseBlotter, EventReceiver):
 
         # get price and change
         price = self.get_price(asset)
-        if price is None:
+        if price is None or price != price:
             return False
 
         # trading curb for daily return
@@ -432,14 +458,14 @@ class SimulationBlotter(BaseBlotter, EventReceiver):
             curr_prices = self._get_current_prices()
             curr_high = self._prices.get_as_dict(curr_prices.row_slice, column_id=1)
             curr_low = self._prices.get_as_dict(curr_prices.row_slice, column_id=2)
+            previous_day = self._get_previous_day()
+            last_close = previous_day.get_as_dict(curr_prices.row_slice, column_id=0)
             if self._adjustments is None:
-                last_close = self._prices.get_as_dict(curr_prices.row_slice, column_id=-1)
                 last_div = defaultdict(float)
                 last_sp = defaultdict(lambda: 1.0)
             else:
-                last_close = self._prices.get_as_dict(curr_prices.row_slice, column_id=-3)
-                last_div = self._prices.get_as_dict(curr_prices.row_slice, column_id=-2)
-                last_sp = self._prices.get_as_dict(curr_prices.row_slice, column_id=-1)
+                last_div = previous_day.get_as_dict(curr_prices.row_slice, column_id=1)
+                last_sp = previous_day.get_as_dict(curr_prices.row_slice, column_id=2)
             # Detecting whether transactions are possible
             price, amount = self.daily_curb.calculate(
                 asset,
@@ -457,8 +483,12 @@ class SimulationBlotter(BaseBlotter, EventReceiver):
         # commission, slippage
         fill_price = price
         if not self.slippage.is_empty():
-            bar_volume = self._prices.get_as_dict(self._current_dt, column_id=4)  # ohlcv=01234
-            fill_price = self.slippage.calculate(asset, price, amount / bar_volume[asset])
+            # the volume of a bar is only known after it closed. ohlcv=01234, 5 is the last known
+            volume_col = 5 if self._current_prices_col == 0 else 4
+            volume = self._prices.get_as_dict(self._current_dt, column_id=volume_col)[asset]
+            # a volume nobody knows is treated as no volume, which is the full slippage
+            ratio = amount / volume if volume > 0 else np.copysign(np.inf, amount)
+            fill_price = self.slippage.calculate(asset, price, ratio)
         commission = self.commission.calculate(asset, fill_price, amount)
         if amount < 0:
             commission += self.short_fee.calculate(asset, fill_price, amount)
@@ -524,7 +554,9 @@ class SimulationBlotter(BaseBlotter, EventReceiver):
                     div = row[div_col] - self.div_tax.calculate(asset, row[div_col], 1)
                     tax = row[div_col] - div
                     self._portfolio.process_dividend(asset, div, tax=tax)
-                    self._portfolio.process_split(asset, 1 / row[sp_col], row[close_col])
+                    # the close is still cum-dividend, the split applies to the ex-dividend price
+                    ex_price = row[close_col] - row[div_col]
+                    self._portfolio.process_split(asset, 1 / row[sp_col], ex_price)
             except KeyError:
                 pass
 

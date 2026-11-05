@@ -6,6 +6,7 @@
 """
 
 import time
+import warnings
 
 import pandas as pd
 
@@ -51,20 +52,35 @@ class CalendarEvent(Event):
         try:
             self.calendar = evt_mgr.calendar
             self.calculate_range()
+            if self.trigger_time is None:
+                raise ValueError(
+                    f"The calendar has no {self.event_name} events left, this event can't fire."
+                )
         except AttributeError:
             pass
 
     def calculate_range(self):
-        self.trigger_time = self.calendar.events[self.event_name][0] + pd.Timedelta(
-            self.offset, unit="ns"
-        )
+        """Set `trigger_time` to the first time of the calendar that is still to come, or None."""
+        # A negative offset fires before its event has passed, so popping alone would leave it
+        # on the same event. A positive one can still need events that passed, and any event
+        # sharing the calendar pops those.
+        now = self.calendar.hr_now()
+        offset = pd.Timedelta(self.offset, unit="ns")
+        times = (dt + offset for dt in self.calendar._with_passed(self.event_name))
+        self.trigger_time = next((t for t in times if t > now), None)
 
     def should_trigger(self) -> bool:
-        if self.calendar.hr_now() >= self.trigger_time:
-            self.calendar.pop_passed(self.event_name)
-            self.calculate_range()
-            return True
-        return False
+        if self.trigger_time is None or self.calendar.hr_now() < self.trigger_time:
+            return False
+        self.calculate_range()
+        if self.trigger_time is None:
+            warnings.warn(
+                f"The calendar has no {self.event_name} events left, this event will not fire "
+                "again.",
+                RuntimeWarning,
+            )
+        self.calendar.pop_passed(self.event_name)
+        return True
 
 
 class MarketOpen(CalendarEvent):
@@ -140,6 +156,7 @@ class EventManager:
         if not self._subscribers:
             raise ValueError("At least one subscriber.")
 
+        self._stop = False
         for r, events in self._subscribers.items():
             # clear scheduled events
             events.clear()

@@ -47,12 +47,53 @@ class DataLoader:
         date_idx = self.load().index.levels[0]
         return min(date_idx[1:] - date_idx[:-1])
 
-    @classmethod
-    def _align_to(cls, df, calender_asset, align_by_time=False):
-        """helper method for align index"""
+    @staticmethod
+    def _attach_events(events: pd.Series, bars: pd.MultiIndex, how: str) -> pd.Series:
+        """
+        Reindex `events`, indexed by (asset, ex-date), to `bars`, indexed by (date, asset) in the
+        same timezone. An ex-date has no bar on a halt, or when the bars are intraday and the
+        ex-dates are days, so an event goes to the first bar of its asset on or after the ex-date,
+        moving it to an earlier bar would be look-ahead. Events sharing a bar are merged by `how`,
+        a name of a groupby aggregation. An event after the last bar of its asset is dropped, no
+        bars are after it.
+        """
+        dates = bars.get_level_values(0)
+        left = pd.DataFrame(
+            {
+                "asset": events.index.get_level_values(0),
+                "ex_date": events.index.get_level_values(1).as_unit(dates.unit),
+                "value": events.to_numpy(),
+            }
+        )
+        left = left.dropna(subset="ex_date").sort_values("ex_date")
+        right = pd.DataFrame({"asset": bars.get_level_values(1), "date": dates})
+        attached = pd.merge_asof(
+            left,
+            right.sort_values("date"),
+            left_on="ex_date",
+            right_on="date",
+            by="asset",
+            direction="forward",
+        )
+        return attached.groupby(["date", "asset"])["value"].agg(how).reindex(bars)
+
+    def _align_to(self, df, calender_asset, align_by_time=False):
+        """
+        helper method for align index. A dividend or a split on a row dropped by the calendar still
+        happened, so it goes to the next kept bar of its asset.
+        """
         index = df.loc[(slice(None), calender_asset), :].index.get_level_values(0)
-        df = df[df.index.get_level_values(0).isin(index)]
+        kept = df.index.get_level_values(0).isin(index)
+        dropped, df = df[~kept], df[kept]
         df.index = df.index.remove_unused_levels()
+        if self.adjustments is not None:
+            div_col, spr_col = self.adjustments
+            if div_col in df:
+                moved = self._attach_events(dropped[div_col].swaplevel(), df.index, "sum")
+                df[div_col] = df[div_col].add(moved, fill_value=0)
+            if spr_col in df:
+                moved = self._attach_events(dropped[spr_col].swaplevel(), df.index, "prod")
+                df[spr_col] = df[spr_col].mul(moved, fill_value=1)
         if align_by_time:
             df = df.reindex(pd.MultiIndex.from_product(df.index.levels))
             # df = df.unstack(level=1).stack(dropna=False) 这个速度快，但新版本取消掉了
@@ -123,10 +164,15 @@ class DataLoader:
             df[spr_col] = sp_rto
 
             # generate dividend multipliers
-            price_multi = (1 - ex_div / df[close_col]) * sp_rto
+            vol_multi = (1 / sp_rto)[::-1].groupby(level=1, observed=False).cumprod()[::-1]
+            # A dividend is divided by the last close before its ex-date. That close can be some
+            # bars back, so bring it to the scale of the ex-date, there may be a split in between.
+            split_adjusted = df[close_col].where(df[close_col] > 0) / vol_multi
+            last_close = split_adjusted.groupby(level=1, observed=False).ffill() * vol_multi
+            # no last close means no earlier price to adjust
+            price_multi = (1 - ex_div / last_close).fillna(1) * sp_rto
             price_multi = price_multi[::-1].groupby(level=1, observed=False).cumprod()[::-1]
             df[price_multi_col] = price_multi.astype(np.float32)
-            vol_multi = (1 / sp_rto)[::-1].groupby(level=1, observed=False).cumprod()[::-1]
             df[vol_multi_col] = vol_multi.astype(np.float32)
 
         return df
@@ -173,6 +219,10 @@ class DataLoader:
             assert not any(df[self.adjustments[1]].isna()), (
                 "There is nan value in split_ratio column, should be filled with 1."
             )
+            assert not df[self.adjustment_multipliers].isna().any(axis=None), (
+                "There is nan value in adjustment multipliers columns, the prices before it would "
+                "lose the dividends and splits after it."
+            )
             assert not any(df[self.time_category].isna()), (
                 "There is nan value in time_category column, should be filled with time id."
             )
@@ -181,6 +231,13 @@ class DataLoader:
     def load(
         self, start: pd.Timestamp | None = None, end: pd.Timestamp | None = None, backwards: int = 0
     ) -> pd.DataFrame:
+        """
+        Rows from `start` to `end`, and the `backwards` bars of each asset before `start`. A window
+        counts the bars of its asset, so an asset with gaps reaches back further than the dates.
+        Only that asset has rows on those older dates, so what reads across a date in the engine
+        counts them as missing, see `FactorEngine.incomplete_rows_`.
+        An asset without a row in the last `backwards` dates or in the range is left out.
+        """
         df = self._load()
 
         index = df.index.levels[0]
@@ -206,7 +263,24 @@ class DataLoader:
         assert end_loc >= start_loc, "There is no data between `start` and `end`."
 
         backward_start = index[backward_loc]
-        return df.loc[backward_start:end]
+        rows = df.loc[backward_start:end]
+        if backwards == 0 or backward_loc == 0:
+            return rows
+
+        dates, assets = df.index.codes
+        first_row, start_row = dates.searchsorted(backward_loc), dates.searchsorted(start_loc)
+        end_row = first_row + len(rows)
+        asset_count = len(df.index.levels[1])
+        in_rows = np.bincount(assets[first_row:end_row], minlength=asset_count) > 0
+        bars = np.bincount(assets[first_row:start_row], minlength=asset_count)
+        missing = np.where(in_rows, backwards - bars, 0)
+        older = np.flatnonzero(missing[assets[:first_row]] > 0)
+        if len(older) == 0:
+            return rows
+        older_assets = assets[older]
+        from_last = pd.Series(older_assets).groupby(older_assets).cumcount(ascending=False)
+        older = older[from_last.to_numpy() < missing[older_assets]]
+        return df.iloc[np.concatenate((older, np.arange(first_row, end_row)))]
 
 
 class DataLoaderFastGetter:

@@ -9,6 +9,8 @@ import math
 import sys
 from itertools import cycle
 
+import pandas as pd
+
 DEFAULT_COLORS = [
     "rgb(99, 110, 250)",
     "rgb(239, 85, 59)",
@@ -19,10 +21,27 @@ DEFAULT_COLORS = [
 ]
 
 
-def plot_quantile_and_cumulative_returns(factor_data, mean_ret):
+def _period_bins(rows, dates, period):
+    """
+    The bin of each of `rows` on the line of `period`, a line compounds one return per bin.
+    full_run labels a period as its number of bars of the data times the bar size, which is the
+    smallest gap in `dates`. Bins start at the first row, `dates` can start earlier.
+    """
+    bars = 1
+    if len(dates) > 1:
+        # up, the rows alone can be further apart than a period
+        bars = math.ceil(pd.Timedelta(period) / (dates[1:] - dates[:-1]).min())
+    position = dates.get_indexer(rows)
+    return pd.Index((position - position[0]) // bars)
+
+
+def plot_quantile_and_cumulative_returns(factor_data, mean_ret, dates=None):
     """
     Plotly Installation:
     https://github.com/plotly/plotly.py#jupyterlab-support-python-35
+
+    :param dates: All bars of the data, a filter leaves some of them out of `factor_data`.
+                  If None, the dates of `factor_data`, which are all bars without a filter.
     """
     quantiles = mean_ret.index
 
@@ -34,7 +53,7 @@ def plot_quantile_and_cumulative_returns(factor_data, mean_ret):
     x = quantiles
     factors = mean_ret.columns.levels[0]
     periods = list(mean_ret.columns.levels[1])
-    periods.sort(key=lambda cn: int(cn[:-1]))
+    periods.sort(key=pd.Timedelta)
     rows = math.ceil(len(factors))
 
     colors = dict(zip(periods + ["to"], cycle(DEFAULT_COLORS)))
@@ -82,6 +101,7 @@ def plot_quantile_and_cumulative_returns(factor_data, mean_ret):
         weight_col = (factor, "factor_weight")
         weighted = factor_data["Returns"].multiply(factor_data[weight_col], axis=0)
         factor_return = weighted.groupby(level="date").sum()
+        bars = factor_return.index if dates is None else dates
         for j, period in enumerate(periods):
             y = mean_ret.loc[:, (factor, period, "mean")]
             err_y = mean_ret.loc[:, (factor, period, "sem")]
@@ -98,20 +118,16 @@ def plot_quantile_and_cumulative_returns(factor_data, mean_ret):
             )
             quantile_styles[period]["showlegend"] = False
 
-            open_period = period
-            if period.endswith("D"):
-                open_period = "b" + open_period
-            try:
-                cum_ret = factor_return[period].resample(open_period).mean().dropna()
-            except ValueError:
-                print(
-                    "pandas re-sampling failed, try set `engine.timezone = 'your local timezone'`"
-                )
-                cum_ret = factor_return[period].resample(period).mean().dropna()
+            returns = factor_return[period]
+            bins = _period_bins(returns.index, bars, period)
+            cum_ret = returns.groupby(bins).mean()
             cum_ret = (cum_ret + 1).cumprod() * 100 - 100
             fig.add_trace(
                 go.Scatter(
-                    x=cum_ret.index, y=cum_ret.values, yaxis="y2", **cumulative_styles[period]
+                    x=returns.index[~bins.duplicated()],
+                    y=cum_ret.values,
+                    yaxis="y2",
+                    **cumulative_styles[period],
                 ),
                 row=row,
                 col=2,

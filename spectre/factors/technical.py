@@ -10,10 +10,10 @@ from collections.abc import Sequence
 import numpy as np
 import torch
 
-from ..parallel import nanmean
+from ..parallel import nanmean, pad_2d
 from .basic import EMA, MA
 from .engine import OHLCV
-from .factor import BaseFactor, CustomFactor
+from .factor import BaseFactor, CustomFactor, RollingZScoreFactor
 from .statistical import STDDEV
 
 
@@ -48,12 +48,26 @@ class BollingerBands(CustomFactor):
         return torch.cat([up.unsqueeze(-1), ma.unsqueeze(-1), down.unsqueeze(-1)], dim=-1)
 
     def normalized(self):
-        return NormalizedBollingerBands(self.win, self.inputs)
+        closes, ma, _, k = self.inputs
+        return RollingZScoreFactor(ma.win, inputs=[closes]) / k
 
 
-class NormalizedBollingerBands(CustomFactor):
-    def compute(self, closes, ma, std, k):
-        return (closes - ma) / (k * std)
+class _MACDLine(CustomFactor):
+    """EMA(fast) - EMA(slow). It is a price, so a rolling window over it needs adjusting."""
+
+    def __init__(self, fast, slow, inputs, adjust):
+        super().__init__(inputs=[EMA(span, inputs, adjust) for span in (fast, slow)])
+        self.price = inputs[0]
+
+    @property
+    def adjustments(self):
+        multi = self.price.adjustments
+        # The rows added by engine.align_by_time have no multiplier, but EMA keeps its value on
+        # them, in the scale of the bar before them.
+        return None if multi is None else pad_2d(multi)
+
+    def compute(self, fast, slow):
+        return fast - slow
 
 
 class MovingAverageConvergenceDivergenceSignal(EMA):
@@ -71,7 +85,7 @@ class MovingAverageConvergenceDivergenceSignal(EMA):
         self, fast=12, slow=26, sign=9, inputs: Sequence[BaseFactor] | None = None, adjust=False
     ):
         super().__init__(sign, inputs, adjust)
-        self.inputs = (EMA(inputs=self.inputs, span=fast) - EMA(inputs=self.inputs, span=slow),)
+        self.inputs = (_MACDLine(fast, slow, self.inputs, adjust),)
 
     def normalized(self):
         # In order not to double the calculation, reuse `inputs` factor here
@@ -86,6 +100,11 @@ class TrueRange(CustomFactor):
     inputs = (OHLCV.high, OHLCV.low, OHLCV.close)
     win = 2
     _min_win = 2
+
+    @property
+    def adjustments(self):
+        # it is a price in the scale of its own bar, so a rolling window over it needs adjusting
+        return self.inputs[2].adjustments
 
     def compute(self, highs, lows, closes):
         high_to_low = highs.last() - lows.last()

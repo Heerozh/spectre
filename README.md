@@ -126,7 +126,7 @@ universe = factors.AverageDollarVolume(win=120).top(100)
 
 # Barra MOMENTUM
 ema126 = factors.EMA(half_life=126, inputs=[excess_logret])
-rstr = ema126.shift(11).sum(252)
+rstr = ema126.shift(11).ts_sum(252)
 MOMENTUM = rstr
 
 # Barra Volatility
@@ -198,7 +198,7 @@ class MyAlg(trading.CustomAlgorithm):
 
         # Barra MOMENTUM Risk Factor
         ema126 = factors.EMA(half_life=126, inputs=[excess_logret])
-        rstr = ema126.shift(11).sum(252)
+        rstr = ema126.shift(11).ts_sum(252)
         MOMENTUM = rstr.zscore(mask=universe)
 
         # Barra Volatility Risk Factor
@@ -285,9 +285,13 @@ pf.create_full_tear_sheet(
   `close / close.shift(1)` compares raw prices and drops on a split day, without any error. Use
   `Returns(win=n + 1)` for the return of n bars.
 * Factors that uses the close data will be delayed by 1 bar.
-* spectre's `EMA` uses the algorithm same as `zipline` and `Dataframe.ewm(span=...)`, when `span` is
-  greater than 100, it will be slightly different from common EMA.
+* spectre's `EMA` matches `Dataframe.ewm(span=...)`, also on missing bars: a NaN keeps the average,
+  and a window with no valid bar is NaN. The window is finite, `int(4.5 * (span + 1))` bars, which
+  leaves a small error at any `span`. With `adjust=False` at `span=3` or `half_life=1`, spectre
+  follows the formula in the pandas documentation on the bar after a missing bar, pandas has a
+  special case there, and differs by about 0.4%.
 * spectre's `RSI` uses the algorithm same as `zipline`, for consistency in benchmarks.
+* A window that isn't full is computed on its valid bars. A window with no valid bar is NaN.
 
 
 ## Factors
@@ -318,6 +322,7 @@ RollingLow = MIN(win=5, inputs=[OHLCV.close])
 ```python
 # Standardization
 new_factor = factor.rank(mask=filter)
+# demean each date, or each group of each date if `groupby` is a column or a dict
 new_factor = factor.demean(mask=filter, groupby: 'dict or column_name'=None)
 new_factor = factor.zscore(mask=filter)
 new_factor = factor.to_weight(mask=filter, demean=True)  # return a weight that sum(abs(weight)) = 1
@@ -325,13 +330,13 @@ new_factor = factor.to_weight(mask=filter, demean=True)  # return a weight that 
 # Quick computation
 new_factor = factor1 + factor1
 new_factor = factor.abs()
-new_factor = factor.sum()
+new_factor = factor.ts_sum(win=5)  # NaN if the window has no valid bar, same for ts_prod, xs_sum
 
 # To filter (Comparison operator):
 new_filter = (factor1 < factor2) | (factor1 > 0)
 new_filter[n_features] = factor.one_hot()  # one-hot encoding
-new_filter = factor.any(win=5)
-new_filter = factor.all(win=5)
+new_filter = factor.ts_any(win=5)
+new_filter = factor.ts_all(win=5)
 # Rank filter
 new_filter = factor.top(n)
 new_filter = factor.bottom(n)
@@ -351,6 +356,10 @@ new_factor = factor.fill_na(0)
 new_factor = factor.fill_na(ffill=True)  # propagate last valid observation forward to next valid
 
 ```
+
+In arithmetic and in the helpers that calculate with numbers, a filter counts as 0 and 1, and a
+missing row stays NaN. So `filter1 + filter2` is a float sum, not a filter: combine filters with
+`&` and `|`.
 
 
 ## Dataloader
@@ -376,12 +385,18 @@ Reading csv is very slow, so you also need to use [ArrowLoader](#arrowloader).
 **dividends_path:** Dividends csv folder, structured as one csv per asset.
     For duplicate data, loader will first drop the exact same rows, and then for the same
     `dividends_index` but different 'dividend amount(`adjustments[0]`)' rows, loader will sum them up.
+    A dividend goes to the first bar of the asset on or after `dividends_index`, and the ones sharing
+    a bar are summed up. A `dividends_index` without timezone is a local date of that asset, read in
+    the UTC offset of its prices around that date.
     If `dividends_path` not set, the `adjustments[0]` column is considered to be included
     in the prices csv.\
 **dividends_index:** `index_col`for csv in `dividends_path`.\
 **splits_path:** Splits csv folder, structured as one csv per asset.
     When encountering duplicate datetime in `splits_index`, Loader will use the last
     non-NaN 'split ratio', drop others.
+    A split goes to the first bar of the asset on or after `splits_index`, and the ones sharing a
+    bar are multiplied. A `splits_index` without timezone is a local date of that asset, read in the
+    UTC offset of its prices around that date.
     If `splits_path` not set, the `adjustments[1]` column is considered to be included
     in the prices csv.\
 **splits_index:** `index_col`for csv in `splits_path`.\
@@ -396,7 +411,8 @@ Reading csv is very slow, so you also need to use [ArrowLoader](#arrowloader).
    for all assets, if some assets have no data at that time, NaNs will be filled. The benefit is
    that the columns of data matrix in `CustomFactor.compute` will also be aligned.\
 **\*\*read_csv:** Parameters for all csv when calling `pd.read_csv`.
- `parse_dates` or `date_parser` is required.
+ `parse_dates` is required. A file with several UTC offsets, from a change of the daylight saving
+ time, is converted to UTC.
 
 Example for load IEX CSV files:
 
@@ -614,12 +630,15 @@ Switch to CPU mode.
 `df = engine.run(start_time, end_time, delay_factor=True)`
 
 Run the engine to calculate the factor data, return a DataFrame. The column is each added factor.
+If `end_time` is None, it runs up to the last bar of the data.
 
 #### *Auto Delay
 By default, `delay_factor` is True, it means enable auto-delay. If 'high, low, close, volume' data
-is used by a terminal factor (including its upstream), that factor will be delayed by `shift(1)`
-in the last step, because in theory you can't trade on this factor before it generated. Others
-will not be delayed, in order to provide the latest data as much as possible.
+is used by a terminal factor (including its upstream and its masks, also `mask='universe'`), that
+factor will be delayed by `shift(1)` in the last step, because in theory you can't trade on this
+factor before it generated. The filter is delayed the same way. Others will not be delayed, in
+order to provide the latest data as much as possible. If anything is delayed, the first bar is
+dropped.
 
 Set to `False` to force engine not delay any factors.
 
@@ -675,6 +694,20 @@ _ = engine.plot_chart(
     quantiles=5, filter_zscore=20, demean=True, preview=True)`
 
 Not only run the engine, but also run factor analysis.
+
+`trade_at` is the price of the forward returns. All columns of a row are about one decision: the
+universe of that row, the factor, and the return from the entry that decision allows. If the factors
+and the filter are delayed, a row knows the close of the bar before it, and enters at the open or
+the close of its own bar. If none of them is delayed, a row knows the open of its bar, so `'close'`
+enters at the close of that bar, and `'open'` at the open of the next bar, because the open of its
+bar has gone. If only some of them are delayed, all are, the filter too, so a filter on Mondays with
+a factor on close gives rows on Tuesdays. `StaticAssets` doesn't count, it is the same on every bar.
+
+`xs_quantile=False` ranks each asset against all its loaded rows, including future ones, so it has
+a look-ahead bias by design.
+
+A `MarketOpen` backtest fills a factor that isn't delayed at the open it has just read, so it is
+more optimistic than `full_run` for those factors.
 
 
 ### FactorEngine.get_price_matrix
@@ -878,7 +911,7 @@ alg.schedule_rebalance(trading.event.MarketClose(self.any_function))
 
 The `Market*` events has `offset_ns` parameter `MarketClose(self.any_function, offset_ns=-1000)`,
 a negative value of `offset_ns` means 'before', in backtest mode, the magnitude of the value has no
-effect.
+effect. In live mode, a run started after the time of an event waits for the next one.
 
 
 ### CustomAlgorithm.schedule
@@ -952,13 +985,21 @@ Help method for calling `engine.get_price_matrix`, `name` specifies which engine
 Returns the historical asset prices, adjusted and filtered by the current time.
 **Slow**
 
+In a backtest, before the current bar closes, prices that are only known after the close end at the
+bar before it, and a filter that reads such data decides on the bars before it. So at `MarketOpen`
+the matrix of `OHLCV.close` ends at the previous bar, and the one of `OHLCV.open` keeps the open of
+the current bar. At `MarketClose` it has the close of the current bar, also with a negative offset,
+because the blotter fills on that price. A data source with longer bars than the backtest, such as
+daily bars in an intraday backtest, shows a bar only when it has closed.
+
 
 ### CustomAlgorithm.record
 
 `self.record(**kwargs)`
 **context:** *rebalance*
 
-Record the data and pass all when calling `terminate`, use `column = value` format.
+Record the data and pass all when calling `terminate`, use `column = value` format. The records
+are of the current run, the next run starts empty.
 
 
 ### SimulationBlotter.set_commission
@@ -978,7 +1019,8 @@ commission = max(percentage_part + per_share_part, minimum)
 `self.blotter.set_slippage(percentage=0, per_share=0.01)`
 **context:** *initialize, rebalance*
 
-Market impact add to the price.
+Market impact add to the price. The volume of a bar is only known after it closes, so at the open
+it uses the volume of the bar before.
 
 
 ### SimulationBlotter.set_short_fee
@@ -995,6 +1037,9 @@ Set the transaction fees which only charged for sell orders.
 **context:** *initialize, rebalance*
 
 Limit on trading a specific asset if today to previous day return >= ±value. **SLOW**
+
+Every bar of a day compares with the adjusted last close of the previous day. The first day of the
+data has no limit.
 
 
 ### SimulationBlotter.order_target
@@ -1070,6 +1115,8 @@ Set stop tracking model for positions, models are:
 `trading.TrailingStopModel(ratio, callback)`\
 `trading.PnLDecayTrailingStopModel` and `trading.TimeDecayTrailingStopModel`
 
+The tracked prices follow dividends and splits, so an ex-date doesn't fire a stop.
+
 Stop loss example:
 ```python
 class Backtester(trading.CustomAlgorithm):
@@ -1120,10 +1167,12 @@ return.
 ```python
 class Position:
     shares = None
-    average_price = None
+    average_price = None  # break-even price, it can reach zero or go negative after selling
+    cost_basis = None  # average cost of the shares still held
+    return_basis = None  # cost_basis for a PnL%, a dividend moves it by proportion, like a price
     last_price = None
-    unrealized = None
-    realized = None
+    unrealized = None  # P&L of the shares still held, realized + unrealized is the total P&L
+    realized = None  # including the cash paid for what a split leaves over
 ```
 
 `self.blotter.portfolio.value` Current portfolio value

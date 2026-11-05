@@ -21,6 +21,7 @@ class Calendar:
 
     def __init__(self) -> None:
         self.events = defaultdict(list)
+        self._passed = defaultdict(list)
         self.timezone = None
 
     def build(
@@ -48,6 +49,7 @@ class Calendar:
         self.events = {
             name: [day + pd.Timedelta(time) for day in days] for name, time in daily_events.items()
         }
+        self._passed = defaultdict(list)
 
         if pop_passed:
             for k in self.events:
@@ -57,14 +59,18 @@ class Calendar:
         self.events[event].append(datetime)
         self.events[event].sort()
 
-    def remove_events(self, date: pd.Timestamp):
+    def remove_events(self, *dates: pd.Timestamp):
+        dates = set(dates)
         self.events = {
-            event: [dt for dt in dts if dt.normalize() != date]
+            event: [dt for dt in dts if dt.normalize() not in dates]
             for event, dts in self.events.items()
         }
+        # an event with a long offset can still fire for a passed one
+        for event, dts in self._passed.items():
+            self._passed[event] = [dt for dt in dts if dt.normalize() not in dates]
 
-    def set_as_holiday(self, date: pd.Timestamp):
-        return self.remove_events(date)
+    def set_as_holiday(self, *dates: pd.Timestamp):
+        return self.remove_events(*dates)
 
     def hr_now(self):
         """Return now time"""
@@ -76,12 +82,13 @@ class Calendar:
         now = self.hr_now()
         # every event is daily, so will not be overkilled
         dts = self.events[event_name]
-        while True:
-            if dts[0] <= now:
-                del dts[0]
-            else:
-                break
+        while dts and dts[0] <= now:
+            self._passed[event_name].append(dts.pop(0))
         return self
+
+    def _with_passed(self, event_name):
+        """All events of `event_name`, for those that fire later than the event they follow."""
+        return self._passed[event_name] + self.events[event_name]
 
     def today_next(self):
         """Return today next events"""
@@ -89,7 +96,7 @@ class Calendar:
         return {
             event: dts[0]
             for event, dts in self.events.items()
-            if dts[0].normalize() == now.normalize()
+            if dts and dts[0].normalize() == now.normalize()
         }
 
 
@@ -135,13 +142,13 @@ class CNCalendar(Calendar):
         *pd.date_range("2025-05-01", "2025-05-05", freq="D"),
         *pd.date_range("2025-05-31", "2025-06-02", freq="D"),
         *pd.date_range("2025-10-01", "2025-10-08", freq="D"),
-        *pd.date_range("2026-01-01", "2025-01-03", freq="D"),
-        *pd.date_range("2026-02-15", "2025-02-23", freq="D"),
-        *pd.date_range("2026-04-04", "2025-04-06", freq="D"),
-        *pd.date_range("2026-05-01", "2025-05-05", freq="D"),
-        *pd.date_range("2026-06-19", "2025-06-21", freq="D"),
-        *pd.date_range("2026-09-25", "2025-09-27", freq="D"),
-        *pd.date_range("2026-10-01", "2025-10-07", freq="D"),
+        *pd.date_range("2026-01-01", "2026-01-03", freq="D"),
+        *pd.date_range("2026-02-15", "2026-02-23", freq="D"),
+        *pd.date_range("2026-04-04", "2026-04-06", freq="D"),
+        *pd.date_range("2026-05-01", "2026-05-05", freq="D"),
+        *pd.date_range("2026-06-19", "2026-06-21", freq="D"),
+        *pd.date_range("2026-09-25", "2026-09-27", freq="D"),
+        *pd.date_range("2026-10-01", "2026-10-07", freq="D"),
     ]
 
     daily_events = {
@@ -159,7 +166,9 @@ class CNCalendar(Calendar):
         timezone = "Asia/Shanghai"
         if start is None:
             start = pd.Timestamp.now(self.timezone).normalize()
-        assert start.year <= CNCalendar.closed[-1].year
+        assert start.year <= CNCalendar.closed[-1].year, (
+            f"CNCalendar.closed ends in {CNCalendar.closed[-1].year}, it needs its yearly update"
+        )
         self.build(
             start=str(start),
             end=str(CNCalendar.closed[-1].year + 1),
@@ -167,8 +176,7 @@ class CNCalendar(Calendar):
             tz=timezone,
             pop_passed=pop_passed,
         )
-        for d in CNCalendar.closed:
-            self.set_as_holiday(d.tz_localize(timezone))
+        self.set_as_holiday(*(d.tz_localize(timezone) for d in CNCalendar.closed))
 
 
 class JPCalendar(Calendar):
@@ -224,6 +232,50 @@ class JPCalendar(Calendar):
         *pd.date_range("2024-10-14", "2024-10-14", freq="D"),
         *pd.date_range("2024-11-03", "2024-11-04", freq="D"),
         *pd.date_range("2024-11-23", "2024-11-23", freq="D"),
+        *pd.date_range("2025-01-01", "2025-01-03", freq="D"),
+        *pd.date_range("2025-01-13", "2025-01-13", freq="D"),
+        *pd.date_range("2025-02-11", "2025-02-11", freq="D"),
+        *pd.date_range("2025-02-23", "2025-02-24", freq="D"),
+        *pd.date_range("2025-03-20", "2025-03-20", freq="D"),
+        *pd.date_range("2025-04-29", "2025-04-29", freq="D"),
+        *pd.date_range("2025-05-03", "2025-05-06", freq="D"),
+        *pd.date_range("2025-07-21", "2025-07-21", freq="D"),
+        *pd.date_range("2025-08-11", "2025-08-11", freq="D"),
+        *pd.date_range("2025-09-15", "2025-09-15", freq="D"),
+        *pd.date_range("2025-09-23", "2025-09-23", freq="D"),
+        *pd.date_range("2025-10-13", "2025-10-13", freq="D"),
+        *pd.date_range("2025-11-03", "2025-11-03", freq="D"),
+        *pd.date_range("2025-11-23", "2025-11-24", freq="D"),
+        *pd.date_range("2025-12-31", "2025-12-31", freq="D"),
+        *pd.date_range("2026-01-01", "2026-01-03", freq="D"),
+        *pd.date_range("2026-01-12", "2026-01-12", freq="D"),
+        *pd.date_range("2026-02-11", "2026-02-11", freq="D"),
+        *pd.date_range("2026-02-23", "2026-02-23", freq="D"),
+        *pd.date_range("2026-03-20", "2026-03-20", freq="D"),
+        *pd.date_range("2026-04-29", "2026-04-29", freq="D"),
+        *pd.date_range("2026-05-03", "2026-05-06", freq="D"),
+        *pd.date_range("2026-07-20", "2026-07-20", freq="D"),
+        *pd.date_range("2026-08-11", "2026-08-11", freq="D"),
+        *pd.date_range("2026-09-21", "2026-09-23", freq="D"),
+        *pd.date_range("2026-10-12", "2026-10-12", freq="D"),
+        *pd.date_range("2026-11-03", "2026-11-03", freq="D"),
+        *pd.date_range("2026-11-23", "2026-11-23", freq="D"),
+        *pd.date_range("2026-12-31", "2026-12-31", freq="D"),
+        *pd.date_range("2027-01-01", "2027-01-03", freq="D"),
+        *pd.date_range("2027-01-11", "2027-01-11", freq="D"),
+        *pd.date_range("2027-02-11", "2027-02-11", freq="D"),
+        *pd.date_range("2027-02-23", "2027-02-23", freq="D"),
+        *pd.date_range("2027-03-21", "2027-03-22", freq="D"),
+        *pd.date_range("2027-04-29", "2027-04-29", freq="D"),
+        *pd.date_range("2027-05-03", "2027-05-05", freq="D"),
+        *pd.date_range("2027-07-19", "2027-07-19", freq="D"),
+        *pd.date_range("2027-08-11", "2027-08-11", freq="D"),
+        *pd.date_range("2027-09-20", "2027-09-20", freq="D"),
+        *pd.date_range("2027-09-23", "2027-09-23", freq="D"),
+        *pd.date_range("2027-10-11", "2027-10-11", freq="D"),
+        *pd.date_range("2027-11-03", "2027-11-03", freq="D"),
+        *pd.date_range("2027-11-23", "2027-11-23", freq="D"),
+        *pd.date_range("2027-12-31", "2027-12-31", freq="D"),
     ]
 
     daily_events = {
@@ -241,7 +293,9 @@ class JPCalendar(Calendar):
         timezone = "Asia/Tokyo"
         if start is None:
             start = pd.Timestamp.now(self.timezone).normalize()
-        assert start.year <= self.closed[-1].year
+        assert start.year <= self.closed[-1].year, (
+            f"JPCalendar.closed ends in {self.closed[-1].year}, it needs its yearly update"
+        )
         self.build(
             start=str(start),
             end=str(self.closed[-1].year + 1),
@@ -249,5 +303,4 @@ class JPCalendar(Calendar):
             tz=timezone,
             pop_passed=pop_passed,
         )
-        for d in self.closed:
-            self.set_as_holiday(d.tz_localize(timezone))
+        self.set_as_holiday(*(d.tz_localize(timezone) for d in self.closed))

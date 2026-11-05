@@ -12,7 +12,7 @@ import numpy as np
 import torch
 
 from ..config import Global
-from ..parallel import nanmean, nansum
+from ..parallel import nanaverage, nanmax, nanmean, nanmin
 from .engine import OHLCV
 from .factor import BaseFactor, CustomFactor
 
@@ -35,7 +35,7 @@ class LogReturns(CustomFactor):
     _min_win = 2
 
     def compute(self, closes):
-        return (closes.last_nonnan() / closes.first()).log()
+        return (closes.last_nonnan(offset=1) / closes.first()).log()
 
 
 class SimpleMovingAverage(CustomFactor):
@@ -50,10 +50,7 @@ class WeightedAverageValue(CustomFactor):
     _min_win = 2
 
     def compute(self, base, weight):
-        def _weight_mean(_base, _weight):
-            return nansum(_base * _weight, dim=2) / nansum(_weight, dim=2)
-
-        return base.agg(_weight_mean, weight)
+        return base.agg(lambda _base, _weight: nanaverage(_base, _weight, dim=2), weight)
 
 
 class LinearWeightedAverage(CustomFactor):
@@ -69,10 +66,8 @@ class LinearWeightedAverage(CustomFactor):
         self.weight = self.weight.to(device=engine.device, copy=False)
 
     def compute(self, base):
-        def _weight_mean(_base):
-            return nansum(_base * self.weight, dim=2)
-
-        return base.agg(_weight_mean)
+        self.weight = self.weight.to(device=base.device)
+        return base.agg(lambda x: nanaverage(x, self.weight, dim=2))
 
 
 class VWAP(WeightedAverageValue):
@@ -98,29 +93,52 @@ class ExponentialWeightedMovingAverage(CustomFactor):
             self.win = int(4.5 * (span + 1))
         else:
             self.alpha = 1 - math.exp(math.log(0.5) / half_life)
-            self.win = 15 * half_life
+            self.win = max(math.ceil(15 * half_life), self._min_win)
 
         super().__init__(None, inputs)
         self.adjust = adjust
         self.weight = np.full(self.win, 1 - self.alpha) ** np.arange(self.win - 1, -1, -1)
         if self.adjust:
             self.weight = self.weight / sum(self.weight)  # to sum one
+        else:
+            self.weight[1:] *= self.alpha  # the first bar of a window is the seed
 
     def pre_compute_(self, engine, start, end) -> None:
         super().pre_compute_(engine, start, end)
         if not isinstance(self.weight, torch.Tensor):
             self.weight = torch.tensor(self.weight, dtype=Global.float_type, device=engine.device)
 
+    def _partial_windows(self, data):
+        """
+        `ewm(adjust=False)` of windows with missing bars. From the first valid bar on, every valid
+        bar does `y = share * x + (1 - share) * y`, this turns that into the weight of each bar.
+        """
+        bars = torch.arange(1, self.win + 1, device=data.device, dtype=torch.int32)
+        valid = ~torch.isnan(data)
+        previous = (bars * valid).cummax(dim=-1).values.roll(1, dims=-1)
+        previous[..., 0] = 0
+        # older bars keep decaying over the missing bars, so `share` depends on the distance
+        decay = (1 - self.alpha) ** torch.arange(self.win + 1, device=data.device, dtype=data.dtype)
+        share = (self.alpha / (decay + self.alpha))[bars - previous]
+        share = share.masked_fill(previous == 0, 1).masked_fill(~valid, 0)
+        later = (1 - share).flip(-1).cumprod(dim=-1).flip(-1).roll(-1, dims=-1)
+        later[..., -1] = 1
+        return nanaverage(data, share * later, dim=-1)
+
+    def _recursive_mean(self, data):
+        ret = nanaverage(data, self.weight, dim=2)
+        nans = torch.isnan(data)
+        partial = nans.any(dim=2) & ~nans.all(dim=2)
+        if partial.any():
+            ret[partial] = self._partial_windows(data[partial])
+        return ret
+
     def compute(self, data):
         self.weight = self.weight.to(device=data.device)
-        weighted_mean = data.agg(lambda x: nansum(x * self.weight, dim=2))
-        if self.adjust:
-            return weighted_mean
-        else:
-            shifted = data.last().roll(self.win - 1, dims=1)
-            shifted[:, 0 : self.win - 1] = 0
-            alpha = self.alpha
-            return alpha * weighted_mean + (shifted * (1 - alpha) ** self.win)
+        # with alpha = 1 the weights of the older bars are 0, and a NaN last bar would leave nothing
+        if not self.adjust or self.alpha == 1:
+            return data.agg(self._recursive_mean)
+        return data.agg(lambda x: nanaverage(x, self.weight, dim=2))
 
 
 class AverageDollarVolume(CustomFactor):
@@ -135,7 +153,7 @@ class AverageDollarVolume(CustomFactor):
 
 class AnnualizedVolatility(CustomFactor):
     inputs = [Returns(win=2), 252]
-    window_length = 20
+    win = 20
     _min_win = 2
 
     def compute(self, returns, annualization_factor):
@@ -180,26 +198,24 @@ class ElementWiseMin(CustomFactor):
         return ret
 
 
+def _first_position(data, value):
+    """Position in the window of the first bar equal to `value`, from 1 / win to 1, or NaN."""
+    ret = ((data == value.unsqueeze(-1)).char().argmax(dim=2) + 1.0) / data.shape[2]
+    return ret.to(Global.float_type).masked_fill_(torch.isnan(value), np.nan)
+
+
 class RollingArgMax(CustomFactor):
     _min_win = 2
 
     def compute(self, data):
-        def _argmax(_data):
-            ret = (_data.argmax(dim=2) + 1.0) / self.win
-            return ret.to(Global.float_type)
-
-        return data.agg(_argmax)
+        return data.agg(lambda x: _first_position(x, nanmax(x, dim=2)))
 
 
 class RollingArgMin(CustomFactor):
     _min_win = 2
 
     def compute(self, data):
-        def _argmin(_data):
-            ret = (_data.argmin(dim=2) + 1.0) / self.win
-            return ret.to(Global.float_type)
-
-        return data.agg(_argmin)
+        return data.agg(lambda x: _first_position(x, nanmin(x, dim=2)))
 
 
 class ConstantsFactor(CustomFactor):
