@@ -671,6 +671,73 @@ def test_clear_forgets_the_market_state():
         blotter.get_price("A")
 
 
+PLACE_ORDER = pytest.mark.parametrize(
+    "place",
+    [
+        lambda blotter: blotter.order("A", 10),
+        lambda blotter: blotter.order_target("A", 30),
+        lambda blotter: blotter.order_target_percent("A", 0.5),
+    ],
+    ids=["order", "order_target", "order_target_percent"],
+)
+
+
+@PLACE_ORDER
+def test_order_at_a_nan_price_is_refused(place):
+    days = pd.bdate_range("2021-01-04", periods=3, tz="UTC")
+    blotter = trading.SimulationBlotter(asset_a_loader(days, [100, nan, 100]))
+    blotter.set_datetime(days[1])
+    blotter.market_open(None)
+    blotter.set_price("close")
+
+    assert place(blotter) is False
+    assert not blotter.positions
+    assert blotter.portfolio.cash == 100000
+    assert len(blotter.get_transactions()) == 0
+
+
+@PLACE_ORDER
+def test_order_at_a_nan_price_keeps_the_position(place):
+    days = pd.bdate_range("2021-01-04", periods=3, tz="UTC")
+    blotter = trading.SimulationBlotter(asset_a_loader(days, [100, nan, 100]))
+    trade_until_after_bar(blotter, days, 0, 20)
+    cash = blotter.portfolio.cash
+
+    blotter.set_datetime(days[1])
+    blotter.market_open(None)
+    blotter.set_price("close")
+    assert place(blotter) is False
+    assert blotter.positions["A"].shares == 20
+    assert blotter.positions["A"].last_price == 100
+    assert blotter.portfolio.cash == cash
+    assert len(blotter.get_transactions()) == 1
+
+
+def test_batch_order_at_a_nan_price_is_skipped():
+    days = pd.bdate_range("2021-01-04", periods=3, tz="UTC")
+    blotter = trading.SimulationBlotter(asset_a_loader(days, [100, nan, 100]))
+    blotter.set_datetime(days[1])
+    blotter.market_open(None)
+    blotter.set_price("close")
+    assert blotter.batch_order_target(["A"], [10]) == [["A", 0]]
+    assert blotter.batch_order_target_percent(["A"], [0.5]) == [["A", 0]]
+    assert not blotter.positions
+
+
+def test_nan_price_and_no_price_yet_are_different():
+    days = pd.bdate_range("2021-01-04", periods=3, tz="UTC")
+    blotter = trading.SimulationBlotter(asset_a_loader(days, [100, nan, 100]))
+    blotter.set_datetime(days[1])
+    blotter.market_open(None)
+
+    # no price was picked, that's a mistake in the event order or the strategy
+    with pytest.raises(ValueError, match="set_price"):
+        blotter.order("A", 10)
+    # the bar has no close, that's the data, and the asset can't be traded now
+    blotter.set_price("close")
+    assert blotter.order("A", 10) is False
+
+
 def test_short_interest_of_intraday_bars():
     # hourly bars of the US session, only the gap of the weekend is longer than a day
     days = pd.bdate_range("2020-01-06", "2020-01-16", tz="UTC")

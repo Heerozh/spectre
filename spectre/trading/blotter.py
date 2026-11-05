@@ -223,7 +223,7 @@ class BaseBlotter:
             raise ValueError("Long only blotter, `pct` must greater than 0.")
 
         price = self.get_price(asset)
-        if price is None:
+        if price is None or price != price:
             return False
         target = (self._portfolio.value * pct) / price
         target = int(round(target / self.order_multiplier)) * self.order_multiplier
@@ -449,7 +449,7 @@ class SimulationBlotter(BaseBlotter, EventReceiver):
 
         # get price and change
         price = self.get_price(asset)
-        if price is None:
+        if price is None or price != price:
             return False
 
         # trading curb for daily return
