@@ -797,6 +797,44 @@ def test_interest_of_each_day_uses_the_value_of_that_day(last_visited):
     assert blotter.portfolio.cash == pytest.approx(100000 + 100 * 100 - (10 + 11 + 12))
 
 
+def test_made_up_days_come_from_the_data():
+    # a market open every day, the ex-date of a 2-for-1 split is a Sunday, its row the Saturday
+    days = pd.date_range("2021-01-04", periods=8, freq="D", tz="UTC")
+    assert days[5].day_name() == "Saturday"
+    loader = asset_a_loader(days, [100] * 6 + [50] * 2, split_ratios={6: 0.5})
+    blotter = trading.SimulationBlotter(loader, capital_base=100000)
+
+    # visit up to the Friday, and jump to the Sunday
+    trade_until_after_bar(blotter, days, 4, 100)
+    blotter.set_datetime(days[6])
+    blotter.set_price("close")
+    blotter.update_portfolio_value()
+    assert blotter.positions["A"].shares == 200
+    assert blotter.portfolio.value == pytest.approx(100000)
+
+
+def test_made_up_days_of_an_intraday_market():
+    # 2 bars a day, the two days in between are left out, a dividend of 1 goes ex on the last day
+    days = pd.bdate_range("2021-01-04", periods=4, tz="UTC")
+    stamps = pd.DatetimeIndex([day + pd.Timedelta(hours=h) for day in days for h in (14, 20)])
+    close = [100.0] * 6 + [99.0] * 2
+    loader = asset_a_loader(stamps, close, dividends={6: 1})
+    blotter = trading.SimulationBlotter(loader, capital_base=100000)
+    blotter.borrow_stock_interest_rate = 0.365
+    blotter.set_datetime(stamps[0])
+    blotter.market_open(None)
+    blotter.set_price("close")
+    blotter.order("A", -100)
+    blotter.market_close(None)
+
+    blotter.set_datetime(stamps[6])
+    # the short paid the dividend at the close of the last day that was made up
+    assert blotter.positions["A"].last_price == 99
+    # 0.1% a day of 10000 up to that close, 2.25 days, and of 9900 for the 0.75 days after it
+    interest = 2.25 * 10 + 0.75 * 9.9
+    assert blotter.portfolio.cash == pytest.approx(110000 - 100 - interest, abs=1e-6)
+
+
 @pytest.mark.parametrize("bar", [1, 2], ids=["next_bar", "after_a_made_up_day"])
 def test_no_price_before_the_open(bar):
     days = pd.bdate_range("2021-01-04", periods=3, tz="UTC")

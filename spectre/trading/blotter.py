@@ -379,22 +379,21 @@ class SimulationBlotter(BaseBlotter, EventReceiver):
             current_date = self._current_dt.normalize()
             target_date = dt.normalize()
             if current_date != target_date:
-                for date in pd.bdate_range(current_date, target_date):
-                    if date == current_date or date == target_date:
+                dates = self._prices.indexes[0]
+                rows = slice(dates.searchsorted(self._current_dt), dates.searchsorted(target_date))
+                bar_times = dates[rows].unique()
+                bar_dates = bar_times.normalize()
+                for date in bar_dates.unique():
+                    if date == current_date:
                         continue
 
-                    stop = date + pd.DateOffset(days=1, seconds=-1)
-                    table = self._prices.get_as_dict(date, stop)
-                    bar_times = table.get_datetime_index()
-                    if len(bar_times) == 0:
-                        continue
-
-                    open_time = bar_times[0]
+                    day_times = bar_times[bar_dates == date]
+                    open_time = day_times[0]
                     self._advance_to(open_time)
                     self.set_price("open")
                     self.market_open(self)
 
-                    close_time = bar_times[-1]
+                    close_time = day_times[-1]
                     self._advance_to(close_time)
                     self.set_price("close")
                     self.update_portfolio_value()
