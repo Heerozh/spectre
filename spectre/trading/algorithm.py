@@ -59,6 +59,7 @@ class CustomAlgorithm(EventReceiver, ABC):
         self._data = None
         self._last_row = None
         self._engines = {name: FactorEngine(loader) for name, loader in data_sources.items()}
+        self._engines_of_initialize = set()
         self.blotter = blotter
         self._recorder = Recorder()
         self._current_dt = None
@@ -291,9 +292,16 @@ class CustomAlgorithm(EventReceiver, ABC):
         self._recorder = Recorder()
         self._data = self._last_row = None
         self._bars = {}
+        # `initialize` makes these again
+        for name in self._engines_of_initialize:
+            del self._engines[name]
+        engines = set(self._engines)
         # schedule first, so it will run before rebalance
         self.schedule(EveryBarData(self._data_updated))
-        self.initialize()
+        try:
+            self.initialize()
+        finally:
+            self._engines_of_initialize = self._engines.keys() - engines
 
     def on_end_of_run(self):
         self._results = CustomAlgorithm.Results(

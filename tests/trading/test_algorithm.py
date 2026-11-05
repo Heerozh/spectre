@@ -884,6 +884,99 @@ def test_run_after_a_stop_is_complete(rerun):
     assert_same_run(alg, reference)
 
 
+class SecondEngineAlg(trading.CustomAlgorithm):
+    """Makes an engine of its own in `initialize`, which runs on every run."""
+
+    fail = False
+
+    def initialize(self):
+        self.seen = []
+        self.get_factor_engine("main").add(factors.MA(5), "ma")
+        self.create_factor_engine("second").add(factors.MA(3), "ma")
+        if self.fail:
+            self.fail = False
+            raise ValueError("a bug in initialize")
+        self.blotter.set_commission(0, 0, 0)
+        self.blotter.set_slippage(0, 0)
+        self.schedule_rebalance(trading.event.MarketClose(self.rebalance, **BEFORE_CLOSE))
+
+    def rebalance(self, data, history):
+        self.seen.append(self.current)
+        weights = data["main"].ma * data["second"].ma
+        self.blotter.batch_order_target_percent(weights.index, weights / weights.sum())
+
+
+def test_engine_created_in_initialize_works_on_a_second_run(rerun):
+    loader, start, end, _ = rerun
+    fresh, evt_mgr = new_rerun_alg(loader, SecondEngineAlg)
+    evt_mgr.run(start, end)
+    assert len(fresh.seen) == 29
+
+    alg, evt_mgr = new_rerun_alg(loader, SecondEngineAlg)
+    evt_mgr.run(start, end)
+    first_engine = alg.get_factor_engine("second")
+    evt_mgr.run(start, end)
+
+    assert_same_run(alg, fresh)
+    assert alg.get_factor_engine("second") is not first_engine
+
+
+def test_engine_created_in_initialize_after_a_failed_initialize(rerun):
+    loader, start, end, reference = rerun
+    alg, evt_mgr = new_rerun_alg(loader, SecondEngineAlg)
+    alg.fail = True
+    with pytest.raises(ValueError, match="a bug in initialize"):
+        evt_mgr.run(start, end)
+
+    evt_mgr.run(start, end)
+
+    assert len(alg.seen) == len(reference.seen)
+
+
+def test_engine_name_used_twice_in_a_run_is_still_an_error(rerun):
+    class TwiceAlg(SecondEngineAlg):
+        def initialize(self):
+            super().initialize()
+            self.create_factor_engine("second")
+
+    loader, start, end, _ = rerun
+    _, evt_mgr = new_rerun_alg(loader, TwiceAlg)
+    with pytest.raises(AssertionError):
+        evt_mgr.run(start, end)
+
+
+def test_engine_name_of_a_data_source_is_still_an_error(rerun):
+    class SourceNameAlg(SecondEngineAlg):
+        def initialize(self):
+            self.create_factor_engine("main")
+
+    loader, start, end, _ = rerun
+    for _ in range(2):
+        _, evt_mgr = new_rerun_alg(loader, SourceNameAlg)
+        with pytest.raises(AssertionError):
+            evt_mgr.run(start, end)
+
+
+def test_engine_created_before_a_run_stays(rerun):
+    class UsesItsEngineAlg(RerunAlg):
+        def initialize(self):
+            super().initialize()
+            self.get_factor_engine("mine").add(factors.MA(3), "ma")
+
+        def rebalance(self, data, history):
+            super().rebalance(data["main"], history)
+
+    loader, start, end, _ = rerun
+    alg, evt_mgr = new_rerun_alg(loader, UsesItsEngineAlg)
+    engine = alg.create_factor_engine("mine")
+
+    evt_mgr.run(start, end)
+    evt_mgr.run(start, end)
+
+    assert alg.get_factor_engine("mine") is engine
+    assert len(alg.seen) == 29
+
+
 class OpenAlg(trading.CustomAlgorithm):
     """Trades at each open, and logs the time of the last row each rebalance was given."""
 
