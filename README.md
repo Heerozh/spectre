@@ -693,10 +693,13 @@ _ = engine.plot_chart(
 
 Not only run the engine, but also run factor analysis.
 
-`trade_at` is the price of the forward returns. With `'close'` a row enters at the close of that
-row. With `'open'` a delayed factor enters at the open of its row, and a factor that isn't delayed
-at the open of the next row, because it has already read the open of its row. All factors of a run
-share one return column, so if only some of them are delayed, all of them are.
+`trade_at` is the price of the forward returns. All columns of a row are about one decision: the
+universe of that row, the factor, and the return from the entry that decision allows. If the factors
+and the filter are delayed, a row knows the close of the bar before it, and enters at the open or
+the close of its own bar. If none of them is delayed, a row knows the open of its bar, so `'close'`
+enters at the close of that bar, and `'open'` at the open of the next bar, because the open of its
+bar has gone. If only some of them are delayed, all are, the filter too, so a filter on Mondays with
+a factor on close gives rows on Tuesdays.
 
 A `MarketOpen` backtest fills a factor that isn't delayed at the open it has just read, so it is
 more optimistic than `full_run` for those factors.
