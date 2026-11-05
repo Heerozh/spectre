@@ -153,6 +153,8 @@ class Portfolio:
             return
         pos = self._positions[asset]
         cash = pos.process_split(inverse_ratio, last_price)
+        if pos.shares == 0:
+            del self._positions[asset]
         self.update_cash(cash)
 
     def process_dividend(self, asset, amount, tax):
