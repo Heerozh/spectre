@@ -835,6 +835,36 @@ def test_made_up_days_of_an_intraday_market():
     assert blotter.portfolio.cash == pytest.approx(110000 - 100 - interest, abs=1e-6)
 
 
+@pytest.mark.parametrize("tz", ["UTC", "Asia/Shanghai", "America/New_York"])
+def test_made_up_days_stay_in_the_timezone_of_the_market(tz):
+    # 2 days in a row and 1 more are left out by the filter
+    days = pd.bdate_range("2021-01-04", periods=8, tz="UTC")
+    flag = [1.0, 1.0, 0.0, 0.0, 1.0, 1.0, 0.0, 1.0]
+    loader = asset_a_loader(days, [100] * 8, flag=flag)
+
+    class Alg(trading.CustomAlgorithm):
+        def initialize(self):
+            engine = self.get_factor_engine()
+            engine.timezone = tz
+            engine.add(factors.OHLCV.open, "open")
+            engine.set_filter(factors.ColumnDataFactor(inputs=["flag"], should_delay=False) > 0.5)
+            self.blotter.borrow_stock_interest_rate = 0.365
+            self.schedule_rebalance(trading.event.MarketOpen(self.rebalance))
+
+        def rebalance(self, data, history):
+            if not self.blotter.positions:
+                self.blotter.order("A", -100)
+
+    results = trading.run_backtest(loader, Alg, days[0], days[-1])
+
+    # a row for the day before the first bar, then one for each of the 8 bars, on its local date
+    stamps = days.tz_convert(tz)
+    expected = pd.DatetimeIndex([stamps[0] - pd.Timedelta(days=1), *stamps]).normalize()
+    pd.testing.assert_index_equal(results.positions.index, expected, check_names=False, exact=False)
+    # 9 days from the first bar to the last, the short is worth 10000 and pays 0.1% a day
+    assert results.positions.value.sum(axis=1).iloc[-1] == pytest.approx(100000 - 9 * 10)
+
+
 @pytest.mark.parametrize("bar", [1, 2], ids=["next_bar", "after_a_made_up_day"])
 def test_no_price_before_the_open(bar):
     days = pd.bdate_range("2021-01-04", periods=3, tz="UTC")

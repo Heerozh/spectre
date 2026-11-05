@@ -381,7 +381,8 @@ class SimulationBlotter(BaseBlotter, EventReceiver):
             if current_date != target_date:
                 dates = self._prices.indexes[0]
                 rows = slice(dates.searchsorted(self._current_dt), dates.searchsorted(target_date))
-                bar_times = dates[rows].unique()
+                # `dt` is in the timezone of the market, the data is in UTC
+                bar_times = dates[rows].unique().tz_convert(dt.tz)
                 bar_dates = bar_times.normalize()
                 for date in bar_dates.unique():
                     if date == current_date:
