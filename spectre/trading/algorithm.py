@@ -304,6 +304,10 @@ class CustomAlgorithm(EventReceiver, ABC):
             self._engines_of_initialize = self._engines.keys() - engines
 
     def on_end_of_run(self):
+        if self.blotter.portfolio.current_dt is None:
+            # stopped before the first bar, there are no results to read
+            self._results = CustomAlgorithm.Results(None, None, None)
+            return
         self._results = CustomAlgorithm.Results(
             returns=self.blotter.get_returns(),
             positions=self.blotter.get_historical_positions(),

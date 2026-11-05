@@ -977,6 +977,71 @@ def test_engine_created_before_a_run_stays(rerun):
     assert len(alg.seen) == 29
 
 
+class InterruptedAlg(RerunAlg):
+    """Gets Ctrl-C while the engine computes its factors, before the first bar of a run."""
+
+    interrupt = False
+    terminated = False
+
+    def initialize(self):
+        super().initialize()
+        alg = self
+
+        class Interrupted(factors.CustomFactor):
+            def compute(self, data):
+                if alg.interrupt:
+                    alg.interrupt = False
+                    raise KeyboardInterrupt
+                return data
+
+        engine = self.get_factor_engine()
+        engine.add(Interrupted(inputs=[factors.OHLCV.close]), "interrupted")
+
+    def terminate(self, records):
+        super().terminate(records)
+        self.terminated = True
+
+
+def test_interrupt_while_the_factors_are_computed_is_a_clean_stop(rerun, capsys):
+    loader, start, end, _ = rerun
+    alg, evt_mgr = new_rerun_alg(loader, InterruptedAlg)
+    alg.interrupt = True
+
+    evt_mgr.run(start, end)
+
+    assert "Interrupted" in capsys.readouterr().out
+    assert alg.seen == []
+    assert alg.results == (None, None, None)
+    # it would read the results, and there are none
+    assert not alg.terminated
+
+
+def test_run_after_an_interrupt_while_the_factors_are_computed(rerun):
+    loader, start, end, _ = rerun
+    fresh, evt_mgr = new_rerun_alg(loader, InterruptedAlg)
+    evt_mgr.run(start, end)
+
+    alg, evt_mgr = new_rerun_alg(loader, InterruptedAlg)
+    alg.interrupt = True
+    evt_mgr.run(start, end)
+    evt_mgr.run(start, end)
+
+    assert_same_run(alg, fresh)
+    assert alg.terminated
+
+
+def test_interrupted_run_does_not_keep_the_results_of_the_last_run(rerun):
+    loader, start, end, _ = rerun
+    alg, evt_mgr = new_rerun_alg(loader, InterruptedAlg)
+    evt_mgr.run(start, end)
+    assert alg.results.returns is not None
+
+    alg.interrupt = True
+    evt_mgr.run(start, end)
+
+    assert alg.results == (None, None, None)
+
+
 class OpenAlg(trading.CustomAlgorithm):
     """Trades at each open, and logs the time of the last row each rebalance was given."""
 
