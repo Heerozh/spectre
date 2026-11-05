@@ -38,18 +38,19 @@ def returns(df):
     return ref.returns(df.close)
 
 
-def broadcast(series, df):
-    return pd.DataFrame({asset: series for asset in df})
-
-
-def engine_of(closes, device="cpu"):
-    """An engine on a table of closes, dates by assets, where NaN means the asset has no row."""
+def engine_of(closes, device="cpu", **columns):
+    """
+    An engine on a table of closes, dates by assets, where NaN means the asset has no row.
+    `columns` are more columns of the data, each a dict with a value for each asset.
+    """
     df = closes.stack().dropna().rename("close").rename_axis(["date", "asset"]).to_frame()
     for col in ("open", "high", "low"):
         df[col] = df.close
     df["volume"] = 1.0
+    for name, values in columns.items():
+        df[name] = df.index.get_level_values("asset").map(values).astype(float)
     ohlcv = ("open", "high", "low", "close", "volume")
-    engine = factors.FactorEngine(spectre.data.MemoryLoader(df[list(ohlcv)], ohlcv=ohlcv))
+    engine = factors.FactorEngine(spectre.data.MemoryLoader(df, ohlcv=ohlcv))
     if device == "cuda":
         engine.to_cuda()
     return engine
@@ -58,34 +59,43 @@ def engine_of(closes, device="cpu"):
 # ------------------------------------ market features ------------------------------------
 
 
+def returns_of_assets():
+    return pd.DataFrame({a: returns(ref.daily_prices(a)) for a in ref.ASSETS})
+
+
+def assert_market_number(engine, factor, values):
+    """
+    `values` has a number for each date, and both assets must read it, delayed by a date of the
+    market. MSFT has no 2019-01-10, and on the other dates it reads what AAPL reads, 01-11 is its
+    bar after the gap.
+    """
+    # a delayed run drops the first date
+    dates = ref.daily_prices("AAPL").loc[ref.START : ref.END].index[1:]
+    msft_dates = dates[dates.isin(ref.daily_prices("MSFT").index)]
+    delayed = values.shift(1)
+    assert_factor(engine, factor, delayed[dates].values, delayed[msft_dates].values)
+
+    aapl, msft = run_factor(engine, factor, check_bias=False)
+    assert len(msft) == len(aapl) - 1
+    assert_array_equal(msft, aapl[dates.isin(msft_dates)])
+
+
 def test_market_dispersion(engine):
-    expected = ref.expected_xs(lambda df: broadcast(df.std(axis=1, ddof=0), df), values=returns)
-    assert_factor(engine, factors.MarketDispersion(), *expected)
-    assert expected[0][SOLO] == 0
+    dispersion = returns_of_assets().std(axis=1, ddof=0)
+    assert_market_number(engine, factors.MarketDispersion(), dispersion)
+    # only AAPL has a return on that date
+    assert dispersion.loc["2019-01-10":"2019-01-10"].item() == 0
 
 
 def test_market_return(engine):
-    expected = ref.expected_xs(lambda df: broadcast(df.mean(axis=1), df), values=returns)
-    assert_factor(engine, factors.MarketReturn(), *expected)
+    assert_market_number(engine, factors.MarketReturn(), returns_of_assets().mean(axis=1))
 
 
 def test_market_volatility(engine):
     """A number of the market: it rolls over the dates of the market, and is delayed by them."""
-    market_return = pd.DataFrame({a: returns(ref.daily_prices(a)) for a in ref.ASSETS}).mean(axis=1)
-    volatility = ((market_return.rolling(252).var(ddof=0) * 252) ** 0.5).shift(1)
-
-    # a delayed run drops the first date
-    dates = ref.daily_prices("AAPL").loc[ref.START : ref.END].index[1:]
-    msft_dates = dates[dates.isin(ref.daily_prices("MSFT").index)]
-    assert_factor(
-        engine, factors.MarketVolatility(), volatility[dates].values, volatility[msft_dates].values
-    )
-
-    # MSFT has no 2019-01-10, and on every other date it reads what AAPL reads, 01-11 is its bar
-    # after the gap
-    aapl, msft = run_factor(engine, factors.MarketVolatility(), check_bias=False)
-    assert len(msft) == len(aapl) - 1
-    assert_array_equal(msft, aapl[dates.isin(msft_dates)])
+    market_return = returns_of_assets().mean(axis=1)
+    volatility = (market_return.rolling(252).var(ddof=0) * 252) ** 0.5
+    assert_market_number(engine, factors.MarketVolatility(), volatility)
 
 
 MARKET_DATES = pd.date_range("2020-01-01", periods=60, freq="B", tz="UTC")
@@ -94,6 +104,21 @@ LISTED_BAR, DELISTED_BAR = 30, 40
 HALT = slice(20, 32)  # the first bar after the halt is 32
 EDGES_OF_ASSETS = [("LISTED", LISTED_BAR), ("HALTED", HALT.stop), ("DELISTED", DELISTED_BAR)]
 each_delay = pytest.mark.parametrize("delay", [False, True], ids=["not_delayed", "delayed"])
+ALIGNED = pytest.mark.parametrize("align", [False, True], ids=["not_aligned", "aligned"])
+# each factor with one number for a date, and that number from the returns of the assets
+MARKET_NUMBERS = {
+    "return": (factors.MarketReturn, lambda r: r.mean(axis=1)),
+    "dispersion": (factors.MarketDispersion, lambda r: r.std(axis=1, ddof=0)),
+    "advance_decline": (
+        factors.AdvanceDeclineRatio,
+        lambda r: (r > 0).sum(axis=1) / (r < 0).sum(axis=1),
+    ),
+    "volatility": (
+        lambda: factors.MarketVolatility(win=MARKET_WIN),
+        lambda r: (r.mean(axis=1).rolling(MARKET_WIN, min_periods=1).var(ddof=0) * 252) ** 0.5,
+    ),
+}
+each_market_number = pytest.mark.parametrize("name", MARKET_NUMBERS)
 
 
 @pytest.fixture(scope="module")
@@ -112,16 +137,18 @@ def market_closes():
     return closes
 
 
-def market_volatility(closes, win=MARKET_WIN, annualization=252, aligned=False):
-    """
-    Rolls over the market return of every date, the mean of the assets with a return on that date.
-    The return of a row is from the bar before it, and if aligned, every date is a bar.
-    """
+def asset_returns(closes, aligned=False):
+    """The return of a row is from the bar before it, and if aligned, every date is a bar."""
     if aligned:
         by_asset = closes.pct_change(fill_method=None)
     else:
         by_asset = pd.DataFrame({a: closes[a].dropna().pct_change() for a in closes})
-    market = by_asset.reindex(closes.index).mean(axis=1)
+    return by_asset.reindex(closes.index)
+
+
+def market_volatility(closes, win=MARKET_WIN, annualization=252, aligned=False):
+    """Rolls over the market return of every date, the mean of the assets with a return on it."""
+    market = asset_returns(closes, aligned).mean(axis=1)
     return (market.rolling(win, min_periods=1).var(ddof=0) * annualization) ** 0.5
 
 
@@ -147,12 +174,27 @@ def test_market_volatility_is_one_number_for_a_date(market_closes, device, delay
 
 
 @pytest.mark.filterwarnings("ignore:Warning!! delay_factor is set to False")
+@each_market_number
+@each_delay
+@ALIGNED
+@pytest.mark.parametrize("start", [0, 25, 34], ids=lambda bar: f"bar_{bar}")
+def test_market_number_is_the_same_for_all_assets(market_closes, device, name, delay, align, start):
+    make, reference = MARKET_NUMBERS[name]
+    engine = engine_of(market_closes, device)
+    engine.align_by_time = align
+    result = run_market(engine, make(), start, delay)
+    expected = reference(asset_returns(market_closes, align))
+    assert_rows(result, expected.shift(1) if delay else expected)
+
+
+@pytest.mark.filterwarnings("ignore:Warning!! delay_factor is set to False")
+@each_market_number
 @each_delay
 @pytest.mark.parametrize("asset, bar", EDGES_OF_ASSETS, ids=[a for a, _ in EDGES_OF_ASSETS])
-def test_market_volatility_on_the_edges_of_an_asset(market_closes, device, delay, asset, bar):
+def test_market_number_on_the_edges_of_an_asset(market_closes, device, name, delay, asset, bar):
     """Its first bar, its first bar after a halt, and its last bar read what the market reads."""
     engine = engine_of(market_closes, device)
-    result = run_market(engine, factors.MarketVolatility(win=MARKET_WIN), delay=delay).unstack()
+    result = run_market(engine, MARKET_NUMBERS[name][0](), delay=delay).unstack()
     assert result.loc[MARKET_DATES[bar], asset] == result.loc[MARKET_DATES[bar], "FULL"]
     assert not np.isnan(result.loc[MARKET_DATES[bar], asset])
 
@@ -209,17 +251,38 @@ def test_market_volatility_counts_its_window_in_the_history():
 
 
 @pytest.mark.filterwarnings("ignore:Warning!! delay_factor is set to False")
+@each_market_number
 @pytest.mark.parametrize("periods", [1, 3, -2])
-def test_market_volatility_shift_is_by_dates(market_closes, device, periods):
+def test_market_number_shift_is_by_dates(market_closes, device, name, periods):
     """So a shift doesn't read different dates on the bars of different assets."""
+    make, reference = MARKET_NUMBERS[name]
     engine = engine_of(market_closes, device)
-    factor = factors.MarketVolatility(win=MARKET_WIN).shift(periods)
-    assert_rows(run_market(engine, factor, 5), market_volatility(market_closes).shift(periods))
+    expected = reference(asset_returns(market_closes)).shift(periods)
+    assert_rows(run_market(engine, make().shift(periods), 5), expected)
 
 
-def test_market_volatility_shift_by_0_is_itself():
-    factor = factors.MarketVolatility(win=MARKET_WIN)
+@each_market_number
+def test_market_number_shift_by_0_is_itself(name):
+    factor = MARKET_NUMBERS[name][0]()
     assert factor.shift(0) is factor
+
+
+@pytest.mark.filterwarnings("ignore:Warning!! delay_factor is set to False")
+@each_delay
+def test_market_return_of_each_sector_stays_on_the_bars_of_an_asset(market_closes, device, delay):
+    """Grouped by more than the date it has a number for each sector, so it's not one for a date."""
+    sectors = {"DELISTED": 1, "FULL": 1, "HALTED": 2, "LISTED": 2, "OTHER": 2}
+    engine = engine_of(market_closes, device, sector=sectors)
+    factor = factors.MarketReturn()
+    factor.groupby = "date,sector"
+    result = run_market(engine, factor, 5, delay)
+
+    by_sector = asset_returns(market_closes).T.groupby(sectors).mean().T
+    for asset, rows_of_asset in result.groupby(level="asset", observed=True):
+        expected = by_sector[sectors[asset]].reindex(market_closes[asset].dropna().index)
+        expected = expected.shift(1) if delay else expected
+        dates = rows_of_asset.index.get_level_values("date")
+        assert_allclose(rows_of_asset.values, expected[dates].values, err_msg=asset)
 
 
 @pytest.mark.filterwarnings("ignore:Warning!! delay_factor is set to False")
@@ -243,16 +306,15 @@ def test_market_volatility_with_the_first_asset_masked(market_closes, device):
 
 
 @pytest.mark.filterwarnings("ignore:Warning!! delay_factor is set to False")
-def test_market_volatility_of_one_asset(market_closes, device):
+@each_market_number
+def test_market_number_of_one_asset(market_closes, device, name):
     """With one asset the date group is another class."""
+    make, reference = MARKET_NUMBERS[name]
     engine = engine_of(market_closes, device)
     engine.set_filter(factors.StaticAssets({"FULL"}))
-    result = run_market(engine, factors.MarketVolatility(win=MARKET_WIN))
-    assert_rows(result, market_volatility(market_closes[["FULL"]]))
-    assert_rows(
-        run_market(engine, factors.MarketVolatility(win=MARKET_WIN), 5, True),
-        market_volatility(market_closes[["FULL"]]).shift(1),
-    )
+    expected = reference(asset_returns(market_closes[["FULL"]]))
+    assert_rows(run_market(engine, make()), expected)
+    assert_rows(run_market(engine, make(), 5, True), expected.shift(1))
 
 
 def test_market_volatility_on_the_dirty_panel(dirty_engine):
@@ -266,11 +328,9 @@ def test_market_volatility_on_the_dirty_panel(dirty_engine):
 
 
 def test_advance_decline_ratio(engine):
-    def ratio(df):
-        return broadcast((df > 0).sum(axis=1) / (df < 0).sum(axis=1), df)
-
-    expected = ref.expected_xs(ratio, values=returns)
-    assert_factor(engine, factors.AdvanceDeclineRatio(), *expected)
+    by_asset = returns_of_assets()
+    ratio = (by_asset > 0).sum(axis=1) / (by_asset < 0).sum(axis=1)
+    assert_market_number(engine, factors.AdvanceDeclineRatio(), ratio)
 
 
 def test_asset_data(engine):
@@ -289,7 +349,6 @@ def test_asset_data_warns_not_aligned(engine):
 
 ASSET_DATES = pd.date_range("2020-01-01", periods=30, freq="B", tz="UTC")
 ASSET_START, ASSET_END = ASSET_DATES[15], ASSET_DATES[19]
-ALIGNED = pytest.mark.parametrize("align", [False, True], ids=["not_aligned", "aligned"])
 
 
 @pytest.fixture

@@ -22,28 +22,6 @@ from .filter import FilterFactor
 # ----------- Common Market Features -----------
 
 
-class MarketDispersion(CrossSectionFactor):
-    """Cross-section standard deviation of universe stocks returns."""
-
-    inputs = (Returns(),)
-    win = 1
-
-    def compute(self, returns):
-        ret = nanstd(returns, dim=1).unsqueeze(-1)
-        return ret.expand(ret.shape[0], returns.shape[1])
-
-
-class MarketReturn(CrossSectionFactor):
-    """Cross-section mean returns of universe stocks."""
-
-    inputs = (Returns(),)
-    win = 1
-
-    def compute(self, returns):
-        ret = nanmean(returns, dim=1).unsqueeze(-1)
-        return ret.expand(ret.shape[0], returns.shape[1])
-
-
 class MarketShift(RawShiftFactor):
     """Shift a factor with one value per date by dates, the bars of an asset can skip some."""
 
@@ -58,12 +36,43 @@ class MarketShift(RawShiftFactor):
         return shift.expand(data.shape)
 
 
-class MarketVolatility(CrossSectionFactor):
+class MarketFactor(CrossSectionFactor):
     """
-    MarketReturn Rolling standard deviation. `win` counts the dates of the market and `shift` moves
-    by them, so it is one number for a date, the same for all assets. The engine delays a factor
-    with `shift`, so a new listing and an asset back from a halt read it on their first bars too.
+    One number for a date, the same for all assets. `shift` moves by dates, and the engine delays a
+    factor with `shift`, so a new listing and an asset back from a halt read it on their first bars
+    too. Set `groupby` to more than the date, and it has more numbers, which move by bars again.
     """
+
+    def shift(self, periods=1):
+        if periods == 0 or self.groupby != "date":
+            return super().shift(periods)
+        return MarketShift(self, periods)
+
+
+class MarketDispersion(MarketFactor):
+    """Cross-section standard deviation of universe stocks returns."""
+
+    inputs = (Returns(),)
+    win = 1
+
+    def compute(self, returns):
+        ret = nanstd(returns, dim=1).unsqueeze(-1)
+        return ret.expand(ret.shape[0], returns.shape[1])
+
+
+class MarketReturn(MarketFactor):
+    """Cross-section mean returns of universe stocks."""
+
+    inputs = (Returns(),)
+    win = 1
+
+    def compute(self, returns):
+        ret = nanmean(returns, dim=1).unsqueeze(-1)
+        return ret.expand(ret.shape[0], returns.shape[1])
+
+
+class MarketVolatility(MarketFactor):
+    """MarketReturn Rolling standard deviation. `win` counts the dates of the market."""
 
     inputs = (MarketReturn(), 252)
     win = 252
@@ -82,16 +91,13 @@ class MarketVolatility(CrossSectionFactor):
     def get_total_backwards_(self) -> int:
         return super().get_total_backwards_() + self.rolling_win - 1
 
-    def shift(self, periods=1):
-        return MarketShift(self, periods) if periods != 0 else self
-
     def compute(self, returns, annualization_factor):
         market = nanlast(returns, dim=1).unsqueeze(0)
         variance = Rolling(market, self.rolling_win).nanvar().T
         return ((variance * annualization_factor) ** 0.5).expand(returns.shape)
 
 
-class AdvanceDeclineRatio(CrossSectionFactor):
+class AdvanceDeclineRatio(MarketFactor):
     """Need to work with MA, and could be applied to volume too"""
 
     inputs = (Returns(),)
