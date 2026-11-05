@@ -1102,6 +1102,155 @@ def test_quandl_event_on_a_dropped_row(tmp_path):
     assert list(df.vol_multi) == [2, 1, 1]
 
 
+# ------------------------------- zeros next to an event -------------------------------
+
+
+BARS = pd.bdate_range("2020-01-06", periods=14, name="date")
+BAR_DAYS = list(BARS.strftime("%Y-%m-%d"))
+
+
+def flat_rows(closes, volumes=1000.0):
+    rows = pd.DataFrame({col: closes for col in MEMORY_OHLCV}, index=BARS[: len(closes)])
+    return rows.assign(volume=volumes).astype(float)
+
+
+def rows_loader(folder, rows, dividends, splits, calendar=None, **kwargs):
+    """`dividends` and `splits` are {ex-date: value}, `calendar` is the rows of a calendar asset."""
+    (folder / "prices").mkdir(parents=True)
+    rows.to_csv(folder / "prices" / "A.csv")
+    if calendar is not None:
+        calendar.to_csv(folder / "prices" / "CALENDAR.csv")
+        kwargs["calender_asset"] = "CALENDAR"
+    write_events(folder / "dividends", "A", "amount", dividends)
+    write_events(folder / "splits", "A", "ratio", splits)
+    return spectre.data.CsvDirLoader(
+        str(folder / "prices"),
+        ohlcv=MEMORY_OHLCV,
+        dividends_path=str(folder / "dividends"),
+        splits_path=str(folder / "splits"),
+        adjustments=("amount", "ratio"),
+        parse_dates=True,
+        **kwargs,
+    )
+
+
+@pytest.mark.parametrize(
+    "dividends, splits, after",
+    [
+        ({}, {BAR_DAYS[7]: 0.5}, 50.0),
+        ({BAR_DAYS[7]: 10.0}, {}, 90.0),
+        ({BAR_DAYS[7]: 10.0}, {BAR_DAYS[7]: 0.5}, 45.0),
+    ],
+    ids=["split", "dividend", "both"],
+)
+@pytest.mark.filterwarnings("ignore:Warning!! delay_factor is set to False")
+def test_zeros_on_an_ex_date_are_missing_prices(tmp_path, device, dividends, splits, after):
+    rows = flat_rows([100.0] * 7 + [after] * 7)
+    zeros, nans = rows.copy(), rows.copy()
+    zeros.iloc[7:9] = 0.0
+    nans.iloc[7:9] = nan
+    loader = rows_loader(tmp_path / "zeros", zeros, dividends, splits)
+
+    engine = spectre.factors.FactorEngine(loader)
+    if device == "cuda":
+        engine.to_cuda()
+    engine.add(spectre.factors.Returns(), "returns")
+    engine.add(spectre.factors.MA(3), "ma")
+    dates = rows.index.tz_localize("UTC")
+    result = engine.run(dates[2], dates[-1], delay_factor=False)
+    # the value of a share never moves, so a window is flat in the scale of its last bar
+    assert_allclose(result.ma, [100] * 5 + [after] * 7, rtol=1e-6)
+    adjusted = pd.Series(after, index=rows.index).where(zeros.close != 0)
+    assert_allclose(result.returns, adjusted.pct_change(fill_method=None).iloc[2:], atol=1e-6)
+
+    columns = [*MEMORY_OHLCV[:4], "ex-dividend", "split_ratio", "price_multi", "vol_multi"]
+    df = loader.test_load()[columns]
+    pd.testing.assert_frame_equal(
+        df, rows_loader(tmp_path / "nans", nans, dividends, splits).test_load()[columns]
+    )
+
+
+def test_zeros_without_an_event_are_filled(tmp_path):
+    rows = flat_rows([100, 101, 0, 0, 104, 52, 53, 0, 55])
+    df = rows_loader(tmp_path, rows, {}, {BAR_DAYS[5]: 0.5}).test_load()
+    assert list(df.close) == [100, 101, 101, 101, 104, 52, 53, 53, 55]
+
+
+def test_zeros_up_to_an_ex_date_are_filled_until_it(tmp_path):
+    rows = flat_rows([100, 100, 0, 0, 0, 50, 50])
+    df = rows_loader(tmp_path, rows, {}, {BAR_DAYS[3]: 0.5}).test_load()
+    assert_array_equal(df.close, [100, 100, 100, nan, nan, 50, 50])
+
+
+def test_zeros_after_an_ex_date_are_filled_in_the_new_scale(tmp_path):
+    rows = flat_rows([100, 100, 50, 0, 0, 50])
+    df = rows_loader(tmp_path, rows, {}, {BAR_DAYS[2]: 0.5}).test_load()
+    assert list(df.close) == [100, 100, 50, 50, 50, 50]
+
+
+def test_zero_on_the_first_bar_after_an_ex_date_without_a_bar(tmp_path):
+    rows = flat_rows([100, 100, 0, 50, 50]).drop(BARS[1])
+    df = rows_loader(tmp_path, rows, {}, {BAR_DAYS[1]: 0.5}).test_load()
+    assert_array_equal(df.close, [100, nan, 50, 50])
+
+
+def test_zero_volume_on_an_ex_date(tmp_path):
+    """A split scales the volume, a dividend doesn't. The prices of that bar are valid."""
+    rows = flat_rows([100.0, 100, 100, 50, 50], [1000.0, 1000, 1000, 0, 2000])
+    df = rows_loader(tmp_path / "split", rows, {}, {BAR_DAYS[3]: 0.5}).test_load()
+    assert_array_equal(df.volume, [1000, 1000, 1000, nan, 2000])
+    assert list(df.close) == [100, 100, 100, 50, 50]
+
+    df = rows_loader(tmp_path / "dividend", rows, {BAR_DAYS[3]: 1.0}, {}).test_load()
+    assert list(df.volume) == [1000, 1000, 1000, 1000, 2000]
+
+
+def test_zeros_are_judged_by_column(tmp_path):
+    rows = flat_rows([100.0, 100, 50, 50])
+    rows.iloc[2, rows.columns.get_loc("close")] = 0.0
+    df = rows_loader(tmp_path, rows, {}, {BAR_DAYS[2]: 0.5}).test_load()
+    assert_array_equal(df.close, [100, 100, nan, 50])
+    assert list(df.open) == [100, 100, 50, 50]
+
+
+def test_zero_next_to_an_event_in_the_prices_csv(tmp_path):
+    rows = flat_rows([100.0, 100, 0, 0, 50]).assign(**{"ex-dividend": 0.0, "split_ratio": 1.0})
+    rows.iloc[2, rows.columns.get_loc("split_ratio")] = 0.5
+    (tmp_path / "prices").mkdir()
+    rows.to_csv(tmp_path / "prices" / "A.csv")
+    df = spectre.data.CsvDirLoader(
+        str(tmp_path / "prices"),
+        ohlcv=MEMORY_OHLCV,
+        adjustments=("ex-dividend", "split_ratio"),
+        parse_dates=True,
+    ).test_load()
+    assert_array_equal(df.close, [100, 100, nan, nan, 50])
+
+
+@pytest.mark.parametrize("ex_bar", [1, 2], ids=["on_the_gap", "on_the_zero"])
+def test_zero_next_to_an_event_with_align_by_time(tmp_path, ex_bar):
+    rows = flat_rows([100, 100, 0, 50, 50]).drop(BARS[1])
+    loader = rows_loader(
+        tmp_path, rows, {}, {BAR_DAYS[ex_bar]: 0.5}, flat_rows([1] * 5), align_by_time=True
+    )
+    df = loader.test_load().xs("A", level=1)
+    assert_array_equal(df.close, [100, nan, nan, 50, 50])
+
+
+def test_zero_filled_from_a_row_the_calendar_drops(tmp_path):
+    """It's filled as before, because no event is between that row and the zero."""
+    rows = flat_rows([100, 50, 0, 50])
+    loader = rows_loader(tmp_path, rows, {}, {BAR_DAYS[0]: 0.5}, flat_rows([1] * 4).drop(BARS[1]))
+    assert list(loader.test_load().close.xs("A", level=1)) == [100, 50, 50]
+
+
+def test_zero_of_another_asset_is_not_next_to_an_event(tmp_path):
+    """Each asset has its own events, the rows of the next asset don't see them."""
+    prices = {"A": dict.fromkeys(DAYS[:3], 100.0), "B": {DAYS[0]: 100.0, DAYS[1]: 0.0}}
+    df = events_loader(tmp_path, prices, {}, {DAYS[2]: 0.5}).test_load()
+    assert list(df.close.xs("B", level=1)) == [100, 100]
+
+
 # ------------------------------- row order of the files -------------------------------
 
 ROW_ORDERS = {

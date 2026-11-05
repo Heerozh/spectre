@@ -262,6 +262,33 @@ class CsvDirLoader(DataLoader):
         dfs = {symbol(fn): read_csv(fn) for fn in files}
         return dfs
 
+    def _clear_fills_over_events(self, df: pd.DataFrame, filled: pd.DataFrame) -> pd.DataFrame:
+        """
+        A 0 filled by `_ffill_zeros` holds a value in the scale before any dividend or split since
+        that value, so from the bar of the event it's wrong, and it becomes NaN, like a bar without
+        data. Only a split changes the scale of the volume. `filled` tells the filled cells, and
+        is indexed by (asset, date). The result is sorted by asset and date.
+        """
+        div_col, spr_col = self.adjustments
+        df = df.sort_index(level=[1, 0])
+        filled = filled.reindex(df.index.swaplevel(), fill_value=False)
+        rows = np.arange(len(df))
+        assets = df.index.codes[1]
+        first_rows = np.r_[True, assets[1:] != assets[:-1]]
+        splits = (df[spr_col] != 1).to_numpy()
+        events = splits | (df[div_col] != 0).to_numpy()
+
+        def last_true(mask):
+            return np.maximum.accumulate(np.where(mask, rows, -1))
+
+        for col in self.ohlcv:
+            is_filled = filled[col].to_numpy()
+            # a row with its own value, the value of a filled row comes from the last one of them
+            sources = last_true((df[col].notna().to_numpy() & ~is_filled) | first_rows)
+            col_events = splits if col in self.ohlcv[4:] else events
+            df[col] = df[col].mask(is_filled & (last_true(col_events) > sources))
+        return df
+
     def _load(self):
         if self._prices_by_year:
             dfs = self._walk_split_by_year_dir(self._path, self._prices_index)
@@ -278,9 +305,13 @@ class CsvDirLoader(DataLoader):
         # the rows of a file, and the files of `prices_by_year`, can be in any order
         df = df.rename_axis(["asset", "date"]).sort_index()
 
+        filled = pd.DataFrame()
         if self.ohlcv is not None:
             # 这里把0当成nan进行ffill（按asset分别填充）
+            zeros = df[list(self.ohlcv)] == 0
             df[list(self.ohlcv)] = _ffill_zeros(df[list(self.ohlcv)], df.index.get_level_values(0))
+            filled = zeros & (df[list(self.ohlcv)] != 0)
+            filled = filled[filled.any(axis=1)]
 
         df = df.swaplevel(0, 1).sort_index(level=0)
 
@@ -343,5 +374,7 @@ class CsvDirLoader(DataLoader):
             splits.name = self._adjustments[1]
             df = pd.concat([df, splits], axis=1)
 
+        if self.adjustments is not None and not filled.empty:
+            df = self._clear_fills_over_events(df, filled)
         df = self._format(df, self._split_ratio_is_inverse)
         return df
