@@ -403,7 +403,7 @@ def test_annualized_volatility_default_arguments(dirty_engine, dirty_panel):
     result = run_dirty(dirty_engine, factor)
     for asset in ("FULL", "LISTED", "NANBAR"):
         returns = ref.returns(dirty_panel.xs(asset, level="asset").close)
-        expected = returns.rolling(20, min_periods=1).std(ddof=0) * np.sqrt(252)
+        expected = returns.rolling(20, min_periods=2).std(ddof=0) * np.sqrt(252)
         got = result.xs(asset, level="asset").values
         assert_allclose(got, expected.values, rtol=0, atol=1e-6, err_msg=asset)
 

@@ -153,9 +153,12 @@ rows into padded 2D tensors, using NaN or `False` for padding:
   are renormalized. A group or window with no valid value is NaN, never `inf` or 0: the kernels do
   this, also when `ddof` leaves no degrees of freedom, except `nansum` and `nanprod`, because
   counting code relies on 0 and 1. `ts_sum`, `ts_prod` and `xs_sum` give NaN at the factor level.
+  One sample has no variance with any `ddof`, a 0 would read as the lowest risk of the date.
   Paired calculations use the samples valid in both inputs, `nanaverage` for a weighted mean.
 - **A statistic of equal values must be measured from their lowest value.** The mean of equal values
-  rounds away from them, which leaves a tiny std and scores of ±1. See `pearsonr` and `ZScoreFactor`.
+  rounds away from them, which leaves a tiny std and scores of ±1. `nanmean`, `nanaverage`, `nanvar`
+  and `pearsonr` do this, so `close - EMA(20)` of a flat series is 0, and `Rolling` rescales through a
+  ratio for the same reason, it is exactly 1 without an event.
 - **Some results still depend on `start`.** `fill_na(ffill=True)` has an unbounded look-back, a
   group of `'asset'` pools the loaded rows, so it moves with the history other factors need, and a
   window over a cross-section on an asset with gaps averages as many bars as have complete dates.

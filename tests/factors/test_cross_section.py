@@ -140,10 +140,15 @@ def test_weighted_mean_of_rows_with_weight_sum(device):
     assert_array_equal(result.cpu().numpy(), [[0.5] * 3, [nan] * 3])
 
 
+def spread_of(df):
+    """The std of each date, one asset has no spread to measure."""
+    return df.std(axis=1, ddof=0).where(df.count(axis=1) > 1)
+
+
 def test_std(engine):
-    expected = ref.expected_xs(lambda df: pd.DataFrame({a: df.std(axis=1, ddof=0) for a in df}))
+    expected = ref.expected_xs(lambda df: pd.DataFrame({a: spread_of(df) for a in df}))
     assert_factor(engine, close.std(), *expected)
-    assert expected[0][SOLO] == 0
+    assert np.isnan(expected[0][SOLO])
 
 
 def test_xs_sum(engine):
@@ -205,9 +210,15 @@ def test_zscore(engine):
 
 def test_zscore_zero_weight(engine):
     """weight=0 means mean = 0"""
-    expected = ref.expected_xs(lambda df: df.div(df.std(axis=1, ddof=0), axis=0))
+    expected = ref.expected_xs(lambda df: df.div(spread_of(df), axis=0))
     assert_factor(engine, close.zscore(weight=0), *expected)
-    assert expected[0][SOLO] == np.inf
+    assert np.isnan(expected[0][SOLO])
+
+
+def test_zscore_zero_weight_of_equal_values(device):
+    data = torch.full((2, 3), 33.3, device=device)
+    result = factors.factor.ZScoreFactor(close).compute(data, 0)
+    assert_array_equal(result.cpu().numpy(), np.full((2, 3), nan))
 
 
 def test_weighted_zscore(dirty_engine, dirty_panel):
@@ -373,7 +384,7 @@ def test_zscore_of_ts_max_on_listing_day(dirty_engine, dirty_panel):
 def test_bottom_skips_asset_without_returns(dirty_engine, dirty_panel):
     returns = dirty_panel.clean_close.groupby(level="asset").pct_change(fill_method=None)
     expected = returns.groupby(level="asset").transform(
-        lambda x: x.rolling(3, min_periods=1).std(0)
+        lambda x: x.rolling(3, min_periods=2).std(0)
     )
 
     factor = factors.STDDEV(3, inputs=[factors.Returns()])
@@ -385,6 +396,10 @@ def test_bottom_skips_asset_without_returns(dirty_engine, dirty_panel):
     assert_allclose(result["std"], expected.loc[start:], rtol=1e-6, atol=1e-9)
     assert np.isnan(result["std"].loc[(listed_on, "LISTED")])
     assert not result.bottom.loc[(listed_on, "LISTED")]
+    # its first return is one sample, that is not the lowest risk of the date
+    second_bar = DIRTY_DATES[LISTED_ON + 1]
+    assert np.isnan(result["std"].loc[(second_bar, "LISTED")])
+    assert not result.bottom.loc[(second_bar, "LISTED")]
 
 
 # ------------------------------------ demean ------------------------------------

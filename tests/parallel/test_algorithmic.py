@@ -176,7 +176,10 @@ def test_nanmean_nanstd_3d(device):
     assert_almost_equal(
         to_np(parallel.nanmean(data, dim=2)), np.nanmean(DATA_3D, axis=2), decimal=6
     )
-    assert_almost_equal(to_np(parallel.nanstd(data, dim=2)), np.nanstd(DATA_3D, axis=2), decimal=6)
+    # a window with one sample has no spread
+    expected = np.nanstd(DATA_3D, axis=2)
+    expected[(~np.isnan(DATA_3D)).sum(axis=2) < 2] = nan
+    assert_almost_equal(to_np(parallel.nanstd(data, dim=2)), expected, decimal=6)
 
 
 def test_nanmax_nanmin(device):
@@ -223,11 +226,41 @@ def test_too_few_samples_is_nan(device, ddof):
     assert_array_equal(to_np(parallel.covariance(data, data, ddof=ddof)), [nan])
 
 
-def test_one_sample_with_ddof_0_has_no_variance(device):
+def test_one_sample_has_no_variance(device):
+    """With any ddof. A 0 would read as the lowest risk of a date."""
     data = tensor([[nan, 5, nan]], device)
-    assert_array_equal(to_np(parallel.nanvar(data)), [0])
+    assert_array_equal(to_np(parallel.nanvar(data)), [nan])
+    assert_array_equal(to_np(parallel.nanstd(data)), [nan])
+    assert_array_equal(to_np(parallel.covariance(data, data)), [nan])
+
+
+@pytest.mark.parametrize("dtype", [torch.float32, torch.float64])
+@pytest.mark.parametrize("value", [1234.57, 33.3, 0.1, 1e-3, 7e6])
+@pytest.mark.parametrize("count", [3, 7, 20, 101])
+def test_equal_values_have_their_own_mean_and_no_spread(device, dtype, value, count):
+    """The sum of equal values rounds, so a mean from any other level moves away from them."""
+    data = tensor([[value] * count + [nan]], device, dtype)
+    assert_array_equal(to_np(parallel.nanmean(data)), to_np(data[:, 0]))
+    weight = tensor([[0.3, 0.7, 1.1] * count + [1]], device)[:, -count - 1 :]
+    assert_array_equal(to_np(parallel.nanaverage(data, weight)), to_np(data[:, 0]))
     assert_array_equal(to_np(parallel.nanstd(data)), [0])
-    assert_array_equal(to_np(parallel.covariance(data, data)), [0])
+    assert_array_equal(to_np(parallel.nanvar(data, ddof=1)), [0])
+    assert_array_equal(to_np(parallel.nanmean(data.unsqueeze(0), dim=2)), to_np(data[:, :1].T))
+    assert_array_equal(to_np(parallel.nanstd(data.unsqueeze(0), dim=2)), [[0]])
+
+
+@pytest.mark.parametrize(
+    "values, expected",
+    [
+        ([np.inf, 1], np.inf),
+        ([-np.inf, 1], -np.inf),
+        ([np.inf] * 2, np.inf),
+        ([-np.inf, np.inf], nan),
+    ],
+)
+def test_nanmean_of_infinite_values(device, values, expected):
+    data = tensor([values + [nan]], device)
+    assert_array_equal(to_np(parallel.nanmean(data)), [expected])
 
 
 def test_rolling_empty_window(device):
@@ -236,9 +269,10 @@ def test_rolling_empty_window(device):
     expected = pd.Series(to_np(x)[0]).rolling(3, min_periods=1)
     assert_almost_equal(to_np(r.nanmax())[0], expected.max())
     assert_almost_equal(to_np(r.nanmin())[0], expected.min())
-    assert_almost_equal(to_np(r.nanstd())[0], expected.std(ddof=0))
-    assert_almost_equal(to_np(r.nanstd(ddof=1))[0], expected.std(ddof=1))
-    assert_almost_equal(to_np(r.nanvar())[0], expected.var(ddof=0))
+    spread = pd.Series(to_np(x)[0]).rolling(3, min_periods=2)
+    assert_almost_equal(to_np(r.nanstd())[0], spread.std(ddof=0))
+    assert_almost_equal(to_np(r.nanstd(ddof=1))[0], spread.std(ddof=1))
+    assert_almost_equal(to_np(r.nanvar())[0], spread.var(ddof=0))
 
 
 def test_nanlast(device):

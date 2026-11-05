@@ -145,6 +145,15 @@ def nanprod(data: torch.Tensor, dim=1, inplace=False) -> torch.Tensor:
     return unmasked_prod(data, mask, dim, inplace=inplace)
 
 
+def _lowest(data: torch.Tensor, mask: torch.Tensor, dim: int) -> torch.Tensor:
+    """
+    The lowest value of each group, to measure a mean or a variance from. From any other level the
+    mean of equal values rounds away from them. It is 0 if it's not finite, inf can't be subtracted.
+    """
+    lowest = data.masked_fill(mask, np.inf).amin(dim=dim, keepdim=True)
+    return lowest.masked_fill_(torch.isinf(lowest), 0)
+
+
 def unmasked_mean(data, mask, dim=1, inplace=False):
     total = unmasked_sum(data, mask, dim, inplace=inplace)
     total.div_((~mask).sum(dim=dim))
@@ -153,7 +162,9 @@ def unmasked_mean(data, mask, dim=1, inplace=False):
 
 def nanmean(data: torch.Tensor, dim=1, inplace=False) -> torch.Tensor:
     mask = torch.isnan(data)
-    return unmasked_mean(data, mask, dim, inplace=inplace)
+    lowest = _lowest(data, mask, dim)
+    data = data.sub_(lowest) if inplace else data - lowest
+    return unmasked_mean(data, mask, dim, inplace=True) + lowest.squeeze(dim)
 
 
 def nanaverage(data: torch.Tensor, weight, dim=1, weight_sum=None) -> torch.Tensor:
@@ -162,16 +173,22 @@ def nanaverage(data: torch.Tensor, weight, dim=1, weight_sum=None) -> torch.Tens
     mask = torch.isnan(weighted)
     if weight_sum is None:
         weight_sum = weight.masked_fill(mask, 0).sum(dim=dim, dtype=weighted.dtype)
-    mean = unmasked_sum(weighted, mask, dim=dim, inplace=True) / weight_sum
+        lowest = _lowest(data, mask, dim)
+        spread = unmasked_sum((data - lowest) * weight, mask, dim=dim, inplace=True)
+        mean = spread / weight_sum + lowest.squeeze(dim)
+    else:
+        mean = unmasked_sum(weighted, mask, dim=dim, inplace=True) / weight_sum
     return mean.masked_fill_(mask.all(dim=dim), np.nan)
 
 
 def unmasked_var(data: torch.Tensor, mask, dim=1, ddof=0) -> torch.Tensor:
+    data = data - _lowest(data, mask, dim)
     mean = unmasked_sum(data, mask, dim)
     n = (~mask).sum(dim=dim)
     mean.div_(n)
+    # one sample has no spread to measure, whatever the ddof
+    too_few = n <= max(ddof, 1)
     n.sub_(ddof)
-    too_few = n <= 0
     if dim == len(data.shape) - 1:
         mean.unsqueeze_(-1)
         n.unsqueeze_(-1)
@@ -293,8 +310,9 @@ def unmasked_covariance(x, y, mask, dim=1, ddof=0):
     y = y - unmasked_mean(y, dim=dim, mask=mask).unsqueeze(-1)
     xy = x * y
     xy = unmasked_sum(xy, mask, dim, inplace=True)
-    n = (~mask).sum(dim=dim).sub_(ddof)
-    return xy.div_(n).masked_fill_(n <= 0, np.nan)
+    n = (~mask).sum(dim=dim)
+    too_few = n <= max(ddof, 1)
+    return xy.div_(n - ddof).masked_fill_(too_few, np.nan)
 
 
 def covariance(x, y, dim=1, ddof=0):

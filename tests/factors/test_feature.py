@@ -80,11 +80,15 @@ def assert_market_number(engine, factor, values):
     assert_array_equal(msft, aapl[dates.isin(msft_dates)])
 
 
+def dispersion_of(returns):
+    return returns.std(axis=1, ddof=0).where(returns.count(axis=1) > 1)
+
+
 def test_market_dispersion(engine):
-    dispersion = returns_of_assets().std(axis=1, ddof=0)
+    dispersion = dispersion_of(returns_of_assets())
     assert_market_number(engine, factors.MarketDispersion(), dispersion)
     # only AAPL has a return on that date
-    assert dispersion.loc["2019-01-10":"2019-01-10"].item() == 0
+    assert np.isnan(dispersion.loc["2019-01-10":"2019-01-10"].item())
 
 
 def test_market_return(engine):
@@ -108,14 +112,14 @@ ALIGNED = pytest.mark.parametrize("align", [False, True], ids=["not_aligned", "a
 # each factor with one number for a date, and that number from the returns of the assets
 MARKET_NUMBERS = {
     "return": (factors.MarketReturn, lambda r: r.mean(axis=1)),
-    "dispersion": (factors.MarketDispersion, lambda r: r.std(axis=1, ddof=0)),
+    "dispersion": (factors.MarketDispersion, dispersion_of),
     "advance_decline": (
         factors.AdvanceDeclineRatio,
         lambda r: (r > 0).sum(axis=1) / (r < 0).sum(axis=1),
     ),
     "volatility": (
         lambda: factors.MarketVolatility(win=MARKET_WIN),
-        lambda r: (r.mean(axis=1).rolling(MARKET_WIN, min_periods=1).var(ddof=0) * 252) ** 0.5,
+        lambda r: (r.mean(axis=1).rolling(MARKET_WIN, min_periods=2).var(ddof=0) * 252) ** 0.5,
     ),
 }
 each_market_number = pytest.mark.parametrize("name", MARKET_NUMBERS)
@@ -149,7 +153,7 @@ def asset_returns(closes, aligned=False):
 def market_volatility(closes, win=MARKET_WIN, annualization=252, aligned=False):
     """Rolls over the market return of every date, the mean of the assets with a return on it."""
     market = asset_returns(closes, aligned).mean(axis=1)
-    return (market.rolling(win, min_periods=1).var(ddof=0) * annualization) ** 0.5
+    return (market.rolling(win, min_periods=2).var(ddof=0) * annualization) ** 0.5
 
 
 def run_market(engine, factor, start=0, delay=False, name="test"):
@@ -216,8 +220,8 @@ def test_market_volatility_of_windows_that_are_not_full(market_closes, device):
         result = run_market(engine, factors.MarketVolatility(win=MARKET_WIN))
     first_dates = result.loc[MARKET_DATES[:3]].unstack()
     assert np.isnan(first_dates.iloc[0]).all()
-    # one return, its variance is 0 as in pandas
-    assert (first_dates.iloc[1].dropna() == 0).all()
+    # one return has no spread
+    assert np.isnan(first_dates.iloc[1]).all()
     assert (first_dates.iloc[2].dropna() > 0).all()
 
 

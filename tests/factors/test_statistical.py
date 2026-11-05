@@ -327,6 +327,24 @@ def flat_engine(device, dtype):
 
 
 @pytest.mark.filterwarnings("ignore:Warning!! delay_factor is set to False")
+@pytest.mark.parametrize(
+    "mean",
+    [
+        lambda: factors.MA(10),
+        lambda: factors.EMA(10),
+        lambda: factors.LinearWeightedAverage(10, inputs=[close]),
+    ],
+    ids=["ma", "ema", "lwma"],
+)
+def test_a_flat_series_has_no_distance_to_its_mean(device, mean):
+    """It would be inf over a std of 0, and one inf makes the zscore of a date NaN."""
+    engine = flat_engine(device, np.float32)
+    engine.add((close - mean()) / factors.STDDEV(10), "score")
+    result = engine.run(FLAT_DATES[15], FLAT_DATES[-1], delay_factor=False).score
+    assert result.xs("FLAT", level="asset").isna().all()
+
+
+@pytest.mark.filterwarnings("ignore:Warning!! delay_factor is set to False")
 @pytest.mark.parametrize("dtype", [np.float32, np.float64])
 @pytest.mark.parametrize(
     "mean",

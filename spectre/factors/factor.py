@@ -1179,7 +1179,8 @@ class ZScoreFactor(CrossSectionFactor):
 
     def compute(self, data: torch.Tensor, weight=None) -> torch.Tensor:
         if not isinstance(weight, torch.Tensor) and weight == 0:
-            return data / nanstd(data).unsqueeze(-1)
+            std = nanstd(data).unsqueeze(-1)
+            return data / std.masked_fill(std == 0, np.nan)
 
         samples = data
         if weight is not None:

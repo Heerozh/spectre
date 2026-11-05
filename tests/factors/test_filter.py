@@ -315,7 +315,7 @@ def test_weighted_mean_of_filter(dirty_engine, dirty_panel):
 )
 def test_rolling_statistics_of_filter_raise(dirty_engine, build):
     """The kernels reject bool on purpose: a padded False can't be told from a real False."""
-    with pytest.raises(RuntimeError, match="can't be cast"):
+    with pytest.raises(RuntimeError, match="bool tensors"):
         run_dirty(dirty_engine, build(close > 100))
 
 
