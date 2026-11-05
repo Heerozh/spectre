@@ -364,8 +364,28 @@ def test_rankdata_ordinal(device, ascending):
 
 def test_rankdata_normalize():
     x = tensor([[2, 3, nan, 1]])
-    # normalized by the length of data (nan included)
-    assert_almost_equal(parallel.rankdata(x, normalize=True), [[2 / 4, 3 / 4, nan, 1 / 4]])
+    # a share of the valid values
+    assert_almost_equal(parallel.rankdata(x, normalize=True), [[2 / 3, 3 / 3, nan, 1 / 3]])
+
+
+@pytest.mark.parametrize("ascending", [True, False])
+@pytest.mark.parametrize(
+    "method, pandas_method", [("average", "average"), ("dense", "dense"), ("ordinal", "first")]
+)
+def test_rankdata_normalize_same_as_pandas(device, method, pandas_method, ascending):
+    rng = np.random.default_rng(0)
+    x = rng.integers(0, 4, (50, 8)).astype(np.float32)
+    x[rng.random(x.shape) < 0.3] = nan
+    x[0], x[1] = nan, 2  # no valid value, and all values tied
+    df = pd.DataFrame(x)
+    expected = df.rank(axis=1, method=pandas_method, pct=True, ascending=ascending)
+    data = tensor(x, device)
+    result = parallel.rankdata(data, ascending=ascending, method=method, normalize=True)
+    assert_allclose(to_np(result), expected, rtol=1e-6)
+    result = parallel.rankdata(
+        data.unsqueeze(0), dim=2, ascending=ascending, method=method, normalize=True
+    )
+    assert_allclose(to_np(result)[0], expected, rtol=1e-6)
 
 
 @pytest.mark.parametrize("ascending", [True, False])

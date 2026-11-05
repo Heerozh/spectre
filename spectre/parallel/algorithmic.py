@@ -299,9 +299,11 @@ def rankdata(data: torch.Tensor, dim=1, ascending=True, method="average", normal
             dense = obs.cumsum(dim=dim).to(Global.float_type)
             ret = torch.take(dense, inv)
 
-    if normalize:
-        ret /= data.shape[dim]
     ret.masked_fill_(nans, np.nan)
+    if normalize:
+        # like `pct=True` of pandas: a share of the valid values, or of the distinct ones of `dense`
+        count = nanmax(ret, dim=dim) if method == "dense" else (~nans).sum(dim=dim)
+        ret /= count.unsqueeze(dim)
     return ret
 
 

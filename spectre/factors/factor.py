@@ -193,7 +193,10 @@ class BaseFactor:
         return "date," + groupby
 
     def rank(self, ascending=True, mask: BaseFactor = None, normalize=False, method="average"):
-        """Cross-section rank"""
+        """
+        Cross-section rank. `normalize` makes it a share of the valid values of the date, like
+        `pct=True` of pandas.
+        """
         factor = RankFactor(inputs=(self._numeric(),), mask=mask)
         factor.method = method
         factor.ascending = ascending
@@ -1173,16 +1176,15 @@ class RankFactor(CrossSectionFactor):
     method = "average"
 
     def compute(self, data: torch.Tensor) -> torch.Tensor:
-        ret = rankdata(data, 1, ascending=self.ascending, method=self.method)
-        if self.normalize:
-            ret /= nanmax(ret, dim=1).unsqueeze(-1)
-        return ret
+        return rankdata(
+            data, 1, ascending=self.ascending, method=self.method, normalize=self.normalize
+        )
 
 
 class RollingRankFactor(CustomFactor):
-    """rank over rolling period, scaled to the interval [1/days, 1]"""
+    """rank over rolling period, a share of the valid bars of the window, in (0, 1]"""
 
-    ascending = (True,)
+    ascending = True
     _min_win = 2
 
     def compute(self, data) -> torch.Tensor:

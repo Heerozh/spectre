@@ -407,7 +407,7 @@ GROUP_HELPERS = {
     ),
     "rank_normalized": (
         lambda f, m: f.rank(normalize=True, mask=m),
-        lambda x: rank_of(x) / by_date(rank_of(x)).transform("max"),
+        lambda x: rank_of(x, pct=True),
     ),
     "top": (
         lambda f, m: f.top(2, mask=m),

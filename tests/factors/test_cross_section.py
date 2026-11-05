@@ -78,13 +78,17 @@ def test_rank_with_mask(engine, device):
 
 
 def test_rank_normalize(engine):
-    # divided by the max rank of each day
-    def normalized_rank(df):
-        rank = df.rank(axis=1)
-        return rank.div(rank.max(axis=1), axis=0)
-
-    expected = ref.expected_xs(normalized_rank)
+    expected = ref.expected_xs(lambda df: df.rank(axis=1, pct=True))
     assert_factor(engine, close.rank(normalize=True), *expected)
+
+
+def test_rank_normalize_of_ties_is_a_share_of_the_date(dirty_engine, dirty_panel):
+    """Not a share of the highest rank: the first of [1, 2, 2, 2] is at .25, not at .33."""
+    rounded = (dirty_panel.close / 50).round()
+    expected = rounded.groupby(level="date").rank(pct=True)
+    result = run_dirty(dirty_engine, (close / 50).round(0).rank(normalize=True))
+    assert_allclose(result, expected, rtol=1e-6)
+    assert result.groupby(level="date").max().min() < 1
 
 
 # ------------------------------------ statistics ------------------------------------
