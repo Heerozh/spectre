@@ -10,7 +10,6 @@ from collections.abc import Sequence
 import numpy as np
 import torch
 
-from ..parallel import nanmean
 from .basic import EMA, MA
 from .engine import OHLCV
 from .factor import BaseFactor, CustomFactor, RollingZScoreFactor
@@ -90,7 +89,7 @@ class MovingAverageConvergenceDivergenceSignal(EMA):
 
 
 class TrueRange(CustomFactor):
-    """ATR = MA(14, inputs=(TrueRange(),))"""
+    """Wilder's ATR(14) = EMA(2 * 14 - 1, inputs=(TrueRange(),)), which is alpha = 1 / 14"""
 
     inputs = (OHLCV.high, OHLCV.low, OHLCV.close)
     win = 2
@@ -106,7 +105,11 @@ class TrueRange(CustomFactor):
 
 
 class RSI(CustomFactor):
-    """usage: RSI(win, inputs=[OHLCV.close])"""
+    """
+    Wilder's RSI, usage: RSI(win, inputs=[OHLCV.close])
+    His smoothing is an EMA with alpha = 1 / win, seeded with the first change of a finite window
+    of `EMA`, so it doesn't depend on the data before that window.
+    """
 
     inputs = (OHLCV.close,)
     win = 14
@@ -114,25 +117,15 @@ class RSI(CustomFactor):
 
     def __init__(self, win: int | None = None, inputs: Sequence[BaseFactor] | None = None):
         super().__init__(win, inputs)
-        self.win = self.win + 1  # +1 for 1 day diff
+        self._smoothing = EMA(2 * self.win - 1, self.inputs)
+        self.win = self._smoothing.win + 1  # +1 for 1 day diff
 
     def compute(self, closes):
         def _rsi(_closes):
-            shift = _closes.roll(1, dims=2)
-            shift = shift.contiguous()
-            shift[:, :, 0] = np.nan
-            diff = _closes - shift
-            del shift, _closes
-            up = diff.clamp(min=0)
-            down = diff.clamp(max=0)
-            del diff
-            # Cutler's RSI, more stable, independent to data length
-            up = nanmean(up[:, :, 1:], dim=2)
-            down = nanmean(down[:, :, 1:], dim=2).abs()
+            diff = _closes[:, :, 1:] - _closes[:, :, :-1]
+            up = self._smoothing.smooth(diff.clamp(min=0))
+            down = self._smoothing.smooth(-diff.clamp(max=0))
             return 100 - (100 / (1 + up / down))
-            # Wilder's RSI
-            # up = up.ewm(com=14-1, adjust=False).mean()
-            # down = down.ewm(com=14-1, adjust=False).mean().abs()
 
         return closes.agg(_rsi)
 

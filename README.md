@@ -294,7 +294,8 @@ pf.create_full_tear_sheet(
   leaves a small error at any `span`. With `adjust=False` at `span=3` or `half_life=1`, spectre
   follows the formula in the pandas documentation on the bar after a missing bar, pandas has a
   special case there, and differs by about 0.4%.
-* spectre's `RSI` uses the algorithm same as `zipline`, for consistency in benchmarks.
+* spectre's `RSI` is Wilder's, like TA-Lib and TradingView, with the finite window of an `EMA` of
+  `span=2 * win - 1`. The `RSI` of `zipline` uses simple means, which is Cutler's RSI.
 * A window that isn't full is computed on its valid bars. A window with no valid bar is NaN.
 
 

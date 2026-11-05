@@ -137,6 +137,11 @@ class ExponentialWeightedMovingAverage(CustomFactor):
             ret[partial] = self._partial_windows(data[partial])
         return ret
 
+    def smooth(self, data):
+        """`ewm(adjust=False)` of windows [asset, chunk, win], for a factor that has to do more."""
+        self.weight = torch.as_tensor(self.weight, dtype=Global.float_type, device=data.device)
+        return self._recursive_mean(data)
+
     def compute(self, data):
         self.weight = self.weight.to(device=data.device)
         # with alpha = 1 the weights of the older bars are 0, and a NaN last bar would leave nothing

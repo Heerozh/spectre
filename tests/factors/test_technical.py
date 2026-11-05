@@ -266,20 +266,41 @@ def test_atr_keeps_a_bar_with_only_the_close_missing(device, scale):
     assert_allclose(result.atr.values, expected, rtol=1e-6)
 
 
+# talib.RSI(close, 14) of the bars before the default range, 1000 bars after its first value
+TALIB_RSI_AAPL = [39.1585967, 32.5935917, 35.8566833, 35.8566833, 38.2034011, 42.2040408,
+                  46.3533033, 41.6204222, 44.3892683]  # fmt: skip
+TALIB_RSI_MSFT = [43.3547561, 44.7610889, 47.7678806, 46.2391966, 49.2104855, 50.3515566,
+                  46.327828, 46.6394416]  # fmt: skip
+
+
+# The window of RSI is truncated like the one of EMA, the error is about 1e-2 on a scale of 100
 def test_rsi(engine):
     expected = ref.expected(lambda df: ref.rsi(df.close))
-    assert_factor(engine, factors.RSI(), *expected)
-    # Cutler's RSI calculated by excel
-    assert_almost_equal(expected[0], [40.1814301, 33.36385487, 37.37511353, 36.31220413,
-                                      41.84100418, 39.19197118, 48.18441452, 44.30411404,
-                                      50.05167959])  # fmt: skip
-    assert_almost_equal(expected[1], [38.5647217, 42.0627596, 37.9693676, 43.8641553,
-                                      48.3458438, 47.095672, 46.7363662, 46.127465])  # fmt: skip
+    assert_factor(engine, factors.RSI(), *expected, decimal=1)
+    assert_almost_equal(expected[0], TALIB_RSI_AAPL, decimal=6)
+    assert_almost_equal(expected[1], TALIB_RSI_MSFT, decimal=6)
 
 
 def test_rsi_normalized(engine):
     expected = ref.expected(lambda df: ref.rsi(df.close) / 50 - 1)
-    assert_factor(engine, factors.RSI().normalized(), *expected)
+    assert_factor(engine, factors.RSI().normalized(), *expected, decimal=3)
+
+
+@pytest.mark.filterwarnings("ignore:Warning!! delay_factor is set to False")
+@pytest.mark.parametrize("asset", ["FULL", "LISTED", "HALTED", "NANBAR", "SPLIT"])
+def test_rsi_of_missing_bars_and_splits(dirty_engine, dirty_panel, asset):
+    """Until its window of 45 bars is full it's the series from the first bar of the asset."""
+    result = run_dirty(dirty_engine, factors.RSI(5)).xs(asset, level="asset")
+    clean = dirty_panel.xs(asset, level="asset").clean_close
+    assert_allclose(result.values, ref.rsi(clean, 5).values, rtol=1e-3, atol=1e-4)
+
+
+def test_atr_of_the_docstring_of_true_range_is_wilders(engine):
+    def atr(df):
+        return ref.true_range(df).ewm(alpha=1 / 14, adjust=False).mean()
+
+    expected = ref.expected(atr)
+    assert_factor(engine, factors.EMA(2 * 14 - 1, inputs=(factors.TRANGE(),)), *expected, decimal=2)
 
 
 def test_stochf(engine):
