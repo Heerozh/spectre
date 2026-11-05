@@ -1,10 +1,11 @@
 import numpy as np
 import pandas as pd
 import pytest
+import torch
 from numpy.testing import assert_allclose, assert_almost_equal
 
 import spectre
-from spectre import factors
+from spectre import factors, parallel
 from tests.conftest import DELISTED_ON, DIRTY_ADJUSTMENTS, DIRTY_OHLCV
 from tests.factors import reference as ref
 from tests.factors.helpers import aligned_bars, assert_factor, nansplit_bars, run_dirty
@@ -283,6 +284,44 @@ def test_rsi_normalized(engine):
 
 def test_stochf(engine):
     assert_factor(engine, factors.STOCHF(), *ref.expected(ref.stochf))
+
+
+@pytest.mark.filterwarnings("ignore:Warning!! delay_factor is set to False")
+def test_stochf_of_a_flat_window_is_nan(device):
+    """
+    A bar with one price and no trades, and multipliers that aren't 1 because of a later dividend.
+    Rounding would leave the close above a low of the same price, which is inf over a range of 0,
+    and one inf makes the zscore of the whole date NaN.
+    """
+    dates = pd.date_range("2020-01-01", periods=30, freq="B", tz="UTC")
+    flat = pd.DataFrame(index=dates, data={"close": np.linspace(30, 33.3, 30)}, dtype=np.float32)
+    flat.iloc[15:] = 33.3
+    frames = {"FLAT": flat, "OTHER": flat + np.arange(30, dtype=np.float32).reshape(-1, 1) / 7}
+    panel = pd.concat(frames, names=["asset", "date"]).swaplevel().sort_index()
+    panel = panel.assign(open=panel.close, volume=1000.0, split_ratio=1.0)
+    panel["high"], panel["low"] = panel.close * 1.0, panel.close * 1.0
+    panel.loc[panel.index.get_level_values("asset") == "OTHER", "high"] *= 1.01
+    panel.loc[panel.index.get_level_values("asset") == "OTHER", "low"] *= 0.99
+    panel["ex-dividend"] = 0.0
+    panel.loc[(dates[-1], "FLAT"), "ex-dividend"] = 0.17
+    loader = spectre.data.MemoryLoader(panel, DIRTY_OHLCV, DIRTY_ADJUSTMENTS)
+    engine = factors.FactorEngine(loader)
+    if device == "cuda":
+        engine.to_cuda()
+    engine.add(factors.STOCHF(5), "stochf")
+    engine.add(factors.STOCHF(5).zscore(), "zscore")
+    result = engine.run(dates[20], dates[-1], delay_factor=False)
+    assert result.stochf.xs("FLAT", level="asset").iloc[:-1].isna().all()
+    assert np.isfinite(result.stochf.xs("OTHER", level="asset")).all()
+
+
+def test_stochf_of_a_close_out_of_an_empty_range(device):
+    """A bar with only a close: the range is 0, and it's not a value of the oscillator."""
+    zeros = torch.zeros(1, 4, device=device)
+    highs, lows = parallel.Rolling(zeros, 2), parallel.Rolling(zeros, 2)
+    closes = parallel.Rolling(torch.full((1, 4), 50.0, device=device), 2)
+    result = factors.STOCHF(2).compute(highs, lows, closes)
+    assert np.isnan(result.cpu().numpy()).all()
 
 
 def test_stochf_normalized(engine):

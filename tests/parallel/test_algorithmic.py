@@ -252,6 +252,24 @@ def test_nanlast(device):
     assert_almost_equal(to_np(parallel.nanlast(tensor(data, device), dim=0)), 1.0)
 
 
+def test_rolling_leaves_bars_without_an_event_as_they_are(device):
+    """`x * m / m` rounds x in float32, and a flat series gets a spread."""
+    rng = np.random.default_rng(0)
+    x = tensor(rng.uniform(1, 1000, (1000, 1)), device)
+    multipliers = tensor(rng.uniform(0.01, 1, (1000, 1)), device)
+    rolling = parallel.Rolling(x.expand(1000, 3), 2, multipliers.expand(1000, 3))
+    assert_array_equal(to_np(rolling.adjust()[:, 1:]), to_np(x.unsqueeze(-1).expand(1000, 2, 2)))
+
+
+def test_rescale_keeps_the_precision_of_the_data(device):
+    data = tensor([[1 / 3]], device, torch.float64)
+    multipliers, target = tensor([[0.3]], device), tensor([[0.7]], device)
+    result = parallel.rescale(data, multipliers, target)
+    assert result.dtype == torch.float64
+    expected = (1 / 3) * (float(np.float32(0.3)) / float(np.float32(0.7)))
+    assert to_np(result)[0, 0] == pytest.approx(expected, rel=1e-15)
+
+
 def test_masked_first(device):
     data = tensor([1, 2, nan], device)
     mask = torch.tensor([False, True, True], device=device)

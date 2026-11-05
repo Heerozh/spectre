@@ -12,7 +12,7 @@ import pandas as pd
 import torch
 
 from ..config import Global
-from ..parallel import nanlast
+from ..parallel import nanlast, rescale
 from .factor import BaseFactor, CustomFactor
 
 
@@ -90,7 +90,8 @@ class AdjustedColumnDataFactor(CustomFactor):
         multi = self.parent.adjustments
         if multi is None:
             return data
-        return data * multi / nanlast(multi, dim=1)[:, None]
+        multi = multi.to(data.device)  # `compute` can run again on cpu
+        return rescale(data, multi, nanlast(multi, dim=1)[:, None])
 
 
 class AssetClassifierDataFactor(BaseFactor):

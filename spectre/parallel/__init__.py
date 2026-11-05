@@ -20,6 +20,7 @@ from .algorithmic import (
     pearsonr,
     quantile,
     rankdata,
+    rescale,
     spearman,
     unmasked_mean,
     unmasked_sum,

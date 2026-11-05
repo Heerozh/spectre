@@ -427,6 +427,16 @@ def masked_kth_value_1d(
     return rtn, kth
 
 
+def rescale(data: torch.Tensor, multipliers: torch.Tensor, target: torch.Tensor) -> torch.Tensor:
+    """
+    `data` with `multipliers`, in the scale of `target`. Through a ratio, which is exactly 1 on the
+    bars without an event, `data * multipliers / target` would round them, a flat series would get
+    a spread.
+    """
+    dtype = torch.result_type(data, multipliers)
+    return data * (multipliers.to(dtype) / target.to(dtype))
+
+
 def clamp_1d_(data, min_, max_):
     min_mask = data < min_
     max_mask = data > max_
@@ -491,7 +501,9 @@ class Rolling:
     def adjust(self, s=None, e=None) -> torch.Tensor:
         """this will contiguous tensor consume lot of memory, limit e-s size"""
         if self.adjustments is not None:
-            return self.values[:, s:e] * self.adjustments[:, s:e] / self.adjustment_last[:, s:e]
+            return rescale(
+                self.values[:, s:e], self.adjustments[:, s:e], self.adjustment_last[:, s:e]
+            )
         else:
             return self.values[:, s:e]
 

@@ -159,7 +159,8 @@ class FastStochasticOscillator(CustomFactor):
     def compute(self, highs, lows, closes):
         highest_highs = highs.nanmax()
         lowest_lows = lows.nanmin()
-        k = (closes.last() - lowest_lows) / (highest_highs - lowest_lows)
+        price_range = highest_highs - lowest_lows
+        k = (closes.last() - lowest_lows) / price_range.masked_fill(price_range == 0, np.nan)
 
         return k * 100
 
