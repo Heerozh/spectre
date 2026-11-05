@@ -179,10 +179,13 @@ def test_zero_prices_are_forward_filled(tmp_path):
     b.to_csv(tmp_path / "B.csv", index=False)
     loader = spectre.data.CsvDirLoader(str(tmp_path), prices_index="date", parse_dates=True)
     df = loader.load()
-    for col in ohlcv:
+    for col in ohlcv[:4]:
         assert_array_equal(values_of(df, "A", col), [1, 1, 3])
         # the leading zero of B is not filled by the price of A
         assert_array_equal(values_of(df, "B", col), [0, 2, 2])
+    # a volume of 0 is a bar without trades, not a missing value
+    assert_array_equal(values_of(df, "A", "volume"), [1, 0, 3])
+    assert_array_equal(values_of(df, "B", "volume"), [0, 2, 0])
 
 
 def test_split_by_year(intraday_loader):
@@ -1195,14 +1198,14 @@ def test_zero_on_the_first_bar_after_an_ex_date_without_a_bar(tmp_path):
 
 
 def test_zero_volume_on_an_ex_date(tmp_path):
-    """A split scales the volume, a dividend doesn't. The prices of that bar are valid."""
+    """It stays 0 with any event, and the prices of that bar are valid."""
     rows = flat_rows([100.0, 100, 100, 50, 50], [1000.0, 1000, 1000, 0, 2000])
     df = rows_loader(tmp_path / "split", rows, {}, {BAR_DAYS[3]: 0.5}).test_load()
-    assert_array_equal(df.volume, [1000, 1000, 1000, nan, 2000])
+    assert list(df.volume) == [1000, 1000, 1000, 0, 2000]
     assert list(df.close) == [100, 100, 100, 50, 50]
 
     df = rows_loader(tmp_path / "dividend", rows, {BAR_DAYS[3]: 1.0}, {}).test_load()
-    assert list(df.volume) == [1000, 1000, 1000, 1000, 2000]
+    assert list(df.volume) == [1000, 1000, 1000, 0, 2000]
 
 
 def test_zeros_are_judged_by_column(tmp_path):
@@ -1292,7 +1295,7 @@ def test_zeros_are_filled_from_the_past_in_any_row_order(tmp_path, order):
     other = load_in_order(tmp_path / "other", order, assets)
     pd.testing.assert_frame_equal(other, oldest_first)
 
-    expected = rows.replace(0, nan).ffill()
+    expected = rows.replace(0, nan).ffill().assign(volume=rows.volume)
     assert_allclose(other.xs("A", level=1)[list(MEMORY_OHLCV)], expected)
     assert_allclose(other.xs("B", level=1)[list(MEMORY_OHLCV)], assets["B"])
 
@@ -1309,7 +1312,8 @@ def test_zeros_are_filled_from_the_past_in_any_order_of_year_files(tmp_path, mon
     df = spectre.data.CsvDirLoader(
         str(tmp_path), prices_by_year=True, ohlcv=MEMORY_OHLCV, parse_dates=True
     ).load()
-    assert_allclose(df[list(MEMORY_OHLCV)], rows.replace(0, nan).ffill())
+    expected = rows.replace(0, nan).ffill().assign(volume=rows.volume)
+    assert_allclose(df[list(MEMORY_OHLCV)], expected)
 
 
 @pytest.mark.parametrize("order", ["newest_first", "shuffled"])

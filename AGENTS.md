@@ -208,6 +208,8 @@ rows into padded 2D tensors, using NaN or `False` for padding:
 
 ### Data and backtesting
 
+- `CsvDirLoader` fills a price of 0 from the bar before. A volume of 0 stays, it is a bar without
+  trades.
 - Loaders implement `_load()` and `last_modified`. `DataLoader._format()` adds what the engine
   needs: `_time_cat_id`, and the `price_multi` and `vol_multi` columns, after moving `ex-dividend`
   and `split_ratio` up one row so they apply to bars before the ex-date. A dividend divides by the
