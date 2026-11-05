@@ -648,6 +648,199 @@ def test_price_files_in_different_utc_offsets(tmp_path):
         assert list(df.xs(asset, level=1).index) == list(expected), asset
 
 
+def local_bars(zone, times, days=None):
+    """Timestamps of the bars at `times` of the business days, on the clock of `zone`."""
+    days = pd.bdate_range("2019-03-04", "2019-04-12") if days is None else days
+    return pd.DatetimeIndex(
+        [pd.Timestamp(f"{day.date()} {time}", tz=zone) for day in days for time in times]
+    )
+
+
+def split_prices(bars, ex_date):
+    """{bar: close}, the price halves on the local date `ex_date`, in the text of a csv."""
+    return {
+        bar.isoformat(): 50.0 if bar.tz_localize(None) >= pd.Timestamp(ex_date) else 100.0
+        for bar in bars
+    }
+
+
+# the clocks change in this range: New York on 03-10, Berlin on 03-31, Sydney on 04-07
+DAILY, INTRADAY = ("00:00:00",), ("10:00:00", "12:30:00", "15:55:00")
+
+
+@pytest.mark.parametrize("times", [DAILY, INTRADAY], ids=["daily", "intraday"])
+@pytest.mark.parametrize(
+    "zone, ex_date",
+    [
+        ("America/New_York", "2019-03-08"),
+        ("America/New_York", "2019-03-11"),
+        ("Europe/Berlin", "2019-03-29"),
+        ("Europe/Berlin", "2019-04-01"),
+        ("Australia/Sydney", "2019-04-05"),
+        ("Australia/Sydney", "2019-04-08"),
+    ],
+)
+def test_naive_ex_date_on_both_sides_of_a_change_of_the_clock(tmp_path, zone, ex_date, times):
+    bars = local_bars(zone, times)
+    loader = events_loader(tmp_path, {"A": split_prices(bars, ex_date)}, {}, {ex_date: 0.5})
+    df = loader.test_load()
+    assert list(df.index.get_level_values(0)) == list(bars.tz_convert("UTC"))
+    before = bars.tz_localize(None) < pd.Timestamp(ex_date)
+    assert list(df.price_multi) == list(np.where(before, 0.5, 1))
+    assert list(df.vol_multi) == list(np.where(before, 2, 1))
+    assert (df["split_ratio"] != 1).sum() == 1
+
+
+@pytest.mark.parametrize("times", [DAILY, INTRADAY], ids=["daily", "intraday"])
+@pytest.mark.parametrize("ex_date", ["2019-03-08", "2019-04-01", "2019-04-08"])
+def test_naive_ex_dates_of_files_in_different_fixed_offsets(tmp_path, ex_date, times):
+    tokyo = local_bars("Asia/Tokyo", times)
+    new_york = local_bars("Etc/GMT+5", times)
+    prices = {"A": split_prices(tokyo, ex_date), "B": split_prices(new_york, ex_date)}
+    loader = events_loader(tmp_path, prices, {}, {ex_date: 0.5})
+    write_events(tmp_path / "splits", "B", "ratio", {ex_date: 0.5})
+    df = loader.test_load()
+    for asset, bars in (("A", tokyo), ("B", new_york)):
+        before = bars.tz_localize(None) < pd.Timestamp(ex_date)
+        assert list(df.price_multi.xs(asset, level=1)) == list(np.where(before, 0.5, 1)), asset
+
+
+def test_naive_ex_date_of_a_file_next_to_a_file_across_a_change_of_the_clock(tmp_path):
+    ex_date = "2019-04-01"
+    tokyo = local_bars("Asia/Tokyo", DAILY)
+    berlin = local_bars("Europe/Berlin", DAILY)
+    prices = {"A": split_prices(berlin, ex_date), "B": split_prices(tokyo, ex_date)}
+    loader = events_loader(tmp_path, prices, {}, {ex_date: 0.5})
+    write_events(tmp_path / "splits", "B", "ratio", {ex_date: 0.5})
+    df = loader.test_load()
+    for asset, bars in (("A", berlin), ("B", tokyo)):
+        before = bars.tz_localize(None) < pd.Timestamp(ex_date)
+        assert list(df.price_multi.xs(asset, level=1)) == list(np.where(before, 0.5, 1)), asset
+
+
+def test_naive_ex_date_in_the_gap_over_a_change_of_the_clock(tmp_path):
+    bars = local_bars("Europe/Berlin", DAILY)
+    # no bars on the weekend of the change, the first bar on or after both days is the Monday
+    closes = split_prices(bars, "2019-04-01")
+    loader = events_loader(tmp_path, {"A": closes}, {"2019-03-30": 1.0}, {"2019-03-31": 0.5})
+    df = loader.test_load()
+    friday = bars.tz_localize(None).get_loc(pd.Timestamp("2019-03-29"))
+    assert list(np.flatnonzero(df["split_ratio"] != 1)) == [friday]
+    assert list(np.flatnonzero(df["ex-dividend"] != 0)) == [friday]
+
+
+def test_naive_ex_date_is_not_early_on_an_evening_bar(tmp_path):
+    """20:00 in New York is the next day in UTC, the bars of the evening are still before it."""
+    ex_date = "2019-04-02"
+    bars = local_bars("America/New_York", ("09:30:00", "20:00:00"))
+    loader = events_loader(tmp_path, {"A": split_prices(bars, ex_date)}, {}, {ex_date: 0.5})
+    df = loader.test_load()
+    before = bars.tz_localize(None) < pd.Timestamp(ex_date)
+    assert list(df.price_multi) == list(np.where(before, 0.5, 1))
+
+
+def test_naive_ex_date_of_year_files_across_a_change_of_the_clock(tmp_path):
+    """Each file is in one UTC offset or in two, and the years have to join."""
+    (tmp_path / "prices").mkdir()
+    winter = local_bars("Europe/Berlin", DAILY, pd.bdate_range("2018-12-24", "2018-12-31"))
+    spring = local_bars("Europe/Berlin", DAILY, pd.bdate_range("2019-03-25", "2019-04-12"))
+    bars = winter.append(spring)
+    ex_date = "2019-04-01"
+    closes = pd.Series(split_prices(bars, ex_date), name="close")
+    frame = pd.DataFrame({col: closes for col in MEMORY_OHLCV}).rename_axis("date")
+    frame.iloc[: len(winter)].to_csv(tmp_path / "prices" / "A_2018.csv")
+    frame.iloc[len(winter) :].to_csv(tmp_path / "prices" / "A_2019.csv")
+    write_events(tmp_path / "dividends", "A", "amount", {})
+    write_events(tmp_path / "splits", "A", "ratio", {ex_date: 0.5})
+    df = spectre.data.CsvDirLoader(
+        str(tmp_path / "prices"),
+        prices_by_year=True,
+        ohlcv=MEMORY_OHLCV,
+        dividends_path=str(tmp_path / "dividends"),
+        splits_path=str(tmp_path / "splits"),
+        adjustments=("amount", "ratio"),
+        parse_dates=True,
+    ).test_load()
+    before = bars.tz_localize(None) < pd.Timestamp(ex_date)
+    assert list(df.price_multi) == list(np.where(before, 0.5, 1))
+
+
+@pytest.mark.parametrize(
+    "ending", ["+02:00", "+0200", "+02"], ids=["with_colon", "without_colon", "only_hours"]
+)
+def test_naive_ex_date_with_other_formats_of_the_offset(tmp_path, ending):
+    closes = {f"{DAYS[0]} 00:00:00+01:00": 100.0}
+    closes |= {f"{day} 00:00:00{ending}": 50.0 for day in DAYS[1:3]}
+    df = events_loader(tmp_path, {"A": closes}, {}, {DAYS[1]: 0.5}).test_load()
+    assert list(df.price_multi) == [0.5, 1, 1]
+
+
+@pytest.mark.parametrize("order", ["newest_first", "shuffled"])
+def test_naive_ex_date_in_any_row_order_across_a_change_of_the_clock(tmp_path, order):
+    ex_date = "2019-04-01"
+    bars = local_bars("Europe/Berlin", DAILY)
+    closes = pd.Series(split_prices(bars, ex_date))
+    rows = pd.DataFrame({col: closes for col in MEMORY_OHLCV}).rename_axis("date")
+    (tmp_path / "prices").mkdir()
+    ROW_ORDERS[order](rows).to_csv(tmp_path / "prices" / "A.csv")
+    write_events(tmp_path / "dividends", "A", "amount", {})
+    write_events(tmp_path / "splits", "A", "ratio", {ex_date: 0.5})
+    df = spectre.data.CsvDirLoader(
+        str(tmp_path / "prices"),
+        ohlcv=MEMORY_OHLCV,
+        dividends_path=str(tmp_path / "dividends"),
+        splits_path=str(tmp_path / "splits"),
+        adjustments=("amount", "ratio"),
+        parse_dates=True,
+    ).test_load()
+    before = bars.tz_localize(None) < pd.Timestamp(ex_date)
+    assert list(df.price_multi) == list(np.where(before, 0.5, 1))
+
+
+def test_ex_dates_with_a_timezone_of_a_file_across_a_change_of_the_clock(tmp_path):
+    """They have their instant, so the local time of the bars doesn't matter."""
+    ex_date = pd.Timestamp("2019-04-01", tz="Europe/Berlin")
+    bars = local_bars("Europe/Berlin", DAILY)
+    closes = split_prices(bars, "2019-04-01")
+    splits = {ex_date.isoformat(): 0.5}
+    df = events_loader(tmp_path, {"A": closes}, {}, splits).test_load()
+    before = bars < ex_date
+    assert list(df.price_multi) == list(np.where(before, 0.5, 1))
+
+
+def test_ex_dates_across_a_change_of_the_clock_on_bars_without_a_timezone(tmp_path):
+    """The bars have no instant, so an ex-date is read as written, not in UTC."""
+    days = [f"2019-03-{day:02}" for day in (7, 8, 11, 12, 13)]
+    closes = dict(zip(days, (100.0, 50.0, 50.0, 25.0, 25.0)))
+    splits = {f"{days[1]} 00:00:00-05:00": 0.5, f"{days[3]} 00:00:00-04:00": 0.5}
+    df = events_loader(tmp_path, {"A": closes}, {}, splits).test_load()
+    assert list(df.price_multi) == [0.25, 0.5, 0.5, 1, 1]
+
+
+@pytest.mark.parametrize("bar_time", ["00:00:00", "00:00:00-05:00"], ids=["naive", "aware"])
+def test_dividend_file_across_a_change_of_the_clock(tmp_path, bar_time):
+    days = [f"2019-03-{day:02}" for day in (7, 8, 11, 12, 13)]
+    closes = {f"{day} {bar_time}": 100.0 for day in days}
+    dividends = {f"{days[1]} 00:00:00-05:00": 1.0, f"{days[3]} 00:00:00-04:00": 2.0}
+    df = events_loader(tmp_path, {"A": closes}, dividends, {}).test_load()
+    # 00:00-04:00 is 23:00-05:00 of the day before, the first bar after it is the same
+    assert list(df["ex-dividend"]) == [1, 0, 2, 0, 0]
+
+
+@pytest.mark.filterwarnings("ignore:Warning!! delay_factor is set to False")
+def test_returns_over_a_split_across_a_change_of_the_clock(tmp_path, device):
+    ex_date = "2019-04-01"
+    bars = local_bars("Europe/Berlin", DAILY)
+    loader = events_loader(tmp_path, {"A": split_prices(bars, ex_date)}, {}, {ex_date: 0.5})
+    engine = spectre.factors.FactorEngine(loader)
+    if device == "cuda":
+        engine.to_cuda()
+    engine.add(spectre.factors.Returns(), "returns")
+    dates = bars.tz_convert("UTC")
+    result = engine.run(dates[1], dates[-1], delay_factor=False)
+    assert_allclose(result.returns, 0, atol=1e-6)
+
+
 def test_daily_ex_date_of_intraday_bars(tmp_path, device):
     closes = {f"{DAYS[0]} {time}": 100.0 for time in ("09:30:00", "09:35:00", "09:40:00")}
     closes |= {f"{DAYS[1]} {time}": 50.0 for time in ("09:30:00", "09:35:00", "09:40:00")}
