@@ -296,6 +296,27 @@ def preview_data(panel, universe=None):
     )
 
 
+def test_turnover_counts_the_assets_entering_and_leaving():
+    """Their weight is 0 on the rows they don't have, it isn't missing."""
+    dates = pd.bdate_range("2018-01-01", periods=4, tz="UTC")
+    held = [(dates[0], "A"), (dates[0], "B"), (dates[1], "A"), (dates[1], "B")]
+    held += [(dates[2], "C"), (dates[2], "D"), (dates[3], "C"), (dates[3], "D")]
+    index = pd.MultiIndex.from_tuples(held, names=["date", "asset"])
+    factor_data = pd.DataFrame(
+        {("Returns", "1D"): 0.0, ("alpha", "factor_weight"): [0.5, -0.5] * 4}, index=index
+    )
+    mean_returns = pd.DataFrame(
+        0.0,
+        index=[0.0, 1.0],
+        columns=pd.MultiIndex.from_tuples([("alpha", "1D", "mean"), ("alpha", "1D", "sem")]),
+    )
+
+    figure = plot_quantile_and_cumulative_returns(factor_data, mean_returns)
+
+    turnover = next(trace for trace in figure.data if trace.name == "turnover")
+    assert list(turnover.y) == [0, 0, 200, 0]
+
+
 def test_chart_without_dates_goes_by_the_rows():
     panel = make_panel(pd.bdate_range("2018-01-01", periods=120, tz="UTC"))
     factor_data, mean_returns = preview_data(panel)

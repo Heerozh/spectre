@@ -148,7 +148,8 @@ def plot_quantile_and_cumulative_returns(factor_data, mean_ret, dates=None):
             col=2,
         )
 
-        weight_diff = factor_data[weight_col].unstack(level=[1]).diff()
+        # an asset without a row holds nothing, so entering or leaving the universe is a trade
+        weight_diff = factor_data[weight_col].unstack(level=[1]).fillna(0).diff()
         to = weight_diff.abs().sum(axis=1) * 100
         resample = int(len(to) / 64)
         if resample > 0:
