@@ -349,6 +349,9 @@ class SimulationBlotter(BaseBlotter, EventReceiver):
 
     def _advance_to(self, dt: pd.Timestamp) -> None:
         """Move the datetime forward, and charge the interest of the time that passed."""
+        # no price of the new datetime is known until `set_price` picks one
+        self._current_prices_col = None
+        self._current_prices = None
         # get last datetime before portfolio datetime change
         last_dt = self._portfolio.current_dt
         if last_dt:
@@ -360,8 +363,6 @@ class SimulationBlotter(BaseBlotter, EventReceiver):
         super().set_datetime(dt)
 
     def set_datetime(self, dt: pd.Timestamp) -> None:
-        self._current_prices_col = None
-        self._current_prices = None
         if self._current_dt is not None:
             # make up events for skipped days for update splits and divs.
             current_date = self._current_dt.normalize()

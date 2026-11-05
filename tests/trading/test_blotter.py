@@ -4,7 +4,7 @@ import pytest
 from numpy import nan
 
 import spectre
-from spectre import trading
+from spectre import factors, trading
 
 # AAPL and MSFT daily prices (uOpen, uClose, uVolume) used in the tests
 AAPL_0102 = dict(open=155.92, close=158.61, volume=37932561)
@@ -27,14 +27,16 @@ def per_share_commission(shares):
     return float(np.round(max(np.float64(abs(shares)) * 0.005, 1), 2))
 
 
-def asset_a_loader(stamps, close, dividends=None, split_ratios=None):
+def asset_a_loader(stamps, close, dividends=None, split_ratios=None, **columns):
     """
     Bars of a single asset `A`, with open = high = low = close. `dividends` and `split_ratios` are
     {bar: value}, keyed by the bar of the ex-date. If both are None the loader has no adjustments.
+    `columns` are added to the data, for the factors of a test.
     """
     ohlcv = ("open", "high", "low", "close", "volume")
     index = pd.MultiIndex.from_product([stamps, ["A"]], names=["date", "asset"])
     df = pd.DataFrame({col: np.array(close, dtype=float) for col in ohlcv}, index=index)
+    df = df.assign(**columns)
     if dividends is None and split_ratios is None:
         return spectre.data.MemoryLoader(df, ohlcv=ohlcv)
     bars = pd.RangeIndex(len(df))
@@ -596,6 +598,45 @@ def test_interest_of_each_day_uses_the_value_of_that_day(last_visited):
     blotter.set_datetime(days[3])
     # 0.1% a day of the 10000, 11000 and 12000 the short is worth at the start of each day
     assert blotter.portfolio.cash == pytest.approx(100000 + 100 * 100 - (10 + 11 + 12))
+
+
+@pytest.mark.parametrize("bar", [1, 2], ids=["next_bar", "after_a_made_up_day"])
+def test_no_price_before_the_open(bar):
+    days = pd.bdate_range("2021-01-04", periods=3, tz="UTC")
+    blotter = trading.SimulationBlotter(asset_a_loader(days, [100, 101, 102]))
+    trade_until_after_bar(blotter, days, 0, 0)
+
+    # the market is opening, and no price of this bar can be known yet
+    blotter.set_datetime(days[bar])
+    blotter.market_open(None)
+    with pytest.raises(ValueError, match="set_price"):
+        blotter.get_price("A")
+    with pytest.raises(ValueError, match="set_price"):
+        blotter.order("A", 1)
+    assert not blotter.positions
+
+
+def test_no_price_before_the_open_in_a_backtest():
+    # the filter leaves out the third day, the close of the fourth is much higher than its open
+    days = pd.bdate_range("2021-01-04", periods=5, tz="UTC")
+    loader = asset_a_loader(days, [100, 101, 102, 150, 103], flag=[1.0, 1.0, 0.0, 1.0, 1.0])
+    seen = []
+
+    class Alg(trading.CustomAlgorithm):
+        def initialize(self):
+            engine = self.get_factor_engine()
+            engine.add(factors.OHLCV.open, "open")
+            engine.set_filter(factors.ColumnDataFactor(inputs=["flag"], should_delay=False) > 0.5)
+            self.schedule(trading.event.MarketOpen(self.before_open, -1000))
+
+        def before_open(self, _):
+            try:
+                seen.append(self.blotter.get_price("A"))
+            except ValueError:
+                seen.append("no price")
+
+    trading.run_backtest(loader, Alg, days[0], days[-1])
+    assert seen == ["no price"] * 4
 
 
 @pytest.mark.parametrize(
