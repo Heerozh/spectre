@@ -363,18 +363,24 @@ def test_split_conserves_value():
                 assert abs(pos.realized + pos.unrealized + side * shares) < 1e-6, where
 
 
-def test_split_without_a_price_uses_the_last_price():
+# not a price: no close on the bar, a close of 0, or that close less a dividend
+NO_PRICE = pytest.mark.parametrize("no_price", [float("nan"), 0, -0.5], ids=["nan", "zero", "neg"])
+
+
+@NO_PRICE
+def test_split_without_a_price_uses_the_last_price(no_price):
     pos = trading.Position(10, 10, 0, None)
-    assert pos.process_split(2, float("nan")) == 0
+    assert pos.process_split(2, no_price) == 0
     assert pos.shares == 20
     assert pos.last_price == 5
     assert pos.value == 100
 
 
-def test_reverse_split_without_a_price_uses_the_last_price():
+@NO_PRICE
+def test_reverse_split_without_a_price_uses_the_last_price(no_price):
     pos = trading.Position(970, 10, 0, None)
     # 970 = 64 * 15 + 10, the 10 left over are sold at the last price of 10
-    cash = pos.process_split(1 / 15, float("nan"))
+    cash = pos.process_split(1 / 15, no_price)
     assert pos.shares == 64
     assert cash == pytest.approx(10 * 10)
     assert pos.last_price == pytest.approx(150)

@@ -141,7 +141,7 @@ class Position:
         """
         if inverse_ratio != inverse_ratio or inverse_ratio == 1:
             return 0
-        if last_price != last_price:  # no price on this bar
+        if not last_price > 0:  # no price on this bar, the check is true for NaN too
             last_price = self._last_price
         sp = self._shares * inverse_ratio
         # rounding removes float noise: 49 * (1 / 49) is 0.9999999999999999, which is 1 share

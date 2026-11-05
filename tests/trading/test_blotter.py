@@ -533,11 +533,15 @@ def test_trailing_stop_is_not_fired_by_a_dividend():
     assert blotter.portfolio.check_stop_trigger() == [False]
 
 
+NO_CLOSE = pytest.mark.parametrize("no_close", [nan, 0], ids=["nan", "zero"])
+
+
+@NO_CLOSE
 @pytest.mark.parametrize("amount", [100, -100], ids=["long", "short"])
-def test_split_on_a_bar_without_a_close(amount):
+def test_split_on_a_bar_without_a_close(amount, no_close):
     # the row that gets the split has no close, 2-for-1 of the last valid close of 100 is 50
     days = pd.bdate_range("2020-01-06", periods=4, tz="UTC")
-    loader = asset_a_loader(days, [100, nan, 50, 50], split_ratios={2: 0.5})
+    loader = asset_a_loader(days, [100, no_close, 50, 50], split_ratios={2: 0.5})
     blotter = trading.SimulationBlotter(loader, capital_base=100000)
     blotter.borrow_stock_interest_rate = 0
 
@@ -552,6 +556,7 @@ def test_split_on_a_bar_without_a_close(amount):
     assert blotter.get_historical_positions().value.sum(axis=1).loc[days[1]] == 100000
 
 
+@NO_CLOSE
 @pytest.mark.parametrize(
     "amount, shares, cash",
     [
@@ -562,9 +567,9 @@ def test_split_on_a_bar_without_a_close(amount):
     ],
     ids=["long", "short"],
 )
-def test_reverse_split_on_a_bar_without_a_close(amount, shares, cash):
+def test_reverse_split_on_a_bar_without_a_close(amount, shares, cash, no_close):
     days = pd.bdate_range("2020-01-06", periods=4, tz="UTC")
-    loader = asset_a_loader(days, [10, nan, 150, 150], split_ratios={2: 15})
+    loader = asset_a_loader(days, [10, no_close, 150, 150], split_ratios={2: 15})
     blotter = trading.SimulationBlotter(loader, capital_base=100000)
     blotter.borrow_stock_interest_rate = 0
 
@@ -575,10 +580,12 @@ def test_reverse_split_on_a_bar_without_a_close(amount, shares, cash):
     assert blotter.portfolio.value == pytest.approx(100000)
 
 
-def test_dividend_and_split_on_a_bar_without_a_close():
+@NO_CLOSE
+def test_dividend_and_split_on_a_bar_without_a_close(no_close):
     # the last valid close of 100 is ex-dividend at 98, and 2-for-1 is 49
     days = pd.bdate_range("2020-01-06", periods=4, tz="UTC")
-    loader = asset_a_loader(days, [100, nan, 49, 49], dividends={2: 2}, split_ratios={2: 0.5})
+    close = [100, no_close, 49, 49]
+    loader = asset_a_loader(days, close, dividends={2: 2}, split_ratios={2: 0.5})
     blotter = trading.SimulationBlotter(loader, capital_base=100000)
 
     trade_until_after_bar(blotter, days, 1, 100)
@@ -588,9 +595,10 @@ def test_dividend_and_split_on_a_bar_without_a_close():
     assert blotter.portfolio.value == pytest.approx(100000)
 
 
-def test_short_interest_after_a_split_on_a_bar_without_a_close():
+@NO_CLOSE
+def test_short_interest_after_a_split_on_a_bar_without_a_close(no_close):
     days = pd.bdate_range("2020-01-07", periods=3, tz="UTC")
-    loader = asset_a_loader(days, [100, nan, 50], split_ratios={2: 0.5})
+    loader = asset_a_loader(days, [100, no_close, 50], split_ratios={2: 0.5})
     blotter = trading.SimulationBlotter(loader, capital_base=100000)
     blotter.borrow_stock_interest_rate = 0.365
 
