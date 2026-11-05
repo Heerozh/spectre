@@ -976,6 +976,46 @@ def test_iqr_normality(engine):
     assert_factor(engine, factor, expected_aapl, [abs(2 - 1.34898)] * 8)
 
 
+def iqr_normality_of(x):
+    """The quartiles are the values at n // 4 from each end."""
+    values = np.sort(x.dropna().to_numpy())
+    quarter = len(values) // 4
+    iqr = values[len(values) - quarter - 1] - values[quarter]
+    return abs(iqr / values.std() - 1.34898)
+
+
+@pytest.mark.parametrize("dtype", ["float32", "float64"])
+def test_iqr_normality_agrees_with_numpy(dirty_panel, device, dtype):
+    panel, engine = typed_engine(dirty_panel, dtype, device)
+    closes = panel.close.astype("float64")
+    expected = closes.groupby(level="date").transform(iqr_normality_of)
+    result = run_dirty(engine, factors.IQRNormalityFactor(inputs=[close]))
+    assert_allclose(result, expected, rtol=1e-5, atol=1e-5)
+
+
+def test_iqr_normality_of_equal_values(dirty_engine):
+    # every close is above 0.3, so each date is a single value
+    factor = factors.IQRNormalityFactor(inputs=[close.clamp(0, 0.3)])
+    assert run_dirty(dirty_engine, factor).isna().all()
+
+
+@pytest.mark.parametrize("dtype", [torch.float32, torch.float64])
+def test_iqr_normality_of_constant_rows(device, dtype):
+    data = constant_rows(np.random.default_rng(0), dtype, device)
+    assert torch.isnan(compute_with_mask(factors.IQRNormalityFactor(), data)).all()
+
+
+@pytest.mark.parametrize("dtype", [torch.float32, torch.float64])
+def test_iqr_normality_of_the_smallest_spread(device, dtype):
+    # two values a step apart, half of each: the iqr is a step, and the std half a step
+    data = smallest_spread(dtype, device)[:, [0, 1, 3, 3]]
+    result = compute_with_mask(factors.IQRNormalityFactor(), data)
+    assert_allclose(result.cpu().numpy(), [[2 - 1.34898] * 4], rtol=1e-6)
+    # no iqr, but there is a spread, it's as far from normal as it gets
+    result = compute_with_mask(factors.IQRNormalityFactor(), smallest_spread(dtype, device))
+    assert_allclose(result.cpu().numpy(), [[1.34898] * 4], rtol=1e-6)
+
+
 def test_clamp(engine):
     expected = ref.expected(lambda df: df.close.clip(150, 155))
     assert_factor(engine, close.clamp(150, 155), *expected)

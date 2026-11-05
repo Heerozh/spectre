@@ -1326,7 +1326,8 @@ class IQRNormalityFactor(CrossSectionFactor):
         )
         q3, q1 = k_values
         iqr = q3 - q1
-        std = nanstd(data).unsqueeze(-1)
+        # from the lowest value, so rounding doesn't give equal values a spread
+        std = nanstd(data - nanmin(data).unsqueeze(-1)).unsqueeze(-1)
         #  interquartile range of a normal random variable is 1.34898 times its standard deviation
         normality = ((iqr / std) - 1.34898).abs()
 
