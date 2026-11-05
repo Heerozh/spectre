@@ -42,7 +42,7 @@ def portfolio():
 def test_realized(portfolio):
     # (12 - 5) * 10 - 10 commission
     assert portfolio.positions["AAPL"].realized == 60
-    # Reversed position, the new position has no realized yet
+    # Reversed position, keeps what the closed side realized: (8 - 7) * 25 - 25 commission
     assert portfolio.positions["MSFT"].realized == 0
 
 

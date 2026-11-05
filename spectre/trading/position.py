@@ -96,8 +96,10 @@ class Position:
             per_comm = commission / amount
             # close position
             _, realized = self.update(fill_1, fill_price, per_comm * fill_1, dt)
-            # open a new position
+            # open a new position, which keeps what the closed side realized
+            total_realized = self._realized
             self.__init__(fill_2, fill_price, per_comm * fill_2, dt, stop_model=self.stop_model)
+            self._realized = total_realized
             return False, realized
         else:
             cum_cost = self._average_price * before_shares + amount * fill_price + commission

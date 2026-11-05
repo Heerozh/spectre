@@ -44,7 +44,41 @@ def test_reverse_position():
     assert realized == pytest.approx((12 - 10) * 10 - 10)
     assert pos.shares == -5
     assert pos.average_price == pytest.approx(12 + 5 / -5)
-    assert pos.realized == 0
+    # the new side starts from what the closed side realized
+    assert pos.realized == pytest.approx((12 - 10) * 10 - 10)
+
+
+@pytest.mark.parametrize("side", [1, -1], ids=["long", "short"])
+def test_realized_is_kept_through_a_reversal(side):
+    # the long case: 100 at 10, sell 150 at 12. 100 are closed 2 above their cost, 50 sold short
+    pos = trading.Position(side * 100, 10, 0, None)
+    empty, realized = pos.update(-side * 150, 12, 0, None)
+    assert not empty
+    assert pos.shares == -side * 50
+    assert realized == pytest.approx(side * 200)
+    assert pos.realized == pytest.approx(side * 200)
+    assert pos.unrealized == 0
+
+    # cash flow -1000 + 1800, and owing 50 shares at 11 now: 800 - 550
+    pos.last_price = 11
+    assert pos.realized + pos.unrealized == pytest.approx(side * (800 - 550))
+
+
+@pytest.mark.parametrize("side", [1, -1], ids=["long", "short"])
+def test_realized_adds_up_over_several_reversals(side):
+    pos = trading.Position(side * 100, 10, 0, None)
+    pos.update(-side * 30, 11, 0, None)  # 30 closed 1 above their cost
+    assert pos.realized == pytest.approx(side * 30)
+
+    _, realized = pos.update(-side * 120, 12, 0, None)  # 70 closed 2 above, 50 on the other side
+    assert realized == pytest.approx(side * 140)
+    assert pos.realized == pytest.approx(side * (30 + 140))
+
+    _, realized = pos.update(side * 80, 13, 0, None)  # 50 closed 1 against them, 30 flipped back
+    assert realized == pytest.approx(side * -50)
+    assert pos.shares == side * 30
+    assert pos.realized == pytest.approx(side * (30 + 140 - 50))
+    assert pos.unrealized == 0
 
 
 @pytest.mark.parametrize("side", [1, -1], ids=["long", "short"])
@@ -118,7 +152,7 @@ def test_short_realized_before_reversing():
     assert realized == pytest.approx(60)
     assert pos.shares == 40
     assert pos.average_price == 9
-    assert pos.realized == 0
+    assert pos.realized == pytest.approx(80 + 60)
 
 
 @pytest.mark.parametrize(
