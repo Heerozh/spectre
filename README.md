@@ -55,7 +55,7 @@ Running on Quandl 5 years, 3196 Assets, total 3,637,344 bars.
 |----------------|-------------------------------|-------------------------------|----------------------------|-----------------------|
 |SMA(100)        | 87.9 ms ± 3.35 ms (**33.9x**) | 144 ms ± 974 µs (**20.7x**)   | 2.68 s ± 36.1 ms (1.11x)   | 2.98 s ± 14.4 ms (1x) |
 |EMA(50) win=229 | 166 ms ± 3.25 ms (**50.5x**)  | 270 ms ± 1.89 ms (**31.0x**)  | 4.37 s ± 46.4 ms (1.74x)   | 8.38 s ± 56.8 ms (1x) |
-|(MACD+RSI+STOCHF).rank.zscore | 184 ms ± 7.83 ms (**77.7x**) | 282 ms ± 1.33 ms (**50.7x**) | 6.01 s ± 28.1 (2.38x)   | 14.3 s ± 277 ms (1x) |
+|(MACD+CutlerRSI+STOCHF).rank.zscore | 184 ms ± 7.83 ms (**77.7x**) | 282 ms ± 1.33 ms (**50.7x**) | 6.01 s ± 28.1 (2.38x)   | 14.3 s ± 277 ms (1x) |
 
 * The CUDA memory used in the spectre benchmark is 1.8G, returned by cuda.max_memory_allocated().
 * Benchmarks excluded the initial run (no copy data to VRAM, about saving 300ms).
@@ -281,16 +281,23 @@ pf.create_full_tear_sheet(
   will be different from the stock chart software which only adjusted according to last day.
   If you want adjusted by last day, use like 'AdjustedColumnDataFactor(OHLCV.close)' as input data.
   This will speeds up a lot because it only needs to be adjusted once, but brings Look-Ahead Bias.
-* Adjustment only happens inside rolling windows, on the price and volume columns directly.
+* Adjustment only happens inside rolling windows and in the delay, on prices and volumes. That
+  includes the built-in factors made from them, like `MA(5, inputs=[MA(20)])`, a sum of prices and a
+  price times or over a number, like `(high + low) / 2`. Anything else, like `close * open / high`,
+  is left as it is. A custom factor that returns a price has to set `_own_bar_scale = True`.
   `close / close.shift(1)` compares raw prices and drops on a split day, without any error. Use
   `Returns(win=n + 1)` for the return of n bars.
-* Factors that uses the close data will be delayed by 1 bar.
+* Factors that uses the close data will be delayed by 1 bar. A delayed price is in the scale of the
+  bar that reads it, so on an ex-date it can be compared with the open of that bar.
 * spectre's `EMA` matches `Dataframe.ewm(span=...)`, also on missing bars: a NaN keeps the average,
   and a window with no valid bar is NaN. The window is finite, `int(4.5 * (span + 1))` bars, which
   leaves a small error at any `span`. With `adjust=False` at `span=3` or `half_life=1`, spectre
   follows the formula in the pandas documentation on the bar after a missing bar, pandas has a
   special case there, and differs by about 0.4%.
-* spectre's `RSI` uses the algorithm same as `zipline`, for consistency in benchmarks.
+* spectre's `RSI` is Wilder's, like TA-Lib and TradingView, with the finite window of an `EMA` of
+  `span=2 * win - 1`. `CutlerRSI` uses simple means over `win` bars, like the `RSI` of `zipline`. It
+  is about 15 times faster on a GPU and needs far less history, so prefer it for mining factors, but
+  its values are not the ones of `RSI`.
 * A window that isn't full is computed on its valid bars. A window with no valid bar is NaN.
 
 
@@ -310,6 +317,7 @@ BollingerBands = BBANDS(win=20, inputs=[OHLCV.close, 2])
 MovingAverageConvergenceDivergenceSignal = MACD(12, 26, 9, inputs=[OHLCV.close])
 TrueRange = TRANGE(inputs=[OHLCV.high, OHLCV.low, OHLCV.close])
 RSI(win=14, inputs=[OHLCV.close])
+CutlerRSI(win=14, inputs=[OHLCV.close])
 FastStochasticOscillator = STOCHF(win=14, inputs=[OHLCV.high, OHLCV.low, OHLCV.close])
 
 StandardDeviation = STDDEV(win=5, inputs=[OHLCV.close])

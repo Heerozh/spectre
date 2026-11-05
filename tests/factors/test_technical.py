@@ -1,10 +1,11 @@
 import numpy as np
 import pandas as pd
 import pytest
+import torch
 from numpy.testing import assert_allclose, assert_almost_equal
 
 import spectre
-from spectre import factors
+from spectre import factors, parallel
 from tests.conftest import DELISTED_ON, DIRTY_ADJUSTMENTS, DIRTY_OHLCV
 from tests.factors import reference as ref
 from tests.factors.helpers import aligned_bars, assert_factor, nansplit_bars, run_dirty
@@ -265,9 +266,38 @@ def test_atr_keeps_a_bar_with_only_the_close_missing(device, scale):
     assert_allclose(result.atr.values, expected, rtol=1e-6)
 
 
+# talib.RSI(close, 14) of the bars before the default range, 1000 bars after its first value
+TALIB_RSI_AAPL = [39.1585967, 32.5935917, 35.8566833, 35.8566833, 38.2034011, 42.2040408,
+                  46.3533033, 41.6204222, 44.3892683]  # fmt: skip
+TALIB_RSI_MSFT = [43.3547561, 44.7610889, 47.7678806, 46.2391966, 49.2104855, 50.3515566,
+                  46.327828, 46.6394416]  # fmt: skip
+
+
+# The window of RSI is truncated like the one of EMA, the error is about 1e-2 on a scale of 100
 def test_rsi(engine):
     expected = ref.expected(lambda df: ref.rsi(df.close))
-    assert_factor(engine, factors.RSI(), *expected)
+    assert_factor(engine, factors.RSI(), *expected, decimal=1)
+    assert_almost_equal(expected[0], TALIB_RSI_AAPL, decimal=6)
+    assert_almost_equal(expected[1], TALIB_RSI_MSFT, decimal=6)
+
+
+def test_rsi_normalized(engine):
+    expected = ref.expected(lambda df: ref.rsi(df.close) / 50 - 1)
+    assert_factor(engine, factors.RSI().normalized(), *expected, decimal=3)
+
+
+@pytest.mark.filterwarnings("ignore:Warning!! delay_factor is set to False")
+@pytest.mark.parametrize("asset", ["FULL", "LISTED", "HALTED", "NANBAR", "SPLIT"])
+def test_rsi_of_missing_bars_and_splits(dirty_engine, dirty_panel, asset):
+    """Until its window of 45 bars is full it's the series from the first bar of the asset."""
+    result = run_dirty(dirty_engine, factors.RSI(5)).xs(asset, level="asset")
+    clean = dirty_panel.xs(asset, level="asset").clean_close
+    assert_allclose(result.values, ref.rsi(clean, 5).values, rtol=1e-3, atol=1e-4)
+
+
+def test_cutler_rsi(engine):
+    expected = ref.expected(lambda df: ref.cutler_rsi(df.close))
+    assert_factor(engine, factors.CutlerRSI(), *expected)
     # Cutler's RSI calculated by excel
     assert_almost_equal(expected[0], [40.1814301, 33.36385487, 37.37511353, 36.31220413,
                                       41.84100418, 39.19197118, 48.18441452, 44.30411404,
@@ -276,13 +306,72 @@ def test_rsi(engine):
                                       48.3458438, 47.095672, 46.7363662, 46.127465])  # fmt: skip
 
 
-def test_rsi_normalized(engine):
-    expected = ref.expected(lambda df: ref.rsi(df.close) / 50 - 1)
-    assert_factor(engine, factors.RSI().normalized(), *expected)
+def test_cutler_rsi_normalized(engine):
+    expected = ref.expected(lambda df: ref.cutler_rsi(df.close) / 50 - 1)
+    assert_factor(engine, factors.CutlerRSI().normalized(), *expected)
+
+
+@pytest.mark.filterwarnings("ignore:Warning!! delay_factor is set to False")
+@pytest.mark.parametrize("asset", ["FULL", "LISTED", "HALTED", "NANBAR", "SPLIT"])
+def test_cutler_rsi_of_missing_bars_and_splits(dirty_engine, dirty_panel, asset):
+    result = run_dirty(dirty_engine, factors.CutlerRSI(5)).xs(asset, level="asset")
+    clean = dirty_panel.xs(asset, level="asset").clean_close
+    assert_allclose(result.values, ref.cutler_rsi(clean, 5).values, rtol=1e-4, atol=1e-4)
+
+
+def test_cutler_rsi_reads_a_shorter_window_than_rsi():
+    assert factors.CutlerRSI(14).get_total_backwards_() == 14
+    assert factors.RSI(14).get_total_backwards_() == 9 * 14
+
+
+def test_atr_of_the_docstring_of_true_range_is_wilders(engine):
+    def atr(df):
+        return ref.true_range(df).ewm(alpha=1 / 14, adjust=False).mean()
+
+    expected = ref.expected(atr)
+    assert_factor(engine, factors.EMA(2 * 14 - 1, inputs=(factors.TRANGE(),)), *expected, decimal=2)
 
 
 def test_stochf(engine):
     assert_factor(engine, factors.STOCHF(), *ref.expected(ref.stochf))
+
+
+@pytest.mark.filterwarnings("ignore:Warning!! delay_factor is set to False")
+def test_stochf_of_a_flat_window_is_nan(device):
+    """
+    A bar with one price and no trades, and multipliers that aren't 1 because of a later dividend.
+    Rounding would leave the close above a low of the same price, which is inf over a range of 0,
+    and one inf makes the zscore of the whole date NaN.
+    """
+    dates = pd.date_range("2020-01-01", periods=30, freq="B", tz="UTC")
+    flat = pd.DataFrame(index=dates, data={"close": np.linspace(30, 33.3, 30)}, dtype=np.float32)
+    flat.iloc[15:] = 33.3
+    frames = {"FLAT": flat, "OTHER": flat + np.arange(30, dtype=np.float32).reshape(-1, 1) / 7}
+    panel = pd.concat(frames, names=["asset", "date"]).swaplevel().sort_index()
+    panel = panel.assign(open=panel.close, volume=1000.0, split_ratio=1.0)
+    panel["high"], panel["low"] = panel.close * 1.0, panel.close * 1.0
+    panel.loc[panel.index.get_level_values("asset") == "OTHER", "high"] *= 1.01
+    panel.loc[panel.index.get_level_values("asset") == "OTHER", "low"] *= 0.99
+    panel["ex-dividend"] = 0.0
+    panel.loc[(dates[-1], "FLAT"), "ex-dividend"] = 0.17
+    loader = spectre.data.MemoryLoader(panel, DIRTY_OHLCV, DIRTY_ADJUSTMENTS)
+    engine = factors.FactorEngine(loader)
+    if device == "cuda":
+        engine.to_cuda()
+    engine.add(factors.STOCHF(5), "stochf")
+    engine.add(factors.STOCHF(5).zscore(), "zscore")
+    result = engine.run(dates[20], dates[-1], delay_factor=False)
+    assert result.stochf.xs("FLAT", level="asset").iloc[:-1].isna().all()
+    assert np.isfinite(result.stochf.xs("OTHER", level="asset")).all()
+
+
+def test_stochf_of_a_close_out_of_an_empty_range(device):
+    """A bar with only a close: the range is 0, and it's not a value of the oscillator."""
+    zeros = torch.zeros(1, 4, device=device)
+    highs, lows = parallel.Rolling(zeros, 2), parallel.Rolling(zeros, 2)
+    closes = parallel.Rolling(torch.full((1, 4), 50.0, device=device), 2)
+    result = factors.STOCHF(2).compute(highs, lows, closes)
+    assert np.isnan(result.cpu().numpy()).all()
 
 
 def test_stochf_normalized(engine):

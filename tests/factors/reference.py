@@ -117,10 +117,18 @@ def true_range(df):
 
 
 def rsi(close, win=14):
+    """Wilder's RSI, his smoothing of gains and losses is an EMA with alpha = 1 / win."""
+    diff = close.diff()
+    up = diff.clip(lower=0).ewm(alpha=1 / win, adjust=False).mean()
+    down = (-diff.clip(upper=0)).ewm(alpha=1 / win, adjust=False).mean()
+    return 100 - 100 / (1 + up / down)
+
+
+def cutler_rsi(close, win=14):
     """Cutler's RSI (simple moving average of gains and losses)."""
     diff = close.diff()
-    up = diff.clip(lower=0).rolling(win).mean()
-    down = (-diff.clip(upper=0)).rolling(win).mean()
+    up = diff.clip(lower=0).rolling(win, min_periods=1).mean()
+    down = (-diff.clip(upper=0)).rolling(win, min_periods=1).mean()
     return 100 - 100 / (1 + up / down)
 
 

@@ -15,7 +15,7 @@ import pandas as pd
 import torch
 
 from ..data import DataLoader
-from ..parallel import DummyParallelGroupBy, ParallelGroupBy
+from ..parallel import DummyParallelGroupBy, ParallelGroupBy, pad_2d
 from ..plotting import plot_chart, plot_quantile_and_cumulative_returns
 from .datafactor import AdjustedColumnDataFactor, ColumnDataFactor
 from .factor import BaseFactor, CustomFactor
@@ -68,6 +68,16 @@ class FactorEngine:
         data = torch.from_numpy(values).to(self._device, non_blocking=True)
         self._column_cache[data_column] = data
         return data
+
+    def column_to_multipliers_(self, data_column: str, group: str) -> torch.Tensor:
+        """One tensor for all factors of a column, so its identity tells that they are one scale."""
+        key = (data_column, group)
+        if key not in self._column_cache:
+            data = self.group_by_(self.column_to_tensor_(data_column), group)
+            # The rows added by align_by_time have no multiplier. Give them what the loader would
+            # have: the one of the bar before them, or of the first bar of the asset.
+            self._column_cache[key] = pad_2d(pad_2d(data).flip(1)).flip(1)
+        return self._column_cache[key]
 
     def _column_to_group_codes(self, column: str) -> np.ndarray:
         """Integer codes of a column of any type, in the order of its values."""
@@ -517,7 +527,7 @@ class FactorEngine:
         filter_ = self._filter
         if filter_ and delay_factor and (filter_.should_delay() or delay_factor == "all"):
             filter_ = filter_.shift(1)
-        factors = {col: col in delays and fct.shift(1) or fct for col, fct in self._factors.items()}
+        factors = {col: col in delays and fct.delay_() or fct for col, fct in self._factors.items()}
         delayed = len(delays) > 0 or filter_ is not self._filter
 
         # calculate how much historical data is needed
@@ -754,6 +764,8 @@ class FactorEngine:
                          bar, and 'open' at the open of the next bar. If only some of them are, all
                          are delayed, the filter too.
                          If is a factor, its values are the prices, and all factors are delayed.
+                         A return across a split needs a scale: `(high + low) / 2` has one,
+                         a custom factor that returns a price has to set `_own_bar_scale`.
                          If is 'current_close', same as run engine with delay_factor=False,
                          Be sure that no any high,low,close data is used in factor, otherwise will
                          cause lookahead bias.

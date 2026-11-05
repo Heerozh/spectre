@@ -5,13 +5,14 @@
 @email: heeroz@gmail.com
 """
 
-from ..parallel import Rolling, masked_first, pad_2d
-from .factor import CustomFactor
+from ..parallel import Rolling, masked_first, nanlast
+from .factor import CustomFactor, _scale_of
 
 
 class RollingFirst(CustomFactor):
     win = 2
     _min_win = 2
+    _own_bar_scale = True
 
     def __init__(self, win, data, mask):
         super().__init__(win, inputs=(data, mask))
@@ -32,19 +33,18 @@ class ForwardSignalData(RollingFirst):
 
     def __init__(self, win, data, signal):
         super().__init__(win, data.shift(-win + 1), signal.shift(-win + 1))
-        self.data = data
+
+    def _find_scale(self) -> tuple | None:
+        scale = _scale_of(self.inputs[0])
+        return None if scale is None else (scale[0], 0)
 
     def compute(self, data, mask):
-        multi = self.data.adjustments
+        multi = self.inputs[0].adjustments
         if multi is None:
             return super().compute(data, mask)
 
-        # The rows added by engine.align_by_time have no multiplier. Give them what the loader
-        # would have: the one of the bar before them, or of the first bar of the asset.
-        multi = pad_2d(pad_2d(multi).flip(1)).flip(1)
-        multi = self.inputs[0].compute(multi).to(data.device)
-
         def _first_filter(_data, _mask, _multi):
-            return masked_first(_data * _multi, _mask, dim=2) / _multi[:, :, 0]
+            # Rolling brings a window to the scale of its last bar, here that is the future
+            return masked_first(_data, _mask, dim=2) * (nanlast(_multi, dim=2) / _multi[:, :, 0])
 
-        return data.agg(_first_filter, mask, Rolling(multi, self.win))
+        return data.agg(_first_filter, mask, Rolling(multi.to(data.device), self.win))

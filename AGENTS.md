@@ -84,9 +84,10 @@ and factors.
 
 ### How `FactorEngine.run` executes
 
-1. `_run` wraps every factor where `should_delay()` is true in `.shift(1)`, and the filter too, then
-   takes the largest `get_total_backwards_()` in the graph to decide how much history to load before
-   `start`. Every look-back counts, also the shift of the delay, so a delayed run loads one more bar.
+1. `_run` replaces every factor where `should_delay()` is true with its `delay_()`, and shifts the
+   filter too, then takes the largest `get_total_backwards_()` in the graph to decide how much
+   history to load before `start`. Every look-back counts, also the shift of the delay, so a delayed
+   run loads one more bar.
    `mask='universe'` needs the filter before `pre_compute_` binds the engine, so
    `_masks_know_the_filter` leaves its delay and look-back on `CustomFactor` while `_run` decides.
 2. `_prepare_tensor` loads that range and builds the `asset` and `date` `ParallelGroupBy` objects.
@@ -107,8 +108,9 @@ rows into padded 2D tensors, using NaN or `False` for padding:
 
 - `groupby = 'asset'` (the default) gives `[asset, bar]`.
 - `groupby = 'date'` (`CrossSectionFactor`) gives `[date, asset]`. `groupby` can also be any
-  DataFrame column of any type, or several joined by commas. Except for `demean`, which adds `date`
-  to a column, a group of a column pools all loaded rows, including future ones.
+  DataFrame column of any type, or several joined by commas. The helpers add `date` to a column, so
+  `zscore(groupby='sector')` is each sector on each date. A column set on `factor.groupby` by hand
+  pools all loaded rows, including future ones, and so does `'asset'`.
 - `win > 1` gives a `Rolling`, whose `.values` is `[asset, bar, win]`. Inputs that are not factors
   are passed through unchanged.
 - All shapes include the history loaded before `start`, not only the requested range.
@@ -137,25 +139,35 @@ rows into padded 2D tensors, using NaN or `False` for padding:
   data is only known after the close. `OHLCV.open` is not. A mask counts as a dependency, also
   `mask='universe'`. `run` then drops the first bar. Control this with `delay_factor` (`True`,
   `False`, `'all'`) and `factor.set_delay()`. `full_run` calls `set_delay` on its return columns, so
-  a universe can't move them.
+  a universe can't move them. The delay is an `AdjustedShiftFactor`: a price moves to the scale of
+  the row it lands on, so an ex-date reads it with its own open. `shift` stays raw.
 - **Look-ahead is not prevented.** `compute()` receives every bar at once, including future ones.
   `engine.test_lookahead_bias` randomizes OHLCV in the second half of the range and checks that the
   first half is unchanged, but it cannot prove a factor clean: a one-bar leak on an auto-delayed
   factor cancels out against the delay and passes. The `run_factor` test helper calls it unless
   given `check_bias=False`.
-- **Adjustments only happen inside `Rolling`, and only for an input with non-`None` `adjustments`**:
-  `ColumnDataFactor`, and factors whose output is a price in the scale of its own bar, which return
-  the multipliers of their price input. `TrueRange`, `_MACDLine` and `_OwnBarScale` do. So
-  `MA(5, inputs=[close])` is re-adjusted per window, but `MA(5, inputs=[close.shift(1)])` and
-  `MA(5, inputs=[close * 1])` are not. With `win = 1`, prices are raw. `Rolling.values` is also raw,
-  so go through `agg()` or the aggregation methods.
+- **Adjustments only happen inside `Rolling` and the delay, for a factor with a scale.** A price is
+  in the scale of its own bar, and `adjustments` brings it to another bar. With `win = 1` prices are
+  raw, and `Rolling.values` too, so go through `agg()` or the aggregation methods, except that
+  `fill_na(ffill=True)` brings a filled price to the scale of its row. `pre_compute_` sets `_scale`
+  from the inputs, so nothing walks the graph, it can be hundreds of levels deep. A column has a
+  scale, and `shift` shifts it. A factor that sets `_own_bar_scale` takes the one of its first input,
+  as a mean of prices does. A sum of prices in one scale is a price, and so is a price times or over
+  a number. All the rest has no scale and stays raw, because no scale doesn't mean no unit: `close /
+  (MA(20) + 1e-6)` must not inherit the scale of `close`. So a ratio of prices, `close * volume`,
+  `close * open / high` and `close - close.shift(1)` have none. A custom factor has none until it
+  sets `_own_bar_scale`, and until then a window over it mixes scales across an event without any
+  error. `AdjustedColumnDataFactor` has none, it is in the scale of the last bar.
 - **Missing data has one rule.** A window that isn't full is computed on its valid bars, and weights
   are renormalized. A group or window with no valid value is NaN, never `inf` or 0: the kernels do
   this, also when `ddof` leaves no degrees of freedom, except `nansum` and `nanprod`, because
   counting code relies on 0 and 1. `ts_sum`, `ts_prod` and `xs_sum` give NaN at the factor level.
+  One sample has no variance with any `ddof`, a 0 would read as the lowest risk of the date.
   Paired calculations use the samples valid in both inputs, `nanaverage` for a weighted mean.
 - **A statistic of equal values must be measured from their lowest value.** The mean of equal values
-  rounds away from them, which leaves a tiny std and scores of ±1. See `pearsonr` and `ZScoreFactor`.
+  rounds away from them, which leaves a tiny std and scores of ±1. `nanmean`, `nanaverage`, `nanvar`
+  and `pearsonr` do this, so `close - EMA(20)` of a flat series is 0, and `Rolling` rescales through a
+  ratio for the same reason, it is exactly 1 without an event.
 - **Some results still depend on `start`.** `fill_na(ffill=True)` has an unbounded look-back, a
   group of `'asset'` pools the loaded rows, so it moves with the history other factors need, and a
   window over a cross-section on an asset with gaps averages as many bars as have complete dates.
@@ -196,12 +208,15 @@ rows into padded 2D tensors, using NaN or `False` for padding:
 
 ### Data and backtesting
 
+- `CsvDirLoader` fills a price of 0 from the bar before. A volume of 0 stays, it is a bar without
+  trades.
 - Loaders implement `_load()` and `last_modified`. `DataLoader._format()` adds what the engine
   needs: `_time_cat_id`, and the `price_multi` and `vol_multi` columns, after moving `ex-dividend`
   and `split_ratio` up one row so they apply to bars before the ex-date. A dividend divides by the
   last valid close, brought to the scale of the ex-date, so multipliers are never NaN inside an
   asset, and `test_load()`, which asserts the contract, refuses NaN multipliers. Rows added later by
-  `engine.align_by_time` do have NaN multipliers, `_MACDLine` and `ForwardSignalData` fill them.
+  `engine.align_by_time` do have NaN multipliers, `column_to_multipliers_` fills them from the bar
+  before, or from the first bar of the asset.
 - An event must never move to an earlier bar, that is look-ahead. `_attach_events` puts one on the
   first bar of its asset on or after the ex-date, for event files, and in `_align_to` for rows the
   calendar drops. `CsvDirLoader` attaches events after the calendar step.

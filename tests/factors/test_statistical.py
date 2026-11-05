@@ -226,7 +226,7 @@ def test_rolling_correlation(engine):
 
 def half_life(series, mean, win, keep=None):
     """Half life of each window, from a regression on the samples that have a lag and a diff."""
-    lag = (series.shift(1) - mean).values
+    lag = (series - mean).shift(1).values
     diff = series.diff().values
     if keep is not None:
         lag, diff = np.where(keep, lag, nan), np.where(keep, diff, nan)
@@ -234,8 +234,9 @@ def half_life(series, mean, win, keep=None):
     for i in range(len(series)):
         x, y = lag[max(0, i - win + 1) : i + 1], diff[max(0, i - win + 1) : i + 1]
         valid = ~np.isnan(x * y)
-        if valid.sum() > 1:
-            ret[i] = -np.log(2) / np.polyfit(x[valid], y[valid], 1)[0]
+        slope = np.polyfit(x[valid], y[valid], 1)[0] if valid.sum() > 1 else 0
+        if slope < 0:
+            ret[i] = -np.log(2) / slope
     return pd.Series(ret, index=series.index)
 
 
@@ -304,6 +305,65 @@ def test_half_life_mean_reversion_mask_drops_the_samples_of_masked_bars(dirty_en
     assert_allclose(got.values, expected.loc[start:].values, rtol=1e-6)
 
 
+@pytest.mark.filterwarnings("ignore:Warning!! delay_factor is set to False")
+def test_half_life_mean_reversion_of_a_mean_without_a_scale(dirty_engine, dirty_panel):
+    """Any price in the scale of its own bar will do, a bar and its mean are in one scale."""
+
+    class OwnMean(factors.CustomFactor):
+        win = 5
+        inputs = [close]
+
+        def compute(self, data):
+            return data.nanmean()
+
+    win, start = 10, DIRTY_DATES[15]
+    dirty_engine.add(factors.HalfLifeMeanReversion(win, close, OwnMean()), "half_life")
+    result = dirty_engine.run(start, DIRTY_DATES[-1], delay_factor=False)
+    clean = dirty_panel.xs("SPLIT", level="asset").clean_close
+    expected = half_life(clean, rolling_nanmean(clean, 5), win).loc[start:]
+    got = result.xs("SPLIT", level="asset").half_life
+    assert_allclose(got.values, expected.values, rtol=HALF_LIFE_RTOL)
+
+
+def closes_engine(closes, device):
+    """An engine on {asset: closes}, all prices of a bar are its close."""
+    dates = pd.date_range(
+        "2000-01-03", periods=len(next(iter(closes.values()))), freq="B", tz="UTC"
+    )
+    frames = {asset: pd.DataFrame({"close": close}, dates) for asset, close in closes.items()}
+    df = pd.concat(frames, names=["asset", "date"]).swaplevel().sort_index()
+    df = df.assign(open=df.close, high=df.close, low=df.close, volume=1.0)
+    engine = factors.FactorEngine(
+        spectre.data.MemoryLoader(df, ("open", "high", "low", "close", "volume"))
+    )
+    if device == "cuda":
+        engine.to_cuda()
+    return engine, dates
+
+
+@pytest.mark.filterwarnings("ignore:Warning!! delay_factor is set to False")
+def test_half_life_of_a_trend_is_nan(device):
+    """It moves away from its mean. A negative half-life would pass `hl < 20` and `.bottom()`."""
+    rng = np.random.default_rng(0)
+    trend = 100 * 1.015 ** np.arange(300) * np.exp(rng.normal(0, 0.001, 300).cumsum())
+    engine, dates = closes_engine({"TREND": trend}, device)
+    engine.add(factors.HalfLifeMeanReversion(60, close, factors.MA(20)), "half_life")
+    result = engine.run(dates[100], dates[-1], delay_factor=False).half_life
+    assert result.isna().all()
+
+
+@pytest.mark.filterwarnings("ignore:Warning!! delay_factor is set to False")
+def test_half_life_of_a_random_walk_is_not_a_property_of_its_mean(device):
+    """A mean that holds the bar it explains read a half-life of 2 on any random walk."""
+    rng = np.random.default_rng(1)
+    walks = {f"A{i}": 100 + rng.normal(0, 0.5, 700).cumsum() for i in range(20)}
+    engine, dates = closes_engine(walks, device)
+    engine.add(factors.HalfLifeMeanReversion(250, close, factors.MA(5)), "half_life")
+    result = engine.run(dates[300], dates[-1], delay_factor=False).half_life
+    assert result.median() > 5
+    assert 0.2 < result.isna().mean() < 0.8
+
+
 FLAT_DATES = pd.date_range("2020-01-01", periods=30, freq="B", tz="UTC")
 
 
@@ -327,6 +387,24 @@ def flat_engine(device, dtype):
 
 
 @pytest.mark.filterwarnings("ignore:Warning!! delay_factor is set to False")
+@pytest.mark.parametrize(
+    "mean",
+    [
+        lambda: factors.MA(10),
+        lambda: factors.EMA(10),
+        lambda: factors.LinearWeightedAverage(10, inputs=[close]),
+    ],
+    ids=["ma", "ema", "lwma"],
+)
+def test_a_flat_series_has_no_distance_to_its_mean(device, mean):
+    """It would be inf over a std of 0, and one inf makes the zscore of a date NaN."""
+    engine = flat_engine(device, np.float32)
+    engine.add((close - mean()) / factors.STDDEV(10), "score")
+    result = engine.run(FLAT_DATES[15], FLAT_DATES[-1], delay_factor=False).score
+    assert result.xs("FLAT", level="asset").isna().all()
+
+
+@pytest.mark.filterwarnings("ignore:Warning!! delay_factor is set to False")
 @pytest.mark.parametrize("dtype", [np.float32, np.float64])
 @pytest.mark.parametrize(
     "mean",
@@ -341,7 +419,8 @@ def test_half_life_mean_reversion_of_a_flat_series_is_nan(device, mean, dtype):
     engine.add(factors.HalfLifeMeanReversion(10, close, mean()), "half_life")
     result = engine.run(FLAT_DATES[15], FLAT_DATES[-1], delay_factor=False).half_life
     assert result.xs("FLAT", level="asset").isna().all()
-    assert np.isfinite(result.xs("VARY", level="asset")).all()
+    vary = result.xs("VARY", level="asset")
+    assert vary.notna().any() and (vary.dropna() > 0).all()
 
 
 def test_cross_section_r2():
@@ -1003,12 +1082,12 @@ def test_student_cdf_limits(device):
     assert result[0] == 0
 
 
-def test_student_cdf_uses_the_cross_section_mean(device):
-    t = torch.tensor([[1.0, 3, nan], [-5.0, nan, -1], [nan, nan, nan]], device=device)
-    result = factors.StudentCDF().compute(t, 5, factors.StudentCDF.DefaultPrecision).cpu()
-    assert result.dtype == t.dtype
-    expected = scipy.stats.t.cdf([[2.0], [-3], [nan]], 5).repeat(3, axis=1)
-    assert_allclose(result.numpy(), expected, rtol=1e-5)
+def test_student_cdf_of_each_value(device):
+    t = [[1.0, 3, nan], [-5.0, nan, -1], [nan, nan, nan]]
+    values = torch.tensor(t, device=device)
+    result = factors.StudentCDF().compute(values, 5, factors.StudentCDF.DefaultPrecision).cpu()
+    assert result.dtype == values.dtype
+    assert_allclose(result.numpy(), scipy.stats.t.cdf(t, 5), rtol=1e-5)
 
 
 def test_student_cdf_precision_sets_the_error(device):
@@ -1035,13 +1114,11 @@ def test_student_cdf_memory_does_not_depend_on_t(t):
 @pytest.mark.filterwarnings("ignore:Historical data seems insufficient")
 def test_student_cdf_of_ttest(dirty_engine):
     win = 5
-    # `* 1` leaves the prices raw, `close` itself would be adjusted
-    t = factors.TTest1Samp(win, inputs=[close * 1, 100.0])
+    t = factors.TTest1Samp(win, inputs=[close, 100.0])
     dirty_engine.add(t, "t")
     p = factors.StudentCDF(inputs=[t, win - 1, factors.StudentCDF.DefaultPrecision])
     dirty_engine.add(p, "p")
     result = dirty_engine.run(DIRTY_DATES[0], DIRTY_DATES[-1], delay_factor=False)
 
-    dates = result.index.get_level_values("date")
-    reduced_t = result.t.groupby(level="date").mean().reindex(dates)
-    assert_allclose(result.p.values, scipy.stats.t.cdf(reduced_t.values, win - 1), rtol=1e-6)
+    assert_allclose(result.p.values, scipy.stats.t.cdf(result.t.values, win - 1), rtol=1e-6)
+    assert result.p.groupby(level="date").nunique().max() > 1

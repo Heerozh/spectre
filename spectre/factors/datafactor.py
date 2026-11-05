@@ -12,7 +12,7 @@ import pandas as pd
 import torch
 
 from ..config import Global
-from ..parallel import nanlast
+from ..parallel import nanlast, rescale
 from .factor import BaseFactor, CustomFactor
 
 
@@ -26,13 +26,8 @@ class ColumnDataFactor(BaseFactor):
             "adjustments column"
         )
         self._data = None
-        self._multiplier = None
         self._should_delay = should_delay
         self.dtype = dtype
-
-    @property
-    def adjustments(self):
-        return self._multiplier
 
     def get_total_backwards_(self) -> int:
         return 0
@@ -48,18 +43,18 @@ class ColumnDataFactor(BaseFactor):
                 self._data = self._data.to(self.dtype)
             self._data = engine.group_by_(self._data, self.groupby)
             if len(self.inputs) > 1 and self.inputs[1] in engine.dataframe_:
-                self._multiplier = engine.column_to_tensor_(self.inputs[1])
-                self._multiplier = engine.group_by_(self._multiplier, self.groupby)
+                multipliers = engine.column_to_multipliers_(self.inputs[1], self.groupby)
                 if self.dtype is not None:
-                    self._multiplier = self._multiplier.to(self.dtype)
+                    multipliers = multipliers.to(self.dtype)
+                self._scale = (multipliers, 0)
             else:
-                self._multiplier = None
+                self._scale = None
             self._clean_required = True
 
     def clean_up_(self, force=False) -> None:
         super().clean_up_(force)
         self._data = None
-        self._multiplier = None
+        self._scale = None
         self._clean_required = False
 
     def compute_(self, stream: torch.cuda.Stream | None) -> torch.Tensor:
@@ -90,7 +85,8 @@ class AdjustedColumnDataFactor(CustomFactor):
         multi = self.parent.adjustments
         if multi is None:
             return data
-        return data * multi / nanlast(multi, dim=1)[:, None]
+        multi = multi.to(data.device)  # `compute` can run again on cpu
+        return rescale(data, multi, nanlast(multi, dim=1)[:, None])
 
 
 class AssetClassifierDataFactor(BaseFactor):

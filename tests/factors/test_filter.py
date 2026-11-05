@@ -315,7 +315,7 @@ def test_weighted_mean_of_filter(dirty_engine, dirty_panel):
 )
 def test_rolling_statistics_of_filter_raise(dirty_engine, build):
     """The kernels reject bool on purpose: a padded False can't be told from a real False."""
-    with pytest.raises(RuntimeError, match="can't be cast"):
+    with pytest.raises(RuntimeError, match="bool tensors"):
         run_dirty(dirty_engine, build(close > 100))
 
 
@@ -407,7 +407,7 @@ GROUP_HELPERS = {
     ),
     "rank_normalized": (
         lambda f, m: f.rank(normalize=True, mask=m),
-        lambda x: rank_of(x) / by_date(rank_of(x)).transform("max"),
+        lambda x: rank_of(x, pct=True),
     ),
     "top": (
         lambda f, m: f.top(2, mask=m),

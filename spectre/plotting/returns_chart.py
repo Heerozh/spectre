@@ -148,7 +148,8 @@ def plot_quantile_and_cumulative_returns(factor_data, mean_ret, dates=None):
             col=2,
         )
 
-        weight_diff = factor_data[weight_col].unstack(level=[1]).diff()
+        # an asset without a row holds nothing, so entering or leaving the universe is a trade
+        weight_diff = factor_data[weight_col].unstack(level=[1]).fillna(0).diff()
         to = weight_diff.abs().sum(axis=1) * 100
         resample = int(len(to) / 64)
         if resample > 0:
@@ -166,6 +167,19 @@ def plot_quantile_and_cumulative_returns(factor_data, mean_ret, dates=None):
     return fig
 
 
+def _wealth(returns, start):
+    """
+    1 grown by `returns` from row `start` on. It starts on the row before, the value these returns
+    grow from, or a loss on the first of them would have no high to fall from. The first row of
+    the returns of a portfolio is NaN, so that row is the value it starts with.
+    """
+    first = max(start + len(returns), 0) if start < 0 else start
+    rows = returns.iloc[max(first - 1, 0) :].copy()
+    if first > 0:
+        rows.iloc[0] = 0
+    return (rows.fillna(0) + 1).cumprod()
+
+
 def cumulative_returns_fig(returns, positions, transactions, benchmark, annual_risk_free, start=0):
     import plotly.graph_objects as go
     from plotly import subplots
@@ -174,8 +188,7 @@ def cumulative_returns_fig(returns, positions, transactions, benchmark, annual_r
 
     fig = subplots.make_subplots(specs=[[{"secondary_y": True}]])
 
-    cum_ret = returns.iloc[start:]
-    cum_ret = (cum_ret + 1).cumprod()
+    cum_ret = _wealth(returns, start)
     fig.add_trace(
         go.Scatter(
             x=cum_ret.index,

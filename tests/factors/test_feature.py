@@ -80,11 +80,15 @@ def assert_market_number(engine, factor, values):
     assert_array_equal(msft, aapl[dates.isin(msft_dates)])
 
 
+def dispersion_of(returns):
+    return returns.std(axis=1, ddof=0).where(returns.count(axis=1) > 1)
+
+
 def test_market_dispersion(engine):
-    dispersion = returns_of_assets().std(axis=1, ddof=0)
+    dispersion = dispersion_of(returns_of_assets())
     assert_market_number(engine, factors.MarketDispersion(), dispersion)
     # only AAPL has a return on that date
-    assert dispersion.loc["2019-01-10":"2019-01-10"].item() == 0
+    assert np.isnan(dispersion.loc["2019-01-10":"2019-01-10"].item())
 
 
 def test_market_return(engine):
@@ -108,14 +112,14 @@ ALIGNED = pytest.mark.parametrize("align", [False, True], ids=["not_aligned", "a
 # each factor with one number for a date, and that number from the returns of the assets
 MARKET_NUMBERS = {
     "return": (factors.MarketReturn, lambda r: r.mean(axis=1)),
-    "dispersion": (factors.MarketDispersion, lambda r: r.std(axis=1, ddof=0)),
+    "dispersion": (factors.MarketDispersion, dispersion_of),
     "advance_decline": (
         factors.AdvanceDeclineRatio,
         lambda r: (r > 0).sum(axis=1) / (r < 0).sum(axis=1),
     ),
     "volatility": (
         lambda: factors.MarketVolatility(win=MARKET_WIN),
-        lambda r: (r.mean(axis=1).rolling(MARKET_WIN, min_periods=1).var(ddof=0) * 252) ** 0.5,
+        lambda r: (r.mean(axis=1).rolling(MARKET_WIN, min_periods=2).var(ddof=0) * 252) ** 0.5,
     ),
 }
 each_market_number = pytest.mark.parametrize("name", MARKET_NUMBERS)
@@ -149,7 +153,7 @@ def asset_returns(closes, aligned=False):
 def market_volatility(closes, win=MARKET_WIN, annualization=252, aligned=False):
     """Rolls over the market return of every date, the mean of the assets with a return on it."""
     market = asset_returns(closes, aligned).mean(axis=1)
-    return (market.rolling(win, min_periods=1).var(ddof=0) * annualization) ** 0.5
+    return (market.rolling(win, min_periods=2).var(ddof=0) * annualization) ** 0.5
 
 
 def run_market(engine, factor, start=0, delay=False, name="test"):
@@ -216,8 +220,8 @@ def test_market_volatility_of_windows_that_are_not_full(market_closes, device):
         result = run_market(engine, factors.MarketVolatility(win=MARKET_WIN))
     first_dates = result.loc[MARKET_DATES[:3]].unstack()
     assert np.isnan(first_dates.iloc[0]).all()
-    # one return, its variance is 0 as in pandas
-    assert (first_dates.iloc[1].dropna() == 0).all()
+    # one return has no spread
+    assert np.isnan(first_dates.iloc[1]).all()
     assert (first_dates.iloc[2].dropna() > 0).all()
 
 
@@ -965,12 +969,13 @@ def test_forward_signal_data_on_cpu_with_multipliers_on_cuda():
     """When CUDA runs out of memory `compute` runs again on cpu, the column stays on cuda."""
     close = factors.OHLCV.close
     factor = factors.ForwardSignalData(2, close, close > 0)
-    factor.data = SimpleNamespace(adjustments=torch.tensor([[0.5, 0.5, 1, 1]], device="cuda"))
+    shifted_multipliers = torch.tensor([[0.5, 1, 1, nan]], device="cuda")
+    factor.inputs[0] = SimpleNamespace(adjustments=shifted_multipliers)
     # raw closes [100, 110, 60, 70] with a 2:1 split on the third bar, and the signal on it
     shifted_data = torch.tensor([[110, 60, 70, nan]])
     shifted_signal = torch.tensor([[False, True, False, False]])
-    rolling = parallel.Rolling(shifted_data, 2), parallel.Rolling(shifted_signal, 2)
-    result = factor.compute(*rolling)
+    data = parallel.Rolling(shifted_data, 2, shifted_multipliers.cpu())
+    result = factor.compute(data, parallel.Rolling(shifted_signal, 2))
     assert result.device.type == "cpu"
     assert_almost_equal(result[0].numpy(), [nan, 120, 60, nan])
 
@@ -978,8 +983,14 @@ def test_forward_signal_data_on_cpu_with_multipliers_on_cuda():
 @pytest.mark.filterwarnings("ignore:Warning!! delay_factor is set to False")
 def test_forward_signal_data_of_other_data_is_not_adjusted(dirty_engine, dirty_panel):
     """The rule for factors without multipliers is unchanged, they are only shifted."""
-    closes = factors.OHLCV.close * 1
-    factor = factors.ForwardSignalData(FORWARD_WIN, closes, FORWARD_SIGNAL)
+
+    class RawClose(factors.CustomFactor):
+        inputs = [factors.OHLCV.close]
+
+        def compute(self, data):
+            return data
+
+    factor = factors.ForwardSignalData(FORWARD_WIN, RawClose(), FORWARD_SIGNAL)
     result = run_dirty(dirty_engine, factor).xs("SPLIT", level="asset")
     expected = forward_signal_values(dirty_panel.xs("SPLIT", level="asset").close)
     assert_allclose(result.values, expected.values, rtol=1e-6)

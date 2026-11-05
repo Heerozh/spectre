@@ -273,8 +273,8 @@ class CsvDirLoader(DataLoader):
         """
         A 0 filled by `_ffill_zeros` holds a value in the scale before any dividend or split since
         that value, so from the bar of the event it's wrong, and it becomes NaN, like a bar without
-        data. Only a split changes the scale of the volume. `filled` tells the filled cells, and
-        is indexed by (asset, date). The result is sorted by asset and date.
+        data. `filled` tells the filled cells, and is indexed by (asset, date). The result is sorted
+        by asset and date.
         """
         div_col, spr_col = self.adjustments
         df = df.sort_index(level=[1, 0])
@@ -282,18 +282,17 @@ class CsvDirLoader(DataLoader):
         rows = np.arange(len(df))
         assets = df.index.codes[1]
         first_rows = np.r_[True, assets[1:] != assets[:-1]]
-        splits = (df[spr_col] != 1).to_numpy()
-        events = splits | (df[div_col] != 0).to_numpy()
+        events = (df[spr_col] != 1).to_numpy() | (df[div_col] != 0).to_numpy()
 
         def last_true(mask):
             return np.maximum.accumulate(np.where(mask, rows, -1))
 
-        for col in self.ohlcv:
+        last_event = last_true(events)
+        for col in filled.columns:
             is_filled = filled[col].to_numpy()
             # a row with its own value, the value of a filled row comes from the last one of them
             sources = last_true((df[col].notna().to_numpy() & ~is_filled) | first_rows)
-            col_events = splits if col in self.ohlcv[4:] else events
-            df[col] = df[col].mask(is_filled & (last_true(col_events) > sources))
+            df[col] = df[col].mask(is_filled & (last_event > sources))
         return df
 
     def _load(self):
@@ -315,10 +314,11 @@ class CsvDirLoader(DataLoader):
 
         filled = pd.DataFrame()
         if self.ohlcv is not None:
-            # 这里把0当成nan进行ffill（按asset分别填充）
-            zeros = df[list(self.ohlcv)] == 0
-            df[list(self.ohlcv)] = _ffill_zeros(df[list(self.ohlcv)], df.index.get_level_values(0))
-            filled = zeros & (df[list(self.ohlcv)] != 0)
+            # 这里把0价格当成nan进行ffill（按asset分别填充），成交量为0是真实数据，不填充
+            prices = list(self.ohlcv[:4])
+            zeros = df[prices] == 0
+            df[prices] = _ffill_zeros(df[prices], df.index.get_level_values(0))
+            filled = zeros & (df[prices] != 0)
             filled = filled[filled.any(axis=1)]
 
         df = df.swaplevel(0, 1).sort_index(level=0)

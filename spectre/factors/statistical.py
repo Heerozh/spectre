@@ -25,17 +25,19 @@ from ..parallel import (
     pearsonr,
     quantile,
     rankdata,
+    rescale,
     unmasked_mean,
     unmasked_sum,
 )
 from .basic import MA
 from .engine import OHLCV
-from .factor import CrossSectionFactor, CustomFactor
+from .factor import CrossSectionFactor, CustomFactor, _scale_of
 
 
 class StandardDeviation(CustomFactor):
     inputs = [OHLCV.close]
     _min_win = 2
+    _own_bar_scale = True
     ddof = 0
 
     def compute(self, data):
@@ -54,6 +56,7 @@ class RollingHigh(CustomFactor):
     inputs = (OHLCV.close,)
     win = 5
     _min_win = 2
+    _own_bar_scale = True
 
     def compute(self, data):
         return data.nanmax()
@@ -63,6 +66,7 @@ class RollingLow(CustomFactor):
     inputs = (OHLCV.close,)
     win = 5
     _min_win = 2
+    _own_bar_scale = True
 
     def compute(self, data):
         return data.nanmin()
@@ -73,6 +77,10 @@ class RollingLinearRegression(CustomFactor):
 
     def __init__(self, win, x, y):
         super().__init__(win=win, inputs=[x, y])
+
+    def _find_scale(self) -> tuple | None:
+        # over the bars both outputs are linear in y, over an `x` the slope is not
+        return _scale_of(self.inputs[1]) if self.inputs[0] is None else None
 
     def compute(self, x, y):
         def lin_reg(_y, _x=None):
@@ -100,6 +108,7 @@ class RollingMomentum(CustomFactor):
     inputs = (OHLCV.close,)
     win = 20
     _min_win = 2
+    _own_bar_scale = True  # all coefficients are linear in the price
 
     def compute(self, prices):
         def polynomial_reg(_y):
@@ -155,23 +164,25 @@ class RollingQuantile(CustomFactor):
 class _OwnBarScale(CustomFactor):
     """
     A price in the scale of its own bar, made from the window [t-1, t] of `data`, which Rolling
-    has adjusted to the scale of bar t. With the multipliers of `data`, a Rolling over this factor
-    adjusts its windows in the same way.
+    has adjusted to the scale of bar t.
     """
 
     win = 2
-
-    @property
-    def adjustments(self):
-        return self.inputs[0].adjustments
+    _own_bar_scale = True
 
 
 class _LagSpread(_OwnBarScale):
-    """`data` of the previous bar minus `mean`, which has to be in the scale of its own bar."""
+    """`data` minus `mean`, both of the previous bar, so `mean` can't hold the bar it explains."""
 
     def compute(self, data, mean):
         # A number has no scale to adjust it by, and only moves the intercept of the regression.
-        return data.first() - (mean.last() if isinstance(mean, Rolling) else 0)
+        if not isinstance(mean, Rolling):
+            return data.first()
+        # raw, a bar and its mean are in one scale, any `mean` has that without multipliers
+        spread = data.values[:, :, 0] - mean.values[:, :, 0]
+        if data.adjustments is None:
+            return spread
+        return rescale(spread, data.adjustments[:, :, 0], data.adjustment_last[:, :, 0])
 
 
 class _BarDiff(_OwnBarScale):
@@ -181,7 +192,9 @@ class _BarDiff(_OwnBarScale):
 
 class HalfLifeMeanReversion(CustomFactor):
     """
-    Half-life of `data` reverting to `mean`, from a regression on the last `win` bars.
+    Half-life of `data` reverting to `mean`, from a regression on the last `win` bars of the
+    change of a bar on the distance to `mean` of the bar before. A series that doesn't revert has
+    no half-life, so it is NaN if the slope is not negative.
 
     `mean` must be a price in the scale of its own bar, such as MA(win, inputs=[close]). It can
     also be a number, but that has no effect: a level that doesn't move is only the intercept of
@@ -200,8 +213,7 @@ class HalfLifeMeanReversion(CustomFactor):
     def compute(self, lag, diff, ln2):
         def calc_h(_x, _y):
             _lambda, _ = linear_regression_1d(_x, _y, dim=2)
-            # a slope of 0 is no reversion at all, there is nothing to take a half-life of
-            return (-ln2 / _lambda).masked_fill(_lambda == 0, np.nan)
+            return (-ln2 / _lambda).masked_fill(_lambda >= 0, np.nan)
 
         return lag.agg(calc_h, diff)
 
@@ -358,7 +370,7 @@ def _beta_fraction(a, b, x, tol):
 
 class StudentCDF(CrossSectionFactor):
     """
-    Note!! For performance, This factor uses Cross-section mean of t-value.
+    P(T <= t) of each value of `t`, with `dof` degrees of freedom.
 
     `precision` works like the step of an integration grid, the error falls with its square:
     0.001 gives a relative error of about 1e-6, and 1e-7 reaches the limit of float64.
@@ -367,12 +379,12 @@ class StudentCDF(CrossSectionFactor):
     DefaultPrecision = 0.001
 
     def compute(self, t, dof, precision):
-        reduced_t = nanmean(t, dim=1).to(torch.float64)
+        values = t.to(torch.float64)
         dof = torch.tensor(dof, dtype=torch.float64, device=t.device)
         half = dof.new_tensor(0.5)
         # The lower tail is betainc(dof / 2, 1 / 2, x) / 2 with x = dof / (dof + t ** 2). Near t=0
         # x is too high for the fraction, there use betainc(a, b, x) = 1 - betainc(b, a, 1 - x).
-        ratio = reduced_t**2 / dof
+        ratio = values**2 / dof
         flip = ratio * (dof + 2) < 3
         a = torch.where(flip, half, dof / 2)
         b = torch.where(flip, dof / 2, half)
@@ -383,8 +395,7 @@ class StudentCDF(CrossSectionFactor):
         tol = max(precision**2, 1e-14)
         beta = torch.exp(log_front) / a * _beta_fraction(a, b, odds / (1 + odds), tol)
         tail = torch.where(flip, 1 - beta, beta) / 2
-        p = torch.where(reduced_t < 0, tail, 1 - tail)
-        return p.to(t.dtype).unsqueeze(-1).expand(t.shape)
+        return torch.where(values < 0, tail, 1 - tail).to(t.dtype)
 
 
 class CrossSectionR2(CrossSectionFactor):

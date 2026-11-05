@@ -5,7 +5,7 @@ import pytest
 
 import spectre
 from spectre import factors
-from spectre.plotting import plot_quantile_and_cumulative_returns
+from spectre.plotting import cumulative_returns_fig, plot_quantile_and_cumulative_returns
 
 OHLCV = ("open", "high", "low", "close", "volume")
 
@@ -296,6 +296,27 @@ def preview_data(panel, universe=None):
     )
 
 
+def test_turnover_counts_the_assets_entering_and_leaving():
+    """Their weight is 0 on the rows they don't have, it isn't missing."""
+    dates = pd.bdate_range("2018-01-01", periods=4, tz="UTC")
+    held = [(dates[0], "A"), (dates[0], "B"), (dates[1], "A"), (dates[1], "B")]
+    held += [(dates[2], "C"), (dates[2], "D"), (dates[3], "C"), (dates[3], "D")]
+    index = pd.MultiIndex.from_tuples(held, names=["date", "asset"])
+    factor_data = pd.DataFrame(
+        {("Returns", "1D"): 0.0, ("alpha", "factor_weight"): [0.5, -0.5] * 4}, index=index
+    )
+    mean_returns = pd.DataFrame(
+        0.0,
+        index=[0.0, 1.0],
+        columns=pd.MultiIndex.from_tuples([("alpha", "1D", "mean"), ("alpha", "1D", "sem")]),
+    )
+
+    figure = plot_quantile_and_cumulative_returns(factor_data, mean_returns)
+
+    turnover = next(trace for trace in figure.data if trace.name == "turnover")
+    assert list(turnover.y) == [0, 0, 200, 0]
+
+
 def test_chart_without_dates_goes_by_the_rows():
     panel = make_panel(pd.bdate_range("2018-01-01", periods=120, tz="UTC"))
     factor_data, mean_returns = preview_data(panel)
@@ -374,3 +395,32 @@ def test_full_run_chart_of_the_5_minute_test_data(shown, intraday_loader):
     # one point for each bar of the 5 minutes line, the nights have no bars
     assert len(lines["5min"].y) == factor_data.index.get_level_values(0).nunique()
     assert all(np.isfinite(line.y).all() for line in lines.values())
+
+
+def backtest_figure(returns, start=0):
+    dates = pd.date_range("2020-01-01", periods=len(returns), tz="UTC")
+    no_trades = pd.DataFrame(columns=["amount", "fill_price"])
+    series = pd.Series(returns, index=dates)
+    return cumulative_returns_fig(series, None, no_trades, None, 0.0, start=start)
+
+
+@pytest.mark.parametrize(
+    "returns, start, drawdown",
+    [
+        ([np.nan, -0.5, -0.5, 0.1], 0, "75.00%"),
+        ([np.nan, -0.2, 0.0125], 0, "20.00%"),
+        ([np.nan, 0.5, -0.2, 0.1], 2, "20.00%"),
+        ([np.nan, 0.5, 0.1, -0.2, 0.1], 1, "20.00%"),
+        ([np.nan, -0.5, 0.1, -0.2, 0.1], -2, "20.00%"),
+    ],
+    ids=["from_the_first_loss", "recovered", "from_a_start", "after_a_high", "from_the_end"],
+)
+def test_max_drawdown_counts_a_loss_on_the_first_bar(returns, start, drawdown):
+    """The value before the first return is a high too, a portfolio starts from its capital."""
+    figure = backtest_figure(returns, start)
+    assert f"MaxDrawDown:  {drawdown}" in figure.layout.annotations[0].text
+
+
+def test_backtest_line_starts_from_the_value_before_the_first_return():
+    line = backtest_figure([np.nan, 0.5, -0.2, 0.1], start=2).data[0]
+    assert list(line.y) == pytest.approx([0, -20, -12])

@@ -163,10 +163,11 @@ def test_ts_prod_of_partial_and_empty_windows(dirty_engine, dirty_panel):
 
 
 def test_ts_sum_of_masked_windows(dirty_engine, dirty_panel):
-    expected = rolling_sum(dirty_panel.close.where(dirty_panel.volume > 1950), 3)
+    logs = np.log(dirty_panel.close)
+    expected = rolling_sum(logs.where(dirty_panel.volume > 1950), 3)
     assert expected.isna().any()
-    result = run_dirty(dirty_engine, (close * 1).ts_sum(3, mask=factors.OHLCV.volume > 1950))
-    assert_allclose(result, expected)
+    result = run_dirty(dirty_engine, close.log().ts_sum(3, mask=factors.OHLCV.volume > 1950))
+    assert_allclose(result, expected, rtol=1e-5)
 
 
 def test_ts_sum_of_masked_filter(dirty_engine, dirty_panel):
@@ -216,8 +217,18 @@ def test_rolling_rank_flat_window(device):
     prices = [1.0, 2, 2, 2, 2, 5, 5]
     rolling = parallel.Rolling(torch.tensor([prices], device=device), win=3)
     result = factors.RollingRankFactor(3).compute(rolling).cpu().numpy()
-    expected = pd.Series(prices).rolling(3, min_periods=1).apply(lambda x: x.rank().iloc[-1] / 3)
+    expected = pd.Series(prices).rolling(3, min_periods=1).rank(pct=True)
     assert_almost_equal(result[0], expected, decimal=6)
+
+
+def test_rolling_rank_is_a_share_of_the_valid_bars(device):
+    """A new high reads 1, on the first bars of a listing and after a halt too."""
+    prices = [nan, nan, 1.0, 2, 3, nan, nan, 4, 5, 2]
+    rolling = parallel.Rolling(torch.tensor([prices], device=device), win=4)
+    result = factors.RollingRankFactor(4).compute(rolling).cpu().numpy()
+    expected = pd.Series(prices).rolling(4, min_periods=1).rank(pct=True)
+    assert_almost_equal(result[0], expected, decimal=6)
+    assert (result[0][[2, 3, 4, 7, 8]] == 1).all()
 
 
 def test_rolling_zscore(engine):

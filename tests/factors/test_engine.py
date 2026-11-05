@@ -332,11 +332,12 @@ def assert_same_rows(result, expected):
     [
         lambda: factors.MA(5, inputs=[close.shift(3)]),
         lambda: factors.RSI(14).shift(1),
+        lambda: factors.CutlerRSI(14).shift(1),
         lambda: factors.MA(5).shift(4),
         lambda: factors.MA(5, inputs=[(close > 100).float().shift(3)]),
         lambda: factors.OHLCV.open.shift(2),
     ],
-    ids=["ma_of_shift", "shift_of_rsi", "shift_of_ma", "bool_shift", "open"],
+    ids=["ma_of_shift", "shift_of_rsi", "shift_of_cutler_rsi", "shift_of_ma", "bool_shift", "open"],
 )
 def test_result_does_not_depend_on_start(dirty_engine, make_factor):
     start = DIRTY_DATES[40]
@@ -670,7 +671,9 @@ def test_window_over_a_date_and_sector_group(dirty_panel, device, start):
 def test_groups_without_a_date_read_all_their_rows(dirty_panel, device, groupby):
     panel, start = plain_panel(dirty_panel), 25
     engine = plain_engine(panel, device)
-    engine.add(factors.OHLCV.open.mean(groupby=groupby), "f")
+    factor = factors.OHLCV.open.mean()
+    factor.groupby = groupby
+    engine.add(factor, "f")
     engine.add(factors.MA(10), "loads_history")
     result = engine.run(DIRTY_DATES[start], DIRTY_DATES[-1]).f
     assert engine.incomplete_rows_(groupby, close) is None
